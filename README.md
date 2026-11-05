@@ -40,4 +40,3 @@
 - **FreeDV RADE** — AI digital-voice codec with a client-side neural encoder/decoder
 - **AetherMap (PSK Reporter) overlays** — optional global precipitation (LibreWXR, with NOAA, ECCC and EUMETNET OPERA regional radar backups and a per-provider legend), NOAA/NWS weather radar with observation playback (`docs`) and a NASA/GSFC VIIRS night-lights layer that fades through civil twilight (`docs`), on both the 2D map and 3D globe
 - **Workspace canvas** — place pans and applets freely as resizable, layered items with edge and grid snapping, across several windows if you want them. Named workspaces recall which applets are open as well as where they sit, and bind to radio profiles. Off by default; the Classic shell is unchanged until you enable it
-- **Built-in demo mode** — a synthetic backend generating its own RX audio and matching panadapter, with a fault-injection harness, so you can explore the full UI with no radio attached (it cannot transmit)
