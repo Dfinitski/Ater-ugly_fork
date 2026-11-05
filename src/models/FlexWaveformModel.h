@@ -1,0 +1,85 @@
+#pragma once
+
+#include <QObject>
+#include <QList>
+#include <QMap>
+#include <QString>
+
+namespace AetherSDR {
+
+// A single installed waveform (legacy or Docker container).
+// Mirrors FlexLib's Waveform record (Waveform.cs).
+struct FlexWaveformEntry {
+    QString name;
+    QString version;
+    bool    isContainer{false};
+
+    QString displayName() const {
+        return version.isEmpty() ? name : name + QLatin1Char(' ') + version;
+    }
+};
+
+// Handles the three waveform status sub-shapes introduced in firmware v4.2.18:
+//
+//   "waveform"            — installed_list key (legacy waveform list)
+//   "waveform container"  — Docker container add/remove
+//   "waveform wfp_status" — Waveform Processor power/ready/ipaddr
+//
+// Named FlexWaveformModel (not WaveformModel) to avoid confusion with the
+// audio waveform visualization class (WaveformWidget).
+class FlexWaveformModel : public QObject {
+    Q_OBJECT
+
+public:
+    explicit FlexWaveformModel(QObject* parent = nullptr);
+
+    // ── Accessors ─────────────────────────────────────────────────────────────
+    const QList<FlexWaveformEntry>& waveforms()    const { return m_waveforms; }
+    bool    wfpStatusSeen() const { return m_wfpStatusSeen; }
+    bool    wfpPowered()   const { return m_wfpPowered; }
+    bool    wfpReady()     const { return m_wfpReady; }
+    QString wfpIpAddress() const { return m_wfpIpAddress; }
+    const QList<QMap<QString, QString>>& statusReports() const { return m_statusReports; }
+
+    // ── Status parsing (called from RadioModel::onStatusReceived) ─────────────
+    // object == "waveform"
+    void handleInstalledList(const QMap<QString, QString>& kvs);
+    // object == "waveform container"
+    void handleContainerStatus(const QMap<QString, QString>& kvs);
+    // object == "waveform wfp_status"
+    void handleWfpStatus(const QMap<QString, QString>& kvs);
+    // object == "waveform status"
+    void handleGenericStatus(const QMap<QString, QString>& kvs);
+
+    void clear();
+
+    // ── Command emitters ──────────────────────────────────────────────────────
+    // FlexLib Radio.cs:8484-8499
+    void requestUninstall(const QString& name);        // waveform uninstall <name>
+    void requestRemoveContainer(const QString& name);  // waveform remove_container <name>
+    void requestRestart(const QString& name);          // waveform restart <name>
+
+    // The radio's reply to a command emitted above, routed back by RadioModel
+    // so the UI can say what happened (a restart changes nothing visible).
+    void handleCommandReply(const QString& cmd, int code, const QString& body);
+
+signals:
+    void waveformsChanged();
+    void wfpStatusChanged();
+    void statusReportsChanged();
+    void genericStatusReceived(const QMap<QString, QString>& report);
+    void commandReady(const QString& cmd);
+    // action: "restart", "remove_container" or "uninstall".
+    void commandFinished(const QString& action, const QString& name, bool ok,
+                         const QString& message);
+
+private:
+    QList<FlexWaveformEntry> m_waveforms;
+    bool    m_wfpStatusSeen{false};
+    bool    m_wfpPowered{false};
+    bool    m_wfpReady{false};
+    QString m_wfpIpAddress;
+    QList<QMap<QString, QString>> m_statusReports;
+};
+
+} // namespace AetherSDR

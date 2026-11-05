@@ -1,0 +1,1918 @@
+# AetherSDR → ANAN-100D (openHPSDR Protocol 2): журнал переделки
+
+База: AetherSDR v26.10.4 (тег `v26.10.4`, коммит `9efd0fb`).
+Цель: одно целевое устройство — Apache Labs ANAN-100D (плата ANGELIA,
+board type 3 в P2 discovery) по openHPSDR Protocol 2.
+Эталон поведения GUI — FlexRadio, пример клиентской DSP/TX-цепочки — Hermes-Lite 2.
+
+Журнал фиксирует: что удалено, что временно отключено, к чему вернуться,
+чтобы не потерять функционал.
+
+---
+
+## 0. Ключевые находки до начала работ
+
+| Что | Состояние в v26.10.4 |
+|---|---|
+| `backends/anan/` | **Уже есть** P2-бэкенд ANAN: `P2Client`, `P2Protocol`, `AnanDiscovery`, `AnanRxDsp` (WDSP), droop-калибровка, страница «ANAN Front End». Документ: `docs/architecture/anan-p2-backend-design.md`. |
+| Ограничение 1 | Discovery принимает только board type 10 (SATURN / ANAN-G2): `AnanDiscovery.cpp:332` (`isSaturn()`). ANAN-100D = type 3 (ANGELIA). |
+| Ограничение 2 | **Только приём**: `canTransmit = false` (`AnanBackend.cpp:510`), `setKeying()` — заглушка. DUC, PTT, TX I/Q, микрофон по P2 не реализованы. |
+| Ограничение 3 | Alex-фильтры, тактовая частота, число АЦП заточены под Saturn. |
+| `backends/hl2/` | openHPSDR **Protocol 1** (Metis), с TX. Источник примера клиентской TX-цепочки (WDSP TX, ALC, PTT). |
+
+Вывод: задача — **расширить `AnanBackend` на ANGELIA и добавить TX**, а не писать бэкенд с нуля.
+
+---
+
+## 1. Общие изменения сборки
+
+| Изменение | Где | Как вернуть |
+|---|---|---|
+| Тесты отключены опцией `AETHER_BUILD_TESTS` (по умолчанию OFF) | `CMakeLists.txt`, вокруг `include(tests/tests.cmake)` | `tests/tests.cmake` (10,7 тыс. строк) ещё регистрирует цели удалённых Icom/RTL/Kiwi. Перед включением: вычистить эти цели и `tests/*icom*`, `tests/*rtl*`, `tests/*kiwi*`; проверить общие тесты (`backend_family_switch_test`, `backend_receive_contract_test`, `connection_panel_*` и т. п.) — в них есть ветки по удалённым семействам. |
+
+---
+
+## 2. Icom (CI-V / RS-BA1) — удалён
+
+**Удалено полностью:** `src/core/backends/icom/` (29 файлов, ~19 тыс. строк) и его исходники в `CMakeLists.txt`.
+
+**Изменено:**
+
+| Файл | Что сделано |
+|---|---|
+| `src/models/RadioModel.cpp` | Убраны include, ветка `icom` в фабрике `makeBackend()` и параметры подключения `icom.*` в `populateFamilyParams()`. |
+| `src/gui/ConnectionPanel.cpp/.h` | Убраны поля Icom на странице «Connect by IP» (пользователь, пароль, порты NAT, выбор модели CI-V), флажок «Wake Icom on connect», хранение пароля в keychain, ветка Icom в `probeRadio()`, параметр `icomBasePort` у `saveManualProfile()`, `kFamilyIcom`. |
+| `src/gui/ExperimentalRadioSupport.h` | Убрана запись Icom; `experimentalRadioIdentityPending()` всегда `false` (ожидание идентификации было нужно только Icom). |
+| `src/gui/MainWindow_Session.cpp` | Ключ идентичности эксперимент-уведомления больше не включает модель (было только для Icom). |
+| `src/core/AutomationServer.cpp` | `connect ip <host> [flex\|hl2\|anan]` — вместо `icom` теперь принимается `anan`. |
+| `src/core/LogManager.cpp` | Убраны категории логов `aether.icom.*`. |
+
+**Вторая волна (сделано): «спящие» ветки Icom убраны**
+
+| Где | Что сделано |
+|---|---|
+| `src/core/TciServer.*`, `src/core/IcomTciUnkeySettle.h` (удалён) | Окно «settle» при отпускании PTT через CI-V убрано; каждая ветка заменена её веткой для не-Icom радио. Поля телеметрии `unkeySettling` всегда `false` (формат ответа `tci routes` сохранён). |
+| `src/models/RadioModel.*` | Убраны `wakeIcomRadio()` и обработка `power.wakeNeeded`. Общая машинка «radio wake» (`m_radioWakeActive`, сигналы `radioWakeProgress/Failed`) осталась, но её больше никто не запускает. |
+| `src/core/AutomationServer.*` | Убраны команды `civ ...` и `controls ...`; `radiocert persist` больше не собирает CI-V диагностику. |
+| `src/gui/Ax25HfPacketDecodeDialog.*`, `src/core/tnc/Ax25AudioCapture.*` | Убран Icom-захват TX-аудио после ресемплинга (`TxIcomPostResample`). |
+
+**Отключено (код на месте) — вернуться при необходимости:**
+
+| Где | Что | Для ANAN |
+|---|---|---|
+| `src/gui/MemoryDialog.cpp` | `usesNativeMemorySchema = false`: табличная схема памятей, импортированных из радио | Не нужно (у ANAN нет памятей на стороне радио). |
+| `src/gui/SpectrumOverlayMenu.cpp` | Ряд «Scope: Center / Scroll-F / Fixed» скрыт (`setVisible(false)`) | Не нужно. |
+
+**Оставлено:**
+
+| Где | Почему |
+|---|---|
+| `RadioModel::setPcAudioEnabled/notePcAudioEnabled` | Общая кнопка «PC Audio» в заголовке окна; пересылает в Icom-расширение, для остальных радио — пустая операция. **Для ANAN:** можно связать с выводом звука на динамик радио (`anan.speakerAudioEnabled`). |
+| `SettingsCredentialPolicy.h` (`Icom/Password`) | Защита: не даёт старому паролю Icom попасть в экспорт настроек. |
+| HID: `IcomRC28Parser`, меню «Icom RC-28 Remote Encoder» | **Не Icom-радио**, а USB-энкодер RC-28 — работает с любым радио. |
+| Генератор TX-аудио: `pttConfirmMs`, `kIcomPttConfirmTimeoutMs` в AX.25 | Привязаны к возможности `hasRadioPttReadback`, а не к семейству Icom. |
+
+---
+
+## 3. RTL-SDR — удалён
+
+**Удалено полностью:**
+`src/core/backends/rtl/` (23 файла), `src/core/RtlSdrDiscovery.*`, `src/core/RtlSliceSettings.*`,
+`src/core/RtlDeviceSettings.*`, `src/gui/RtlReceiverSettingsWidget.*`, `cmake/AetherRequireRtl.cmake`;
+в `CMakeLists.txt` — опции `ENABLE_RTL`/`REQUIRE_RTL`, поиск librtlsdr/fftw3f для RTL,
+копирование `rtlsdr.dll`/`libusb-1.0.dll`, udev-правило.
+
+**Изменено:**
+
+| Файл | Что сделано |
+|---|---|
+| `src/models/RadioModel.cpp` | Ветка `rtl` в фабрике. |
+| `src/gui/ConnectionPanel.*` | Пункт «RTL-SDR (USB)», `kFamilyRtl`. |
+| `src/gui/RadioSetupDialog.*` | Страница «RTL Receiver» и её индекс. |
+| `src/gui/MainWindow.h`, `MainWindow_Session.cpp` | USB-обнаружение `m_rtlDiscovery`. |
+| `src/core/backends/LocalRadioDiscoverySource.cpp`, `ModelRadioConnectionTarget.cpp` | Источник обнаружения `rtl`/`usb` (aetherd). |
+
+**Вторая волна (сделано):** убраны `rtlMigrationSource()`/`storeRtlRfGainPreservingLegacy()` (`RadioStateMemory`), анонимная область настроек для RTL (`RadioModel::settingsScope`), принудительное отключение RTL при смене радио (`RadioModel.cpp`), ключ настроек по серийному номеру USB (`RadioSettingsIdentity.h`), флаг `ClientSettingsDomain::RtlSlices` (бит 8 оставлен свободным).
+
+**Оставлено:**
+
+| Где | Комментарий |
+|---|---|
+| `CMakeLists.txt`, блок NR4/libspecbleach: `RTL_FFTW3F_TARGET` | Переменная больше не задаётся → срабатывает обычный `find_library(fftw3f)`. На Windows NR4 использует свой блок `FFTW3F_DLL`, не затронут. Можно упростить. |
+
+**Что ценного было в RTL и может пригодиться ANAN:**
+- `RtlReceiverRegistry`/`RtlReceivePipeline` — несколько независимых приёмников (слайсов) из одного I/Q-потока на стороне клиента. У ANAN-100D 4+ DDC в железе, поэтому многослайсовость лучше делать аппаратно (по DDC на слайс), но подход к реестру приёмников можно подсмотреть в git-истории (`git show v26.10.4:src/core/backends/rtl/RtlReceiverRegistry.cpp`).
+- Страница калибровки ppm — у ANAN есть свой путь калибровки (`hostFrequencyCalibration`, см. HL2).
+
+---
+
+## 4. KiwiSDR — этап K1 выполнен (функция удалена), этап K2 запланирован
+
+Kiwi был вплетён в ядро (~2,7 тыс. упоминаний: спектр, звуковой тракт, синхронизация
+приёма). Поэтому удаление разбито на два этапа.
+
+### K1 (сделано): Kiwi больше нельзя создать, подключить или увидеть
+
+**Удалено полностью:**
+`src/core/KiwiSdrClient.*`, `KiwiSdrManager.*`, `KiwiSdrCredentialStore.*`,
+`KiwiSdrRedirectPolicy.*`, `KiwiPublicDirectory.*`, `KiwiSdrTxMutePolicy.h`,
+`src/gui/KiwiSdrApplet.*`, `KiwiPublicReceiverPicker.*`, `KiwiRebindTracker.h`,
+`src/gui/MainWindow_KiwiSdr.cpp` (2434 строки, ~40 методов главного окна).
+
+**Изменено:**
+
+| Файл | Что сделано |
+|---|---|
+| `src/gui/MainWindow_RxPan.cpp` (**новый**) | Три общих метода, жившие в `MainWindow_KiwiSdr.cpp`: `flexRxPanSourceSlice()`, `syncFlexRxPanToAudioEngine()`, `applyPanBandwidthLimitsToWidget()` — без Kiwi-веток. |
+| `MainWindow.h/.cpp` | Убраны менеджер Kiwi, его создание/уничтожение, `wireKiwiSdr()`, все Kiwi-методы и поля (виртуальные антенны, band-recall rebind, TX-приглушение, источники отображения панорам), восстановление mute при выходе. |
+| `MainWindow_Wiring.cpp` | Убраны: Kiwi-водопад (обновление вида/жесты), выбор источника отображения панорамы, Kiwi-линия SQL, Auto-SQL для Kiwi, ручки WF Ceiling/Floor/Rate в Kiwi-режиме, подписки слайса на Kiwi-трекинг, band-recall rebind, ветки `kiwiSdrPanDisplaysKiwi()` в центровке/зуме/клонировании настроек панорам. |
+| `MainWindow_ReceiveSync.cpp` | Подбор пары «Flex-слайс + Kiwi-профиль» заменён заглушкой «пары нет». |
+| `MainWindow_Session.cpp`, `_Shortcuts.cpp`, `_DigitalModes.cpp` | Убраны вызовы Kiwi (band-recall, rebind, TX-приглушение при RADE, обработчики автоматизации). |
+| `MainWindow_Menus.cpp` | Убран пункт «Tools → Configure KiwiSDR...»; меню «Settings → Receive Sync» **скрыто**. |
+| `VfoWidget`, `RxApplet`, `SpectrumOverlayMenu` | Убраны «виртуальные антенны» Kiwi в выборе RX-антенны и сигнал `kiwiRxAntennaSelected`. |
+| `RadioSetupDialog` | Убрана группа «KiwiSDR RX Antennas» (профили, пароли, импорт/экспорт CSV, каталог публичных приёмников); параметр конструктора `KiwiSdrManager*`. |
+| `AppletPanel` | Убран апплет «KiwiSDR» (KSDR). |
+| `AutomationServer` | Убраны команды `get kiwi` и `slice rxsource`. |
+
+**Оставлено намеренно — полезно для любого радио:**
+- **Kiwi DX споты** (`BandPlanManager::loadKiwiDxSpots`, настройка «Kiwi DX» в Spot Settings / DX Cluster, клик по споту): это встроенная статическая база маяков, утилитарных станций и сигналов времени из сообщества KiwiSDR, а не подключение к приёмнику.
+
+### K2 (запланировано после того, как ANAN-100D заработает на приём)
+
+Остался «спящий» код: он компилируется, но никогда не активируется — его некому включить.
+
+| Где | Что | Риск при удалении |
+|---|---|---|
+| `src/gui/SpectrumWidget.*` (~750 упоминаний) | Второй поток водопада (`kiwiStream`), Kiwi FFT-трасса, Kiwi SQL-линия, кнопка источника отображения | Высокий: пронизывает рендер (CPU и GPU). Нужна проверка на живом радио. |
+| `src/core/AudioEngine.*` (~700) | Микшер внешних RX-источников, отдельная DSP-цепочка (NR2/NR4/MNR/RN2/DFNR/NNR/BNR) для внешнего аудио, джиттер-буфер | Высокий: основной звуковой тракт. **Можно переиспользовать** для второго приёмника ANAN, если понадобится отдельная обработка. |
+| `src/core/ReceivePresentationSync.*`, `MainWindow_ReceiveSync.cpp` | Выравнивание задержки звук/картинка Flex↔Kiwi (кросс-корреляция) | Средний. |
+| `src/models/SliceModel.*` | «Внешний приёмник вместо радио» (`externalReceive*`: AGC, SQL, громкость) | Средний. |
+| `SMeterWidget`, `VfoWidget`, `RxApplet`, `MainWindow_Controllers` | Показания S-метра без калибровки, шкалы SQL/AGC Kiwi | Низкий. |
+| `src/core/KiwiSdrProtocol.*`, `src/gui/KiwiSdrTraceMath.h` | Чистые функции и типы (без сети), нужны «спящему» коду выше | Удаляются последними. |
+| `SpectrumOverlayMenu` | Режим ручек водопада в dBm для Kiwi | Низкий. |
+| `PanRecenterPolicy.h`, `PanSpanControlGate.h` и др. | Параметр `kiwiDisplayActive` (всегда `false`) | Низкий. |
+| `LogManager` | Категории `aether.kiwisdr*` | Низкий. |
+
+---
+
+## 6. ANAN-100D (ANGELIA): приём — этап R1
+
+Было: бэкенд `anan` умел только ANAN-G2 (плата SATURN, board type 10) и
+отбрасывал все остальные ответы discovery.
+
+### Что сделано
+
+| Где | Изменение |
+|---|---|
+| `P2Protocol.h/.cpp` | `BoardProfile` и `boardProfileFor(boardId)`: ANGELIA (3) → «ANAN-100D», ORION (4) → «ANAN-200D», SATURN (10) → «ANAN-G2». В профиле: первый приёмный DDC (`rxDdcBase` = 2 для 100D/200D, 0 для G2), схема Alex, маска Alex enable (байт 59 General), есть ли mute усилителя динамика и банк фильтров ADC1. |
+| `P2Protocol` | `buildGeneral(mask)`, `buildDdcSpecific(..., hwDdcBase)`, фазовые слова High Priority по `9 + 4·(base+n)`. Новая схема `LegacyHighPassLowPass`: Alex0 = ANT1 + HPF (1,5/6,5/9,5/13/20 МГц, 6m-preamp, bypass < 1,8 МГц) + TX LPF по частоте приёма; Alex1 = ANT1 + LPF. Ветка Saturn байт-в-байт прежняя. |
+| `P2Client` | После Discovery ждёт ответ радио (до 300 мс); по board id выбирает профиль и только тогда шлёт General, DDC-Specific и High Priority run=1. Нет ответа — подсказка `anan.boardId` или профиль ANAN-100D. IQ ждёт с порта `1035 + rxDdcBase` (у 100D это 1037). Если радио объявляет меньше DDC, чем нужно, число приёмников урезается. Пакет остановки — в раскладке платы. Новый сигнал `boardConfigured(boardId, fromReply)`. |
+| `AnanDiscovery`, `ConnectionPanel::probeAnan` | Принимают ANGELIA/ORION/SATURN (`isSupportedAnan()`), имя модели из профиля. Сообщения «ANAN-G2» → «ANAN». В ручном подключении пункт «ANAN (100D / G2)». |
+| `AnanBackend` | `capabilities().model` по board id из Discovery (по умолчанию «ANAN-100D»); параметр подключения `anan.boardId` (необязательный). |
+| `ExperimentalRadioSupport.h` | Название в уведомлении: «ANAN-100D». |
+| `tests/anan_angelia_protocol_test.cpp` | Новый тест без Qt (регистрируется в `tests.cmake`, собирается при `AETHER_BUILD_TESTS=ON`). |
+
+### Найдено при испытаниях на радио (28.10.2026)
+
+| Симптом | Причина | Исправление |
+|---|---|---|
+| Хаотичные пропадания звука, 1–2 разрыва номеров пакетов за 5 с (~14 пакетов I/Q и ~1,4% пакетов микрофона) | Фоновые поиски HL2 (P1) и ANAN (P2) каждые 5 с слали широковещательный Discovery на порт 1024 и во время сеанса; ANAN-100D, отвечая, теряет пачку пакетов. Буфер сокета 4 МБ ничего не менял — потеря выше по цепочке. | `Hl2Discovery/AnanDiscovery::setSweepPaused()`, пауза на время подключения (`MainWindow_Session`). После: 48000 отсчётов/с, 0 разрывов. Буфер сокета — значение ОС. |
+| Светлые полосы по краям панорамы, тёмный водопад | Таблица поправки спада у краёв (droop) рассчитана под FIR прошивки G2 (до +54 дБ у краёв) | Для плат ≠ SATURN заводская таблица не применяется, только собственная калибровка радио |
+| Подключение ~12 с | Построение канала WDSP (FFTW) при первом подключении, не сеть | Не исправлялось (так же у G2) |
+| — | Диагностика `ANAN diag:` в журнале каждые 5 с (частота выборки, разрывы, mic/status, частота) | Оставлена |
+| — | Автоуровень панорамы (Floor) включён по умолчанию | `SpectrumWidget`, `MainWindow_Wiring` |
+
+Замечание: ANAN-100D не прислал ни одного пакета High Priority Status (порт 1025) — 0 за сеанс.
+Для TX (PTT, ALC, мощность, перегрузка АЦП) нужно выяснить, при каких условиях прошивка их шлёт.
+
+### Сознательно не сделано (вернуться)
+
+| Что | Почему / когда |
+|---|---|
+| DDC0/DDC1 на ANGELIA (PureSignal feedback, diversity) | Сейчас не включаются. Нужны для PureSignal (этап TX) и Diversity. |
+| Alex-аттенюаторы 10/20 дБ, выбор ANT2/ANT3, RX1-In/RX2-In/XVTR, Ext1/Ext2 | Всегда ANT1, аттенюаторы Alex выключены. Только step-аттенюатор АЦП (0–31 дБ). |
+| Подмена DDC0 для Brick3/«p2_angelia_ddc0_map» в Thetis | Не нужна для обычного приёма. |
+| Приём на RX2 (DDC3) | Протокол готов (`activeDdcs` из 2 элементов), но бэкенд пока использует один приёмник (`maxSlices = 1`, как у G2). |
+| Настройки «ANAN-G2» в `AnanSettings`, `AnanDroopDefaults` (поправка АЧХ CIC под гейтвер G2) | Для 100D данные дроопа другие: при «завале» краёв панорамы запустить встроенный droop sweep. |
+| TX (DUC, PTT, I/Q на передачу, микрофон, PA) | Этап T1, после проверки приёма. |
+
+---
+
+## 7. Переход на Hl2Backend поверх Protocol 2 (этап R2)
+
+Решение (28.10.2026): бэкенд `AnanBackend` автора доведён только до минимального приёма
+(1 приёмник, режимы/фильтры не объявлены, нет squelch/notch/APF, нет настройки внутри
+панорамы, нет TX). `Hl2Backend` реализует всё это поверх транспорта `MetisClient`
+(Protocol 1). Вместо наращивания `AnanBackend` транспорт заменён один к одному.
+
+| Где | Изменение |
+|---|---|
+| `hl2/MetisClient.h` | Методы транспорта (`start/stop`, `setRxFrequencyHz`, `setSampleRate`, `setReceiverCount`, `setLnaGainDb`, `setBandFilter`, …, `setMox`, `queueTxIq`, `discover`) сделаны `virtual`. Поведение HL2 не меняется. |
+| `anan/P2Transport.h/.cpp` (новый) | Наследник `MetisClient` на Protocol 2: Discovery → профиль платы → General / DDC-Specific / High Priority; приёмник i = DDC (база + i); I/Q выравнивается по приёмникам и отдаётся сигналом `iqBlocksReady`, как EP6; разрывы — по номерам пакетов DDC; Alex HPF/LPF всегда по частоте RX1 (как Thetis); `setLnaGainDb` → аттенюатор `clamp(20 − gain, 0, 31)`; watchdog тишины 2 с; диагностика `ANAN diag` раз в 5 с. |
+| `hl2/Hl2Backend.h/.cpp` | `TransportKind {Metis, AnanP2}`; для ANAN: `P2Transport`, семейство `anan`, производитель Apache Labs, модель по board id, диапазон 10 кГц – 55 МГц, передача запрещена (`canTransmit = false`) до этапа T1. |
+| `models/RadioModel.cpp` | Семейство `anan` → `Hl2Backend(AnanP2)`. Запасной путь: переменная окружения `AETHER_ANAN_LEGACY=1` включает старый `AnanBackend`. |
+
+### Что пока заглушено в P2Transport (вернуться)
+
+| Что | Состояние |
+|---|---|
+| Передача: DUC I/Q (P2 — 192 кГц, у HL2 48 кГц → нужен апсемплинг ×4), PTT, мощность | `setMox` игнорируется с предупреждением, I/Q передачи отбрасывается |
+| Пакеты состояния High Priority (PTT, перегрузка АЦП, мощность, напряжение) | ANAN-100D их не шлёт; возможно, идут на порт ПК 1025 — проверить |
+| Звук на динамик радио (порт 1028) | заглушка (у HL2 это локальный кодек) |
+| HL2-специфика: регистры I2C, плата IO, CL1, bandscope EP4 (автоусиление по нему) | отказ/заглушка |
+| Широкополосный вид (wideband, порт 1027) | не реализован |
+| Калибровка S-метра в dBm | использует опорные значения HL2 (`Hl2DbReference`) — нужна поправка для ANAN |
+| Страницы настроек HL2 (плата фильтров, кодек, CL1…) | видны, но к ANAN не относятся |
+| Второй АЦП (RX2 на ADC1), выбор антенн, аттенюаторы Alex | все приёмники на ADC0, ANT1 |
+| Частоты выборки 768/1536 кГц | как у HL2: 48–384 кГц |
+
+---
+
+## 8. ANAN-G2 удалён (28.10.2026)
+
+Удалены: `AnanBackend.*`, `P2Client.*`, `AnanRxDsp.*`, `AnanPanAnalyzer.*`, `AnanDroop*` (поправка
+спада для гейтвера G2), `AnanSettings.*`, `AnanSliceAudio.h`, `AnanSpeakerPacing.h`; страница
+«ANAN Front End» в Radio Setup; параметры `anan.*` в `populateFamilyParams`; запасной путь
+`AETHER_ANAN_LEGACY`; профиль SATURN (board 10) в `P2Protocol` — теперь находятся только
+ANGELIA (3) и ORION (4). Тесты G2 удалены из `tests.cmake` (11 шт.).
+
+Вернуться при включении тестов (`AETHER_BUILD_TESTS=ON`): ссылки на удалённые классы остались в
+смешанных тестах `backend_receive_contract_test`, `client_display_pan_settings_test`,
+`control_receive_test`, `droop_calibration_seam_test`, `hl2_gain_restore_test`,
+`hl2_hardware_ptt_state_test`, `noise_floor_auto_adjust_gate_test`, `radio_model_client_state_test`,
+`radio_setup_control_routing_test`, `spectrum_sequence_gap_test`, `squelch_level_scale_test`,
+`wdsp_process_tally_test`.
+
+Что ушло вместе с G2 и может понадобиться ANAN-100D позже: звук на динамик радио (порт 1028,
+пейсинг `AnanSpeakerPacing`), калибровка спада у краёв панорамы (общий механизм `DroopCalibration`
+остался), частоты выборки 768/1536 кГц.
+
+Flex пока не трогали (решение пользователя): RadioModel построена вокруг модели Flex.
+
+---
+
+## 9. Передача ANAN-100D (этап T1, 28.10.2026)
+
+| Где | Что |
+|---|---|
+| `P2Protocol` | `buildGeneral(mask, paEnable)` — байт 58 бит 0 = PA; `buildTransmitSpecific()` (порт 1026: 1 DAC, без FPGA-ключа, mic PTT разрешён); `buildDucIq()` (порт 1029: seq + 240 × 24-бит I/Q); в High Priority — PTT0 (байт 4 бит 1), фазовое слово DUC0 (329–332), drive (345); Alex: при передаче Alex0 = ANT1 + HPF приёма + **LPF по частоте передачи** + реле T/R (бит 27), Alex1 = ANT1 + LPF передачи + реле (как deskHPSDR). |
+| `P2Transport` | `setMox` → PTT0 и поток DUC I&Q: таймер 1 мс, опережение 6 пакетов (1440 отсчётов) в FIFO DUC, 192 кГц; очередь от Hl2TxDsp с «подкачкой» 6144 отсчётов, при опустошении — нули и повторная подкачка; TUNE-тон и CW-несущая (огибающая 5 мс) генерируются в транспорте, как в MetisClient; `setTxFrequencyHz`, `setTxDriveLevel` (0–255); прямая/отражённая мощность из пакета состояния (байты 14–15, 22–23). |
+| `Hl2Backend` | Для ANAN: TXA выдаёт сразу 192 кГц (`outputSampleRateHz`), передача разрешена тем же правилом, что у HL2, номинал 100 Вт, мощность/КСВ по формуле Thetis для ANAN-100D (мост 0,095, опора 3,3 В, смещение 6). |
+
+**Антенны (T1a).** В панели ANT вместо флексового списка — две строки кнопок: RX ANT и TX ANT (ANT1/ANT2/ANT3), ключи AppSettings `AnanRxAnt` / `AnanTxAnt` (0..2). Реле Alex: биты 24/25/26. RX ANT — то, что подаётся на ADC1 (ADC2 — отдельный вход RX2, выбирать нечего); выбирает приёмник, который слушает ADC1 и владеет им (при общем АЦП — RX1). При PTT в Alex0 подставляется TX-антенна, в Alex1 всегда TX-антенна. Фильтры HPF/LPF приёма теперь следуют первому приёмнику на ADC1, а не всегда RX1.
+
+DUC в P2 работает на фиксированных 192 кГц (в P1 было 48 кГц); Thetis и deskHPSDR передают на P2 тоже 192 кГц.
+
+RX1 = DDC2, RX2 = DDC3 — передача их не трогает (DDC0/DDC1 остаются под PureSignal).
+
+Вернуться: PureSignal (DDC0/DDC1 на частоте передачи, обратная связь), выбор TX-антенны ANT1/2/3, FPGA CW-ключ и самоконтроль, микрофон радио (порт 1026 → хост), калибровка мощности по ваттметру, проверка запрета передачи вне диапазона.
+
+---
+
+## 10. FDV (FreeDV) и правая панель (28.10.2026)
+
+**Баг правой панели.** «Показать дополнительные кнопки» → все апплеты съезжали вправо и обрезались. Причина: у стопки апплетов (`AppletPanel`, `m_stack`) ограничение по умолчанию записывает минимальную ширину раскладки в `minimumSize()` контейнера, а `QScrollArea` с `widgetResizable` растягивает виджет до max(viewport, minimumSize()) — переопределения `FlexContainer` при этом не работали. Как только стопка становится выше окна (открыли ящик кнопок) — появляется вертикальная полоса, viewport теряет 12 px, контейнер остаётся прежней ширины. Отсюда «иногда правильно» — зависит от высоты. Исправление: `m_stack->setSizeConstraint(QLayout::SetNoConstraint)`. Плюс диагностика в лог: если какой-то апплет сам не может ужаться до viewport, он называется (`AppletPanel: … needs N px`).
+
+**FDV вместо RADE.** Псевдорежим «RADE» в списках режимов (RX-апплет, VFO, кнопки быстрых режимов; сохранённое «RADE» мигрирует) теперь «FDV». Кнопка на правой панели — «FDV» (id апплета остаётся `RADE`, чтобы не сбить настройки). Апплет FDV: режим 1600 / 700D / 700E / RADE и позывной (до 8 символов, A–Z 0–9), ключи `FdvMode`, `FdvCallsign`; ниже — синхронизация, SNR, смещение (RADE), принятый позывной; ошибка загрузки libfdv.
+
+**Движок — как в MicronSDR.** `third_party/libfdv` — `libfdv.dll` + `libcodec2.dll` (MicronSDR_64/win64, C API, грузятся в MSVC-сборку), исходники обёртки и `build_win.sh`. CMake копирует DLL к exe. `src/core/fdv/FdvEngine` — порт `FdvUnit` (QLibrary, 24↔48 кГц полуполосным FIR), `FdvState` — общее состояние GUI↔бэкенд.
+* RX: `Hl2Backend::mixReceiverAudio` — звук приёмника слайса FDV (USB) → libfdv → декодированная речь (усиление 2, как в MicronSDR).
+* TX: `submitTxAudio` — микрофон → libfdv → модемный звук (USB) → Hl2TxDsp. Нажатие PTT — `fdv_tx_start`.
+* Конец передачи: `MainWindow` ставит PTT-off hook (как у Flex RADE): PTT держится, пока libfdv не выдаст всё (RADE — EOO с позывным), максимум 1,5 с. Аппаратный PTT минует hook — тогда `fdv_tx_stop` при отпускании, EOO может не уйти.
+* Активация на радио без DAX (`activateRADE` → `activateLocalFdv`): слайс в USB и TX, бейдж «FDV 1600 ●» на VFO, уход из USB выключает FDV.
+
+Вернуться: обработка микрофона (компрессор/EQ) при FDV лучше отключать автоматически; свободный текст 1600/700x (`fdv_set_text`, `fdv_read_text`) не выведен; проверка на эфире.
+
+---
+
+## 11. Водопад из сырых бинов FFT (29.10.2026)
+
+`Hl2Spectrum` держит кадр до усреднения (`rawBins()`), `Hl2RxDsp::spectrumReady` отдаёт оба, `Hl2Backend` прикладывает сырой кадр (в dBm) к `spectrumFrameReady` как `SpectrumCoverage` с флагом `viewportBounds`; `RadioModel` подставляет границы по геометрии панорамы, и строка водопада идёт по «coherent»-пути (без DC-ремонта и сглаживания рендера). Итог: FFT AVG и прочие настройки панорамы (уровни, диапазон dB, сглаживание трассы) на водопад не влияют. Влияют только настройки самого водопада: цветовое усиление, уровень чёрного / авто-чёрный, палитра, бланкер импульсов (если включён), скорость. Остаётся одна связь: строк в секунду не больше, чем кадров панорамы (FPS панорамы) — кадры считаются только по её таймеру.
+
+S-Meter над стопкой апплетов ограничен шириной viewport (раньше торчал на 12 px при полосе прокрутки).
+
+---
+
+## 12. Кодек радио: динамик, микрофон, PTT микрофона (29.10.2026)
+
+Было: звук на кодек не шёл (`submitSpeakerAudio` — заглушка), пакеты микрофона (порт 1026) отбрасывались, PTT микрофона только «наблюдался» (логика HL2: радио само ключится) — ANAN само не ключится, а статус после отпускания PTT больше не приходил, поэтому интерфейс зависал в TX с заглушенным приёмом.
+
+* **Динамик / наушники радио:** `P2Transport` шлёт 48 кГц стерео на порт 1028 (пакеты по 64 кадра, темп по часам, очередь ≤300 мс, подкачка 60 мс). Источник — уже существующий отвод `Hl2Backend::forwardSpeakerAudioToCodec` (тот же микс, что и на ПК). Громкость отдельная, общая: `AnanCodecVolume` 0–100 (Настройки → Radio Audio).
+* **Микрофон радио:** пакеты порта 1026 → `codecMicReady` → 48→24 кГц → прямо в модулятор (`Hl2TxDsp::processAudioBlock`, источник Microphone, FDV при необходимости), темп — часы радио. Контекст TX — отдельный «непрерывный микрофон»-производитель (`MainWindow::m_codecMicTxProducer` → `RadioModel::setCodecMicContext`). Микрофон ПК при `AnanMicSource = 1` игнорируется (DAX/TCI/генерируемый звук проходят). Звуковая карта ПК не нужна. `AnanMicBoost` — +20 дБ (Transmitter Specific, байт 50 бит 1).
+* **Темп динамика:** один пакет 1028 на каждый пакет микрофона радио (оба по 64 кадра 48 кГц) — часы радио; таймер только если радио не шлёт микрофон.
+* **PTT микрофона:** `Hl2Backend::ananHardwarePtt` → `RadioModel::hardwarePttChanged` → `MainWindow` ключит MOX через `TxController` (как кнопка MOX: FDV, микрофон, блокировки работают одинаково) и отпускает только свой ключ. Отпускание: бит PTT в статусе или прекращение статуса на 250 мс.
+
+**Громкость кодека в заголовке окна (29.10, вечер).** Кнопка «PC Audio» рядом с главным регулятором теперь переключает цель регулятора и значка динамика: «PC Audio» ↔ «Codec». У каждой цели свой уровень и своё выключение звука; кодек — `CodecVolume` / `CodecMuted`, цель — `VolumeTarget`, всё запоминается. Включение/выключение звука ПК этой кнопкой больше не делается (для ANAN он обязателен). Ползунок громкости со страницы Radio Audio убран, там остался микрофон.
+**Mic/CW (бывший Phone/CW).** Апплет и его кнопка переименованы в «Mic/CW» (id `P/CW` прежний). Список источника: `PC` (микрофон компьютера) / `MIC` (разъём микрофона радио) → `AnanMicSource`; кнопка «+ACC» на радио без Flex-входов стала «+20dB» → `AnanMicBoost`. Регулятор рядом — усиление микрофона (действует на оба источника). Страница настроек «Radio Audio» убрана (функция `buildAnanAudioTab` осталась, не используется).
+**Настройки «не сохраняются» (29.10).** В базе настроек (`%LOCALAPPDATA%\AetherSDR\AetherSDR.db`, таблица `radio_settings`) четыре разных ANAN: 00:04:A3:00:53:4D, :B0:57, :EA:A7, :FB:FE — радио после каждого включения отдаёт другой MAC. Серийник = MAC, а от него зависят все настройки радио (ClientDisplay, OperatingState, BandStack) и автоподключение. Теперь серийник ANAN стабильный: `AnanDiscovery::stableSerial` = префикс производителя + номер платы (00:04:A3:00:00:03). Автоподключение принимает и старый серийник с тем же префиксом. Старые записи не переносились — настройки дисплея нужно выставить один раз заново.
+**Mic/CW:** кнопка «20dB» (ширина 52); список профилей микрофона Flex сверху скрыт; индикатор уровня при MIC показывает микрофон радио (`Hl2Backend::ananCodecMicLevel` → `RadioModel::codecMicLevelChanged`), раньше всегда показывал микрофон ПК — поэтому прироста от 20 dB не было видно. Бит 1 байта 50 — «Mic Boost», как в Thetis `CmdTx`.
+
+**Кодек: ~1 с звука, потом тишина (29.10, 19:30).** Поток в радио непрерывный (750 пак/с, пик ~2200), значит радио перестаёт играть само. Версия: при темпе 1:1 по пакетам микрофона буфер кодека в радио стоит на пустом краю и после первого сбоя глохнет. Теперь при начале темпа по микрофону уходит 24 пакета вперёд (32 мс), дальше 1:1 — запас держится. Если не поможет — следующий подозреваемый: байт 1400 / порядок пакетов.
+**Как это делает Thetis (ChannelMaster: obbuffs.c, network.c `WriteUDPFrame` id 0):** пакет 1028 — seq + 64 кадра L/R 16 бит BE, тот же формат; отправляется СРАЗУ, как только накопилось 64 кадра звука приёма, без какого-либо темпа и без привязки к микрофону. Звук приёма рождается из потока IQ радио, так что средний темп — радио, а пачки поглощает FIFO кодека в FPGA. Сделано так же: `submitSpeakerAudio` шлёт все полные пакеты сразу; темп по микрофону и таймер убраны. Байт 1400 бит 1 у Thetis = `!audioamp_enable` (усилитель на J16 Orion MkII/Saturn), у нас 0.
+**Mic/CW:** список PC/MIC оставался неактивным: на ANAN флаг «входы выбираемы» = true, а ветка срабатывала только при false. Теперь условие — `!selectable || hostModulation`. PROC: ширина 56 (надпись обрезалась). PROC на HL2/ANAN — компрессор речи в программе (ClientComp в AudioEngine), поэтому к микрофону радио (MIC) он пока не применяется.
+
+**Перетаскивание окна за верхнюю панель:** рука и перенос окна — только в свободной середине (и на левых надписях); от кнопки PC Audio / Codec вправо (регуляторы, промежутки, переключатели док-панели) окно не таскается (`TitleBar::isSystemMoveAreaAt`, `mousePressEvent`, снятые `markDragHandle`).
+
+**Уровень кодека (замер на радио 29.10):** поток идёт как надо — 750 пакетов/с с обеих сторон, очередь ~60 мс, без пустых пакетов, но пик ~300 из 32767 (−40 дБFS): микс приёма на шуме ~−35 дБFS. Громкость Codec стала законом в дБ с подъёмом: 1..100 → −10..+30 дБ (50 = +10 дБ; по просьбе: прежние 80 стали 100), 0 — тишина; мягкое ограничение выше 0,7 FS.
+Диагностика кодека в строке «ANAN diag»: пакеты микрофона, пакеты на динамик (сколько тишины), блоков звука пришло, пик, очередь.
+
+Проверено на имитаторе: PTT on/off (+250 мс), 1028 ≈750 пак/с без пропусков, микрофон принимается, mic boost в байте 50.
+
+**PROC и MON (29.10, ночь).** PROC «не регулировался» с микрофоном радио: компрессор ClientComp стоит в AudioEngine только на пути микрофона ПК, а звук кодека идёт мимо него прямо в модулятор. Теперь у `Hl2Backend` свой `ClientComp` для микрофона радио (24 кГц, моно) с теми же пресетами NOR/DX/DX+ (−18/−24/−30 дБ порог, 2,5/4/6:1, подъём +4/+8/+12 дБ); включается и переключается из `requestTransmitControl` (ProcessorEnabled/Level). MON был `Unsupported` → теперь на ANAN хранит вкл/уровень; во время передачи обработанный микрофон (после PROC, до FDV) идёт в динамик ПК (`publishLegacyAudio`) и в кодек радио (−20 дБ, т.к. громкость Codec содержит подъём +10..+30 дБ под шум эфира). Уровень MON 1..100 → −40..0 дБ.
+
+**Верхняя панель (29.10):** регулятор громкости наушников (значок, ползунок, число) скрыт — не нужен; виджеты остались в коде, но не показываются (и в компактном режиме тоже).
+
+**Шкала панорамы при передаче (29.10):** на ANAN во время передачи все панорамы показывают фиксированно −60…+10 дБм (`SpectrumWidget::setTxFixedDbmRange`, включается из `MainWindow_Session` по `RadioModel::isAnanRadio()`); вместо «заморозки» шкалы Flex. Диапазон, пришедший во время передачи, применяется после неё; иначе возвращается прежний.
+
+**MON на кодек тихо (29.10):** снято ослабление −20 дБ для кодека — MON идёт в кодек тем же уровнем, что на ПК, поверх закона громкости Codec (мягкое ограничение защищает от клиппинга).
+
+**Калибровка ваттметра (29.10):** показывало 54 Вт при 48 Вт реальных (формула Thetis: мост 0,095, 3,3 В, смещение 6). Добавлен множитель `AnanFwdPowerCal` (по умолчанию 48/54 = 0,889) в `Hl2Backend::couplerWatts`; КСВ не меняется. Читается один раз при старте.
+
+**Кодек: обрывы при клике по заголовку и шелест (29.10).** Причина: звук приёма для кодека шёл через поток GUI (Hl2RxDsp на I/O-потоке → очередь → `mixReceiverAudio` в GUI → очередь → `P2Transport`). Клик по заголовку окна (Windows держит поток GUI ~0,5 с в DragDetect/цикле перемещения) или тяжёлая перерисовка опустошали FIFO кодека в радио. Теперь звук для кодека микшируется и отправляется прямо на I/O-потоке (`Hl2Backend::ananIoCodecAudio`, DirectConnection на `Hl2RxDsp::audioReady`); поток GUI только публикует параметры микса (`ananPushCodecMix`: громкость Codec, уровни/баланс/mute приёмников) по таймеру ANAN и при каждом переключении mute. При FDV и во время передачи (MON) кодек по-прежнему кормится из потока GUI. Приоритеты на Windows: I/O-поток — TimeCritical, процесс — HIGH_PRIORITY_CLASS (как в Thetis). Путь микрофона радио в модулятор пока ещё идёт через поток GUI.
+
+**Нет мощности в SSB (29.10).** Лог: на 40 м «MOX ON … drive 28»; в базе `driveByBand` 40m = 11 %. Байт drive — амплитуда, мощность ~ квадрату: 11 % линейно = 28/255 ≈ 1 Вт. Теперь на ANAN ползунок мощности — в ваттах, как в Thetis: drive = 162 · √(процент/100); 162 — drive для 100 Вт по замеру (drive 112 → 48 Вт по ваттметру). Настройка `AnanDriveFor100W` (по умолчанию 162). Индикатор ALC — пиковый уровень звука после ALC перед модулятором; «красный» у 0 дБFS = полная модуляция, это нормально.
+
+---
+
+## 13. Удалены симулятор и Hermes-Lite 2 (этап H1); подключение без окна (29.10.2026)
+
+### Симулятор (демо-радио) — удалён полностью
+
+**Удалено:** `src/core/backends/sim/*` (SimBackend, SimSignalSource, NoiseMixer, SpectrumPatternGenerator, DemoRadioConstants), `src/gui/DemoApplet.*` (апплет «Demo Noise»), `resources/demo_voice.wav`, тесты `sim_backend_test`, `sim_signal_source_test`, `spectrum_pattern_test`, `noise_mixer_test`, `demo_backend_swap_test` (и их регистрация в `tests.cmake`).
+
+| Файл | Что сделано |
+|---|---|
+| `RadioModel.*` | Убраны семейство `"sim"` в фабрике и ветка SimBackend в `setupBackend()`; устаревшие комментарии. |
+| `flex/RadioConnection.*` | Убрана «синтетическая» демо-сессия: `startSyntheticDemoConnect`, `emitSyntheticStatus`, `injectFaultStatus`, сигналы `demo*Changed`, `m_syntheticDemo`, демо-ответы в `writeCommand()`. |
+| `flex/PanadapterStream.cpp` | Убрана демо-ветка в `start()`. |
+| `AudioEngine.*` | Убраны `setMainSourceLegacyNr2()` / `m_mainSourceLegacyNr2` (геометрия NR2 для демо). |
+| `MainWindow*.cpp/.h` | Убраны апплет Demo Noise, «добавить демо-радио», подача звука симулятора, `backendFeedsEngineDirectly()`. |
+| `AppletPanel.*`, `ConnectionPanel.*` | Убраны апплет `DEMO`, флажок «Show the AetherSDR demo simulator», демо-строка в списке радио. |
+| `AutomationServer.*` | Убрана команда `sim <fault>`. |
+| `LocalRadioDiscoverySource.cpp`, `RadioDiscoverySource.h`, `aetherd/main.cpp`, `ModelRadioConnectionTarget.cpp`, `RadioCatalogue.cpp` | Убраны опция `--discover-sim` / `LocalDiscoveryOptions::simulator`, транспорт `"sim"`. |
+
+### Hermes-Lite 2 — этап H1: HL2 нельзя найти, выбрать или подключить
+
+**Удалено:** `Hl2Discovery.*` (поиск HL2, Protocol 1), `Hl2ControlRequest.*` (RQST/ACK HL2), реализация Protocol 1 в `MetisClient.cpp` (~2400 строк), проба HL2 по IP в `ConnectionPanel`, пункт «Hermes-Lite 2» в выборе типа радио, семейство `"hl2"` в фабрике `RadioModel::makeBackend()`, в `connect ip` автоматизации, в `RfGainRestore.h`, `ExperimentalRadioSupport.h`.
+
+| Файл | Что сделано |
+|---|---|
+| `hl2/MetisClient.h/.cpp` | Теперь только **абстрактный интерфейс транспорта** Hl2Backend (типы `Params`/`Discovered`/`LinkCounters`, чисто виртуальные команды, сигналы, шлюз передачи). Реализация — `anan::P2Transport`. Имя класса историческое. |
+| `hl2/Hl2Backend.*` | Нет `TransportKind` и `isAnan()`: всегда P2Transport. Все ветки `!isAnan()` убраны (оставлены ветки ANAN), удалены `stepAutoGain()` (закон АРУ HL2) и HL2-хвост `onRadioPttChanged()`; семейство в возможностях всегда `"anan"`, производитель Apache Labs, 100 Вт. Широкополосный bandscope HL2 (EP4) больше не объявляется — пункт меню «Wideband Bandscope…» неактивен. Сообщения об ошибках подключения — «ANAN: …». |
+| `anan/AnanDiscovery.*` | Сюда перенесены помощники псевдонимов (`hasCustomNickname`, `nicknameLivesOnRadio`). |
+| `RadioSetupDialog.cpp` | Страница «HL2 Hardware» заменена страницей **«ANAN Hardware»**: только Dither и Random АЦП (LTC2208, оба АЦП; по умолчанию выкл.). Кодек HL2, плата фильтров N2ADR, CL1, ATU убраны со страницы. |
+| `MainWindow*` | Убраны `m_hl2Discovery` и его подключения; вкладки радио в заголовке теперь обновляются и от поиска ANAN. |
+
+### H2 (запланировано): «спящий» код HL2 внутри Hl2Backend и вокруг
+
+Компилируется, но для ANAN не работает или работает вхолостую:
+
+| Где | Что |
+|---|---|
+| `Hl2Backend.*` | IO-плата (`applyIoBoardFrequency`, статус), выбор фильтров N2ADR (`applyBandFilter`, `m_ocFilterByte`), CL1/ATU, мост EP4-bandscope и закон автоусиления HL2 (`Hl2AutoGainPolicy`, `Hl2BandscopeHeadroom`), `widebandConverterViewRecord()`, телеметрия HL2 через порт 1025 (`Hl2TelemetryService`/`Hl2TelemetryPoller`, регистрируется только для семейства `"hl2"`), строки логов «HL2 …». Переименование `Hl2Backend` → ANAN-имя. |
+| `hl2/MetisProtocol.*` | Кодеки Protocol 1 (C&C, EP6, discovery). Типы `SampleRate`, `Hl2Telemetry`, `Ep4Stats`, `DiscoveryReply` ещё используются интерфейсом — вынести и удалить остальное. |
+| `hl2/Hl2HardwareOptions.*` | Поля HL2 (кодек, плата фильтров, CL1, ATU); для ANAN нужны dither/random и уровень кодека. |
+| `Hl2EmergencyStop.*` | Аварийная остановка при сигнале ОС — работала только для Protocol 1; **стоит переделать под Protocol 2** (run=0 в High Priority), ANAN после «убийства» программы продолжает слать поток. |
+| `RadioSetupDialog.cpp` | Страница «Calibration» ещё учитывает «CL1 locked» (для ANAN всегда нет). |
+| `BandscopeDialog.*`, `RadioCertification.*`, `RadioHealthDialog.cpp` | Части, рассчитанные на HL2. |
+| Внутреннее пространство расширений `"hl2"` (`hw.get/hw.set`, `freqcal.*`) | Оставлено как есть (только имя); переименовать вместе с Hl2Backend. |
+| `tests/` | Десятки `hl2_*`/`metis_*` тестов ссылаются на удалённые классы (тесты выключены, `AETHER_BUILD_TESTS=OFF`). |
+
+### Подключение без окна (по просьбе: «окно подключения выглядит ужасно, пусть само находит трансивер»)
+
+* **Окна подключения больше нет.** `MainWindow::showConnectionDialog()` ничего не делает; при старте, ошибках и потере связи окно не открывается; модальное окно «Radio Disconnected» для ANAN не показывается. `ConnectionPanel` остаётся скрытым списком найденных радио.
+* **Поиск раз в секунду.** `AnanDiscovery::start(1000)`; пока радио подключено, поиск стоит (как и раньше — он стоил ANAN пачку IQ-пакетов). Новый сигнал `AnanDiscovery::radioSeen` — на каждый ответ, даже без изменений: радио, оставшееся в списке после потери связи, иначе не переподключилось бы.
+* **Автоподключение** (`MainWindow::maybeAutoConnectAnan`): первое найденное ANAN подключается без условий «последнее радио» / AutoConnectToLastRadio. **Занятое** ANAN перехватывается только когда занятая сессия, скорее всего, наша: в первые 20 с после запуска для радио, использованного здесь последним (программа была закрыта/остановлена без run=0), в течение 60 с после обрыва нашей сессии, или по просьбе (щелчок по статусу / File → Connect). Иначе статус «… is in use by another program — click to take it over» — две программы не перетягивают радио друг у друга. После трёх неудач — пауза 10 с, потом снова. После обрыва связи — 3 с ожидания (транспорт сам восстанавливает поток, если IQ вернулся). `RadioModel` для ANAN больше не повторяет подключение вслепую по старому адресу (`reconnectsByDiscovery()`). File → Disconnect доступен и во время поиска — останавливает автоподключение.
+* По итогам независимой проверки: окно «Setting Up Your Radio» (долгая первая настройка WDSP) теперь не модальное; уведомление «Experimental radio support» — не чаще раза за запуск; поздняя ошибка подключения не перезаписывает «подключено»; «Rescan radios» опрашивает и ANAN; CL1 и ATU в сохранённых настройках оборудования для ANAN принудительно выключены (иначе старое значение со страницы HL2 обнуляло бы калибровку частоты без способа это исправить); регистрация метатипов транспорта восстановлена в конструкторе `MetisClient`.
+* **Статус в заголовке** (`TitleBar::setLinkStatus`, `MainWindow::setLinkState`), слева от свободной середины: «Searching for radio…» (жёлтый), «Connecting to ANAN-100D 172.16.10.14…» (жёлтый), «ANAN-100D 172.16.10.14» (зелёный), «Connection lost — searching…» / «Connection failed: …» / «… is in use by another program» (красный), «Disconnected — click to connect» (серый). Щелчок по статусу, File → «Connect to Radio» и щелчок по вкладке радио — подключить сейчас. File → Disconnect — отключиться и не подключаться, пока не попросят.
+* Пункт «Connect manually…» во всплывающем списке радио убран.
+
+**Файлы, которые больше не используются** (на машине пользователя остались, в сборку не входят, можно удалить вручную): `src/core/backends/sim/` (вся папка), `src/gui/DemoApplet.h/.cpp`, `src/core/backends/hl2/Hl2Discovery.h/.cpp`, `src/core/backends/hl2/Hl2ControlRequest.h/.cpp`, `resources/demo_voice.wav`, `tests/sim_backend_test.cpp`, `tests/sim_signal_source_test.cpp`, `tests/spectrum_pattern_test.cpp`, `tests/noise_mixer_test.cpp`, `tests/demo_backend_swap_test.cpp`.
+
+## 14. Панорама передачи: постоянный зум ±12 кГц и уровень от полной шкалы (30.10.2026)
+
+Просьба: «Панорама передачи ширина фиксированная ±12 кГц. Уровень привязан только к полной шкале данных, уходящих на трансивер. На панораме передачи всегда данные, уходящие в трансивер, даже в режиме FDV». Затем уточнение: «регулировка мощности не должна влиять на показания — регулятор только ставит байт 0..255; панораму заново рисовать не надо, она уже была — верни старое и сделай постоянный зум».
+
+* Первый вариант (отдельно нарисованная панорама поверх спектра) **убран**; `SpectrumWidget` возвращён к прежнему виду.
+* **Зум.** При нажатии PTT панорама, на которой стоит передатчик, переходит на TX-частоту ±12 кГц (`SpectrumWidget::enterTxZoom`), при отпускании возвращается (`exitTxZoom`). Только отображение: радио ничего не командуется (DDC ANAN умеет только 48/96/192/384 кГц), водопад (во время передачи он стоит) не пересчитывается разрушающе. Геометрию, пришедшую от модели во время передачи, панорама запоминает и применяет при отпускании. Перетаскивание/колесо/щипок по панораме во время передачи игнорируются — иначе они посчитались бы по «зумированной» оси и ушли бы в радио. Обрезка краёв панорамы на время зума выключена.
+* **Данные и уровень.** Во время передачи след панорамы — не приёмник (тот видит выходной сигнал, и его уровень зависел от мощности), а спектр DUC IQ ровно в том виде, в каком он уходит на порт 1029: `anan::TxScope` в `P2Transport::onTxPacerTick()`, тот же клип [-1, 1], что и в `buildDucIq()`. TUNE, CW, голос, FDV — одинаково. Ползунок мощности пишет только байт drive и на панораму не влияет. 0 dB = полная шкала отсчётов на проводе (в Protocol 2 это 24 бита; от разрядности dBFS не зависит); шкала по-прежнему −60…+10.
+* **Боковая полоса.** На проводе IQ в «HPSDR-ориентации» — зеркало ВЧ-спектра (Hl2TxDsp сопрягает для провода, приём сопрягает обратно). Первая сборка показывала его как есть — USB выглядел как LSB; `TxScope` теперь отражает обратно (30.10, по замечанию оператора).
+* **Сброс FFT после передачи** (30.10, «сигналы передачи остаются на панораме»): `Hl2Backend::dropAllPanHistory()` сбрасывает у всех приёмников усреднение и недособранное окно БПФ (независимо от настройки AVG) на нажатии, на отпускании и ещё через 150 и 350 мс — приёмник слышит свою передачу ещё 178–285 мс после отпускания.
+* **Анализ.** БПФ 4096 на 192 кГц (46,9 Гц), Блэкман–Харрис, нормировка: тон |x| = 1 = 0,00 dB (проверено: половина амплитуды −6,02). 513 бинов на ±12 кГц, ~23 кадра/с. Голос на каждом бине ниже 0 — его мощность распределена по многим бинам.
+* **Путь.** `MetisClient::txScopeFrameReady` → `Hl2Backend::ananTxScopeFrame` → `RadioModel::txScopeFrameReady` → `MainWindow` → `SpectrumWidget::setTxScopeFrame()` (принимается только под зумом передачи, кадры приёмника в это время не рисуются).
+
+## 15. MTR, Mic, CW вместо MQTT (30.10.2026)
+
+* **MTR (Radio Vitals) был пуст на ANAN.** Возможности бэкенда (с HL2) объявляли температуру PA и не объявляли напряжение, а транспорт P2 ни того ни другого не передавал. Теперь: напряжение питания из пакета статуса P2 (байты 49–50, АЦП 12 бит, 3,3 В, делитель (4,7 к + 0,82 к)/0,82 к как в Thetis; подстройка `AnanSupplyVoltsScale` в настройках) → метр `RAD:+13.8A` → шкала Supply Voltage. Температуры PA у ANAN-100D в протоколе нет — шкала скрыта. Первое значение пишется в лог («ANAN: supply ADC raw … -> … V») для сверки с вольтметром.
+* Кнопка и заголовок **Mic/CW → Mic** (ключ `P/CW` прежний, раскладка не сбивается).
+* **MQTT выключен**: в CMakeLists `ENABLE_MQTT` принудительно OFF (FORCE — перекрывает кэш сборки), весь код MQTT за `HAVE_MQTT` и не собирается (библиотека mosquitto тоже). На его месте пустой апплет **CW** (`src/gui/CwApplet.*`, ключ `CW`); в сохранённой раскладке кнопок `MQTT` заменяется на `CW` на том же месте.
+
+## 16. Убраны +TNF, PHN, MTR, CLK, HLTH (30.10.2026)
+
+* **+TNF** (левое меню панорамы) — по словам оператора, «полностью повисает управление трансивером». Кнопка, её сигнал `addTnfClicked` и обработчик в `MainWindow_Wiring` удалены, индексы кнопок меню пересчитаны. Чтобы тот же путь не открывался из контекстного меню панорамы, ANAN теперь объявляет `maxNotchFilters = 0` — ручные режекторы WDSP на ANAN недоступны вовсе (код в Hl2Backend не вызывается).
+* **PHN** (Phone: VOX/фильтры TX/DEXP/AM carrier — для ANAN не работал), **MTR** (Radio Vitals), **CLK** (AetherClock), **HLTH** (Antenna Health) — апплеты, кнопки, записи в каталоге и порядке кнопок, все вызовы из MainWindow удалены; исходники `PhoneApplet`, `MeterApplet`, `AetherClockApplet`, `HealthApplet` исключены из сборки (закомментированы в CMakeLists, файлы остались — на них ссылаются выключенные тесты). Движок AetherClock остаётся только для команды автоматизации `get clock` и не запускается.
+* Напряжение питания (раздел 15) по-прежнему публикуется метром `RAD:+13.8A`, но показывать его теперь негде.
+
+## 17. Правая панель: апплеты обрезались справа — снова (30.10.2026)
+
+Скриншот оператора: RX Controls и TX Controls обрезаны справа на ~14 px (частота, «2.8K», ползунки, стрелки), заголовки целы. Причина: панель жёстко 260 px; когда появляется вертикальная полоса прокрутки (12 px), видимая область — 248 px. Стопка (`SetNoConstraint`, раздел 10) держит контейнер по ширине видимой области, но вертикальная раскладка всё равно отдаёт каждому апплету не меньше ЕГО минимальной ширины — апплет с минимумом больше 248 рисуется шире видимой области и обрезается. Прошлое исправление закрыло случай «контейнер не сжимается», а не «апплету нужно больше места».
+
+Исправление: `AppletPanel::fitWidthToApplets()` — ширина панели = max(260, минимум самого широкого открытого апплета + полоса прокрутки); пересчитывается при изменении видимой области и при изменении минимумов апплетов (LayoutRequest контейнера). Когда широкий апплет закрыт, панель возвращается к 260. В лог: «AppletPanel: width N for <класс> needing M px, scroll bar 12 px» — видно, какой апплет требует ширину.
+
+## 18. Сброс FFT один раз, бит тюнера, LNA, удалён SWR sweep (30.10.2026)
+
+* **Сброс FFT после передачи — один раз** (оператор видел два): осталось только обнуление на самом фронте PTT (`dropAllPanHistory()` в `applyKeying`), повторные через 150/350 мс убраны.
+* **Бит тюнера.** High Priority байт 1400 бит 2 («tuner start», так его называет p2app) ставится в 1 на время TUNE (`Hl2Backend::setTune` → `P2Transport::setTunerStart`) и снимается при отпускании.
+* **LNA.** В меню ANT (левое меню панорамы, ряды ANAN) — маленькая кнопка «LNA». Настройка `AnanLna`, передаётся таймером ANAN, как антенны → Alex0 бит 3 («6M Preamp», приложение D спецификации — единственный бит предусилителя в Protocol 2 для ANAN-100/100D/200D), только в состоянии приёма. По схеме Alex этот предусилитель стоит в 6-метровом тракте, поэтому на КВ-диапазонах эффекта может не быть.
+* **SWR sweep удалён целиком**: кнопки Start/Clear Sweep, Save CSV, Limit range/From/To в меню ANT; пункт Tools → «Start SWR Scan…»; остановка по Esc; запреты «sweep is running» в настройке и автоматизации; график на панораме (`SpectrumWidget::drawSwrSweep` и др.); `MainWindow_SwrSweep.cpp` и `SwrSweepLicenseDialog.cpp` исключены из сборки (файлы на диске остались, не используются).
+
+## 19. Управление панорамой: клик, правое перетаскивание, зум внутри частоты дискретизации (30.10.2026)
+
+* **ЛКМ клик** (панорама или водопад, вне полосы фильтра и его краёв) — активный слайс встаёт на частоту клика (с шагом STEP), панорама не двигается (`edgePanTuneRequested` с текущим центром — без «догоняния»). Двойной клик — то же. ЛКМ по полосе фильтра / краям — по-прежнему перетаскивание VFO / краёв. Перетаскивание панорамы левой кнопкой убрано.
+* **ПКМ перетаскивание** — панорама едет за курсором, слайс остаётся на своей частоте (порог 4 px). **ПКМ клик** без движения — контекстное меню, как раньше (повторно вызывается обработчик нажатия с флагом `m_rmbMenuReplay`).
+* **Линейка частот** — перетаскивание любой кнопкой — зум (так и было), но теперь это **зум отображения внутри текущей частоты дискретизации**, а не переключение 48/96/192/384 кГц:
+  * `Hl2Backend::setPanBandwidth` → `Receiver::zoomViewHz` (0 = вся полоса DDC; минимум max(1,5 кГц, rate/64)); пан сообщает ширину = зум (`panViewHz`).
+  * Бины спектра и водопада обрезаются по центру до доли view/rate; чтобы при зуме хватало разрешения, размер БПФ растёт (`Hl2RxDsp::setSpectrumFftSize`: ~1024 бина в видимой части, до 16384 точек и окна ≤ 0,1 с). Шумовая дорожка при зуме ниже (узкие бины); для AUTO ATT это учтено поправкой 10·lg(N/1024).
+  * Частоту дискретизации меняют только кнопки [−] rate [+] — новый глагол расширения `anan.rate` (`SpectrumWidget::receiverRateRequested` → MainWindow); зум при этом сбрасывается в 0.
+* **Надписи справа сверху:** значение частоты дискретизации (из `AnanUiState::sampleRateHz`, не меняется при зуме), левее — «Zoom ×N.N» — увеличение относительно всей полосы с точностью до десятой (×1.0 — вся полоса, ×2.0 — вдвое крупнее; по просьбе оператора вместо процентов).
+
+## 20. Панорама перерисовывалась при перетаскивании и зуме (30.10.2026)
+
+Причины (бэкенд): (1) `setPanCenter` на каждом шаге перетаскивания (~30/с) сбрасывал усреднение FFT и вместе с ним собираемое окно — след начинался заново, а при большом БПФ зума кадр вообще не успевал собраться; (2) `setPanBandwidth` (зум) на каждом шаге тоже сбрасывал усреднение и при переходе через степень двойки пересоздавал БПФ; (3) число точек кадра менялось с каждым шагом зума (обрезка), и панорама с водопадом начинали след заново.
+
+Исправление: усреднение сдвигается вместе с NCO (`Hl2Spectrum::shiftBins`, `Hl2RxDsp::shiftSpectrum`; сброс — только при скачке больше половины полосы); при зуме ничего не сбрасывается, размер БПФ меняется через 400 мс после окончания жеста (`m_zoomFftTimer`); кадр панорамы и строка водопада всегда 1024 точки (пиковое прореживание или линейная интерполяция видимой части).
+
+## 21. Щелчок в динамике при передаче с тангенты (30–31.10.2026)
+
+Оператор: «при переходе на передачу с тангенты микрофона сильнейший щелчок в динамике трансивера, с MOX — нет; щелчок в разное время».
+
+* Первая версия (30.10) считала причиной выброс контакта PTT на линии микрофона и глушила микрофон 120 мс после нажатия — **не помогло и убрано**: микрофон радио шлёт поток всегда, а щелчок приходит в разное время, что указывает на буфер, а не на сигнал.
+* **Причина** (по строке диагностики «speaker N pkts»): на динамик кодека отправлялось ~3750 пакетов за 5 с, а в интервалах с передачей — ~3690: за одну передачу пропадало ~60 пакетов (≈80 мс). При передаче звук приёмника глушится, и микшер на потоке ввода-вывода переставал слать звук на кодек, а MON начинал слать свой из GUI-потока, когда доходили отсчёты микрофона; при отпускании — наоборот, с паузой удержания 70 мс. Между двумя «поставщиками» образовывалась дыра, FIFO кодека в ПЛИС опустошался — щелчок, в момент, зависящий от того, как легли пакеты.
+* **Исправление:** у потока на динамик один поставщик — микшер на потоке ввода-вывода работает всегда (заглушённые приёмники отдают тишину в такт радио), а MON подмешивается в него через `m_monFifo` (24 кГц, до 200 мс, очищается на фронтах PTT). Прямой путь MON на кодек остался только для случая, когда микшер выключен (FDV).
+
+## 22. Виджеты: вынос и возврат перетаскиванием, высота окна по содержимому (30.10.2026)
+
+* **Вынос:** шапку виджета тянут из правой панели и отпускают вне её — виджет становится отдельным окном, шапкой под курсором (`ContainerWidget::onTitleBarDragStart`: `QDrag::exec` вернул IgnoreAction → `floatAtRequested` → `ContainerManager::floatContainerAt`). Отпускание над самой панелью — по-прежнему перестановка, не вынос.
+* **Возврат:** отдельное окно тянут за его шапку на правую панель — пока курсор над стопкой виджетов, видна голубая линия места вставки; при отпускании виджет встаёт туда (`ContainerTitleBar` двигает окно вручную, а не системным циклом, чтобы получить отпускание → `floatingDragReleased` → `AppletPanel::installDockDropHandlers`: dock + перестановка в `m_appletOrder`). Простой клик по шапке без перемещения окно не встраивает.
+* **Высота отдельного окна** фиксирована по содержимому и подстраивается при его изменении (`FloatingContainerWindow::fitHeightToContent`); растягивать мышью можно только по ширине.
+* Кнопку открепления в шапке пока оставили — удалить после проверки перетаскивания.
+
+## 23. Вынос виджета — окно сразу (31.10.2026)
+
+Пока шапку тянут внутри панели, это перестановка (как раньше). Как только курсор выходит за панель, перетаскивание отменяется (`QDrag::cancel`, таймер следит за курсором во время перетаскивания) и виджет сразу становится отдельным окном под курсором, которое продолжает двигаться за мышью, пока кнопка нажата (`ContainerTitleBar::beginFloatingDragFromCursor`). Отпустить над панелью — встроится обратно в место под курсором.
+
+
+## 24. CW-виджет = страница Keyer из MicronSDR; плашка EXPERIMENTAL; стоп/старт по вкладке радио (31.10.2026)
+
+**CW-виджет** (`src/gui/CwApplet.*`) повторяет MicronSDR Options → Keyer (`Options.ui`, `page_6`; `micronsdr.cpp sendKeyer`), с теми же пределами и умолчаниями:
+
+| Группа | Настройка | Пределы / умолч. | AppSettings | P2 Transmit Specific (порт 1026, раскладка Thetis `CmdTx`) |
+|---|---|---|---|---|
+| Keyer | Mode: Straight / Iambic A / Iambic B | B | `AnanKeyerMode` | байт 5: бит 3 iambic, бит 5 mode B |
+| | Speed | 10..63 WPM, 20 | `AnanKeyerSpeed` | байт 9 |
+| | Weight | 33..66, 50 | `AnanKeyerWeight` | байт 10 |
+| | Paddle swap | нет | `AnanPaddleSwap` | байт 5 бит 2 |
+| | Keyer auto letter spacing | нет | `AnanKeyerAutoSpace` | байт 5 бит 6 (strict spacing) |
+| Transmit | Hang time | 10..1000 мс (шаг 10), 250 | `AnanHangTime` | байты 11–12 |
+| | CW demo (CW без RF) | нет | `AnanCwDemo` | на хосте: PA выкл (General 58), реле T/R выкл, drive 0 |
+| Side tone | Level | 0..99 %, 50 (→ 0..255) | `AnanSideToneLevelPct` | байт 6; бит 4 = уровень > 0 |
+| | Frequency | 400..1000 Гц, 700 | `AnanSideToneFreq` | байты 7–8 |
+
+Постоянно: байт 5 бит 1 (keyer on) — только когда TX-приёмник в CW/CWU/CWL; бит 7 break-in = 1 (у MicronSDR устройство всегда в break-in с hang time); байт 13 RF delay = 20 мс; байт 17 фронт CW = 7 мс (умолчание Thetis). `Hl2Backend::ananPushCwKeyer` (таймер 300 мс) → `P2Transport::setCwKeyer` → `buildTransmitSpecific(seq, micBoost, cw)`.
+
+Хост следует за брейк-ином радио: при включённом кейере точка/тире в статусе (байт 4 биты 1–2) считаются PTT радио и держат его ещё hang time после последнего элемента (`m_paddleHangTimer`), так что панорама/реле/антенна переходят в TX вместе с радио. Скорость кейера синхронизирована с CW-скоростью программы в обе стороны (как в MicronSDR, где она же — скорость CW-сообщений). Тест протокола дополнен байтами кейера.
+
+Не проверено на радио: что ПЛИС ANAN-100D формирует CW сама при `cw_enable` (данные DUC при этом не используются); шкала уровня самоконтроля 0..255 (Thetis шлёт 0..100).
+
+**Плашка EXPERIMENTAL** в шапке и окно «Experimental radio support» отключены (`updateExperimentalRadioSupport` сразу гасит значок).
+
+**Стоп/старт радио:** клик по вкладке радио в шапке — если оно подключено (или идёт подключение), отключить (`disconnectFromRadioByUser`, автоподключение не срабатывает до следующего клика); если остановлено — подключить (`connectRadioNow`).
+
+
+## 25. Без External Key; вынесенное окно следует за мышью; без «руки» на шапках (31.10.2026)
+
+* Группа External Key из CW-виджета убрана по просьбе оператора (последовательный порт для PTT/CW — по-прежнему Radio Setup → Serial).
+* **Вынос виджета:** окно, созданное из вытащенного виджета, переставало следовать за мышью — у нового окна на Windows нет захвата мыши и фокуса (кнопку нажали над панелью, захват держал отменённый QDrag), поэтому `grabMouse()` не давал ни движений, ни отпускания. Теперь окно ведёт таймер 10 мс: позиция курсора (`QCursor::pos`) и состояние кнопки (`GetAsyncKeyState`) опрашиваются напрямую, без событий мыши (`ContainerTitleBar::liveDragTick`); при отпускании — `floatingDragReleased` (встраивание в панель, если над ней).
+* Курсор над шапками виджетов — обычная стрелка (убраны OpenHand/ClosedHand).
+
+
+## 26. Звенящий щелчок и всплеск на TX-панораме в начале передачи с тангенты (31.10.2026)
+
+Оператор: щелчок при переходе на передачу с тангенты остался, «звенит», на панораме передачи виден всплеск — мусор в начале передачи.
+
+Разбор: всплеск виден на TX-панораме, то есть он в данных, которые хост отправляет в DUC. Микрофон радио идёт с постоянной составляющей (смещение, и ступенька от контакта PTT, которую ФВЧ кодека гасит сотни мс). Передача начиналась сразу с этим смещением → ступенька на входе; компрессор (состояние от прошлой передачи) и полосовой фильтр TX превращали её в звенящий импульс; MON нёс его в динамик.
+
+Исправление (`Hl2Backend`, обработчик `codecMicReady`):
+* Фильтр постоянной составляющей на микрофоне радио — работает всегда, и на приёме, так что к нажатию ступенька уже затухла (в разделе 27 заменён на ФВЧ 2-го порядка 120 Гц).
+* Каждая передача открывается тихо: 30 мс нулей, затем плавное нарастание 20 мс (приподнятый косинус); компрессор сбрасывается в начале передачи.
+* `P2Transport`: очередь IQ очищается при нажатии, а IQ, пришедший без MOX (хвост прошлой передачи), отбрасывается.
+
+Не проверено: если остаток прошлой передачи хранит FIFO DUC в ПЛИС, на TX-панораме его не видно — тогда понадобится досылать нули при отпускании.
+
+
+## 27. Мало мощности в SSB голосом (31.10.2026)
+
+Оператор: TUNE — полная мощность; голосом ALC до красной зоны, а мощность мала, ток почти не растёт (2,5 А; FT-710 на «АААА» — 13 А).
+
+Что проверено в облаке (сборка WDSP 2.10 из `third_party/wdsp` под Linux, стенд `scratchpad/txlev`):
+* Модулятор TXA ровно в нашей конфигурации (24 кГц → 192 кГц, блоки 512/4096, USB 300..2700): тон 1 кГц с пиком 0,85 на входе → |IQ| пик −0,2 dBFS, двухтональный 700+1900 Гц → пик −1,4 dBFS. **Модулятор полную шкалу даёт.**
+* Синтетический гласный «А» → наш пиковый ALC → TXA: пик −2,4 dBFS, среднее −8,4 dBFS (это и есть средняя мощность голоса без процессора, ~15 % от PEP). Постоянка 0,01 + фон 50 Гц на микрофоне съедают ещё ~3 дБ (ALC меряет пики вместе с ними); ФВЧ 120 Гц возвращает их.
+
+Из журналов оператора: полоса передачи **300..1600 Гц** (`HL2 TXA modulator ... passband 300..1600`) — срез TX-фильтра в Mic-апплете стоит на 1600 Гц; и предупреждения «microphone peaked at −21…−35 dBFS … mic gain 98 of 100» на коротких нажатиях.
+
+Сделано:
+* ФВЧ 2-го порядка (Баттерворт, 120 Гц) на микрофоне радио вместо ФВЧ 1-го порядка 60 Гц — постоянка, фон и ступенька PTT больше не управляют ALC.
+* **Источник TEST** в выборе микрофона (PC / MIC / TEST, `AnanMicSource` = 2): вместо микрофона — двухтональный сигнал 700 + 1900 Гц с пиком в полную шкалу через весь голосовой тракт (ALC, TXA, DUC), как 2-TONE в Thetis. Ожидаемо: пик ≈ −1,4 dBFS, среднее ≈ −4,4 dBFS → около 100 Вт PEP / 50 Вт среднего.
+* Строки журнала на каждую передачу: `ANAN P2 transport: TX over N s: IQ peak / mean / loudest 100 ms dBFS, drive N/255` (что ушло в DUC) и `ANAN TX over (radio mic): mic peak / rms / below 150 Hz dBFS, mic gain xN` (что дал микрофон до усиления).
+
+
+## 28. Путь сигнала микрофона радио; PROC не работал; запись TX (31.10.2026)
+
+По журналу оператора (10:11–10:19, «АААА» с тангентой и MOX):
+* Микрофон радио (до усиления): пик −36…−49 dBFS, RMS −55…−75 dBFS — на ~40 дБ ниже полной шкалы. Аппаратное +20 dB (20dB в Mic-апплете) было выключено. Ползунок MIC на 98 (×83, +38 дБ) — у края.
+* На выходе (DUC IQ): пик −4…−8 dBFS, громкие 100 мс −11…−15 dBFS, среднее −15…−42 dBFS при TUNE = 0 dBFS → 3–8 Вт среднего. Пики упираются в ALC (0,85), а среднее голоса на 11–16 дБ ниже — нужна компрессия.
+* **PROC фактически не работал:** компрессор микрофона радио стоял ДО усиления ползунка MIC, т. е. на сигнале −40 dBFS, а его пороги −18/−24/−30 dBFS — он ни разу не сжимал, только добавлял make-up. Исправлено: усиление MIC применяется в бэкенде перед PROC, модулятору блок уходит как EngineGenerated (без второго усиления), ALC остаётся защитой. MON теперь слышит то, что уходит в эфир (громче прежнего).
+* **Блок TX DSP (EQ/COMP/GATE/… приложения) к микрофону радио не подключён** — он стоит в AudioEngine только на пути микрофона ПК. Путь микрофона радио: кодек 48 кГц → ½ → 24 кГц → ФВЧ 120 Гц → MIC-усиление → PROC → ALC → WDSP TXA (300..2800) → DUC. Подключение к полосе приложения — отдельная задача.
+* MOX и тангента в программе ключат одинаково (`TxController::Activity::Mox`); разница только в сигнале микрофона в момент нажатия. Для разбора — **запись каждой передачи** в `logs/txcap-mic.wav` (последняя; 24 кГц float stereo: L — сырой микрофон, R — что ушло модулятору; с 1,5 с до нажатия) и строка `ANAN TX capture: … radio PTT at N ms, host key at M ms`.
+
+
+## 29. Щелчок — в динамике, а не в микрофоне; PROC = компрессор WDSP (31.10.2026)
+
+**Щелчок.** Запись `txcap-mic.wav` (10:36, нажатия тангенты во время MOX) показала: на микрофоне при нажатии — лишь −46…−50 dBFS, никакой постоянки; оператор прав. Зато строка диагностики динамика: `peak 28553` (из 32767) только в 5-секундном окне с передачами с тангенты, во всех остальных ~600. Причина: тангента радио сама переключает его реле приём/передача в момент нажатия, раньше, чем хост об этом узнаёт; приёмник получает переходный процесс переключения (ослабление АЦП на передаче = 0) и демодулирует его с усилением приёма, а заглушение приёма от хоста ещё в пути (статус → ключ → mute, каждый шаг через очередь), а очередь микшера его уже держит. С MOX хост сначала глушит приём, потом ключит — переходный процесс не слышен.
+Исправление: `P2Transport::setRadioPttPressHook` — в момент, когда статус радио сообщил нажатие PTT, на потоке ввода-вывода очередь звука приёмников в микшере сбрасывается, а приёмники в динамике радио глушатся на 250 мс (MON звучит); дальше держит обычное заглушение на передаче. Звук на динамики ПК этим не затронут.
+
+**Мощность.** Голос оператора из той же записи прогнан через настоящую цепочку (ФВЧ, ALC, WDSP TXA 300..2800) на стенде: без сжатия громкие 100 мс −14 dBFS (3–5 Вт), с компрессором WDSP TXA (COMP Thetis) 10/15/20 дБ — −7 / −4,5 / −2,5 dBFS (≈20 / 35 / 55 Вт в среднем на громких местах). PROC для микрофона радио теперь включает компрессор TXA: NOR 10 дБ, DX 15 дБ, DX+ 20 дБ (`Hl2TxDsp::setCompressor`, `WdspChannel::setTxCompressor`, `SetTXACompressorRun/Gain`); ClientComp для микрофона радио выключен (не сжимать дважды). Условие — пики микрофона после MIC должны доходить до ALC: сырой микрофон −35…−40 dBFS, нужно ~+38 дБ (20dB + MIC ≈ 74, или MIC ≈ 98 без 20dB).
+
+
+## 30. Щелчок с тангенты — доказательства вместо версии (31.10.2026)
+
+Оператор справедливо возразил: «приёмник не может выдать такой уровень при переключении — его сигнал уменьшается, а не возрастает». Версия раздела 29 (переходный процесс реле в приёмнике) не доказана: `peak 28553` говорит только, что почти полная шкала ушла на динамик радио в окне с передачами с тангенты, но не откуда.
+Добавлено для доказательства:
+* `logs/txcap-spk.wav` — то, что уходит на динамик радио, от −1,5 до +2 с вокруг нажатия тангенты: левый канал — приёмники, правый — MON, оба с усилением кодека (1,0 = полная шкала), ДО глушения 250 мс; строка `ANAN speaker capture: … radio PTT at N ms; receivers' loudest X dBFS at M ms`.
+* Строка `ANAN PTT timeline`: через сколько мс после PTT радио пришёл MOX хоста и пик входа приёмника RX1 (IQ, dBFS) каждые 5 мс от −50 до +400 мс.
+Сброс очереди микшера при нажатии убран (иначе он стёр бы улику); глушение приёмников на динамике 250 мс оставлено.
+
+
+## 31. Что не даёт голосу дойти до полной шкалы (31.10.2026)
+
+Лог 10:55–10:58: PROC был выключен (`compressor off`); с 20dB и MIC ×9 передача 22 с: IQ пик −3,2 dBFS, громкие 100 мс −8,7, среднее −15,8 dBFS.
+Запись голоса оператора (txcap-mic.wav, 10:58, с 20dB) через настоящую цепочку на стенде, MIC +19 дБ:
+
+| вариант | пик | громкие 100 мс | среднее |
+|---|---|---|---|
+| как было: ALC HL2 (мгновенная атака, отпускание 500 мс) | −2,2 | −9,6 | −17,9 |
+| ALC HL2 с отпусканием 50 / 10 мс | −0,2 / −1,4 | −10,1 / −9,7 | −17,0 / −16,7 |
+| без ALC HL2 (только ALC WDSP, как в Thetis) | −0,1 | **−6,8** | −15,0 |
+| + компрессор TXA 10 дБ (PROC NOR) | 0,0 | **−2,8** | −8,5 |
+| + компрессор TXA 15 дБ (PROC DX) | 0,0 | **−2,4** | −7,5 |
+
+Вывод: «ограничитель» — это ALC HL2 перед модулятором: после каждого пика он опускает усиление на весь слог (отпускание 500 мс). Он выключен для ANAN (`tc.alcEnabled = false`); остаётся ALC WDSP TXA (атака 1 мс, спад 10 мс, после TX-фильтра) и жёсткий клип на полной шкале. Пики голоса и раньше доходили до полной шкалы (PEP); среднюю мощность голоса поднимает только сжатие — PROC (компрессор TXA).
+
+
+## 32. Кнопка 20dB сама выключалась; базовое сжатие без PROC (31.10.2026)
+
+* **20dB выключалась при нажатии других кнопок.** В режиме микрофона радио кнопка +ACC Flex — это «20dB». `PhoneCwApplet::syncPhoneFromModel` при каждом обновлении состояния делал `m_accBtn->setChecked(model->micAcc())` (у Flex-поля всегда false) без блокировки сигналов → `toggled(false)` → обработчик записывал `AnanMicBoost = False`. То же снятие отметки в `setSelectableMicInputs`. Теперь в режиме микрофона радио кнопку ставит только `applyRadioMicChoice()` из `AnanMicBoost`.
+* **Без PROC — тоже сжатие.** Компрессор TXA на микрофоне радио работает всегда: 6 дБ при выключенном PROC (роль «ALC» обычного трансивера), PROC NOR / DX / DX+ = 12 / 16 / 20 дБ. Стенд, запись оператора, громкие 100 мс / среднее: без сжатия −6,8 / −15,0; 6 дБ −3,4 / −10,8; 12 дБ −2,0 / −7,6. Левелер TXA (15–20 дБ) проверен — даёт лишь +1–2 дБ среднего, не включён.
+
+
+## 33. Щелчок: данные записи; спад уровня через 0,5 с — трассировка (31.10.2026)
+
+**Данные (лог 11:13–11:29, anan66):**
+* `ANAN PTT timeline`: MOX хоста — через 1–6 мс после PTT радио. Вход приёмника RX1 до нажатия — уровень эфира (от −95 до −18 dBFS, 7,2 МГц), через 5–10 мс после нажатия — −95 dBFS (вход отключён), через ~150 мс — утечка собственной передачи (−60…−16). **Скачка на входе приёмника нет — вход пропадает**, как и говорил оператор.
+* `txcap-spk.wav` (приёмники): шум −47 dBFS, в момент нажатия — всплеск до −8 dBFS (у колена ограничителя кодека) ~140 мс, затем плавное заглушение (−10 дБ / 10 мс), тишина передачи. MON молчит.
+* Значит, щелчок — это реакция цепочки приёма на **резкое пропадание** сильных сигналов эфира (обрыв несущих вне полосы даёт широкополосную ступеньку, попадающую в полосу, где АРУ держит большое усиление по слабому шуму), совпадающее с переключением на передачу. С MOX хост глушит приём до переключения.
+* Глушение 250 мс от момента статуса PTT ловит не всё: часть всплеска уже ушла в динамик к моменту, когда статус дошёл до хоста.
+**Проверка (anan69):** после PTT радио хост ключится через 60 мс (приёмники в динамике уже заглушены) — если переключение вызывает наш MOX, всплеск окажется внутри глушения. Если щелчок останется — радио переключается само по своей тангенте, и следующий шаг — бит «Orion mic PTT disabled» (байт 50, бит 2).
+
+**Спад уровня через 0,5 с при ровном «аааа».** HL2-ALC выключен (раздел 31), компрессор TXA мгновенный, ALC WDSP — 10 мс. Шкала ALC теперь показывает уровень микрофона после MIC (до компрессора), т. е. её спад — спад самого сигнала микрофона. Для разбора добавлены трассы каждые 250 мс: `ANAN TX trace per 250 ms: raw mic rms […] -> modulator rms […] peak […]` и `ANAN P2 transport: TX IQ mean per 250 ms […]`; длинная передача (≥ 3 с) пишется в `txcap-mic.wav`, короткие — в `txcap-mic-short.wav`, чтобы не затирать.
+
+
+## 34. Щелчок найден; «ALC у потолка» (31.10.2026, anan70)
+
+**Лог 11:41 (anan69, MOX хоста через 62–69 мс после PTT радио):**
+* Вход приёмника RX1 остаётся прежним до +75 мс и пропадает (−95) только через 5–10 мс после MOX хоста → **радио само по тангенте не переключается**, вход отключает наш MOX.
+* `txcap-spk.wav` (приёмники): у нажатия — затухающее колебание ~100 Гц (знак меняется каждые 5 мс, ~50 мс) с размахом до −9 dBFS: ступенька постоянной составляющей в звуке приёма, звенящая на нижнем краю фильтра приёма (100 Гц). Она начинается **за ~25 мс до** того, как статус радио сообщает PTT (антидребезг в радио), — поэтому глушение от статуса опаздывало. Второе такое же колебание — от отключения входа нашим MOX (+90 мс) — уже внутри глушения и не слышно. С MOX хоста контакт не замыкается — первого колебания нет вообще.
+* **Исправление:** звук на динамик радио задерживается на 80 мс перед отправкой (`m_ioSpkHold`); в момент статуса PTT непосланные 80 мс обнуляются, дальше глушение 250 мс. Задержка звука приёма в динамике радио +80 мс.
+
+**«ALC должна упираться в потолок при ровном аааа».** Трасса: сырой микрофон −28 → −32 dBFS за 2 с (сам голос садится), вход модулятора и IQ повторяют его (IQ −8 → −13). Задержки или спада в нашей цепочке нет. Стенд на этой записи (IQ, среднее по 250 мс): сжатие 6 дБ −8…−17; 12 дБ + левелер TXA (+10 дБ) −5…−8, ровно.
+* Микрофон радио: левелер TXA всегда включён (+10 дБ), компрессор TXA 10 дБ без PROC; PROC NOR / DX / DX+ = 14 / 17 / 20 дБ.
+* Шкала **TX:ALC** теперь показывает огибающую того, что уходит в DUC (`txEnvelopePeak`, пик |IQ| за 50 мс) — после всей цепочки; раньше это был уровень микрофона до компрессора, который падал вместе с голосом.
+
+
+## 35. Итог по щелчку; индикатор мощности без сглаживания; зум без сброса FFT (31.10.2026)
+
+* Оператор: щелчков больше нет; причина была и в самом трансивере (он должен был сам глушить звук на начале передачи). Задержка 80 мс и глушение по статусу PTT остаются.
+* **Индикатор мощности — как шлёт трансивер** (там уже пиковый детектор): убраны удержание пика в `Hl2Backend` (`fwdPeakHoldStep`, теперь мгновенное значение), сглаживание FWDPWR в `MeterModel` (атака 0,5 / спад 0,15), баллистика стрелки S-метра на передаче (`SMeterWidget::updateNeedleTarget`), сглаживание и PEP-метка шкалы мощности TX-апплета (`forwardPowerRequiresSmoothing = false`).
+* **Зум:** при смене размера БПФ (через 400 мс после жеста) новый анализатор начинал усреднение с нуля — след и водопад «обнулялись». Теперь `Hl2Spectrum::seedFrom` переносит в новый анализатор старое усреднение (бины по частоте, мощность × старый/новый размер) и непосланные отсчёты IQ — данные просто продолжают перезаписываться новыми.
+
+
+## 36. Аттенюатор приёмника на передаче 31 дБ; S-метр после передачи (31.10.2026)
+
+Оператор: после передачи стрелка S-метра дёргается до упора, иногда всплеск доходит до динамиков; в Thetis дуплекс работает без выбросов.
+* В пакете Transmitter Specific байты 57..59 (ступенчатый аттенюатор ADC2/ADC1/ADC0 **на время передачи**) были 0 — приёмник слышал собственный передатчик почти без ослабления (в трассе вход RX1 во время передачи −16…−50 dBFS). Thetis ставит там 31 дБ (`SetTxAttenData`, по умолчанию 31). Теперь 31 дБ (`P2Transport::setTxAttenuation`, настройка `AnanTxAttenuationDb`, по умолчанию 31).
+* S-метр: пока передача и 300 мс после неё уровень приёма не публикуется, сглаживатель начинает заново — в конвейере ещё уровень собственного передатчика.
+
+
+## 37. Полоса прокрутки правой панели; Mic-виджет без CW-страницы (31.10.2026)
+
+* Правая панель: вертикальная полоса прокрутки видна всегда (`ScrollBarAlwaysOn`), ширина 12 → 18 px; `kPanelWidth` 260 → 266, чтобы ширина виджетов осталась прежней.
+* Mic-виджет (PhoneCwApplet) больше не превращается в CW-страницу при CW: `setMode` всегда показывает страницу микрофона. CW-страница (Delay, Speed, Pitch, Sidetone, L/R, Breakin, Iambic, Hold Delay, APF) — не Flex-управление, а собственный кейер программы (CWX, клавиатура, ключ на COM-порту), её самоконтроль на ПК и приёмные Pitch/APF; она остаётся в коде, но не показывается. Кейер радио — в CW-виджете.
+
+
+## 38. Самоконтроль CW программы выключен (31.10.2026)
+
+Оператор: «мониторинг ключа через программу не нужен, звук в режиме передачи заблокировать, настройки не нужны». Локальный генератор самоконтроля (`AudioEngine::cwSidetone`, через него звучат CWX, ключ на COM-порту, клавиатура) всегда выключен (`MainWindow_Session.cpp`: кнопка Sidetone и синхронизация с TransmitModel ставят `setEnabled(false)`). CW-страница Mic-виджета не показывается (раздел 37). Самоконтроль трансивера (кейер ПЛИС) — в CW-виджете, не затронут.
+
+
+## 39. Края спектра (спад фильтра DDC) отрезаны (31.10.2026)
+
+Оператор: обрезать по 10 % с каждого края исходного БПФ, чтобы не было провалов по краям, и чтобы края нигде больше не учитывались.
+* `anan::kUsableSpanFraction = 0.8` (AnanUiState.h). Самый широкий вид панорамы — 80 % частоты дискретизации (`Hl2Backend::panViewHz`, предел зума в `setPanBandwidth`); обработчик спектра (`spectrumReady`) первым делом вырезает эту середину из бинов БПФ, так что края не попадают ни в панораму, ни в водопад, ни в AUTO ATT. Полоса панорамы, сообщаемая приложению, — эти 80 %.
+* SpectrumWidget: предел зума перетаскиванием по шкале — 80 % частоты, «Zoom ×1.0» = весь полезный участок. Надпись частоты дискретизации не меняется.
+
+
+## 40. 6 м без автоматического LNA; без кнопок открепления (31.10.2026)
+
+* `legacyAlexHpfFor`: на 6 м (≥ 50 МГц) фильтром приёма выбирался бит 3 «6M Preamp» — LNA включался сам и кнопкой LNA не выключался. Теперь на 6 м — ФВЧ 20 МГц (верхняя секция, пропускает 6 м; фильтр не обходится — оператор), а бит 3 ставит только кнопка LNA (`HighPriorityOptions::alexPreamp`), как на остальных диапазонах. Тест протокола обновлён.
+* Кнопка открепления (⧉/↙) убрана из шапок виджетов в панели и в отдельных окнах — вынос и возврат перетаскиванием шапки. Оставлена только на «холсте» (canvas), где возврата перетаскиванием нет.
+
+---
+
+## 41. CW: режим при запуске, тишина вместо IQ, переход на приём (31.10.2026)
+
+- **RX Control показывал USB при восстановленном CWL.** Статический список режимов RxApplet не содержит CWL; при пересборке списка из `modeList` слайса выбирался прежний текст комбо (USB), а не режим слайса. Теперь после пересборки выбирается `m_slice->mode()` (`RxApplet.cpp`, оба места).
+- **Голос и «горб» мимо фильтра в CW.** В CW несущую делает FPGA-ключ радио на частоте DUC (= несущая слайса = центр фильтра RX), а всё, что хост шлёт как TX IQ, тоже уходит в эфир: тангента давала голос, а CW-полоса модулятора 300..900 Гц (плюс компрессор/левелер, поднимавшие шум микрофона до −10 dBFS IQ) рисовала сигнал на ~600 Гц от центра. Теперь при TX-приёмнике в CW хост шлёт нули (`m_ananCwTxSilent`, ставится в `ananPushCwKeyer`, который зовётся и сразу при смене режима в `setSliceMode`).
+- **Выбросы после передачи.** После отпускания приёмник ещё 178..285 мс слышит свой передатчик. Окно `kAnanUnkeyGuardMs = 350` мс: S-метр молчит (и пока радио само держит PTT), кадры панорамы/водопада не публикуются, по окончании окна история FFT сбрасывается ещё раз. АТТ-AUTO не получает кадры во время передачи.
+
+## 42. Тест перехода на приём (31.10.2026)
+
+Оператор: выброс после окна 350 мс остаётся, «как будто перезапускается весь DSP». Добавлен тест (только запись, поведение не менялось):
+
+- `ANAN unkey test` — строки по 25 мс от −300 мс до +3 с вокруг отпускания для RX1: S-метр (dBm, до защитного окна), максимум и пол панорамы (dBm, средние 80 %), усиление AGC WDSP (dB), пик на входе DSP (нули во время заглушки) и на выходе DSP; `events` — все команды бэкенда в окне 3 с (mute/unmute, сброс истории панорамы, PTT радио, ADC att, частоты, фильтр, AGC, режим, зум/полоса, пересборка DSP, band filter).
+- `ANAN unkey IQ` — пик IQ RX1 по 20 мс от −100 до +2000 мс и файл `logs/rxcap-unkey-iq.wav` (float I/Q на частоте выборки, отпускание на 500 мс, длина 3,5 с).
+- Стенд WDSP (scratchpad/rxagc): AGC «med», нули 3 с, затем шум −98 dBFS — выход плавно поднимается за ~50 мс, без выброса: нули на время передачи сами выброса не делают. Сильный сигнал −31 dBFS, затем шум — выброс до +12 dBFS на выходе.
+
+## 43. Итог теста перехода на приём; сброс уровней AGC и S-метра (31.10.2026)
+
+Лог 18:17 (CW, 40 м, три передачи):
+- IQ от радио после отпускания чистый: −97 dBFS с первых 20 мс, выбросов нет. Радио и протокол ни при чём; DSP не перезапускается (в событиях только mute/unmute, band filter и сброс истории панорамы).
+- Во время передачи RX1 видит свой передатчик на −30 dBFS, и примерно 100 мс он доходит до DSP: IQ идёт впереди статуса PTT на ~30 мс, плюс 60–70 мс до заглушки хоста.
+- Этого хватает: S-метр после окна 350 мс начинает с −73…−95 dBm и ~1 с спадает до −122 (среднее WDSP, ~0,1 с на e). AGC прижат и восстанавливается до 0,5 с (выход DSP −92 → −46 dBFS).
+- Панорама после окна чистая (−111…−115 dBm).
+
+Исправление: патч WDSP 23 `RXAResetLevelHistory()` (`wcpAGC.c`) — AGC и метры RXA начинают как на свежем канале, настройки не трогаются; вызывается в `Hl2RxDsp::setAudioMuted(false)` через `WdspChannel::resetLevelHistory()`. Стенд (scratchpad/rxagc/t2): без сброса S_AV после передачи −108 → −122, со сбросом растёт снизу к уровню шума; звук одинаковый. Тест (раздел 42) оставлен.
+
+## 44. DUP — дуплекс на панораме (31.10.2026)
+
+Кнопка **DUP** в Mic-виджете рядом с MON (ключ `AnanDuplex`). Включена: панорамы не получают состояние передачи (`MainWindow_Session`: `setTransmitting(tx && !duplex)`) — нет зума ±12 кГц на спектр передачи, фиксированной шкалы, TX-маски водопада и пропуска строк после передачи; в `Hl2Backend` нет сброса истории БПФ на фронтах и окна 350 мс после отпускания. Приёмник (RX1 через аттенюатор 31 дБ) виден всё время, свой сигнал — таким, каким его слышит приёмник. Звук приёма на передаче по-прежнему заглушён, S-метр на передаче не показывает (DSP приёма получает нули). Выключена — всё как раньше.
+
+## 45. Тест «тишина, через пару секунд выброс» (31.10.2026)
+
+Лог 18:32 (anan81): в 3 с после отпускания приёмник чистый — IQ −97 dBFS, S-метр −121 dBm с +325 мс, выход DSP −45 dBFS с +100 мс, панорама −114 dBm; звук приёма до микшера в окнах по 5 с с пиком ≤ 0,009. То есть выброс дальше по цепочке или позже 3 с. Тест расширен: бэкенд — до 6 с; PC-звук после клиентской цепочки (AudioEngine: пик и заполнение буфера по 100 мс, какие NR/EQ/gate/comp включены); панорама (SpectrumWidget: принятые кадры и нарисованный след — максимум и медиана, верх/диапазон шкалы, зум/TX, по 100 мс, 6 с).
+
+## 46. БПФ панорамы больше не прерывается на передаче (31.10.2026)
+
+Лог 18:47: с DUP выброса нет; без DUP данные и след чистые, но оператор видит всплеск. Причина (оператор): прерванное БПФ обнуляется и накапливается заново — первые кадры после перезапуска выглядят как всплеск. Убраны все перезапуски:
+- `Hl2Backend`: история БПФ не сбрасывается на фронтах ключа, окно 350 мс на панораме снято (S-метр своё окно сохраняет).
+- `SpectrumWidget`: под зумом передачи кадры приёмника продолжают усредняться (`m_txZoomRxBins/Smoothed`) и возвращаются при выходе из зума; сглаживание при отпускании на ANAN не сбрасывается.
+Свой сигнал после передачи спадает на панораме по усреднению (~4 с при текущем FFT AVG), как в DUP. Строки теста звука ПК — через qInfo (категория aether.audio пишет только предупреждения).
+
+## 47. Приёмник не прерывается на передаче (полный дуплекс) (31.10.2026)
+
+Оператор: приёмник независим от передачи, весь — до звука — работает без перерыва; у передачи свой путь и своё БПФ для экрана.
+- Проверено: БПФ передачи отдельное (`anan::TxScope` в `P2Transport`, спектр уходящего DUC IQ); БПФ приёмника — `Hl2Spectrum` каждого приёмника, всегда на настоящем IQ. Общим был только буфер следа в `SpectrumWidget` — с разд. 46 под зумом передачи приёмник усредняется отдельно.
+- `Hl2RxDsp`: канал WDSP всегда получает настоящий IQ (раньше на передаче — нули), NB не замораживается, S-метр считается всегда; заглушка — только на выходе звука, плюс 200 мс после (в конвейере ещё звук передачи). Сброс уровней (патч 23) больше не вызывается.
+- AGC: удержание на время передачи (патч WDSP 24) на уровне до передачи — минимум за ~400 мс до нажатия (радио ключится само раньше, чем узнаёт хост). Стенд: без удержания звук после передачи −86…−55 dBFS больше 0,8 с (восстановление AGC ~2 с — «тишина, потом выброс»), с удержанием сразу −45 dBFS. Пока AGC удерживается, выход не звучит даже при MON.
+- S-метр: на передаче не показывается; после — снова, как только вернётся в пределы 6 дБ от уровня до передачи (не позже 2 с), вместо окна 350 мс.
+
+## 48. Выброс в звуке ПК в начале CW-передачи; AGC восстанавливается, а не держится (31.10.2026)
+
+Лог 19:14 (6 передач, с DUP и без): звук ПК с пиком 0,86 в окнах с каждой CW-передачей ключом (с тангентой — 0,06/0,008). Ключ радио даёт RF сразу; хост ключится на ~65 мс позже статуса PTT, а статус на ~30 мс позже IQ — звук приёма на ПК ничем не глушился до хоста (у кодека радио есть задержка 80 мс и бланк по статусу, у ПК не было). После отпускания по записи txcap-spk звук чистый. Строки теста не выведены: передачи шли чаще 6 с.
+- `Hl2RxDsp::pressBlank()` — по фронту статуса PTT на потоке I/O (хук `setRadioPttPressHook`) выход звука приёмников сразу молчит; дальше — заглушка хоста (если хост не ключится — 500 мс).
+- AGC больше не замораживается на передаче (замороженное усиление гнало свой сигнал до +49 dBFS внутри цепочки), а работает и после передачи восстанавливается на уровень до неё (патч 24, `RXASetAGCHold(ch, 0, volts)`). Стенд: сразу −44 dBFS после передачи (без восстановления −80…−55 dBFS больше 1 с). Пока идёт передача, выход приёмника не звучит, плюс 200 мс после.
+
+## 49. Стрелка S-метра после передачи (31.10.2026)
+
+Оператор: звук после передачи чистый (anan86: заглушка выхода по статусу PTT на потоке I/O, AGC работает на передаче и восстанавливается после, приёмник не прерывается). Остался скачок стрелки — иногда небольшой, иногда зашкал с медленным спадом.
+Причина: среднее S-метра WDSP (0,1 с) слышит свой передатчик и после передачи спадает с −30 dBFS до шума больше 1,6 с; плюс показания, ушедшие до того, как хост узнал о передаче.
+- `Hl2RxDsp`: S-метр считается всегда, публикуется только вне передачи (по статусу PTT, заглушке хоста, удержанию и 200 мс после); при начале передачи запоминается показание до неё (минимум ~0,4 с; метр за CW-фильтром с задержкой ~85 мс, так что это ещё эфир), и когда передача ушла из цепочки — AGC и среднее S-метра возвращаются на уровни до передачи (патчи WDSP 24, 25). Стенд: S_AV сразу −127 вместо спада больше 1,6 с.
+- `Hl2Backend`: окно «в пределах 6 дБ / 2 с» снято — DSP сам не публикует передачу.
+
+## 50. Накопление БПФ после передачи; плавная стрелка на передаче (31.10.2026)
+
+Оператор: звук и стрелка S-метра в порядке (anan87). Остались (1) свой сигнал на панораме после передачи медленно перетекает в приёмник при длинном FFT AVG; (2) стрелка мощности на передаче скачет между редкими значениями.
+- `Hl2Spectrum`: каждые ~100 мс IQ сохраняется копия усреднения (3 штуки); в начале передачи (`markOverStart`, по статусу PTT / ключу хоста) берётся копия старше 150 мс — эфир до передачи; когда передача ушла из цепочки (там же, где S-метр и AGC), `restorePreOver` возвращает её. След продолжается от эфира, без перезапуска с одного кадра и без хвоста своей передачи. Нет копии (усреднение выключено, перестройка) — обычный сброс. Сдвиг панорамы и сброс усреднения стирают копии.
+- `SMeterWidget`: на передаче значения радио без обработки, но стрелка между ними движется: вверх τ = 30 мс, вниз τ = 200 мс (приём: 45/180 мс, как было).
+
+## 51. Задержка начала SSB; быстрее возврат БПФ; MON (31.10.2026)
+
+Лог 19:45 (голос, тангента): по таймлайну PTT RF появляется через ~280 мс после статуса PTT радио (хост ключится через 63 мс, дальше ~215 мс конвейера). В протоколе P2 задержка есть только одна — байт 13 Transmitter Specific «RF Delay», и она только для CW-ключа ПЛИС (у нас 20 мс, `P2Protocol.h` `rfDelayMs`); для голоса параметра нет — задержка целиком наша. Сокращено:
+- хост ключится сразу по статусу PTT (было +60 мс; приёмники глушит `pressBlank` на потоке I/O);
+- в начале передачи микрофон радио: тишина 5 мс + подъём 10 мс (было 30 + 20);
+- блок TXA 128 отсчётов (5,3 мс) вместо 512 (21 мс), заполнение очереди DUC перед стартом 2048 (10,7 мс) вместо 6144 (32 мс);
+- запуск канала TXA: подъём 5 мс без задержки (было 10 мс задержки + 25 мс подъёма).
+Ожидаемо ~280 → ~100 мс от тангенты до RF; проверить по «ANAN PTT timeline».
+
+БПФ: среднее панорамы возвращается через 60 мс IQ после отпускания (раньше — вместе с AGC через 200 мс); частичное окно БПФ сбрасывается. `SpectrumWidget::ananOverEnded()`: 120 мс след держится (до передачи), затем первый кадр берётся целиком; под зумом передачи след приёмника хранится с момента до передачи.
+
+MON: уровень — ползунок рядом с MON в Mic (1..100 → −40..0 дБ), идёт и на ПК, и в кодек радио (`ananMonitorTx`). Запись txcap-spk 19:46 (MON выключен): в поток на динамик радио во время передачи не уходит ничего (приёмники и MON — тишина).
+
+## 52. RF Delay в TX-виджете; голос начинается ровно после него (31.10.2026)
+
+Оператор: RF Delay (байт 13 Transmitter Specific) — общая установка передатчика, по умолчанию 25 мс (готовность T/R); задержка начала голоса привязана к ней и не больше.
+- TX-виджет: строка «RF Delay» 1..255 мс (AppSettings `AnanRfDelayMs`, 25). `ananPushCwKeyer` кладёт её в опции, `buildTransmitSpecific` шлёт байт 13 во всех режимах (раньше только с включённым ключом, 20 мс). Тест протокола дополнен.
+- `P2Transport::fillTxPacket`: первые RF Delay после MOX — тишина, очередь держит только последние 2048 отсчётов модуляции (свежие, без накопления), затем подъём 2 мс. Голос в эфире — через RF Delay после ключа плюс ~10 мс запаса очереди; хвоста задержки сверх этого нет.
+- Микрофон радио в начале передачи: без тишины, подъём 5 мс (задержку держит транспорт).
+
+## 53. Видимые чекбоксы во всех виджетах (31.10.2026)
+
+Оператор (скриншот CW-виджета): квадратики чекбоксов не видны. Причина: свой лист стилей виджета `QCheckBox { color… }` переводит отрисовку на style sheet, у индикатора которого нет рамки на тёмном фоне. `main.cpp`: один стиль на всё приложение — `QCheckBox::indicator` 12×12, рамка #8a96a3, наведение и отмеченный — #00b4d8, отключённый — #4a5560. Виджеты, где индикатор стилизован своим листом, остаются как были.
+
+## 54. TX-виджет почищен; RF delay в панели ANT; MON/DUP в TX (31.10.2026)
+
+- RF delay — из TX-виджета в панель ANT (оверлей панорамы), справа от LNA: поле со стрелками вверх/вниз (QSpinBox), шаг 1 мс, 1..255, по умолчанию 25 (`AnanRfDelayMs`).
+- TX-виджет: строка профиля TX + Success/Byp/Mem и кнопки ATU/MEM убраны (собраны в скрытом контейнере — остальной код к ним обращается). Строка кнопок: TUNE, MOX, MON, DUP. MON — `TransmitModel::setSbMonitor`, состояние из `micStateChanged`; DUP — `AnanDuplex`.
+- Mic-виджет: кнопки MON/DUP скрыты; строка уровня — «Mon lvl:» (подпись 48, значение 46 px, как TX Low/TX High).
+
+## 55. RF delay по сетке ANT; голос в динамике радио; отправка пакетов (31.10.2026)
+
+- Панель ANT: строка LNA разбита на те же три колонки, что ANT1..3 — LNA под ANT1, подпись «RF delay» под ANT2 (вправо), поле со стрелками под ANT3.
+- Голос в динамике трансивера при выключенном MON: поток, который программа шлёт на динамик (порт 1028), во время передачи — нули. Доказательства: «ANAN diag … speaker … peak 0» во всех окнах 20-секундной передачи 19:45:49–19:46:08, запись txcap-spk 19:46 (приёмники и MON — тишина весь TX). Значит, звук возникает в самом трансивере (аналоговый путь микрофон → усилитель кодека/наводка), MON и его уровень на него не влияют. Проверка оператором: заглушить Codec в заголовке окна и передать — если голос слышен, он не из программы; сравнить с Thetis и с выключенным 20dB.
+- Пакеты на трансивер: у UDP нет своей буферизации (writeDatagram сразу в стек). Задерживать могла наша отправка по таймеру 1 мс на системном тике Windows 15,6 мс — теперь на время сеанса `timeBeginPeriod(1)` (`P2Transport::start/stop`), датаграммы помечены DSCP 46 (EF). Настройки драйвера сетевой карты (Interrupt Moderation, Energy-Efficient Ethernet, Green Ethernet, Flow Control — выключить) задаются в Диспетчере устройств, программой не меняются.
+
+## 56. Монитор (ПЛИС); строка состояния; PA Level Calibration (31.10.2026)
+
+- Монитор: оператор нашёл в ПЛИС глушение звука на передаче (осталось от поиска щелчка, причина которого была в программе) и убрал его — MON работает.
+- Строка состояния: убраны слева точки band stack, +PAN, TNF/CWX/ASR/DVK/FDX и разделитель до названия радио; справа — температура PA и напряжение питания с разделителем. Виджеты созданы в скрытых контейнерах (их обновляет остальной код).
+- Настройки → ANAN Hardware → группа «PA Level Calibration»: ползунки 0..100 % для 160, 80, 60, 40, 30, 20, 17, 15, 12, 10, 6 м (`AnanPaCal_<band>`, по умолчанию 64 % = 162/255, прежние «100 Вт»). Это предел привода на бенде: `applyDrive` = 255 × cal% × √(ползунок%/100) — RF Power и Tune Power при 100 % дают ровно этот уровень. Изменение ползунка или смена бенда применяются сразу (таймер ANAN 300 мс сравнивает «бенд:значение» и вызывает `applyDrive` с последним уровнем). `AnanDriveFor100W` больше не используется. 6 м — ключ бенда «8m» (всё выше 32 МГц).
+
+## 57. Точки band stack возвращены; поле RF delay; Power Meter Calibration (31.10.2026)
+
+- Строка состояния: точки band stack возвращены («от и до исключительно» — первый и последний элементы остаются); скрыты +PAN, TNF/CWX/ASR/DVK/FDX и разделитель.
+- Панель ANT: «LNA:» убрана, кнопка LNA в колонке подписей; поле RF delay 58 px («255 ms» + стрелки), текст по центру.
+- ANAN Hardware: группы калибровки построены одной функцией (3 в ряд, ползунок 110 px). Новая «Power Meter Calibration»: −50..+50 %, 0 посередине (`AnanPwrCal_<band>`); `ananFwdDisplayWatts` умножает показываемую прямую мощность на (1 + %/100) на текущем бенде, читается при каждом показании. Общий множитель `AnanFwdPowerCal` (48/54 с 29.10) убран из `couplerWatts`: отражённая мощность и КСВ (`couplerSwr` → TX:SWR) считаются из чистых данных.
+
+## 58. Разделитель внизу; стрелка-курсор у меню панорамы; чистка настроек — начало (31.10.2026)
+
+- Строка состояния: разделитель « · » между точками band stack и названием радио.
+- Кнопки меню слева на панораме (←, +RX, Band, ANT, Display, Memory …) и все их панели: курсор — обычная стрелка (`SpectrumOverlayMenu` и каждая панель `setCursor(Qt::ArrowCursor)`; раньше наследовали курсор панорамы).
+- Чистка настроек (по одной, с проверкой; спорное — вопрос оператору):
+  - Radio Setup → Network → Advanced: убраны строки FlexRadio — Enforce Private IP Connections, Network MTU, VITA-49 RX buffer (созданы в скрытом контейнере: на них ссылается `updateRadioCapabilityVisibility`). Группа «Agent Automation (MCP)» оставлена до решения оператора — это функция программы (мост автоматизации для ИИ-ассистента), не Flex.
+  - File: меню убрано целиком (оператор). Строится, но не добавляется в строку меню (на его действия ссылается код); Ctrl+Q оставлен окну. Автопроверка обновлений AetherSDR и пункты Help → Check for Updates — решить при разборе Help.
+  - Agent Automation (MCP) оставлена: мост автоматизации пригодится для проверки интерфейса ИИ-ассистентом (нужен доступ к оболочке на ПК оператора или локальный Claude Code с tools/aether_mcp.py).
+
+## 59. Калибровка частоты под 122.88 МГц; заголовки разделов не кликаются; чистка Audio/Transmit/Phone & CW/Receive; имена антенн (31.10.2026)
+
+- Calibration: «Effective clock» считался от 76.8 МГц (HL2). Добавлены `Hl2FreqCal::kAnanClockHz = 122.88 МГц` и `effectiveClockHz(ppb, nominal)`; страница, лог и мост автоматизации показывают 122 880 000 Гц × (1+ppb/1e9). Сама коррекция — чистое отношение (`scaleForPpb`), применяется к целым Гц команды NCO до `P2Protocol::phaseWord()` (деление на 122.88 МГц), поэтому от частоты генератора не зависит. Проверка: 14.074 МГц, +1000 ppb → команда 14 073 986 Гц, сдвиг DSP −0.074 Гц, итог −0.006 Гц (шаг фазового слова 0.0286 Гц). Верхний предел своего эталона: 38.4 → 61.44 МГц.
+- Дерево настроек: заголовки разделов (RADIO, RECEIVE & TRANSMIT …) — только надписи: фильтр `NavigationHeaderClickBlocker` гасит нажатия/двойные щелчки по ним (раньше щелчок перескакивал на соседнюю страницу, двойной сворачивал группу); `setItemsExpandable(false)`.
+- Audio: «Radio Audio Outputs» (Flex line out/наушники) и «Connection» (сглаживание потерь VITA-49, запрет сна) убраны в скрытый контейнер; запрет сна сохраняет своё значение (по умолчанию включён). Recording: строка «Record Mode» (Radio/Client Side) скрыта — запись всегда на ПК.
+- Страницы Transmit, Phone & CW, Receive не регистрируются (Flex-тайминги/интерлоки/профили, дубли апплетов, Flex-смещение частоты и 10 МГц). Цифра на передачу у нас есть (DAX/TCI/FreeDV через `submitTxAudio`); группа «Digital» содержала только RTTY Mark (Flex) и переключатель окна RTTY-декодера. Вместе со страницей ушли переключатели декодера CW RX/TX и RTTY Decode — вопрос оператору, куда их перенести.
+- Antennas: страница переписана — три порта ANT1–ANT3, имя до 8 символов, хранится в `AnanAntName1..3` (AppSettings; прежнее хранилище Flex привязано к серийному номеру, которого нет до подключения). Имена показываются на кнопках ANT1–3 панели ANT панорамы (RX ANT и TX ANT; длинные — с многоточием, полное имя с портом в подсказке; кнопки равной ширины). Обновление — сигнал `RadioModel::antennaAliasesChanged` → `SpectrumOverlayMenu::syncAnanAntennas`.
+
+## 60. Transmit/Receive переделаны: профили TX, матрицы User Out, декодеры; антенна в строке состояния (31.10.2026)
+
+- **User Out (открытые коллекторы OC1..OC7), по Thetis Penny.cs.** Две матрицы — приём и передача, строки 160 80 60 40 30 20 17 15 12 10 6 м (без вещательных и УКВ), столбцы OC1..OC7. У передачи ещё «действие» на каждый выход: MOX / TUNE / MOX+TUNE (Thetis TXPinActions без двухтонового; по умолчанию MOX+TUNE). Приём — строка диапазона RX1 (приёмник на ADC1), передача — строка диапазона частоты передачи; вне любительских диапазонов (IARU, широкие края) все выходы выключены, как «GEN» в Thetis; при остановке радио — 0. Протокол: High Priority байт 1401 = биты << 1 (спец. «[1] = Open Collector 1», Thetis network.c). Ключи: `AnanOcRx_<band>`, `AnanOcTx_<band>` (маски), `AnanOcTxAction1..7`. Hl2Backend (таймер ANAN) → `P2Transport::setOpenCollectorMatrix` → `openCollectorBits()` (P2Protocol, чистая функция) на каждой отправке High Priority; смена выходов пишется в журнал («ANAN: User Out …»). Тест в `anan_angelia_protocol_test` (строки диапазонов, RX/TX/TUNE, байт 1401) — проходит.
+- **Transmit:** «TX Profiles» — список, Save (в выбранный), Save As…, Delete; выбор профиля применяет его сразу. В профиле: RF power, TUNE power, источник микрофона (PC/MIC/TEST), усиление микрофона, +20 dB, PROC вкл/уровень, TX-фильтр low/high, уровень монитора, TX-эквалайзер (вкл + 8 полос). Хранение: `AnanTxProfiles` (JSON), `AnanTxProfile`. Ниже — матрица User Out передачи.
+- **Receive:** «Decoders» — CW Decode RX/TX и RTTY Decode (перенесены с убранной Phone & CW; применяются при закрытии окна), ниже матрица User Out приёма. Flex-содержимое Transmit/Receive удалено из кода.
+- **Строка состояния:** после имени радио через разделитель — антенна: сверху номер (ANT1..3), снизу имя (если задано). На приёме RX ANT, на передаче TX ANT красным; подсказка с полным текстом. Опрос 250 мс.
+
+## 61. Матрица TX без действий; USB Cables, TX Band Settings, Inhibit during TUNE убраны; выбор COM-порта по-виндовому (31.10.2026)
+
+- User Out — Transmit: строка «Action» убрана, матрица выглядит как у приёма и действует на любую передачу (MOX, TUNE, CW). Бэкенд шлёт всем выходам действие MOX+TUNE; поддержка действий в протоколе (`OcTxAction`) оставлена.
+- Radio Setup: страница USB Cables не регистрируется. Меню Settings: USB Cables…, TX Band Settings…, Inhibit during TUNE скрыты (объекты остаются — на них ссылаются `applyCapabilitiesToUi` и сигнал диалога). Для нашего радио Inhibit during TUNE и так ничего не делал (`m_txBandSettings` пуст).
+- Выбор последовательного порта (Serial & Controllers → Port Configuration, Peripherals → Serial): на Windows `SerialPortCombo::populate` даёт список COM1..COM32 по номерам — присутствующие с описанием («COM3 - USB Serial Port»), остальные «COMn (not present)», чтобы порт можно было выбрать до подключения устройства; сохранённый COM с номером > 32 добавляется; пункта «Custom…» с путём /dev/… больше нет; сохранённый линуксовый путь заменяется первым присутствующим портом. Проверено на макете (Qt, offscreen).
+- Справка оператору: Settings Browser — просмотр/правка базы настроек AetherSDR.db (ключи приложения, станция, документы радио), экспорт для диагностики; AetherRX — настройки клиентского шумоподавления (NR2/NR4/DFNR/RN2/BNR/NNR) в звуковом тракте программы — к нашему приёму применяется.
+
+## 62. Динамик трансивера (кодек) играет звук после AetherRX (31.10.2026)
+
+- Было: кодек получал «сырой» микс приёмников из Hl2Backend (поток ввода-вывода), а AetherRX (NR, gate, EQ, компрессор, tube, exciter, boost/trim) обрабатывал только звук ПК.
+- Стало: `anan::AnanCodecFeed` (новый, header-only). AudioEngine после всей цепочки AetherRX и до громкости ПК (громкость ПК — аттенюация устройства) кладёт звук основного источника в FIFO (48 кГц, линейный ресемплер). Кодек-микшер на потоке ввода-вывода (часы радио) берёт оттуда, добавляет MON, громкость Codec и мягкое ограничение — как раньше.
+- Два тактовых генератора (звуковая карта ПК и радио): FIFO держит 50 мс, выше 90 мс выбрасывает кадр, ниже 25 мс повторяет кадр; при опустошении (застой потока GUI) — тишина и повторное заполнение, радио при этом получает нули вовремя. Проверено моделью: дрейф ±100..300 ppm, без пропусков и скачков.
+- PTT с тангенты: хук нажатия обнуляет содержимое FIFO и следующие 250 мс поступающего звука (помеха контакта приходит раньше статуса). Задержка 80 мс на этом пути не нужна и снята.
+- Запасной путь: если AudioEngine не даёт звука > 300 мс (звук ПК выключен), кодек играет прежний сырой микс. FDV — по-прежнему прямой путь.
+- Задержка звука в кодеке теперь ≈ задержка звука ПК до выхода цепочки + 50 мс.
+
+## 63. Tools и About; Wideband Monitor по протоколу (01.11.2026)
+
+- Tools: AetherRX перенесён из Settings сразу под AetherTX. Скрыты Pre-tune ATU Bands, Clear ATU Memories, Radio Health (объекты остаются — на них ссылается `updateToolsMenuState`).
+- Help: меню не добавляется в строку меню (всё в нём вело на aethersdr.com: руководство, новости, пожертвования, issues, обновления). Автопроверка обновлений AetherSDR и значок UPDATE отключены (`wireUpdateChecker`, `restoreKnownUpdate`). В строке меню вместо Help — пункт «About».
+- About: переписан — «Software-defined radio client for the Apache Labs ANAN-100D (openHPSDR Protocol 2)»; версия; блок: Based on AetherSDR (AetherSDR Contributors), Founder — Jeremy Fielder, KK7GWY (основатель и ведущий AetherSDR, GOVERNANCE.md), This version — modified by N7DDC for the ANAN-100D, DSP — WDSP © Warren Pratt NR0V (GPL-2.0+), FreeDV — codec2 © David Rowe VK5DGR (LGPL-2.1), RADE/Opus (BSD), Built with; подвал — © AetherSDR Contributors, modifications © N7DDC, GPL v3, без гарантий, ссылки на LICENSE/THIRD_PARTY_LICENSES. Убраны: Contributor Logbook, ссылки на GitHub/hamqsl, строки про FlexRadio/Icom/D-STAR, renderer.
+- **Wideband Monitor** (Tools → Wideband Monitor…, вместо HL2 «Wideband Bandscope»):
+  - Протокол: General байты 23..28 (`WidebandOptions`: маска АЦП, 512 отсчётов × 16 бит, период кадра 20..255 мс, 32 пакета на кадр); порты 1027 (ADC1) / 1028 (ADC2); `parseWidebandPacket`. Включается только пока окно открыто (`P2Transport::setWideband`), иначе байты 23..28 нулевые, как раньше.
+  - Сборка кадра: 32 пакета подряд от seq 0 (или кратного 32) = 16384 непрерывных отсчёта 122,88 МГц; пропуск — кадр отбрасывается. Thetis каждый пакет по 512 отсчётов отдаёт потоковому анализатору как непрерывный сигнал, хотя между кадрами разрыв, — отсюда его плохая картинка.
+  - Окно: БПФ 16384 с окном Блэкмана–Харриса, без постоянной составляющей, шаг 7,5 кГц, 0–61,44 МГц, dBFS на бин (полная синусоида = 0 dBFS; проверено: 14,2 МГц, −6 dBFS → −6,4 с учётом гребешка), усреднение мощности 1..50 кадров, спектр + водопад, пик по пикселю, любительские диапазоны подсвечены, красная метка — активный приёмник. Колесо — масштаб, перетаскивание — сдвиг, двойной щелчок — настроить активный приёмник. Настройки: АЦП, период 20/50/100/200 мс, усреднение, верх/низ шкалы (`AnanWb*`).
+
+## 64. PureSignal: виджет PS, окно Amp View, 2 Tone (01.11.2026)
+
+- About: «Modified by N7DDC (dfainitski@gmail.com) for the Apache Labs ANAN-100D».
+- **Протокол (по deskHPSDR new_protocol.c / Thetis):**
+  - DDC Specific во время MOX с PS (`PsDdcOptions`): DDC0 = АЦП обратной связи (ADC0), DDC1 = ЦАП передатчика (индекс АЦП = число АЦП, 2), оба 192 кГц / 24 бит, байт 1363 = 0x02 (DDC1 синхронизирован с DDC0), включён DDC0; приёмники DDC2/DDC3 работают дальше (полный дуплекс).
+  - High Priority: на передаче DDC0 и DDC1 = фазовое слово TX; Alex0 бит 18 (PS) на передаче, Alex1 бит 18 всегда при включённом PS; вход обратной связи: внутренний ответвитель / EXT1 (биты 9+11) / RX Bypass (бит 11); байт 1443 (АЦП0) на передаче = аттенюатор PS.
+  - Transmitter Specific байт 59 (ADC0 на передаче) = аттенюатор PS (`buildTransmitSpecific(..., psFeedbackAttDb)`).
+  - Пакеты DDC0 (порт 1035) на передаче: 238 отсчётов, чередуются DDC0 (обратная связь) / DDC1 (ЦАП) → `decodePsPairs` → пары I/Q в `pscc(ch, 1024, tx, rx)` прямо на потоке ввода-вывода (`P2Transport::setPsSink`).
+  - Тесты протокола (anan_angelia_protocol_test): DDC Specific, разбор пар, слова DDC0/1, биты Alex, байт 59 — проходят.
+- **WDSP** (calcc/iqc уже в TXA): `core/dsp/WdspPureSignal.h` — объявления pscc, SetPSControl/Mox/HWPeak/MoxDelay/TXDelay/LoopDelay/FeedbackRate, GetPSInfo/MaxTX/HWPeak/Disp, PSSave/RestoreCorr, TXA PostGen.
+- **`anan::AnanPureSignal`** (GUI-поток, дочерний объект Hl2Backend; `Hl2Backend::pureSignal()`): настройки `AnanPs*`; параметры WDSP (обратная связь 192 кГц, HW peak 0.2899 — значение Thetis для P2, MOX delay 0,2 с, Amp delay 150 нс, Loop delay 0); SetPSMox на каждом фронте ключа (не в CW — несущую делает ключ ПЛИС); командный автомат Thetis (Auto = reset+automode, Single = reset+mancal, Reset, Off с «прокачкой» нулей через pscc, Load = PSRestoreCorr + turnon); автоаттенюатор Thetis (уровень 129..181 норма, цель 152,3; при выходе за пределы — сброс, att += 20·lg(fb/152,3), перезапуск); 2 Tone — пост-генератор TXA (режим 1, 700/1900 Гц, 0,49 каждый, в LSB тоны ниже несущей) через `Hl2TxDsp::setTwoTone`.
+- **Проверка на модели** (WDSP под Linux, TXA 24→192 кГц, пост-генератор 2 тона, модель PA AM/AM 1,6r/(1+0,45r²), AM/PM 0,35r²/(1+0,6r²), обратная связь = PA·0,2, эталон = выход TXA·0,2899, pscc по 1024): ИМД3 −20 дБн без PS → −60…−95 дБн с PS за 8 с; уровень обратной связи 169 (норма), коррекция включена. Подтверждён порядок tx/rx и знак фазы для графика.
+- **Виджет PS** (кнопка «PS» в ящике кнопок, категория Transmit): PS вкл/выкл, Auto/Single, Calibrate, Reset; **2 Tone** — только USB/LSB (иначе неактивна), ключит MOX через путь TX-виджета (`TxApplet::setMoxFromTool`), сама отпускается, если передача кончилась, режим ушёл из SSB или MOX не включился за 3 с; Amp View…; индикаторы FEED (идут пары), FB n (цвета Thetis: красный <90 < жёлтый ≤128 < зелёный ≤181 < синий), CORR (коррекция применяется), состояние автомата calcc, число калибровок; вход обратной связи, аттенюатор 0..31 дБ (ползунок следует автоаттенюатору), Auto attenuate, HW peak, MOX delay, Amp delay.
+- **Окно Amp View** (`PsAmpViewDialog`): графики последней калибровки (GetPSDisp) — AM/AM усилителя (точки), AM/PM усилителя (фаза относительно самых громких 5 %), усиление и фаза коррекции (линии), идеальная линия; шкала фазы автоматическая; «Hold curves»; тесты: 2 Tone, Calibrate, Auto, Reset, частоты тонов и уровень (дБ на тон); сохранение/загрузка файла коррекции (Документы/AetherSDR/PureSignal); статус: состояние, уровень обратной связи, калибровки, аттенюатор, GetPSMaxTX и HW peak, число пар, все info[0..15].
+- Проверить на радио: идут ли пакеты DDC0 (в журнале при отпускании «PureSignal feedback packets»), уровень FB при 2 Tone, работа автоаттенюатора; для голоса пик TX ограничен нашим ALC (0,85) — если калибровка на голосе не завершается, сравнить GetPSMaxTX с HW peak в Amp View.
+
+## 65. PureSignal: измерение IMD в Amp View, журнал калибровок (01.11.2026)
+
+- Оператор: после Calibrate побочки уходят вниз и возвращаются вверх; где посмотреть результат.
+- Amp View: под кривыми — спектр сигнала с ответвителя (то, что видит PS, DDC0) вокруг двух тонов в дБ относительно одного тона, отметки IMD3..IMD9; ниже — история IMD3 (красная) и IMD5 (оранжевая) за 30 с (4 замера в секунду). Справа группа «IMD»: IMD3/5/7/9 в дБн (худшая сторона каждой пары), частоты тонов, шум рядом. Замер: последние 16384 пары обратной связи (85 мс, `AnanPureSignal::feedbackSnapshot`, кольцо на потоке I/O), БПФ 16384 Блэкман–Харрис, шаг 11,7 Гц, энергия линии ±4 бина; только пока идёт передача с PS.
+- Журнал: на каждую калибровку строка «PureSignal: calibration N, feedback, correcting, att, state, info0..3, info6, info12»; срабатывание автоаттенюатора — отдельная строка (сброс коррекции, новый аттенюатор).
+- Модель (WDSP, статичный PA): одиночная калибровка держится (ИМД3 −86 дБн 30 с подряд, state STAYON) — сам WDSP коррекцию не теряет. Подозреваемые на радио: автоаттенюатор (уровень FB после калибровки вне 129..181 → сброс коррекции и перекалибровка), дрейф PA (прогрев) при Single, — покажет журнал.
+
+## 66. PureSignal: HW peak по измерению, фиксируемые кнопки, PS в профиле TX (01.11.2026)
+
+- Журнал оператора (10:40): калибровки каждые ~0,3 с, ошибок calcc нет (info0..3 = 0), уровень FB 130..155, автоаттенюатор не срабатывал (17 дБ) — а IMD3 около −20 дБн. Значит, поправка считается, но не та.
+- Модель WDSP: ключевой параметр — HW peak (амплитуда DDC1 при полной шкале DUC). iqc ищет поправку по |выхода TXA|, calcc строит её по |DDC1|/HW peak; при несовпадении: реальный 0,40 при заданном 0,2899 → IMD3 −27 дБн (вместо −80…−99 при совпадении); 0,33 → −34; ошибка 5 % → −42; реальный меньше заданного → калибровка не идёт вовсе. Значение 0,2899 взято из Thetis/deskHPSDR, для нашего пути (наша упаковка 24 бит в DUC) не проверено.
+- **Измерение HW peak** (P2Transport): пик |DDC1| / пик |IQ, отправленного в DUC| за 0,5 с (только при отправленном пике ≥ −6 дБFS) — точный масштаб независимо от того, включена ли поправка; передаётся в AnanPureSignal вместе с парами.
+- **Auto HW peak** (по умолчанию включено): если измерение дважды подряд отличается от настройки больше чем на 1,5 %, HW peak ставится по нему и калибровка перезапускается (строка в журнале). В строке каждой калибровки теперь HW peak и measured. В Amp View: «HW peak X (measured Y)» — красным при расхождении, кнопка «Use measured HW peak». В виджете: «Auto HW peak» и «measured …».
+- **Кнопки фиксируются:** в виджете вместо списка Auto/Single — две кнопки-переключателя Auto и Single; Calibrate горит, пока одиночная калибровка не применена (STAYON + поправка); у всех кнопок вид нажатия; в Amp View то же (Auto, Single, Calibrate, 2 Tone красным).
+- **PS в профиле TX:** вкл/выкл, Auto/Single, вход, авто-аттенюатор, аттенюатор, HW peak, Auto HW peak, MOX/Amp delay, частоты и уровень 2 Tone — сохраняются в профиль и применяются из него (`AnanPureSignal::applySettings`; без радио — в AppSettings); виджет обновляется (`settingsChanged`). Все настройки PS и раньше запоминались в AppSettings (`AnanPs*`).
+
+## 67. 2 Tone и монитор (01.11.2026)
+
+- Оператор: в MON слышен тихий искажённый сигнал, а не чистый двухтон; предложение формировать 2 тона прямо на передатчике, как тон TUNE.
+- Разбор: MON на ANAN всегда играл обработанный микрофон (раздел про MON), а не то, что уходит в эфир; во время 2 Tone передатчик получает тоны пост-генератора TXA, а микрофон просто шумел в MON. Журнал over: IQ в DUC среднее −3,3 дБFS ровно (−4 по 250 мс) — это мощность чистого двухтона 0,49+0,49; 4 пакета недогрузки за 75 с.
+- Почему 2 тона идут через TXA, а не как TUNE: поправка PureSignal (iqc) стоит в цепочке TXA после пост-генератора; тон TUNE формируется в транспорте после TXA и поправку не получает — двухтон оттуда PS исправить не смог бы. Так же сделано в Thetis (gen1 TXA).
+- Сделано: во время 2 Tone MON играет сами тоны (те же частоты и уровень, 24 кГц) вместо микрофона (`Hl2Backend::ananMonitorTx`, `AnanPureSignal::twoToneOn`).
+
+## 68. MON = то, что уходит на передатчик; CFIR как в Thetis; панорама TX с PS (01.11.2026)
+
+- **MON**: больше не отвод микрофона. Демодулируется ровно тот IQ, что идёт в DUC
+  (`AnanTxMonitor.h`: SSB/DIGI/DSB/CW — Re(iq), AM — огибающая минус несущая, FM —
+  дискриминатор ±5 кГц; ФНЧ 127 отводов 8 кГц, 192 → 24 кГц), в обработчике `iqReady`
+  (поток I/O) → `ananMonitorTx` (PC + кодек). Микрофон, 2 TONE, TUNE, PROC, коррекция PS —
+  всё слышно как есть, без переключений по моде/источнику. Синтез тонов anan110 удалён.
+  FIFO MON кодека: старт с 40 мс запаса, пере-заполнение при опустошении (нет треска).
+- **CFIR** (`SetTXACFIRRun`, Hl2TxDsp::setCicCompensation): Thetis cmaster.cs включает его
+  на любом Protocol 2 («always ON with new protocol firmware»). Его усиление в полосе
+  1/droop^5 = 0.914 стоит между коррекцией PS и DUC и входит в HW peak 0.2899. Без CFIR
+  измеренное DDC1/DUC = 0.324 — те самые 12 %, которые anan110 «подгонял» авто-HW-peak.
+  Теперь: HW peak = 0.2899 (Thetis), измерение показывается как DDC1/DUC × 0.914 ≈ 0.296,
+  Auto HW peak по умолчанию выключен; настройки и профили без `cfgVer` 2 сброшены на 0.2899.
+- **Панорама TX**: DUC IQ при работе PS содержит предыскажение (продукты, гасящие продукты
+  усилителя) — это и были «интермоды двухтона». Двухтон верный (постгенератор TXA, как
+  Thetis setup.cs chkTestIMD). Пока PS подаёт обратную связь, панорама TX показывает
+  DDC0 (сигнал с ответвителя, реальный РЧ-выход), приведённый к уровню DUC.
+- **Auto-attenuate**: восстановление как Thetis timer2code — сохраняется, шёл ли Auto или
+  незаконченная Single-калибровка; законченная Single-коррекция больше не перекалибруется.
+- Single (Calibrate) = снимок: коррекция фиксируется (STAYON) и дальше не следит за
+  прогревом PA; Auto калибрует непрерывно.
+- Симулятор (pssim/sim4): CFIR + HW peak = отношение×0.914 → IMD3 −62..−82 дБн; с
+  отношением без 0.914 калибровка не сходится вовсе (как и ожидалось).
+
+## 69. MON при подключении; классический PureSignal Thetis (01.11.2026)
+
+- **MON**: в логе 12:27 нет ни одной строки «ANAN MON on» — бэкенд всю сессию считал MON
+  выключенным. `RadioModel::dispatchTransmitControl` выбрасывает команды, пока радио не
+  подключено: нажатие MON до подключения меняло только кнопку. Теперь при подключении
+  текущие MON и уровень отправляются заново. В лог: состояние MON при нажатии ключа
+  («ANAN MON at key-down: on/off, level, to codec + PC») и что сыграно за over (отсчёты,
+  пик) — чтобы было видно, работает ли он.
+- **Лог прошивки с исправленной синхронизацией**: HW peak измеренный 0.2956 стабильно
+  (Thetis 0.2899), калибровки Auto каждые 0,35 с без ошибок, обратная связь плавно
+  151 → 128 за 25 с (прогрев PA, Auto следит), IMD3 −31 стабильно. 1–4 пакета недогрузки
+  TX за over: микрофон радио идёт через поток GUI, его задержки голодят TXA (отдельно).
+- **Алгоритм**: Thetis 2.10.3.x работает на классическом calcc/iqc (1164 строки), у нас был
+  переписанный calcc WDSP 2.10 (2540 строк). Симулятор с PA с памятью (sim5: огибающая
+  с памятью, короткая память, шум обратной связи) разницы однозначно не показал (оба
+  −42…−58 дБн, разброс большой), поэтому решает проверка на радио.
+- `third_party/wdsp/classic/`: calcc.c/h, iqc.c/h из Thetis без изменений, TXA.c/h —
+  upstream с классическими интерфейсами calcc/iqc. CMake-опция `AETHER_WDSP_PS_CLASSIC`
+  (по умолчанию ON): upstream копируется в каталог сборки, classic поверх. Хост:
+  `GetPSDisp` классический (сплайны 16×4, кривая коррекции считается как в xiqc). В логе:
+  «PureSignal engine: Thetis classic calcc/iqc» или «WDSP 2.10 calcc/iqc».
+
+## 70. Задержка DDC1 → DDC0 измеряется; Reset как в Thetis (01.11.2026)
+
+- Оператор: MON работает. Calibrate и Reset дают одинаковые −30 (Single), кривая коррекции
+  (зелёная) лежит произвольно и не меняется, а должна лечь между «двумя синими линиями».
+- Две синие линии = AM/AM открыт в петлю: при росте и спаде огибающей выход разный. Так
+  бывает, когда отсчёты опорного DDC1 и обратной связи DDC0 сдвинуты во времени: безынерционная
+  коррекция проходит по середине петли и ничего не исправляет. Модель (классический calcc):
+  сдвиг 4 отсчёта (21 мкс) → −37 дБн, 8 → −34 (без сдвига −59…−79); тот же сдвиг, скомпенсированный
+  `SetPSTXDelay(+8/192000)`, → −79.
+- `AnanPureSignal::measureDelay`: раз в секунду при подаче обратной связи — взаимная корреляция
+  огибающих |DDC1| и |DDC0| (±79 отсчётов, меньше половины периода биений 1200 Гц), уточнение
+  параболой. Знак: + = обратная связь отстаёт, Amp delay = это значение. Проверено на синтетике
+  (−12, 0, 3, 8, 40 отсчётов — точно). В лог при изменении > 100 нс; в Amp View строка
+  «TX ref -> feedback delay» и кнопка «Use measured delay» (ставит Amp delay и калибрует заново).
+- Amp delay: диапазон ±1 000 000 нс (WDSP до ±1024 отсчётов; отрицательный задерживает обратную
+  связь).
+- Reset: как Thetis — сбрасывает коррекцию; Auto учится заново, Single остаётся без коррекции до
+  Calibrate (раньше Reset в Single сразу запускал новую калибровку — выглядел как Calibrate).
+
+## 71. Главная ошибка PS: обратная связь была в зеркальной (сопряжённой) системе (01.11.2026)
+
+- Оператор: задержка 10,8 мкс применена, значения зелёные, график изменился, ИМД3 всё те же −30
+  (и так же после Reset).
+- Причина: у проводов P2 противоположная «рукость». DDC кладёт сигналы выше своего NCO на
+  отрицательные частоты (`Hl2RxDsp`: «the HPSDR wire puts signals above the NCO at negative
+  frequency», поэтому спектр там сопрягается), а DUC берёт выход TXA без сопряжения
+  (`Hl2TxDsp`: сопряжение перевернуло бы боковую). Значит пары DDC0/DDC1 — комплексно
+  сопряжённая копия того сигнала, который исправляет iqc. calcc выучивал AM/PM с обратным
+  знаком: амплитуда исправлялась, фаза удваивалась, итог — как без PS.
+- Модель (классический calcc, PA с AM/PM): PS выкл −21,0; пары сопряжены −21,2 (лучшее −23);
+  в одной системе −79,2. Ровно симптом «Calibrate = Reset».
+- Исправление: `P2Transport` сопрягает обе последовательности (DDC1 и DDC0) сразу после
+  `decodePsPairs` — calcc, снимки Amp View и панорама TX с обратной связью теперь в системе TXA/DUC.
+  Модуль задержки и HW peak от сопряжения не зависят.
+
+## 72. После сопряжения калибровка отклоняется; A/B-переключатель и диагностика (01.11.2026)
+
+- Оператор (anan114): зелёной линии нет, Calibrate остаётся нажатой.
+- Лог 13:48: каждая попытка отклонена scheck классического calcc, info[6] = 0x10 («corrected drive
+  < 0»: сплайн усиления cm уходит ниже нуля), коррекция не включается — поэтому кривой нет, а
+  Calibrate горит (Single не завершилась). В anan113 (13:38, без сопряжения, та же задержка 10,85 мкс)
+  калибровки принимались.
+- Противоречие: cm строится только из модулей |tx|, |rx| (ym = hw·|tx| / (rx_scale·|rx|)), а модули
+  от сопряжения не зависят; задержка WDSP (delay.c) тоже действует на I и Q одинаково. На модели
+  сопряжённые и несопряжённые пары не дают отказов. Причина отказов пока не доказана.
+- Сделано: переключатель в Amp View «Feedback in TX handedness» (вкл = сопряжение, выкл = как
+  в anan113, сброс коррекции при смене) для A/B на радио; расшифровка info[6] в Amp View («Last
+  calibration check») и в логе; в лог после каждой калибровки — подогнанное усиление ym по пяти
+  полосам выхода x (min..max, число отсчётов) — видно выбросы на малых амплитудах.
+- Calibrate: повторное нажатие, пока Single не завершилась, отменяет её (как Thetis
+  btnPSCalibrate); действующая коррекция сохраняется.
+
+## 73. Тест прошивки: DDC0 и DDC1 оба на ЦАП (01.11.2026)
+
+- Лог 14:31: с сопряжением (галочка) 5 калибровок приняты, без — отклонены «corrected drive < 0».
+  Разница только в полосе малых амплитуд x 0..0,2: ym 0,14..10 против 0,01..35 — провалы
+  огибающей двухтона при остаточном сдвиге DDC0/DDC1; приём калибровки на грани.
+- Разработчик ПЛИС разрешил DDC0 брать отсчёты ЦАП (ADC = 2), как DDC1, и попросил тест.
+- `PsDdcOptions.feedbackAdc` до numAdcs (2); `P2Transport::setPsLoopbackTest` (DDC0 = ADC 2 в
+  DDC Specific во время MOX с PS); `AnanPureSignal::setLoopbackTest`; галочка в Amp View
+  «Loopback test: DDC0 = DAC» (не сохраняется). Синхронизация DDC1→DDC0, 192 кГц, NCO обоих =
+  слово DUC — как в обычном PS.
+- В тесте раз в секунду в лог: для целых сдвигов −4..4 остаток |DDC0 − a·DDC1|² / |DDC0|² (a —
+  лучший комплексный множитель), лучший сдвиг (+ = DDC0 позже DDC1) и сдвиг по огибающей.
+  Совпадение отсчёт в отсчёт = минимум на 0 около −100 дБ.
+
+## 74. −28 дБн при 2 Вт: ИМД3 по трём точкам тракта (01.11.2026)
+
+- Лог 14:59: калибровки принимаются и при Amp delay −63 нс, и при 11531 нс; ИМД3 −28 в обоих
+  случаях — компенсация задержки на результат не влияет (на модели давала +40 дБ).
+- Оператор: при ~2 Вт (аттенюатор сам стал 4 дБ) без калибровки −28, с калибровкой −35. При 2 Вт
+  усилитель на 100 Вт даёт ИМД3 заведомо ниже −45, значит −28 рождаются не в усилителе. Отвод
+  обратной связи — резистор 4,7 кОм с выходного трансформатора на вход приёмника; при 2 Вт на входе
+  ~0,1 В, ограничение диодами маловероятно.
+- Разработчик ПЛИС: ADC = 2 не может быть до интерполятора (DDC принимает действительный поток
+  122,88 МГц). Принято; гипотеза раздела 73 снята. Тест DDC0 = DDC1 закрывает путь от мультиплексора
+  до пакета, но не путь АЦП0 → мультиплексор и ЦАП → отвод ADC 2; задержка плывёт в течение over
+  (10,1 → 11,8 мкс), на 10 м 8,75 мкс против 10,85 на 40 м.
+- `AnanTwoTone.h`: ИМД двухтона по записи (Hann, Гёрцель, знак боковой из данных). Раз в секунду
+  при 2 Tone в лог «PureSignal 2-tone chain: host DUC IQ … | DAC data (DDC1) … | coupler (DDC0) …»
+  (ИМД3/ИМД5, уровень тона, баланс) — где появляются продукты: до радио, в ПЛИС/ЦАП или после.
+  `P2Transport::ducSnapshot` (кольцо 16384 отсчётов DUC). В Amp View строка «2-tone IMD3 along the
+  chain». Проверено на синтетике (−40 дБн задано → −40,0 измерено, USB и LSB).
+
+## 75. Результат измерения по трём точкам: искажения между ЦАП и АЦП0, усиление растёт с амплитудой (01.11.2026)
+
+- Лог 20:02–20:04, 40 м, drive 18…36, 2 Tone: host DUC IQ −130 дБн; DAC data (DDC1) −79 дБн
+  (это пол 24-битного DDC); coupler (DDC0) −25…−27 дБн, ИМД5 −36…−40. При коррекции host и DAC
+  data показывают −26 (предыскажение, так и должно быть), coupler −32. Цифровой тракт чист,
+  источник — между ЦАП и АЦП0.
+- Подогнанное усиление ym (= опора/обратная связь, нормировано к 1 на полной шкале) монотонно
+  падает с амплитудой: 1,35 при x 0,2–0,4; 1,19 при 0,4–0,6; 1,10 при 0,6–0,8; 1,04 при 0,8–1,0.
+  ym > 1 внизу = выход меньше линейного на малых амплитудах = усиление усилителя РАСТЁТ с амплитудой
+  примерно на 2,6 дБ от 0,3 до 1,0. Это не компрессия (там ym < 1 внизу), а расширение —
+  характеристика недосмещённого класса AB / класса C (crossover). Согласуется с: ИМД3 почти не зависит
+  от мощности (−25 при 2 Вт, −28 при 46), в полосе 0–0,2 ym до 35 (выход почти ноль), отказы
+  калибровки «corrected drive < 0» (обратная кривая к расширению имеет крутой участок у нуля),
+  рост выхода на 5 дБ за 10 с при неизменном drive (прогрев при малом смещении).
+- Проверить аппаратно: ток покоя PA при нажатом ключе без модуляции; выдаёт ли прошивка сигнал
+  включения смещения PA при бите PA enable (General байт 58 бит 0) — на Angelia смещение включается
+  только во время TX транзисторным ключом от ПЛИС.
+
+## 76. Другой трансивер (проверен с Thetis): задержка ~0, ИМД −25 → −32; проверка «рукости» (01.11.2026)
+
+- Оператор: прежний трансивер неисправен (Thetis на нём тоже не работал). Другой, проверенный с Thetis
+  (Calibrate/Reset дают большую разницу), у нас тоже не работает. Ток покоя PA 1 А на оба транзистора —
+  недосмещения нет; выводы раздела 75 о PA относились к неисправному экземпляру.
+- Лог 20:02 — этот трансивер: задержка DDC1→DDC0 измерена 0…0,6 мкс (11 мкс были неисправностью
+  прежнего); host −130, DAC data −79, coupler без коррекции −25…−27, с коррекцией −32; калибровки
+  принимаются. ym растёт к низу (1,35 при x 0,2–0,4).
+- Добавлено: `TwoToneImd.side` — на какой стороне частот лежат тоны; в лог раз в секунду при 2 Tone
+  «PureSignal handedness check: OK/MISMATCH -- host IQ tones at ±f, PS pairs (as fed to calcc) at ±f/±f»:
+  iqc работает в системе host IQ, calcc обязан видеть пары в той же. Это прямая проверка сопряжения
+  раздела 71 на исправном радио.
+
+## 77. PureSignal работает: −45 дБн; сопряжение пар (раздел 71) было ошибкой (01.11.2026)
+
+- Оператор на исправном трансивере: с галочкой (сопряжение) −32, без галочки −45 дБн — как в Thetis.
+- Лог 20:19–20:20, «handedness check»: с сопряжением MISMATCH (host IQ тоны на +f, пары на −f),
+  без — OK (+f/+f). Цепочка без сопряжения, коррекция включена: host −25,4 (предыскажение), DAC data
+  −25,4, coupler ИМД3 −45,3 / ИМД5 −64,2 дБн.
+- Вывод: пары DDC0/DDC1 PS уже в системе host TXA IQ. Рассуждение раздела 71 (DDC приёмников кладёт
+  сигнал выше NCO на −f, значит PS-пары сопряжены) неверно для PS-DDC, настроенных фазовым словом DUC;
+  на неисправном радио A/B ничего не показывал, отсюда ошибочный вывод.
+- Исправлено: P2Transport больше не сопрягает пары; в AnanPureSignal флаг стал диагностическим
+  «conjugate» (по умолчанию выкл., ключ AnanPsConjugate, старый AnanPsTxaDomain не читается); галочка в
+  Amp View «Conjugate feedback pairs (diagnostic)». Панорама TX с обратной связью теперь не зеркальна.
+  Проверка «handedness check» в логе остаётся.
+
+## 78. Двухтон в боковой фильтра; тестовые органы управления заменены константами (01.11.2026)
+
+- Двухтон шёл в противоположной фильтру боковой: генератор WDSP (gen.c, Q = −sin) кладёт
+  положительную частоту на отрицательную полосу, а TXA этого хоста держит USB на +f. Теперь
+  USB → частоты генератора −700/−1900, LSB → +700/+1900 (`Hl2TxDsp::applyTwoTone`).
+- Константы (`forceConstants` в AnanPureSignal, применяются при загрузке и из профилей TX): HW peak
+  0.2899, MOX delay 0,2 с, Amp delay 150 нс (Thetis P2), автоматический HW peak выкл., пары без
+  сопряжения, тоны 700/1900 Гц по 0,49.
+- Виджет PS: убран раздел Settings (HW peak, Auto HW peak, MOX delay, Amp delay). Amp View: убраны
+  «Use measured HW peak», «Use measured delay», «Conjugate feedback pairs», «Loopback test», поля
+  тонов и уровня (вместо них подпись). Остались: PS, Auto/Single, Calibrate, Reset, 2 Tone, вход
+  обратной связи, аттенюатор, Auto attenuate, Hold curves, файлы коррекции; измерения (задержка,
+  HW peak, ИМД по тракту, проверка calcc) — только для чтения. Логи цепочки ИМД и «handedness» раз
+  в 5 с, задержка — при изменении > 1 мкс.
+- График Amp View: синие точки (AM/AM усилителя) ниже диагонали — компрессия; зелёная (коррекция)
+  выше — обратная функция, зеркальна синей относительно диагонали; их композиция — диагональ. Так и
+  задумано (как AmpView Thetis); то же для фазы (оранжевая и фиолетовая зеркальны относительно 0°).
+
+## 79. Полная автоматика задержки и HW peak; движок WDSP 2.10; знак двухтона возвращён (01.11.2026)
+
+- Оператор: на большой мощности −38; задержка красная (3206 нс); двухтон на панораме всё ещё по
+  другую сторону фильтра.
+- Двухтон: возвращён знак как у полосы TXA (USB +, LSB −, как Thetis). В anan121 знак перевёрнут
+  ошибочно: жалоба на сторону относилась к панораме TX с обратной связью anan114–119, которая была
+  сопряжена (зеркальна). Лог 20:35 (LSB, anan121): host и DDC1 оба на −f, т. е. двухтон перевёрнут
+  относительно речи той же моды (полоса LSB TXA и генератор WDSP в одной системе знаков).
+- Автоматика (`forceConstants`): HW peak стартует с 0.2899 и следует измерению (DDC1/DUC × CFIR,
+  > 1,5 % два раза → установить и перекалибровать); Amp delay стартует со 150 нс и следует измеренной
+  задержке DDC1→DDC0 (сглаживание 0,3, расхождение > 300 нс три измерения подряд → установить, без
+  сброса — следующая калибровка с ней). Значения не берутся из профилей TX и каждую сессию начинаются
+  с умолчаний.
+- Движок PS: CMake-строка `AETHER_WDSP_PS_ENGINE` = `wdsp210` (по умолчанию) | `classic`; прежний
+  bool `AETHER_WDSP_PS_CLASSIC` из кэша больше не читается, так что смена умолчания доходит до
+  существующего каталога сборки. Проверено конфигурированием обоих вариантов.
+
+## 80. Amp View: компоновка; оценка −40 дБн (01.11.2026)
+
+- По скриншоту оператора: правая панель фиксированной ширины 380 (текст статуса/ИМД больше не
+  растягивает окно — устраняет «дёргание»), статус выровнен вверх-влево с переносом, info[0..15]
+  убраны, статус сокращён до 6 строк (режим/состояние; коррекция, калибровки, проверка; уровень
+  обратной связи и аттенюатор; HW peak + измеренный; Amp delay + измеренный; ИМД3 по тракту).
+  В блоке ИМД — ИМД3 отдельно для нижнего и верхнего продукта (асимметрия = эффекты памяти).
+- Скриншот (большая мощность, WDSP 2.10, Single): ИМД3 −40,1, ИМД5 −63,6, ИМД7 −66,6, ИМД9 −63,5,
+  шум −84 дБн; HW peak 0.2957 (изм. 0.2957), задержка изм. 2428 / уст. 2640 нс; AM/PM ≈ 4° по
+  диапазону, точки AM/PM в две тонкие ветви (небольшой гистерезис).
+
+## 81. Тест разноса тонов (01.11.2026)
+
+- Оператор: нижний и верхний ИМД3 одинаковы (асимметрии нет — типичного признака эффектов памяти
+  нет). Тест разноса: в Amp View выбор пары тонов «700/1900 Гц (1200)» или «1200/1500 Гц (300)»,
+  −6,2 дБFS каждый; при смене очищается история ИМД. Поиск второго тона в измерении — от 200 Гц.
+  Пара при запуске снова 700/1900 (forceConstants).
+
+## 82. ИМД3 зависит от разноса тонов: −40 (1200 Гц) / −52 (300 Гц); подбор задержки по ИМД (01.11.2026)
+
+- Остаток в 4 раза меньше при разносе в 4 раза меньше (12 дБ) — пропорционален разносу. Так ведут
+  себя и ошибка времени между опорой и обратной связью, и память усилителя первого порядка;
+  нижний и верхний ИМД3 одинаковы (асимметрии, типичной для памяти, нет).
+- Задержка по корреляции огибающих на сжимающем усилителе не точна, поэтому подбор по результату:
+  `AnanPureSignal::startDelaySweep` (кнопка «Optimize delay» в Amp View, только 2 Tone + Auto):
+  Amp delay = измеренная + {−8, −5, −3, −1,5, 0, +1,5, +3, +5, +8} мкс, каждое 3 с установка +
+  3 с усреднение ИМД3 выхода (по мощности), лучшее смещение (если лучше нуля > 1 дБ) становится
+  поправкой (AnanPsDelayTrimNs, сохраняется), автоследование добавляет её. В лог таблица
+  «offset : IMD3». Статус показывает ход и поправку. Если ни одно смещение не помогает — предел
+  усилителя (память).
+
+## 83. Автоподстройка задержки только по широкому двухтону (01.11.2026)
+
+- Логи 21:12 и 21:24: «Optimize delay» не запускался (строк «delay sweep» нет). На 300 Гц (21:13)
+  оценка задержки по огибающей гуляла от −1 до −8 мкс (биения 3,3 мс — пик корреляции широкий), и
+  автоследование увело Amp delay в −6,6 мкс; ИМД3 при этом −52. На 1200 Гц: измерено 2,0–2,4 мкс,
+  ИМД3 −40,5…−41.
+- Автоследование теперь только при двухтоне с разносом ≥ 1000 Гц (или по речи) и в пределах ±20 мкс.
+
+## 84. Подбор задержки: ИМД3 не зависит от неё в пределах ±8 мкс; Wideband Monitor — диагностика (01.11.2026)
+
+- Лог 21:30: «Optimize delay» прошёл 8 из 9 шагов (оператор остановил передачу на последнем, таблица
+  при прерывании не писалась). По строкам цепочки ИМД (раз в 5 с) выход: −8 мкс −39,8; −5 −40,4;
+  −3 −40,4; −1,5 −40,2; 0 −40,4; +1,5 −40,3; +3 −40,3; +5 −40,3 дБн. ИМД3 не зависит от задержки
+  даже при сдвиге на 1,5 отсчёта — остаток −40 на разносе 1200 Гц не связан с выравниванием
+  опоры и обратной связи; вместе с разделом 82 (−52 на 300 Гц, нижний = верхний) — это память
+  усилителя, предел безынерционной коррекции.
+- Подбор: шаг 2,5 + 2,5 с (~45 с); при прерывании в лог частичная таблица.
+- Wideband Monitor: в логе 21:30 ни одного обращения к потоку (нет «ANAN: wideband on»). Пункт
+  Tools → Wideband Monitor... теперь включается и по connectionStateChanged (не только по
+  capabilitiesChanged); в лог: открытие окна, подключение к транспорту, первые пакеты по АЦП, первый
+  кадр.
+
+## 85. Задержка — один раз, на малой мощности, без коррекции; уровень ОС (01.11.2026)
+
+Совет разработчика ПЛИС: (1) задержку мерить один раз в линейной области на малой мощности и
+фиксировать, всё амплитудозависимое — в таблицы AM/AM, AM/PM; (2) держать уровень ОС постоянным
+аттенюатором на передаче с запасом от перегрузки АЦП.
+
+- Подтверждение п.1 в логе 21:30: первая оценка при выключенной коррекции 1943 нс, после включения
+  коррекции автоследование ушло в 2020 → 2360 нс. При коррекции DDC1 — уже предыскажённый сигнал,
+  корреляция огибающих «предыскажение ↔ выход» смещается и плывёт с мощностью.
+- Сделано: автоследование задержки убрано. Кнопка «Measure delay» (вместо «Optimize delay» —
+  подбор по ИМД3 ответа не дал, раздел 84, и это как раз переоценка на большой мощности):
+  сброс коррекции (SetPSControl 1,0,0,0), 0,7 с, ждём info[14] = 0, 5 отсчётов задержки
+  (корреляция > 0,95), медиана; отказ при разбросе > 300 нс или сжатии > 1 дБ на пике (усиление
+  ОС/опора при 0,85–1 от пика огибающей против 0,25–0,5). Результат 10 нс-кратный в
+  AnanPsDelayMeasuredNs (+ дата, сжатие), загружается каждый сеанс; без измерения — 150 нс
+  (Thetis) с жёлтой подсказкой. После измерения — возврат Auto / новая Single. Двухтон 300 Гц
+  отклоняется (биение слишком медленное). Старые ключи AnanPsAmpDelayNs (значения автоследования)
+  и AnanPsDelayTrimNs больше не читаются; из файла не удаляются.
+- На время измерения отключены автослежение HW peak и автоаттенюатор.
+- П.2 уже был (Thetis timer2code: окно 128..181, цель 152, только после новой калибровки); в логе
+  21:30 ОС 177 → 157 при att 12 дБ — в окне, перегрузок ADC0 при передаче нет. Медленный спад
+  ОС на ~1 дБ за 25 с при постоянном драйве — прогрев оконечника (тепловая память); Auto
+  перекалибровывает каждые ~1,5 с.
+
+## 86. «Not in the linear region» — это расширение усиления класса AB, а не перегруз (01.11.2026)
+
+- Лог 21:58: три попытки на разных мощностях (att 11 → 9 → 7 дБ) — показатель всегда +2,0 дБ,
+  со знаком «плюс»: усиление на пике БОЛЬШЕ, чем на середине огибающей. Это расширение, а не
+  сжатие; кривая calcc ym подтверждает (1,3–2,0 при 0–0,2 от выхода, 1,0 на пике — у малых
+  амплитуд усиление ниже, ступенька класса AB). От мощности не зависит, поэтому снижением мощности
+  не уходит; критерий |сжатие| ≤ 1 дБ был неверен по смыслу.
+- Теперь отказ только при СЖАТИИ на пике > 1,5 дБ (насыщение); расширение пишется в результат.
+  Разброс до 400 нс (было 300; во второй попытке 283).
+- Задержки трёх попыток: ~1430, ~1040, ~770 нс — снижаются вместе с мощностью/ступенью
+  аттенюатора; рабочая коррекция при этом была на 150 нс и давала −45…−48 дБн.
+
+## 87. Wideband Monitor работает с ADC1, с ADC2 пакетов нет (01.11.2026)
+
+- Лог 22:02: окно открылось, подключилось, «wideband on mask 1» → пакеты с порта 1027 (ADC1),
+  первый кадр 16384 отсчёта — работает. «mask 2» (ADC2) в 22:02:58 — за 3 с ни одного пакета
+  с порта 1028 (строка «arriving from ADC 2» не появилась).
+- Приём сверен с Thetis network.c: порт 1027 + adc_id (1027 = ADC0, 1028 = ADC1), 1028 байт,
+  сброс кадра на seq 0 — у нас то же. Маска в байте 23 General, как в Thetis (wb_enable).
+  Значит, вероятно, прошивка не отдаёт широкополосный поток второго АЦП (или шлёт его иначе).
+- Диагностика: в строке «ANAN diag» (раз в 5 с) счётчики пакетов широкополосного размера по
+  портам 1027/1028 (до проверки маски), кадров по АЦП и пакетов того же размера с других портов.
+
+## 88. Задержка по диапазонам, один двухтон, выбор АЦП обратной связи (01.11.2026)
+
+Решение оператора: память задержки на каждый диапазон, по умолчанию 600 нс; переключатель пар
+тонов убрать (только 700/1900); выбор АЦП для отбора мощности (ADC1 / ADC2). По широкополосному
+потоку разработчик ПЛИС нашёл ошибку (порт 1028 не менялся при ADC2) и меняет прошивку — мы
+следуем протоколу, без изменений у нас.
+
+- Задержка: AnanPureSignal::setTxFrequency (из Hl2Backend::setTxFrequency, с XIT) → диапазон
+  160…6 м (вне диапазонов — по МГц). Ключи AnanPsDelayNs_<band>, AnanPsDelayAt_<band>,
+  AnanPsDelayCompDb_<band>; без значения — 600 нс («default» жёлтым). «Measure delay» пишет в
+  ячейку текущего диапазона; смена диапазона во время измерения его прерывает. Одиночный ключ
+  anan128 (AnanPsDelayMeasuredNs) не используется — у него нет диапазона.
+- Пары тонов: комбобокс удалён; forceConstants и так держит 700/1900/0,49.
+- АЦП обратной связи: Settings.feedbackAdc (AnanPsFeedbackAdc), «ADC:» в PS-апплете.
+  P2Transport::setPsFeedbackAdc: DDC0 при PS-передаче на ADC index 0/1 (DDC Specific байт 17);
+  аттенюатор PS — на выбранный АЦП: High Priority (ADC0 / ADC1 attenuation) и Transmit Specific
+  байт 59 (ADC0) или 58 (ADC1); остальные — AnanTxAttenuationDb. Тест протокола дополнен.
+
+## 89. Аттенюатор обратной связи — своё значение для каждого АЦП (01.11.2026)
+
+- Разработчик: значение аттенюатора ADC1 к ADC2 применять нельзя (уровни на входах разные).
+  Один ползунок «Attenuator» управляет аттенюатором выбранного АЦП; значения запоминаются
+  отдельно: AnanPsAttDb (ADC1, прежний ключ) и AnanPsAttDbAdc2. Settings.attDbByAdc[2], attDb —
+  активное. Смена АЦП: текущее значение сохраняется в ячейку старого АЦП, загружается значение
+  нового, автоаттенюатор возвращается в Monitor, коррекция перезапускается (другой тракт ОС),
+  апплет перечитывает ползунок (settingsChanged). Автоаттенюатор пишет в ячейку активного АЦП.
+
+## 90. Скачки искажений: автоаттенюатор по устаревшему уровню и перегруз АЦП (01.11.2026)
+
+Лог 22:34. Рост искажений и «перекалибровка» совпадают со срабатываниями автоаттенюатора;
+каждое — сброс коррекции (Thetis timer2code), отсюда провалы до −24 (коррекция выключена).
+- Устаревший уровень: калибровки 113 и 114 — обе «feedback 29», почти одинаковые кривые; 114
+  через 190 мс после смены 31 → 17 дБ, т. е. по отсчётам ещё старого аттенюатора. Автомат шагнул
+  17 → 3 дБ, АЦП в перегрузе (feedback 347), 8 с без новой калибровки, IMD3 −13,8 дБн.
+  То же «качание» в 22:35:30: 115/184 при одном аттенюаторе (8 ↔ 12 дБ).
+- Исправление: (1) уровень после смены аттенюатора принимается только со второй калибровки
+  и не раньше 400 мс; (2) перегруз АЦП обратной связи (статус байт 5, бит 0/1, защёлка
+  P2Transport::takeOverloadLatch) — сразу +6 дБ (или больше по уровню), не дожидаясь калибровки.
+- Input (Alex0 при PS-передаче): Internal — бит PS (18), вход ADC1 на ответвитель;
+  EXT1 — + EXT1 (9) + Bypass (11); RX Bypass — + Bypass (11). Только перед ADC1; при ADC2
+  (голый вход RX2) список неактивен.
+
+## 91. «Прыгает жёлтая линия» на средней мощности (01.11.2026)
+
+Лог 22:47: автоаттенюатор после раздела 90 спокоен (одно срабатывание в начале, ОС 151 → 138
+плавно), IMD3 выхода по 5-секундным строкам ровно −39…−38,3. 4 TX underflow за передачу 67 с.
+- Шкала фазы в Amp View: span считался по максимуму |фаза| ВСЕХ точек AM/PM, включая самые
+  малые амплитуды (в «мёртвой зоне» класса AB ym внизу до 15–21, выход почти ноль — фаза там
+  шум до ±180°). Span скакал между калибровками (каждые ~0,3 с), вся жёлтая кривая
+  перемасштабировалась — визуальный «прыжок». Теперь точки со входом < 0,15 в масштаб не
+  входят (рисуются как раньше), шкала растёт сразу, сжимается после 5 калибровок ниже 60 %.
+- Диагностика реального скачка (искажения «в такт»): каждая TX underflow — строка с моментом
+  (DUC нули до повторного заполнения — провал на выходе, калибровка по нему); раз в секунду
+  скачок IMD3 выхода > 3 дБ — строка «IMD3 jump» с номером калибровки; к строке «fitted gain»
+  добавлены фаза усилителя по 5 полосам и диапазон фазы коррекции.
+
+## 92. Щелчки = TX underflow; защита калибровки от провалов (01.11.2026)
+
+Лог 22:55: 6 underflow за передачу 44 с (22:58:31.6, 37.4, 48.4, 22:59:02.4, 06.4, 10.4; в очереди
+32…208 из 240 отсчётов пакета). Скачки IMD3: 22:59:02.0 выход −38,8 → −26,6 при «correcting 0»
+и DAC −129 (коррекция в этот момент не применялась), 22:59:04.0 DAC −49,9 (снимок наполовину
+без предыскажения); перед этим 22:59:00.8–02.2 — секундный простой в журнале калибровок и
+перезапуск RX-аудио (AudioEngine «no audio data … restarting RX»).
+- Защита: в AnanPureSignal::feed блок 1024 пары, где в опоре (DDC1) ≥ 64 подряд отсчётов
+  < 1e-3 HW peak (точные нули DUC — провал на передатчике, не пауза речи), и три следующих
+  (~21 мс: подъём после повторного заполнения, установление усилителя) в pscc не передаются.
+  Коррекция остаётся прежней, калибровка по провалу не строится. Строка в логе на каждый провал.
+- Причина щелчков: запас очереди DUC 2048 отсчётов (10,7 мс, два блока TXA) — мало для
+  разброса доставки модуляции; поднят до 4096 (21,3 мс, +10,7 мс задержки).
+
+## 93. Передача и динамик в своих потоках, синхронно с радио (01.11–02.11.2026)
+
+Задача оператора: «все отправки-приёмы пакетов синхронизированы с устройством; передача и
+спикер — каждая в отдельном потоке с максимальным приоритетом; ориентир — Thetis».
+
+Что было: микрофон радио шёл I/O-поток → GUI-поток (лямбда Hl2Backend: ФВЧ, усиление,
+нарастание) → I/O-поток (TXA); пакеты DUC отправлял таймер 1 мс по часам ПК. Любая заминка
+GUI (перерисовка, перетаскивание окна, перезапуск звука) опустошала очередь DUC — щелчки в
+эфире (раздел 92). Динамик радио играл звук AudioEngine (после AetherRX), который тоже идёт
+через GUI-поток; коррекция дрейфа (выброс/повтор одного кадра при выходе глубины из 25..90 мс)
+реагировала на неровную доставку — шелест и щелчки.
+
+Сделано:
+- Поток «anan-tx» (TimeCritical, на Windows ещё MMCSS «Pro Audio»): AnanTxEngine + Hl2TxDsp.
+  Пакет микрофона радио (64 кадра 48 кГц, порт 1026) — из I/O-потока прямо в движок:
+  ФВЧ 120 Гц / тест-двухтон, индикатор, нарастание 5 мс, MIC gain, захват txcap-mic.wav,
+  статистика передачи → TXA (processAudioBlock, тот же поток) → iqReady (Direct) → очередь
+  DUC → P2Transport::txDeviceTick(256): пакет микрофона = 256 отсчётов DUC времени радио,
+  уходят пакеты DUC, положенные к этому моменту (+ запас 6 пакетов). Модулятор и DUC идут в
+  ногу по построению, уровень очереди не плывёт. Запас очереди: 1536 при микрофоне радио
+  (блок TXA 1024 + 2 пакета), 4096 при звуке с ПК (его часы).
+- Без потока микрофона > 30 мс — подменяет таймер 2 мс по часам ПК; «кредит» не даёт
+  посчитать время дважды, когда опоздавшие пакеты микрофона приходят пачкой.
+- Отправка DUC и динамика — sendto() по дескриптору сокета сессии (AnanNativeUdp: тот же
+  локальный порт, без объектов Qt; shared_mutex на время закрытия сокета). ws2_32 в CMake.
+- Динамик: поток «anan-spk» (TimeCritical), пакет 64 кадра уходит сразу, как готов (как
+  Thetis); звук — смесь приёмников в I/O-потоке (по IQ радио, его часы). AetherRX на динамике
+  радио — по ключу AnanCodecAetherRx (по умолчанию выкл., т.к. через GUI); у AnanCodecFeed
+  убрана покадровая коррекция, при нехватке — затухание, обрезка только при > 250 мс.
+- MON на кодек — из потока передачи прямо в FIFO микшера (ananMonToCodec), на ПК — как было.
+- FreeDV-передача: блок через GUI (libfdv однопоточный), обратно в TXA — как раньше.
+- Hl2Backend: настройка TXA при подключении — на потоке передачи (BlockingQueued из I/O);
+  dspChains собирает RX на I/O, TX на своём потоке; деструктор: I/O → TX → удаление.
+- ClientComp для микрофона радио не перенесён: он был всегда выключен (PROC = компрессор TXA).
+
+Проверка на стенде (поддельное радио на 127.0.0.2, часы радио на 0,5 % быстрее ПК):
+DUC/ожидание по часам радио 1,0001 / 1,0003 / 0,9999, ни одного underflow, ни одного нулевого
+пакета; с остановкой потока радио на 60 мс — один провал (неизбежен) и восстановление; после
+отпускания DUC не идёт; чистое завершение потоков. Сборка под MSVC и проверка на радио — у
+оператора.
+
+Независимая проверка кода (до отправки) — исправлено:
+- запас очереди выбирается по источнику: 1536, когда движок сам модулирует микрофон радио;
+  4096 (держится 1 с), когда TXA кормит звук с ПК (DAX/TCI/WSPR/микрофон ПК) или FreeDV;
+- флаг FreeDV-передачи обновляется сразу при нажатии/отпускании, не раз в 50 мс;
+- потерянные пакеты микрофона (разрыв номера ≤ 16) заменяются тишиной — время радио не
+  теряется (стенд: 12 потерь, отношение DUC 1,0000); строка diag «mic lost»;
+- переход на подмену часами ПК берёт всё время с последнего пакета микрофона;
+- поток передачи отстал больше чем на 16 пакетов (21 мс, больше FIFO DUC) — это время не
+  досылается пачкой, лог «transmit thread behind the radio»; меньше — досылается;
+- m_psEnabled / m_txHz пишутся под m_txMutex; интервалы по монотонным часам (steady_clock);
+  ошибки sendto() считаются (diag «native send fails»).
+
+Не сделано (не критично, по словам оператора): замирание приёма при перетаскивании окна.
+Звук на ПК и панорама идут через GUI-поток (mixReceiverAudio → RadioModel → AudioEngine);
+обход GUI для звука ПК затрагивает общие для всех радио PcmFrame/сессии, FreeDV и MON —
+отдельная работа. Динамик радио от GUI больше не зависит.
+
+## 94. Автоаттенюатор шагами 1 дБ без сброса; состояние буферов радио (02.11.2026)
+
+Лог 17:41: underflow ноль. Всплеск и «перекалибровка» в 17:42:45 — шаг автоаттенюатора:
+ОС за минуту сползла 160 → 128 (прогрев), timer2code Thetis сбросил коррекцию и прыгнул
+12 → 10 дБ — ~1 с без коррекции (−21 дБн). Три «TX dropout in the reference» посреди
+передачи без underflow у нас — опустошение FIFO DUC в ПЛИС (пакеты опоздали за запас 7,5 мс).
+
+- Автоаттенюатор (просьба оператора): штатное слежение шагом 1 дБ БЕЗ сброса, держит ОС в
+  140..165 (152 ±0,7 дБ), не чаще раза в 2 калибровки и 400 мс. Обоснование: calcc
+  нормирует ОС в каждой калибровке (rx_scale = 1 / экстраполированный rx при полном
+  драйве, calcc.c calc()), абсолютный уровень в коррекцию не входит; шаг задевает одну
+  собирающуюся выборку. Сброс с прыжком (Thetis) — только при ОС > 200, < 100 или перегрузе
+  АЦП. Amp View: «(tracked 140..165)».
+- Прошивка Odyssey (новая): FIFO TX 8192, старт с 6144 (32 мс), счётчики в статусе высокого
+  приоритета, байты 32–47, версия в байте 47 (= 1; 0 — старая прошивка, ничего не меняется).
+  P2Transport::handleBufferStatus: разности 16-битных счётчиков; сразу в лог «the radio's
+  TX buffer ran EMPTY while transmitting» (не чаще раза в секунду); раз в 5 с строка
+  «ANAN diag radio buffers»: уровень TX мин..макс из 8192, опустошения, переполнение;
+  динамик: уровень из 2048, угасания, пустые чтения, переполнение. С новой прошивкой наш
+  запас 6 пакетов остаётся: ПЛИС сама копит до 6144 перед стартом, дальше уровень стоит.
+
+## 95. Аттенюатор держит середину; счётчики буферов в Amp View; пауза обучения при сбое (02.11.2026)
+
+- Автоаттенюатор (оператор: «держать середину окна как цель, как шумовую полку»):
+  сглаженный уровень ОС (EMA 0,3 по калибровкам) удерживается на 152 в пределах ±0,6 дБ
+  шагами 1 дБ без сброса (шаг попадает внутрь полосы — без качания); после шага EMA
+  пересчитывается на ожидаемый уровень. Грубый сброс с прыжком — только > 200, < 100, перегруз.
+- Amp View: строка «Radio buffers: TX empty N, overflow N | speaker empty N, overflow N»
+  (итоги сессии; красным, если не ноль) — только при прошивке со статусом буферов. Счётчики
+  передатчика копятся только во время MOX (конец передачи — не ошибка).
+- Сбой (нули в опоре DDC1 или сообщение радио об опустошении/переполнении буфера TX):
+  ~0,21 с обратной связи (40 блоков) не идёт в calcc, коррекция остаётся прежней;
+  слежение аттенюатора и грубый шаг по уровню (кроме перегруза) ждут 1 с. В логе
+  «the radio reported a TX buffer error -- learning paused».
+
+## 96. Скачок 19:03:15: потеря пакетов на приёме; петля по уровню FIFO радио (02.11.2026)
+
+Лог 19:00 (новая прошивка, статус буферов):
+- 19:03:15: за одно окно потеряно 25 пакетов DDC и 22 пакета микрофона (~30 мс) —
+  I/O-поток опоздал, а приёмный буфер сокета Windows по умолчанию 64 КБ (~30 мс этого
+  потока). Отсюда: пропуск времени микрофона (> 16 — как перезапуск) → наш underflow →
+  «radio's TX buffer ran EMPTY» → нули в эфире → скачок PureSignal; и затухание динамика
+  (fades 1). Ещё одно затухание динамика в 19:02:19 — при потере 2 пакетов DDC.
+  Исправление: SO_RCVBUF 8 МБ, SO_SNDBUF 1 МБ (в лог — что дала ОС).
+- Уровень FIFO TX радио медленно сползал целыми пакетами: 6273 → 5072 за ~30 с при нуле
+  наших отказов sendto и без потерь микрофона — пакеты DUC не доходили до радио. Петля:
+  каждые 0,25 с передачи средний уровень держится на 6144 ±1,5 пакета изменением запаса
+  на 1 пакет (−4…+24), в лог «radio TX buffer at N of 8192, lead A -> B packets». Только с
+  прошивкой со статусом.
+- 12 из 13 «TX dropout in the reference» пришли при НЕпустом FIFO радио. В строку лога
+  добавлено: длина нулевого участка и уровень ответвителя (DDC0) на нём относительно блока
+  — «silent too: a gap on the air» или «the reference stream only». IMD3 в окне 0,5 с после
+  такого участка не измеряется (снимок мерил бы сам провал).
+- Динамик в остальное время в норме: уровень 450..1090 из 2048, без пустых чтений.
+
+## 97. «Беспрерывная перекалибровка» после нового замера задержки; замер по модели (02.11.2026)
+
+Лог 19:15 (40 м, att 11, обратная связь ~150, буферы без ошибок): после замера 1210 → 1580 нс
+коррекция каждые 3–10 с пропадает на ≤1 с (IMD3 на выходе −43 → −24 дБк, DAC −128 = без
+предыскажения), затем возвращается. Строки RESET и биты info6 в логе нет — и не могло быть:
+строка «calibration N» пишется только для **успешного** calcc (binfo[5] растёт только при
+scOK), а провалы и собственные сбросы calcc (WDSP 2.10: три провала подряд bs_count ≥ 3,
+или «deadlock» верхнего бакета, info[6] |= 2) были невидимы. Промежуток без успешной
+калибровки перед каждым провалом ~1,4 с — это сброс calcc и новый сбор.
+
+Замер задержки — наша ошибка: корреляция огибающих. Пик широкий (период биений двух тонов
+160 отсчётов), парабола по трём точкам на плоской вершине — разброс в сотни нс (показания
+1492…1788), и три замера дали 650 → 1210 → 1580 нс. А calcc нужна не задержка огибающей, а
+выравнивание, при котором ОДНА кривая (усиление и фаза по амплитуде) объясняет выход.
+
+Сделано:
+- Журнал здоровья calcc: «calcc calibration FAILED: <причины>» (info0 — экстраполяция уровня,
+  info1/2/3 — подгонка AM/AM, AM/PM cos/sin: нет подгонки / плохое качество / сплайн / ошибка
+  > 50× шума / экстремумы / sin²+cos², info6 — scheck / deadlock) и «correction DROPPED by
+  calcc (состояние до → после, причина)». Наши собственные сбросы (AA, замер, HW peak) не
+  считаются. Счётчики за передачу и последняя причина — в Amp View.
+- Замер по модели без памяти: для пробной задержки d опорный сигнал интерполируется
+  (кубически), в 16 бакетах амплитуды подгоняется комплексное усиление, линейное по |x|;
+  остаток |rx − G·x|²/|rx|² минимален при нужном calcc выравнивании. Скан ±2,5 мкс шагом 100 нс
+  вокруг оценки огибающей, уточнение параболой. Симуляция (ПА с AM/AM и AM/PM, шумовой пол остатка −57 дБ):
+  600/1210/1580 нс находятся с точностью ±3 нс; рядом с 1210 нс ошибка в 370 нс стоит 3 дБ остатка.
+  Огибающая остаётся запасным вариантом, если в скане нет минимума.
+- Уже измеренная задержка меняется, только если остаток модели улучшается ≥ 0,5 дБ.
+- Предыдущая задержка бенда хранится (`AnanPsDelayPrevNs_<band>`); кнопка «Previous delay
+  (N нс)» в Amp View возвращает её (повторное нажатие — обратно) и переучивает коррекцию.
+- В лог замера: огибающая / модель / компрессия / остаток при новой и при текущей задержке.
+
+## 98. «Палка» у нуля в спектре Amp View — наш артефакт (02.11.2026)
+
+Слева от тонов (тоны +700/+1900 Гц) в спектре обратной связи стояла линия около −50 дБк
+ровно на 0 Гц — на несущей. Это была не несущая, а наша обработка: перед БПФ из снимка
+вычиталось простое среднее. Тоны не укладываются в снимок (16384 отсчёта, 85 мс) целым
+числом периодов, их простое среднее — утечка тонов около −50 дБк, и вычитание этой константы
+само рисовало линию на 0 Гц (симуляция: чистые тоны → −46…−48 дБк в бине 0; без вычитания
+−118 дБк, окно Ханна само не пускает тоны в бин 0).
+
+Сделано: среднее не вычитается; то, что видно на 0 Гц теперь, — настоящая несущая. В тексте
+Amp View — уровень несущей (бин 0) и самая сильная линия в ±150 Гц. В лог раз в 5 с — строка
+«PureSignal carrier» для хоста, DAC (DDC1) и ответвителя (DDC0): среднее, взвешенное тем же окном,
+и самая сильная линия без него — откуда несущая, если она есть.
+
+## 99. Щелчок 19:43: провалы в эфире при полном FIFO радио; кто шлёт тишину (02.11.2026)
+
+Лог 19:39 (40 м, 2 Tone, PS, задержка 1580 нс; anan140 уже работал): за передачу 4 провала
+(кроме нормального старта) — 19:43:23.9 (149 отсчётов), 19:43:51.9 (174), 19:44:32.8 (172),
+19:44:35.9 (107), т. е. 0,55–0,9 мс тишины в DDC1 (данные DAC) И в ответвителе (−64…−69 дБ
+относительно блока) — настоящая дыра в эфире, это и есть щелчок. При этом:
+- FIFO TX радио 5450…6300 из 8192, «ran empty 0, overflow 0» — радио не голодало;
+- у нас ни одного underflow, ни потерь микрофона, ни отказов sendto;
+- длина 107–174 меньше пакета DUC (240): мы шлём либо целый пакет нулей (underflow, он
+  логируется), либо ничего — неполных пакетов тишины хост не делает.
+Отдельно: уровень FIFO дважды ступенькой упал на ~240 (6084 → 5862 → 5615 между 19:43:38 и
+19:43:48) — до радио не дошли 2 пакета DUC; по времени с провалами не совпадает.
+
+Новая проверка в P2Transport (поток передачи): участки ≥ 64 отсчётов ниже −80 dBFS в том, что
+хост реально отправляет (после старта и RF Delay, не CW/тон) — строка «the HOST sent a silent
+run in the DUC stream: N samples …, DUC packet S, queue Q». Проверено на имитаторе радио: блок
+нулей от модулятора ловится (1024 отсчёта), на чистом потоке ложных срабатываний нет.
+Если при следующем щелчке этой строки не будет, а «TX dropout in the reference» будет —
+тишину вставляет радио при непустом FIFO (вопрос к ПЛИС: номер пакета, уровень FIFO).
+
+## 100. Счётчики канала связи от тестовой прошивки (раскладка статуса v3) (02.11.2026)
+
+Тестовая прошивка: в пакете состояния (порт 1025) байт 47 = 0x03 и новые 16-битные счётчики с
+момента включения радио: 16–17 не применённые пакеты команд, 18–19 отброшенные пакеты звука,
+20–21 отброшенные пакеты I/Q, 24–25 кадры с неверной FCS без ошибки PHY, 26–27 кадры с RXER от
+PHY (22–23 — по-прежнему обратная мощность).
+
+Сделано: раскладка принимается с любой версией ≥ 1 (буферы 32–46 как раньше), при ≥ 3 читаются и
+счётчики канала. При первом статусе в лог — их значения с момента включения; дальше считаются
+приращения за сеанс (с переходом через 0xFFFF). Каждое приращение — сразу строкой «radio link:
++N …» с отметкой, шла ли передача и уровень FIFO TX (для сопоставления со щелчками и ступеньками
+FIFO); итоги за 5 с — в строке «ANAN diag radio buffers». В Amp View под счётчиками буферов —
+строка «Radio link: commands not applied / audio dropped / I/Q dropped | bad FCS / PHY RXER»
+(ненулевые красным). Проверено на имитаторе радио со статусом v3.
+
+## 101. Потерянные пакеты DUC: почему защита не сработала и что сделано (02.11.2026)
+
+Лог 20:33 (тестовая прошивка, раскладка v3): за 45 с передачи радио 11 раз отбросило пакет I/Q,
+каждый раз вместе с кадром с неверной FCS (PHY ошибки не сообщал) — порча кадров на Ethernet;
+пакеты команд и звука не пострадали (они короче: I/Q — 1444 байта). С ними совпадают
+неудачные калибровки calcc (scheck) и 5 сбросов коррекции, и щелчки.
+
+Почему наша защита не сработала:
+1. Она ловила только нули в опорном сигнале (DDC1) — так выглядел провал, когда FIFO
+   радио пустел, — и ошибки буфера от прошивки. Но при отброшенном пакете FIFO полон: нулей
+   нет, поток DAC просто ПЕРЕСКАКИВАЕТ 240 отсчётов (1,25 мс) — ступенька сигнала. calcc
+   учился на парах со ступенькой → scheck → сброс коррекции.
+2. Петля по уровню FIFO считала 250 пакетов статуса как 0,25 с (думали, статус 1 кГц), а
+   радио шлёт 20 в секунду — петля срабатывала раз в 12,5 с, а пакеты терялись раз в 2–5 с:
+   FIFO TX сполз 6050 → 3925 и через ~2 мин опустел бы.
+3. И даже сработав, она брала лишний пакет из очереди модулятора — а модулятор делает ровно
+   столько, сколько играет радио: 2–3 таких шага — и underflow.
+
+Сделано:
+- PureSignal: детектор ступеньки в опорном сигнале — вторая разность DDC1 выше 5 % HW peak
+  (в симуляции двух тонов и голоса с предыскажением норма < 0,4 %, пропуск 240 отсчётов даёт
+  3–70 %) → пауза обучения 0,2 с и аттенюатора 1 с, коррекция сохраняется; в лог «STEP in the
+  TX reference». Плюс счётчик «I/Q dropped» радио во время передачи даёт ту же паузу.
+- Восстановление FIFO: на каждый отброшенный пакет (и когда средний уровень за 0,5 с ниже
+  6144 − 360) — ВСТАВКА одного пакета тишины, запас +1 пакет, очередь модулятора не трогается:
+  в паузе сигнала (обе стороны ниже −60 dBFS — неслышно), или сразу, если FIFO ниже 2400
+  (щелчок, но иначе FIFO опустеет). В лог «refilled the radio's TX buffer …».
+- Петля по уровню — по времени (0,5 с), уменьшение запаса — как раньше.
+Проверено на имитаторе радио (статус v3, отброшенные пакеты, низкий уровень FIFO): вставки
+идут, DUC по-прежнему по часам радио, без underflow.
+
+Сами щелчки от потерянного пакета с хоста не убрать — пакет испорчен на линии. Счётчик «кадры с
+неверной FCS без ошибки PHY» указывает на приём RGMII в ПЛИС (временные соотношения RX).
+
+## 102. Лог 20:48: обучение защищено; щелчки на линии; вынужденная дозаливка по одному (02.11.2026)
+
+Передачи 20:49:04–20:50:05 (2 Tone): радио выбросило 24 пакета I/Q (по одному примерно в
+секунду; 22 — с неверной FCS, 2 — с RXER от PHY; кроме того 1 пакет команд и 1 пакет звука).
+Каждый раз сработала пауза обучения (по счётчику радио, 10 раз ещё и по ступеньке в DDC1 —
+остальные ступеньки пришлись на уже идущую паузу). Ни одной неудачной калибровки calcc, ни
+одного сброса коррекции — защита PureSignal работает. Щелчок в эфире от каждого выброшенного
+пакета остаётся: эти 240 отсчётов до DAC не дошли.
+
+Наша ошибка: в 20:49:39 уровень FIFO упал ниже 2400, и вынужденная дозаливка выдала все
+16 накопленных пакетов тишины подряд — 20 мс тишины в эфире. Уровень FIFO приходит со
+статусом раз в 50 мс, и до следующего отчёта он оставался «низким». Теперь — не больше одного
+вынужденного пакета на один свежий отчёт статуса. При двух тонах пауз нет, поэтому FIFO держится
+около 2400, и каждый выброшенный пакет даёт ещё один вынужденный (второй короткий щелчок);
+в голосе дозаливка идёт в паузах, неслышно.
+
+Для ПЛИС: и неверная FCS без ошибки PHY (приём RGMII), и RXER от PHY (линия/кабель) —
+надёжно лечится только там. Вариант защиты в протоколе: хост шлёт каждый пакет DUC дважды, ПЛИС
+берёт первый целый по номеру последовательности и отбрасывает повтор (поток DUC ~1,2 МБ/с).
+
+## 103. Окно «RGMII: подстройка приёма» (тестовая прошивка, раскладка v4) (02.11.2026)
+
+Прошивка: General (порт 1024) байт 40 = бит 7 «ручные» + задержка RX_CLK 0..31 (15 = 0 пс,
+шаг 60 пс), байт 41 = задержка RXD0..3/RX_CTL 0..15 (7 = 0 пс); принимается только из кадра с
+правильной FCS, ПЛИС сразу переписывает регистры KSZ9031. Статус (порт 1025): байт 28 = RX_CLK в
+работе + бит 7 «задано программой», 29 = RXD, байт 47 = 0x04.
+
+Сделано:
+- P2Protocol: `RgmiiDelays`, `buildGeneral(..., rgmii)` пишет байты 40/41 (тест протокола
+  дополнен). P2Transport: `setRgmiiDelays(manual, clk, data)` — сразу General и дальше в каждом
+  General; повтор того же значения шлёт General ещё раз; статус v4 — байты 28/29 (в лог при
+  изменении), сырые счётчики канала и число отправленных пакетов DUC для окна.
+- Окно «RGMII: подстройка приёма…» (кнопка в Amp View): «Ручные задержки», «Задержка такта
+  (RX_CLK)» 0…31, «Задержка данных (RXD)» 0…15 со сдвигом в пс; «в работе» из байтов 28/29 —
+  зелёная галочка или «ещё не применено» (тогда General повторяется раз в секунду); ошибки FCS
+  (и в минуту за последние 60 с), RXER, отброшено I/Q / звука, не применено команд — от
+  «Сбросить счётчики». Значения сохраняются (AnanRgmiiManual/Clk/Data) и отправляются при
+  каждом подключении (Hl2Backend).
+- Автоподбор по шкале S (S = 0: 15/7; −15…+16 — только такт; дальше такт 0/31 и данные):
+  шаг за шагом от 0 вверх, затем от −1 вниз; на каждом шаге — дождаться, пока радио сообщит
+  значение (3 с, General повторяется раз в 0,5 с; не приняло — конец направления), 0,3 с
+  установления, N секунд (по умолчанию 5) счёта FCS + RXER против отправленных пакетов DUC;
+  направление кончается, когда ошибок больше 0,5 % пакетов. Без передачи шаг ждёт. Итог —
+  середина самого широкого окна без ошибок (если такого нет — шаг с наименьшей долей ошибок),
+  включаются ручные задержки; «Стоп» возвращает прежние значения. Таблица шагов — в окне.
+- Проверено на имитаторе радио (General → байты 28/29, ошибки FCS вне окна S −4…+9): найдено
+  окно −4…+9, выбрано S = 2 (такт 17), радио приняло.
+
+Для прошивки: если задержки окажутся такими, что радио не принимает ни одного целого кадра,
+вернуть его программой нельзя (команды принимаются только с правильной FCS). Автоподбор
+поэтому идёт малыми шагами и останавливается на 0,5 % ошибок, но в ПЛИС стоит предусмотреть
+возврат к умолчаниям, если N секунд нет ни одного целого кадра.
+
+## 104. RGMII: чтение задержек из PHY и замер «на 4000 пакетов» (02.11.2026)
+
+Новая прошивка: статус байты 30–31 — задержки, прочитанные из регистров KSZ9031; байт 30 бит 7
+= «PHY найден». Должны совпадать с байтами 28–29 (в работе).
+
+Сделано:
+- P2Transport читает 30/31 (при раскладке ≥ 4), в лог при изменении: «RGMII delays read from the
+  PHY: … -- as in use» или «-- DIFFERENT from bytes 28/29», «(PHY NOT found)».
+- Окно RGMII: строка «Прочитано из PHY: такт X, данные Y» с ✓ или «не совпадает с байтами 28/29»;
+  при бите 7 = 0 — «PHY не найден».
+- Ошибки на 1000 пакетов (FCS + RXER на отправленные пакеты I/Q) с момента «Сбросить счётчики»,
+  рядом уровень drive.
+- Кнопка «Замер на 4000 пакетов»: ошибки FCS, RXER, отброшенные I/Q и звук за следующие ~4000
+  пакетов I/Q при текущем drive; итог строкой в окне. Главное сравнение: drive 0 против обычной
+  мощности — если без ВЧ ошибок почти нет, причина в наводке от передатчика на линию / PHY.
+Проверено на имитаторе радио (байты 30/31 = 28/29): строка PHY с ✓, автоподбор как раньше.
+
+## 105. Диагностика PHY из прошивки v6 (03.11.2026)
+
+Прошивка v6: при настройке PHY объявление EEE выключено (MMD7 рег. 60 = 0), раз в секунду
+читаются диагностические регистры. Статус, раскладка 0x06: 8–9 накопленный счётчик ошибок
+простоя 1000BASE-T (IEEE рег. 10), 10–11 счётчик ошибок приёма KSZ9031 (0x15), 12 — что
+объявляет по EEE сетевая карта ПК (бит 2 — 1000BASE-T, бит 1 — 100BASE-TX), 13 — статус
+1000BASE-T (бит 6 радио ведущее по тактам, 5 локальный приёмник в норме, 4 удалённый).
+
+Сделано:
+- P2Transport (раскладка ≥ 6): счётчики 8–9 и 10–11 как [5]/[6] сырых счётчиков окна; в лог —
+  при первом статусе значения, дальше каждое приращение «PHY: +N 1000BASE-T idle errors, +M
+  KSZ9031 receive errors (transmitting/receiving)» и итог за 5 с в «diag radio buffers»; при
+  изменении — «the PC's network card advertises EEE: … -- EEE is ON at the PC» / «none» и
+  «PHY 1000BASE-T status: radio is clock MASTER/slave, local receiver OK/NOT OK, remote …».
+- Окно RGMII: строка «PHY: ошибок простоя 1000BASE-T N, ошибок приёма KSZ9031 N» (от «Сбросить
+  счётчики»), «EEE: включено на ПК (…)» красным или «выключено на ПК», «1000BASE-T: радио
+  ведущее/ведомое по тактам, локальный / удалённый приёмник в норме / НЕ в норме». «Замер на
+  4000 пакетов» добавляет приращения обоих счётчиков PHY.
+Как читать: растут ошибки простоя / приёма PHY вместе с FCS — ошибки на линии или в приёмнике
+PHY (кабель, наводка от передатчика); PHY чист, а FCS растут — между PHY и ПЛИС (RGMII).
+Проверено на имитаторе радио (раскладка 6).
+
+## 106. Прошивка v7: частота кварца PHY, накопленный счётчик ошибок KSZ9031 (03.11.2026)
+
+Прошивка v7 (раскладка 0x07; по исходникам Odyssey.v / CC_encoder.v): байты 53–54 — частота
+PHY_CLK125 (5 × кварц 25 МГц KSZ9031) против C122 (122,88 МГц, от опоры 10 МГц, если она есть),
+ворота 1 с: (счёт − 125 000 000) / 8, со знаком, т. е. Гц / 8; 1 ppm = 125 Гц = 15,6 ед.;
+1000BASE-T допускает ±50 ppm. Байты 10–11 (ошибки приёма KSZ9031, рег. 0x15) теперь
+накапливаются (PHY сбрасывает регистр при чтении, раньше было почти всегда 0) — программа и так
+считает приращения, менять не пришлось. Байты 30/31 (с v5): 30 — бит 7 PHY найден, бит 6 чтение
+выполнено, бит 5 RXD0..3 одинаковы, биты 4..0 RX_CLK; 31 — биты 7..4 RX_CTL, 3..0 RXD0.
+
+Сделано:
+- P2Transport: раскладка ≥ 7 — байты 53–54 (int16): при первом статусе в лог «PHY crystal …
+  Hz = … ppm», в строке «diag radio buffers» — размах за 5 с в ppm. Разбор 30/31 полный: RX_CTL,
+  «чтение выполнено», «RXD0..3 одинаковы»; совпадение с 28/29 — по такту, RXD0, RX_CTL и
+  равенству RXD0..3.
+- Окно RGMII: «Кварц PHY (125 МГц против C122): X ppm (Y Гц; допуск ±50 ppm)», цвет: зелёный
+  до 25 ppm, жёлтый до 50, красный больше; строка «Прочитано из PHY: такт, RXD0, RX_CTL,
+  RXD0..3 одинаковы / РАЗНЫЕ».
+Проверено на имитаторе радио (раскладка 7, −800 Гц = −6,40 ppm).
+
+## 107. Лог 18:47 (v7): строка «diag radio buffers» и что в ней видно (03.11.2026)
+
+Оператор не нашёл строку «ANAN diag radio buffers». В логе 18:47:44 она есть (69 раз, раз в 5 с),
+но радио шлёт пакеты статуса только на передаче: 0 пакетов до первого MOX (18:48:12), после MOX off
+(18:52:28) счётчик стоит на 5040. В это время строка выходила с нулями («TX idle», 0 ошибок) —
+выглядело как чистая линия. Теперь в такой период: «no status packets from the radio in the last
+5 s (none while receiving)».
+
+Что видно на передаче (две передачи, drive 75 и drive 15):
+- EEE на ПК: нет (байт 12 = 0); 1000BASE-T: радио ведомое, оба приёмника в норме (0x38).
+- Кварц PHY: +11,5 → +13,5 ppm за 4 мин (прогрев), в допуске ±50.
+- Ошибки простоя 1000BASE-T (собственная оценка PHY): 50–330 за 15 с на обеих мощностях;
+  KSZ9031 receive errors 0; FCS 2–17 и RXER 0–4 за 15 с, отброшено I/Q столько же.
+  PHY сам видит ошибки на линии → ошибки на линии / в приёмнике PHY, не RGMII; от мощности
+  заметно не зависят. На приёме сравнить нельзя — статуса нет.
+Для прошивки: слать статус и на приёме (хотя бы раз в 100–200 мс), чтобы сравнить счётчики
+PHY без передачи.
+
+## 108. Потеря связи на передаче: RF Power 100 % и передача после восстановления (03.11.2026)
+
+Оператор: «если связь потерялась и возобновилась, RF Power становится 100 %». Лог 20:36:16:
+передача с 20:40:23 (drive 62); 20:40:52 «no IQ for 2000 ms» → linkDown → RadioModel disconnected;
+20:40:57 IQ пошёл снова → linkUp → connected; MOX off только в 20:41:06 — уже с drive 150 из 255.
+
+Две наши ошибки:
+1. Мощность. Связь, пропавшая и вернувшаяся внутри сеанса, идёт без connectRadio() (нет
+   засева из памяти бенда), но RadioModel::onDisconnected() сбрасывает TransmitModel к 100 %,
+   а при connected() RadioModel отправляет это значение в бэкенд как волю оператора
+   (setTxPower(100) — и оно же записалось в память бенда). Теперь Hl2Backend перед
+   connected() публикует текущие RF Power и Tune Power оператора — отправка RadioModel
+   становится эхом того же значения, которое setTxPower() не принимает как изменение.
+2. Передача после восстановления. Хост снял ключ в момент потери (20:40:52.556), но
+   координатор передачи отклоняет снятие ключа после сброса соединения, и в P2Transport MOX
+   остался включённым: как только связь вернулась, радио снова передавало (14 с, drive 150).
+   Теперь P2Transport сам снимает MOX (и ключ CW) при «no IQ for 2000 ms» и шлёт High
+   Priority; после восстановления передачи нет, пока оператор не нажмёт снова. В лог:
+   «MOX off -- the link to the radio was lost while transmitting; it does not come back on by
+   itself». Проверено на имитаторе радио (пауза 2,6 с на передаче: MOX снят, после
+   восстановления пакетов DUC нет).
+Память бенда 40 м могла сохранить 100 % — выставить RF Power заново один раз.
+
+## 109. Кнопка WB на панораме; память задержки PureSignal отдельно для АЦП2 (03.11.2026)
+
+- Wideband Monitor перенесён из Tools на левую колонку кнопок панорамы, под +RX: кнопка «WB»
+  (SpectrumOverlayMenu: kBtnWideband = 1, остальные индексы сдвинуты; сигнал widebandClicked →
+  MainWindow открывает тот же WidebandMonitorDialog). Пункт Tools → Wideband Monitor... убран.
+- Measure delay: у АЦП2 (RX2 in, внешний ответвитель — свои кабели и своя задержка) теперь своя
+  память по бендам: AnanPsDelayNsAdc2_<бенд>, AnanPsDelayPrevNsAdc2_, AnanPsDelayAtAdc2_,
+  AnanPsDelayCompDbAdc2_; у АЦП1 ключи прежние. Смена АЦП обратной связи (и профиль с другим АЦП)
+  загружает задержку этого АЦП для бенда; идущий замер прерывается. «Previous delay» — тоже своя.
+  В Amp View: «Amp delay (40 m, ADC2) …»; в лог: «band …, feedback ADC2, amp delay …».
+  Для АЦП2 первый раз действует умолчание 600 нс — нужен замер на каждом бенде.
+
+## 110. About с именем форка, окно Tools → HW Diag, чистка Amp View; статус v8 (03.11.2026)
+
+- About: под словесным знаком крупно «Ater-ugly_fork · build N» (src/core/ForkBuild.h:
+  AETHER_FORK_NAME, AETHER_FORK_BUILD = номер поставки anan, сейчас 153; повышать с каждой
+  поставкой).
+- Прошивка v8 (описание раскладки v8 в проекте: Odyssey_Status_Bytes_v8.md): управление
+  задержками RGMII (General 40–41) и их чтение (статус 28–31) удалены, задержки фиксированы в
+  прошивке. Программа больше ничего не шлёт в байтах 40–41 General (нули; тест протокола
+  проверяет); окно «RGMII: подстройка приёма», его кнопка в Amp View, сохранение
+  AnanRgmii* и разбор 28–31 удалены (RgmiiTuneDialog.* больше не собираются — файлы можно
+  удалить).
+- Tools → «HW Diag...» (HwDiagDialog): всё, что радио сообщает о себе в пакете состояния —
+  Ethernet (кадры с неверной FCS и в минуту, RXER, отброшенные I/Q / звук / команды, ошибки на
+  1000 пакетов I/Q), PHY (ошибки простоя 1000BASE-T, ошибки приёма KSZ9031, EEE ПК, статус
+  1000BASE-T с ошибкой ведущий/ведомый, кварц PHY в ppm), буферы (уровни ТХ и динамика с
+  размахом за 5 с, опустошения, переполнения, затухания, чтения из пустого), кодек (потери PLL,
+  записи в TLV320). Счётчики — от «Сбросить счётчики» и с включения радио; поля показываются по
+  версии раскладки; сброс счётчиков радио (run = 0) распознаётся. «Замер на 4000 пакетов» —
+  здесь же. Данные — снимок последнего пакета состояния (P2Transport::statusSnapshot()).
+- Amp View: убраны «Previous delay», кнопка RGMII, строки «Radio buffers» и «Radio link» (они в
+  HW Diag). Оставлено для PureSignal: состояние, коррекция, проверки calcc, уровень обратной
+  связи и аттенюатор, HW peak, задержка (бенд, АЦП), IMD3, несущая, здоровье calcc; новая
+  строка «Learning paused: reference dropouts / steps / radio buffer-packet errors» — сколько
+  раз обучение пропускало испорченную обратную связь.
+
+## 111. Чистка: защиты от провалов радио убраны; задержка PureSignal — автоматически на каждой передаче (03.11.2026)
+
+Оператор: провалы передачи в радио исправлены; другое железо расширения протокола не имеет
+(там нули) — программа должна надёжно работать на идеальных пакетах и заполнении буфера, без
+опоры на диагностику радио.
+
+Лог 21:36 (линия чистая, 0 отброшенных пакетов): за минуту передачи 23 отказа calcc «scheck»
+и 12 сбросов коррекции. scheck (WDSP 2.10) сравнивает новую кривую с прошлой в 40 точках
+(допуск 0,10); ломается низ AM/AM: ym 1,24..2,36 на 0..0,2 при ровном верхе — пары у нуля
+огибающей при неверной задержке. Стояла 1580 нс, подгонка той же передачи — 1140 нс (±4 нс);
+правило «≥ 0,5 дБ» её не применило. И главное: задержка DDC1 → DDC0 меняется от передачи к
+передаче (01.11 подряд 1427, ~1100, ~770 нс; 02.11 1580 / 2040; 03.11 1140), каждый замер при
+этом устойчив до нескольких нс — похоже на разную фазу децимации DDC0/DDC1 при каждом старте
+(вопрос к ПЛИС: синхронный сброс). Задержка «на бенд» поэтому неверна на следующей передаче.
+
+Сделано:
+- PureSignal: задержка ищется автоматически раз в секунду на каждой передаче той же подгонкой
+  без памяти (fitDelay), без выключения коррекции (выход — функция без памяти от данных DAC,
+  предыскажённых или нет). Первая хорошая подгонка передачи (остаток < −25 дБ) применяется
+  сразу, если отличается > 75 нс, и обучение начинается заново; дальше — при отличии > 150 нс
+  две подгонки подряд. Последнее значение хранится по бенду и АЦП как старт следующей передачи.
+  В лог: «PureSignal auto delay: 40 m, ADC1: A -> B ns (fit residual …)». Ручной замер (Measure
+  delay, корреляция огибающих, правило 0,5 дБ, проверка компрессии) убран вместе с кнопкой.
+- PureSignal: убраны паузы обучения по нулям в DDC1, по ступеньке (вторая разность), по ошибке
+  буфера / отброшенным пакетам радио, задержка аттенюатора после «сбоя», пропуск IMD после
+  сбоя; каждый блок идёт в calcc.
+- P2Transport: убраны досылка пакетов тишины, вынужденная дозаливка, петля по уровню FIFO
+  радио и сигнал ошибки буфера для PureSignal. Остались: передача по часам радио (пакеты
+  микрофона), снятие MOX при потере связи, логи и окно HW Diag (только показывают).
+- Amp View: строка «Amp delay (бенд, АЦП) N ns, auto; last fit M ns (residual R dB)».
+- Build 154.
+
+## 112. Авто-задержка только по данным без коррекции (03.11.2026, сборка 155)
+
+Лог 22:08 (сборка 154, одна передача 100 с, 40 м, ADC1). Первые ~25 с всё было чисто, потом пошли сбои scheck (18 за передачу) и 3 сброса коррекции.
+
+Авто-задержка за одну передачу «уплыла»:
+
+| Время | Задержка, нс | Невязка подгонки: новая / при старой задержке, дБ |
+|---|---|---|
+| 22:08:24 | 1580 → 910 | −47.4 / −46.1 |
+| 22:08:44 | 910 → 1080 | −46.5 / −46.5 |
+| 22:09:25 | 1080 → 1260 | −45.6 / −45.5 |
+| 22:09:28 | 1260 → 1770 | −43.1 / −42.8 |
+| 22:09:39 | 1770 → 2060 | −42.4 / −42.4 |
+
+- Невязка при новой и при старой задержке отличается на 0..0.3 дБ: подгонка при включённой коррекции не несёт информации о задержке.
+- Это замкнутая петля. calcc учится на задержке d, его предыскажение строится под d, и следующая подгонка по предыскажённым данным идёт за ним.
+- Каждое применение перезапускало обучение.
+- При 910/1080 нс нижний край кривой AM/AM был ym 0.8..2.3; одиночные сбои scheck были, сбросов не было.
+- При 1770/2060 нс он стал ym 1.3..3.1, и calcc сбросил коррекцию 3 раза.
+- Несущая в норме: на ответвителе DC −94..−109 дБн, линия −72 дБн на 60.9 Гц. Ошибок связи нет.
+
+Исправление (AnanPureSignal::autoDelayStep):
+- Задержка берётся только из обратной связи БЕЗ коррекции: PS выключен или info[14] == 0. Это промежуток после нажатия или сброса, до первой кривой calcc.
+- Весь снимок (85 мс) должен лежать внутри этого окна: m_uncorrSinceMs ведётся в tick(), запас 250 мс.
+- Не чаще одного раза за передачу; решает первая такая подгонка (применяется, если отличие больше 75 нс).
+- Подгонки при включённой коррекции только показываются в Amp View («correction on: display only»).
+- Новая строка лога: «PureSignal delay fit without correction: …». Она даёт данные о том, меняется ли истинная задержка между передачами; это вопрос синхронного старта DDC0/DDC1 в ПЛИС.
+- Если коррекция осталась с прошлой передачи (info[14] == 1 с самого начала), задержка в этой передаче не меряется и остаётся сохранённой.
+
+## 113. Back to the manual delay measurement; S-meter options in Setup > Receive; HW Diag in English (03.11.2026, build 156)
+
+Operator: return to the earlier algorithm. The delay is measured by hand at low power, stored per band, and then used unchanged at any power. It worked well.
+
+- The automatic delay of builds 154/155 is removed: autoDelayStep() and the correction-off window tracking are gone.
+- startDelayMeasure(), measTick() and measFinish() are restored from build 153 without "Previous delay". The rules are the same:
+  - 5 readings with the correction off;
+  - spread ≤ 400 ns;
+  - compression ≤ 1.5 dB at the peak;
+  - a measured delay is replaced only when the fit improves by ≥ 0.5 dB.
+- Keys stay as they were: AnanPsDelayNs_/At_/CompDb_ per band, with "Adc2" for ADC2.
+- The **Measure delay** button is back in the Amp View.
+- While a measurement runs, the attenuator tracking and the HW peak are held.
+- The fit is still computed every second and shown; it does not change the delay.
+- **Note:** builds 154/155 overwrote the stored delay of the bands transmitted on (40 m: 2060 ns). Measure those bands again.
+
+S-meter, Setup > Receive, group "S-Meter" in one row:
+- Correction −50..+50 dB, step 0.5.
+- [ATT]: add the step attenuator of the ADC the receiver listens to (the reading refers to the antenna).
+- [LNA] and its gain 0..99 dB: subtract the gain of an external LNA.
+- Applied at once and saved: AnanSMeterCorrDb / UseAtt / UseLna / LnaGainDb in AnanUiState.
+- Applied in the Hl2Backend meterUpdate to the S-meter only; the spectrum is unchanged.
+
+HW Diag (and the unused RgmiiTune window) translated to English. No Cyrillic is left in src/.
+
+## 114. Attenuator: Thetis window plus drive feed-forward; manual delay measurement always accepted (04.11.2026, build 157)
+
+Log 17:28 (build 156, 40 m, ADC1). Over 113 s; drive raised smoothly from 67 to 138 (+6.3 dB) around 17:30:52..17:31:04.
+
+- Six tracking steps happened, 11 → 17 dB, one every 1.2..3 s. The feedback stayed at 164..183, i.e. inside the Thetis window 128..181 (almost all of it).
+- Every step was followed by an scheck failure (+0.3, +0.25, +2.5, +2.5, +0.6 s). Twice there were three in a row, and calcc dropped the correction (17:30:53.7, 17:31:05.0).
+- Cause (ours): the ±0.6 dB hold around 152 from anan143 steps without need. Each step leaves a collection with samples at two levels behind it. The step also lags the drive change by a calibration.
+
+Delay:
+- Measure delay at 17:30:07 gave five readings of 1572..1600 ns (the same as 02.11).
+- The stored 2060 ns (written by the auto delay of build 155) fitted only 0.4 dB worse and was kept by the "≥ 0.5 dB gain" rule.
+- With 2060 ns the low end of AM/AM is ym 0.74..4.0.
+
+Fix:
+1. **Drive feed-forward.** P2Transport::driveLevel() gives the commanded drive. As soon as the drive changes by ≥ 1 dB against the reference, ATT moves by the same whole number of dB, with the correction kept. The feedback amplitude is proportional to the drive, so the level calcc sees does not change. The reference is kept across overs.
+2. **Feedback window.** The smoothed level is left alone inside 128..181 (Thetis NeedToRecalibrate). Outside it, one step straight to 152, the correction kept.
+   - The smoothing takes only settled calibrations (≥ 2 after a change, ≥ 400 ms).
+   - The coarse reset-and-jump (> 200 / < 100) and the ADC overload (+6 dB) are unchanged.
+3. **Delay measurement:** the 0.5 dB rule is removed. A steady measurement (spread ≤ 400 ns, compression ≤ 1.5 dB) is always accepted.
+
+**Needed:** measure the delay on 40 m again (and on the other bands transmitted on with builds 154/155).
+
+## 115. S-meter: LNA gain only while the LNA is on (04.11.2026, build 158)
+
+Operator: the [LNA] box in Setup > Receive > S-Meter means "account for the LNA when it is on". The LNA itself is switched by the LNA button of the panadapter ANT panel ("AnanLna", the Alex preamp bit), and while it is off nothing may be corrected.
+
+- AnanUiState::sMeterOffsetDb(attDb, lnaOn) subtracts the gain only when [LNA] && lnaOn.
+- lnaOn is m_ananLnaPushed == 1, the state actually pushed to the radio by the 300 ms ANAN timer.
+
+## 116. Failures with nothing changing; scheck diagnostics; "S-meter Calibration" (04.11.2026, build 159)
+
+Log 17:52 (build 158, one over of 74 s, 40 m, ADC1). The radio was clean: no buffer, link or PHY errors.
+
+- Before the measurement (delay 2060 ns) there were 5 scheck failures and 1 drop in 12 s.
+- Measure delay gave **1030 ns** (998..1052, spread 54 ns, residual −44.4 → −46.7 dB). It was accepted (the 0.5 dB rule is gone).
+- With the drive (54), ATT (9 dB) and feedback (156..158) all constant, scheck still failed at 17:54:13, :15, :19, :20, :21, with a drop at :16.4. **No attenuator steps were involved.**
+- The drive feed-forward then worked as intended: 9 → 16 dB on the ramp and back, one step per ~1 dB.
+- The fitted curves of the successful calibrations are almost identical. The low bin is ym 1.38..2.28 and varies by ±0.005 between calibrations. So the failures are single outlier calibrations: scheck compares each solution with the previous one at 40 points, x = 0..1, |Δ| ≤ 0.10. It also stores the failed one as "previous", so one outlier gives two failures in a row.
+- Compare log 17:28 (another program run, delay 2060 ns): 80 s at constant drive without a single failure.
+
+Delay between program runs:
+- 17:30 (run 17:28): 1572..1600 ns.
+- 17:54 (run 17:52): 998..1052 ns, the same band.
+- Each measurement is steady to ±30 ns, so the true DDC1 → DDC0 lag changes when the radio is (re)started (history: 770..2060 ns).
+- This is the open FPGA question: do DDC0 and DDC1 start their decimation together? One 192 kHz sample is 5208 ns; the offsets are sub-sample, i.e. the CIC decimation phase. A delay stored per band can only hold if the phase is the same at every start.
+
+Build 159:
+- WDSP patch 26 (diagnostics only): GetPSScheckDiag() gives the worst point of each failed scheck.
+- The host logs every failure: "PureSignal scheck detail (#N): worst magnitude/cos/sin at x … (point k of 40): prev -> new (|d| …), feedback, att, drive". This shows whether the outliers sit at the low end (x ≈ 0, noise) or across the curve.
+- Setup > Receive: the group is renamed "S-meter Calibration".
+
+## 117. Every scheck failure is at x = 0.026 of the magnitude curve; attenuator set in the same instant as the drive (04.11.2026, build 160)
+
+Log 18:06 (build 159, over of 121 s, 40 m, ADC1, delay 1030 ns): 29 scheck failures, 6 drops.
+
+- **All 29** are the magnitude curve m at point 1 of 40 (x = 0.026). No other point and no cos/sin curve fails.
+- The values there are 1.3..3.2 and jump by 0.11..0.45 between calibrations. The limit is 0.10.
+  - At constant drive 67 (18:06:53..59): failures #1..7 with |Δ| 0.24..0.39, i.e. noise in the lowest interval.
+  - On drive ramps m(0.026) creeps steadily, 1.97 → 2.33 → 2.58 → 2.83 → 3.22, about 0.3 per calibration. That is a real change of the normalised curve with the drive, but scheck counts it as a failure, and three in a row drop the correction.
+  - #8 (18:07:09.3): 1.83 → 7.39 right after "drive 78 → att 11 → 12" from the 50 ms PureSignal tick. The collection held samples at two levels. **This one is ours.**
+- m ≈ 2 at x = 0.026 means a predistortion of +6 dB at the very bottom: the PA gain near zero amplitude is half of that at the peak (crossover). It varies by ±1.5 dB between 0.35 s calibrations. This is either the PA (bias / crossover) or the noise of the feedback in the lowest interval (fit residual −46 dB ≈ 0.005 of the peak, against x = 0.026 → about 14 dB SNR).
+- WDSP 2.10 scheck compares solution with solution at 40 points with an absolute 0.10, including x = 0.026. Thetis' classic calcc does not have this comparison. The engine can be switched by building with `-DAETHER_WDSP_PS_ENGINE=classic` (both variants compile).
+
+Build 160:
+- The drive feed-forward moved into P2Transport::setTxDriveLevel(). When the drive changes by ≥ 1 dB, m_psAttDb changes by the same whole dB, and the Transmit Specific and High Priority packets go out back to back with the new drive.
+- AnanPureSignal enables it with setPsAttFollowsDrive(enabled && auto attenuate) and adopts psAttNow() in its tick ("auto-attenuate (drive): … set with the drive").
+- The window (128..181), coarse and overload rules are unchanged.
+
+## 118. scheck switched off as a test (04.11.2026, build 161)
+
+Operator: the PA has a low bias on purpose, and floating gates (the bias rises with power by itself), so nothing can be done in hardware. "Just switch that check off and see."
+
+- WDSP patch 27: SetPSScheckOff(channel, off). With it set, scheck still compares the new solution with the previous one and records the worst deviation (patch 26), but never rejects it.
+- The other checks are unchanged: fit quality, sin²+cos², top bucket.
+- An accepted solution still enters the averaged curves with α = 0.3 (curve_ema_update), so a single outlier is blended in at 30 %, not taken as it is.
+- AnanPureSignal: kScheckOff = true. It is set in applyWdspParams() and at every key-down (a re-created calcc starts with the check on).
+- Log: "PureSignal engine: WDSP 2.10 calcc/iqc, scheck OFF (logged only)". What would have been rejected: "PureSignal scheck (off) would have failed (#N): worst … at x …".
+- Things to watch: IMD3 ("IMD3 jump" lines, Amp View), "correction DROPPED" (should be gone), and the other calcc failures.
+
+## 119. The delay drifts with the PA heating; a time law for a smooth correction (04.11.2026, build 162)
+
+Log 18:34 (build 161, one over of 90 s at drive 108, after 8 min of rest). Measure delay three times:
+
+| Time into the over | Delay, ns | Fit residual, dB |
+|---|---|---|
+| 2..6 s | 3010 → 3190 (rising within the 5 readings) | −40.8 → −40.3 |
+| 45..49 s | 3740..3870 | −38.7 |
+| 75..79 s | 4010..4056 | −38.3 |
+
+- The delay drifts within one transmission (+1 µs in 75 s), and the residual worsens with it. The per-run differences seen earlier (1030 / 1580 / 1980 ns at drive 54..67) are the same thing in different heat states.
+- Probable mechanism: the floating gates get their bias from the signal through an RC network. The bias lags the envelope, which is memory, and the memoryless model shows it as an apparent delay that changes with heating.
+- The two calibration errors: at 18:34:49, sin²+cos² failed and the correction was dropped; at 18:35:24 and 18:35:51, "AM/AM: fit quality bad". A few seconds after a measurement the delay no longer matched, and m(0.026) went to 79, 71, −1.98.
+- Least squares over the three measurements: d(t) = 4235 − 1205·exp(−t / 42 s), drive 108, starting cold.
+
+Build 162 (AnanPureSignal::heatTick(), every tick):
+- Heat state h: towards u = (drive / 108)² with τ = 42 s while transmitting, back to 0 with τ = 90 s while receiving.
+  - The cooling constant is not measured yet; we only know the over after 8 min of rest started at the cold value.
+  - The scaling of u with the square of the drive is an assumption (dissipation).
+- Delay applied = measured delay of the band + 1205 ns · (h − h at the measurement). SetPSTXDelay is updated in 10 ns steps. SetDelayValue only re-indexes the delay line, so the learning is not restarted.
+- Measure delay stores h with the delay (AnanPsDelayHeat_ per band and ADC). Older values without it count as h = 0.
+- Log every 10 s while transmitting: "PureSignal heat delay: heat …, amp delay X + Y = Z ns, drive …".
+- Amp View: "Amp delay Z ns … (measured X + heat drift Y ns, heat h)".
+- Model check against the measurements: 3086 / 3190 / 3822 / 4033 ns at 2 / 6 / 45 / 75 s, against the measured 3010..3190 / 3800 / 4040.
+- **Needed:** measure the delay again (the stored 4050 ns was taken hot without h).
+- Not modelled: the delay also depends on the drive itself (cold about 1000 ns at drive 54, 3030 at 108). Measure at the working drive.
+
+## 120. The correction dropped for 17 s: with the check off a negative correction got in; scheck as in Thetis (04.11.2026, build 163)
+
+Log 18:47 (build 162, over of 100 s at drive 108).
+
+- **Start:** the stored 4050 ns (measured hot by build 161, without a heat value, so taken as h = 0) plus the model gave 4307 ns at h = 0.21, against a true value of about 3300. At 18:47:31 "AM/PM cos: fit quality bad" and the correction was dropped. This was expected: the value had to be re-measured.
+- **Measure delay at 18:47:37:** 3420 ns at h = 0.39. The model predicts 3030 + 0.39·1205 = 3500 for that state, so it agrees. After that the heat drift followed smoothly: 3578 → 3702 → 3800 → 3876 → 3936 → 3984 → 4021 ns.
+- **18:47:42..47:** with scheck off, the magnitude correction at x = 0.026..0.05 went **negative** (−1.4..−2.4) and was blended into the curves. "AM/AM: fit quality bad" four times in a row, and at 18:47:48 the correction was dropped. The next good calibration came only at 18:48:05, so there was no correction for 17 s. From 18:48:05 to the end of the over (51 s) there were no failures.
+
+Thetis' classic scheck (third_party/wdsp/classic/calcc.c):
+- compares the previous solution only for intervals i = 4..15 of 16, i.e. x ≥ 0.25;
+- rejects a negative corrected drive (0x10) and an out-of-range one.
+
+The WDSP 2.10 scheck compares at all 40 points from x = 0 (that was all our failures, at x = 0.026), and with it off nothing protected the bottom.
+
+Build 163 (WDSP patch 28, SetPSScheckMode):
+- Mode 2 = as Thetis: compare from x = 0.25 up, and reject a negative magnitude correction.
+- Host: kScheckMode = 2, set in applyWdspParams() and at every key-down. Start-up line: "scheck as Thetis (x >= 0.25, magnitude >= 0)". A failure is logged as "PureSignal scheck FAILED (#N): worst …", where "magnitude < 0" marks the negative check.
+
+## 121. Arrow cursor on the slice flag; Thetis Auto AGC studied (04.11.2026, build 164)
+
+- Operator: the window over the panadapter (the slice flag with the audio / DSP / mode tabs) should show the plain arrow, as the applet panel does.
+  - VfoWidget sets Qt::ArrowCursor on itself, so it no longer inherits the panadapter crosshair.
+  - All its controls get the arrow instead of PointingHandCursor (applyInteractiveCursors and the explicit setCursor calls).
+  - The slice-drag overrides of SpectrumWidget are unchanged.
+- Log 18:55 (build 163): one glitch in 84 s. At 6 s, m(0.026) = −22, rejected three times by the negative check, and calcc reset; it re-learnt in 1.4 s. The rest was clean, IMD3 −38.5..−40.5 dBc at drive 108. Operator: leave it as it is.
+- Thetis Auto AGC (ramdor/Thetis console.cs, tmrAutoAGC_Tick, every 500 ms, not on TX, only with a valid noise-floor estimate): `setAGCThresholdPoint(NF + AutoAGCOffset)`.
+  - The offset is −60..+60 dB, default **+20**.
+  - It ends in WDSP `SetRXAAGCThresh(ch, thresh_dBFS_per_bin, fftSize, rate)`: `max_gain = out_target / (var_gain · 10^((thresh + 10·log10(BW_filter · size / rate)) / 20))`. So the AGC ceiling follows the floor and the filter width, and the noise heard in the pauses stays the same.
+  - Moving AGC-T by hand (or the knee on the panadapter) switches Auto off.
+
+## 122. AGC follows the noise floor (Auto AGC as in Thetis, AGC-T as an offset) (04.11.2026, build 165)
+
+Operator: option 2 — Auto makes the AGC follow the floor, with the offset set by a slider; without Auto, AGC-T sets the gain by hand. The controls go into the audio tab of the slice flag (speaker icon).
+
+- AnanUiState: agcAuto[rx] and agcNfOffsetDb[rx] (−20..+60 dB, default **+40**, see below). Keys AnanRx1/2AgcAuto, AnanRx1/2AgcNfOffsetDb.
+- Hl2Backend::ananAutoAttStep now estimates the floor always, not only with AUTO ATT (the same estimator: 20th percentile of the inner 90 %, EMA 0.8/0.2, display dBm on 1024-point bins, receive only). Then ananAutoAgcStep(rx) runs every 500 ms:
+  - `top = 20·log10(out_target / var_gain) − (thresh + 10·log10(BW · 1024 / rate))`. This is WDSP SetRXAAGCThresh, the formula Thetis uses.
+  - thresh = floor − 10 (dBm → dBFS) − 6.02 (Hl2Spectrum's tone gain) + offset.
+  - out_target = (1 − e⁻⁴)·0.9999 (wcpAGC, n_tau 4); var_gain = 10^(35/200) (slope 35).
+  - BW is the slice filter width. The result is clamped to 0..120 dB.
+  - It is applied when it changes by ≥ 0.5 dB and logged when it changes by ≥ 3 dB: "ANAN Auto AGC RXn: floor … dBm + … dB, filter … Hz -> AGC gain … dB (manual AGC-T law …)".
+  - With AGC Off, or Auto off, the manual law 0.6·AGC-T + 40 returns.
+- agcCeilingFor(r) replaces m_dbRef.agcCeilingDb(r.agcThresholdDb) at all 8 Config / setAgc sites, so the auto ceiling survives rebuilds (zoom, rate, mode).
+- VfoWidget, audio tab: the existing Auto button next to AGC-T (Flex Auto AGC-T, disabled on this radio) now switches the floor AGC for the slice's receiver.
+  - A new row "NF + [slider] N dB" (only for this radio) sets the offset.
+  - With Auto on, AGC-T is greyed (manual gain only without Auto).
+  - The row appears once the backend has filled the pan → receiver map (polled every 1 s).
+- Example (filter 2700 Hz, 192 kHz, offset +20): floor −120 dBm → 100.8 dB of AGC gain; −110 → 90.8; −100 → 80.8. A noisier antenna gets less gain, so the noise heard stays the same.
+- Default offset **+40**, not Thetis' +20. Our dBm scale differs: at the AUTO ATT target of −120 dBm, +20 gives 101 dB against the 79 dB of the default manual AGC-T 65 (22 dB more hiss). +40 gives about 81 dB, within 2 dB of today's loudness.
+
+## 123. The NF+ row did not appear (04.11.2026, build 166)
+
+- Operator (build 165): "where are these sliders?". The row was shown only when VfoWidget could find the slice's receiver in AnanUiState::panRx and the radio reported connected. If either was missing, it stayed hidden.
+- Now ananAgcRx() returns −1 only on a radio with its own Auto AGC-T (Flex). Otherwise it is the receiver from panRx, and before that map exists, slice 1 → RX2, anything else → RX1. The row is always there on this radio.
+- The availability registry no longer disables the Auto button on ANAN (it judged by the Flex Auto AGC-T conditions), and "engaged" follows AnanUiState::agcAuto.
+- Log: "ANAN Auto AGC flag: slice N, pan …, RXn, NF+ row shown".
+
+## 124. Auto AGC / NF+ also in RX Control, synchronised with the slice flag (04.11.2026, build 167)
+
+- Operator: the flag's audio-tab controls are duplicated in the RX Control applet; add the missing / new ones there too and keep them in sync like the rest.
+- RxApplet:
+  - The "A" button next to AGC-T (Flex Auto AGC-T, disabled on this radio) now switches the noise-floor AGC of the slice's receiver.
+  - A new row "NF + [slider] N dB" below the AGC row (−20..+60 dB, drag value shown in dB).
+  - The availability registry treats it as on ANAN, and "engaged" follows AnanUiState::agcAuto.
+  - With Auto on, AGC-T is greyed (it is the manual gain).
+- Synchronisation: both surfaces write AnanUiState::setAgcAuto() and re-read it every 250 ms (VfoWidget's poll went from 1 s to 250 ms). A slider being dragged is not overwritten. When Auto changes, AGC-T availability is recomputed first (syncAgcSliderFromSlice / updateAgcSliderFromSlice) and then greyed if Auto is on.
+
+## 125. The NF+ slider was there but invisible (04.11.2026, build 168)
+
+- Screenshot of the operator's window (build 167): both the slice flag and RX Control show the row "NF + … 40 dB". The slider itself was disabled (Auto off), and a disabled slider is all but invisible in this theme.
+- Now the NF+ slider is always enabled. The offset is kept and used once Auto is on. Only the value label is greyed while Auto is off.
+
+## 126. NF+ caption drawn as the SQL button (04.11.2026, build 169)
+
+- Operator: badly laid out. The "NF +" caption should be a button that cannot be pressed, looking exactly like SQL, and the spacing between the sliders should be the same in the flag and in the applet.
+- The caption is now a QPushButton with the SQL button's style when off: kDspToggle + kDisabledBtn in the flag (60×20), kButtonBase() + kDisabledBtn in RX Control (52×20).
+  - It takes no clicks (WA_TransparentForMouseEvents) and no focus.
+  - Its 20 px height makes the row as high as the SQL / AGC rows, so the spacing between the sliders is the same.
+- The value label in the flag is 63 px wide (AGC-T value + Auto), so the NF+ slider ends where the AGC-T slider ends.
+
+## 5. Где брать удалённый код
+
+Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
+пользователя. Пример: `git show v26.10.4:src/core/backends/icom/IcomCivBackend.cpp`.

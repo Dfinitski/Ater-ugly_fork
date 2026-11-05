@@ -1,0 +1,359 @@
+#pragma once
+
+#include <functional>
+#include <optional>
+
+#include <QMap>
+#include <QSet>
+#include <QString>
+
+#include "core/backends/IRadioBackend.h"
+
+class QThread;
+class QVersionNumber;
+
+namespace AetherSDR {
+
+// Reads FlexRadio's published release list. Forward-declared rather than
+// included: this header is scanned above the radio seam, and the include
+// belongs in the .cpp with the rest of the family's wire knowledge.
+class FirmwareStager;
+
+class RadioConnection;
+class PanadapterStream;
+
+// FlexBackend — the IRadioBackend for the SmartSDR / FlexRadio wire stack.
+// Owns the RadioConnection and PanadapterStream and their two worker threads:
+// created panStream thread first, connection thread second, and torn down in
+// the #502 order (BlockingQueued stop → deleteLater → thread quit/wait).
+// RadioModel holds non-owning pointers via connection()/panStream() and keeps
+// the command/WAN orchestration and sub-models. Core verbs build SmartSDR
+// command strings and emit them through the model-provided command sink.
+class FlexBackendTestAccess;
+
+class FlexBackend : public IRadioBackend {
+    Q_OBJECT
+
+public:
+    explicit FlexBackend(QObject* parent = nullptr);
+    ~FlexBackend() override;
+
+    // The owned wire objects, on their worker threads. Non-owning to callers;
+    // valid for the backend's lifetime. RadioModel grabs these post-construction
+    // and its connection()/panStream() getters delegate to them.
+    RadioConnection*  connection() const { return m_connection; }
+    PanadapterStream* panStream()  const { return m_panStream; }
+
+    // Core verbs share RadioModel's guarded command funnel and wire-write path.
+    using CommandReply = std::function<void(int, const QString&)>;
+    void setCommandSink(std::function<bool(const QString&, CommandReply)> sink);
+    // Encoding-only observers cannot dispatch requests that need a radio reply.
+    void setCommandSink(std::function<void(const QString&)> sink);
+    // The same funnel for a write whose caller waits on the radio's answer
+    // (TransmitControlRequest::answerTicket). The sink reports the reply code;
+    // with none installed, such a request goes out unanswered.
+    using AnsweredCommandSink =
+        std::function<void(const QString&, std::function<void(bool applied)>)>;
+    void setAnsweredCommandSink(AnsweredCommandSink sink) { m_answeredSink = std::move(sink); }
+    bool answersTransmitControl() const override { return bool(m_answeredSink); }
+    // Configuration writes share LAN/WAN sequencing and report actual dispatch.
+    void setSetupCommandSink(std::function<bool(const QString&, const RadioSetupCompletion&)> sink);
+    void requestTuneOutputSuppression(int bandId, bool suppressed, quint64 requestId) override;
+    void decodeTuneOutputStatus(const QString& object, const QMap<QString, QString>& kvs);
+    // Primary keying verbs use an operation-fenced writer, never the generic
+    // command sink. The bool distinguishes key-on from cleanup, not authority.
+    // Trusted engine composition supplies the original operation at dispatch.
+    void setTxCommandSink(std::function<void(const QString&, const TxCoordinator::Command&)> sink);
+    // Slice verbs (setSliceFrequency/Mode/Filter) route through THIS sink, which
+    // RadioModel wires to its TX-inhibit-guarded sendSliceCommand — so keeping
+    // the encode's TX safety above the seam (RFC §6). Falls back to the generic
+    // sink if unset. (aetherd RFC 2.3 encode template.)
+    void setSliceCommandSink(std::function<void(const QString&)> sink);
+    // Live model-string source for capabilities(). Call on the main thread,
+    // where RadioModel lives — capabilities() is not thread-safe (no off-thread
+    // caller exists yet; this documents the assumption).
+    void setModelProvider(std::function<QString()> provider);
+    void setFirmwareVersionProvider(std::function<QString()> provider);
+    void refreshFirmwareCapabilities();
+    void setAutoAgcThresholdLicenseProvider(std::function<bool()> provider);
+    void setDspResetLicenseProvider(std::function<std::optional<bool>()> provider);
+    void setIndependentTxSequenceProvider(std::function<quint32()> sequence);
+    IndependentTxControl independentTxControl() const override;
+    bool independentTxReady() const override;
+    void stopIndependentTx(const TxCoordinator::Operation& operation,
+                           const TxCoordinator::StopRequest& request) override;
+
+    // The capacity THIS radio declared in its discovery packet, as opposed to the
+    // model-table estimate (#5594 item 3). Pushed from RadioModel, which owns
+    // discovery. A value <= 0 means "not reported" and keeps the model-table
+    // estimate. Emits capabilitiesChanged() when a value changes, since the
+    // descriptor is what the control protocol serializes.
+    void setRadioReportedCapacity(int maxSlices, int maxPanadapters);
+
+    // ---- IRadioBackend ----
+    RadioCapabilities capabilities() const override;
+    void onRadioSessionEstablished() override;
+    void connectRadio(const RadioConnectRequest& request) override;
+    void disconnectRadio() override;
+    bool isConnected() const override;
+    ReceiveDispatch requestRadioNickname(const QString& nickname,
+                                         NicknameCompletion completion = {}) override;
+    ReceiveDispatch requestSliceControl(int sliceId, const SliceControlRequest& request) override;
+    ReceiveDispatch requestSliceCreate(const SliceCreateRequest& request,
+                                       const SliceCreateCompletion& completion = {},
+                                       const RadioControlFence& current = {}) override;
+    ReceiveDispatch requestSliceRemove(int sliceId, const RadioControlCompletion& completion = {},
+                                       const RadioControlFence& current = {}) override;
+    ReceiveDispatch requestTxSlice(int sliceId, bool enabled,
+                                   const RadioControlCompletion& completion = {},
+                                   const RadioControlFence& current = {}) override;
+    ReceiveDispatch requestFullDuplex(bool enabled, const RadioControlCompletion& completion = {},
+                                      const RadioControlFence& current = {}) override;
+    ReceiveDispatch requestSliceInventoryRefresh(const RadioControlCompletion& completion = {},
+                                                 const RadioControlFence& current = {}) override;
+    ReceiveDispatch requestTransmitControl(const TransmitControlRequest& request,
+        TunePowerContext context = TunePowerContext::Deferred) override;
+    ReceiveDispatch requestRadioSetup(const RadioSetupRequest& request,
+                                      const RadioSetupCompletion& completion = {},
+                                      const RadioControlFence& current = {}) override;
+    ReceiveDispatch requestTxBand(const TxBandRequest& request,
+                                  const RadioSetupCompletion& completion = {}) override;
+    ReceiveDispatch requestSpot(const SpotRequest& request, const QString& panId = {}) override;
+    ReceiveDispatch requestPanControl(const QString& panId, const PanControlRequest& request) override;
+    ReceiveDispatch requestSlicePreset(int sliceId, const SlicePresetRequest& request) override;
+    ReceiveDispatch requestPanDisplay(const QString& panId, const QString& waterfallId,
+        const PanDisplayRequest& request, const RadioControlCompletion& completion = {},
+        const RadioControlFence& current = {}) override;
+    ReceiveDispatch requestPanLifecycle(const PanLifecycleRequest& request,
+        const PanLifecycleCompletion& completion = {}, const RadioControlFence& current = {}) override;
+    ReceiveDispatch requestProfile(const ProfileRequest& request,
+                                   const RadioControlCompletion& completion = {},
+                                   const RadioControlFence& current = {}) override;
+    ReceiveDispatch requestMemory(const MemoryRequest& request,
+                                  const RadioControlCompletion& completion = {},
+                                  const RadioControlFence& current = {}) override;
+    ReceiveDispatch requestUsbCable(const UsbCableRequest& request) override;
+    ReceiveDispatch requestTransverter(const TransverterRequest& request,
+                                       const RadioSetupCompletion& completion = {}) override;
+    void requestSliceTune(int sliceId, const SliceTuneRequest& request) override;
+    void requestSliceFilter(int sliceId, const SliceFilterRequest& request) override;
+    void requestSliceAgc(int sliceId, const SliceAgcRequest& request) override;
+    ReceiveDispatch requestSliceAgcThresholdMode(int sliceId, AgcThresholdMode mode) override;
+    ReceiveDispatch requestSliceDsp(int sliceId, const SliceDspRequest& request) override;
+    ReceiveDispatch requestDspParameterReset(int sliceId, DspParameterResetTarget target) override;
+    ReceiveDispatch requestSliceAudio(int sliceId, const SliceAudioRequest& request) override;
+    ReceiveDispatch requestSliceSquelch(int sliceId, const SliceSquelchRequest& request) override;
+    ReceiveDispatch requestSliceRxAntenna(int sliceId, const QString& antenna) override;
+    ReceiveDispatch requestSliceLock(int sliceId, bool locked) override;
+    void setSliceFrequency(int sliceId, double hz) override;
+    void setSliceMode(int sliceId, const QString& mode) override;
+    void setSliceFilter(int sliceId, int lowHz, int highHz) override;
+    void setSliceAgc(int sliceId, const QString& mode, int thresholdDb) override;
+    void setPanCenter(const QString& panId, double hz,
+                      PanCenterIntent intent) override;
+    void createNotch(double centerHz, double widthHz) override;
+    void setNotch(int notchId, const AetherSDR::NotchDelta& delta) override;
+    void removeNotch(int notchId) override;
+    void setNotchesEnabled(bool on) override;
+    void sendSliceWaveformCommand(int sliceId, const QString& command);
+    void setKeying(bool key, const AetherSDR::TxCoordinator::Operation& operation, const AetherSDR::TxCoordinator::Completion& completion = {}) override;
+    void setTune(bool on, int tunePowerPercent, const AetherSDR::TxCoordinator::Operation& operation, const AetherSDR::TxCoordinator::Completion& completion = {}) override;
+    void setAtu(bool start, const AetherSDR::TxCoordinator::Operation& operation, const AetherSDR::TxCoordinator::Completion& completion = {}) override;
+    void abortCwText(const TxCoordinator::Operation& operation, const AetherSDR::TxCoordinator::Completion& completion = {}) override;
+    void invokeExtension(const QString& ns, const QString& verb,
+                         quint64 requestId, const QVariant& arg = {}) override;
+
+    // ---- status decode (aetherd RFC 2.3) ----
+    // Decode the universal panadapter display fields (center/bandwidth) out of
+    // a Flex "display pan" status kv-set and emit the normalized
+    // panCenterBandwidthChanged signal. RadioModel calls this from its status
+    // choke point (handlePanadapterStatus), so both live and deferred/replayed
+    // status flow through it. The Flex-specific pan fields still decode in
+    // PanadapterModel::applyPanStatus until they convert too.
+    void decodePanCenterBandwidth(const QString& panId,
+                                  const QMap<QString, QString>& kvs);
+    // Decode the universal panadapter display level range (min_dbm/max_dbm) and
+    // emit the normalized panRangeChanged signal. dBm is signed, so an omitted
+    // field is carried as NaN ("unchanged"), not a negative sentinel.
+    void decodePanRange(const QString& panId,
+                        const QMap<QString, QString>& kvs);
+    // Universal pan RF gain / antenna selection — decoded from Flex status and
+    // emitted as the normalized typed signals (aetherd RFC 2.3; rfgain+antenna
+    // promoted to universal per the 2026-07-05 classification).
+    void decodePanRfGain(const QString& panId, const QMap<QString, QString>& kvs);
+    void decodePanAntenna(const QString& panId, const QMap<QString, QString>& kvs);
+    // Waterfall line duration (universal display timing), decoded from the
+    // waterfall-status plane and emitted as panWaterfallLineDurationChanged.
+    void decodeWaterfallLineDuration(const QString& panId,
+                                     const QMap<QString, QString>& kvs);
+    // Decode the Flex-specific pan fields that are NOT part of the core profile
+    // (the WNB group) and emit them on the namespaced extensionStatus channel.
+    // (aetherd RFC 2.3 extension template.)
+    void decodePanExtensions(const QString& panId,
+                             const QMap<QString, QString>& kvs);
+    // The remaining Flex-specific display-pan status keys — wide, loop A/B, fps,
+    // preamp, DAX-IQ channel, MultiFlex client_handle ownership, waterfall
+    // stream-id — bundled onto the namespaced extensionStatus("flex","panState")
+    // channel. Present-only (each key rides only when the wire reported it).
+    void decodePanState(const QString& panId, const QMap<QString, QString>& kvs);
+    // Decode the SmartSDR meter-status wire body (definitions or a "N removed"
+    // line) and emit the normalized meterDefined/meterRemoved signals. Mirrors
+    // FlexLib Radio.cs ParseMeterStatus. (aetherd RFC 2.3 — MeterModel touchpoint.)
+    void decodeMeterStatus(const QString& rawBody);
+    // Decode a Flex slice-status kv-set into the normalized, canonically-named
+    // slice change map and emit sliceChanged(sliceId, changes). Owns all the
+    // Flex wire knowledge (key names like "RF_frequency"/"filter_lo", "1"→bool,
+    // comma-split lists); SliceModel::applyChanges consumes only canonical keys.
+    // (aetherd RFC 2.3 — SliceModel touchpoint, full canonical rename.)
+    void decodeSliceStatus(int sliceId, const QMap<QString, QString>& kvs);
+
+    // Decode the five Flex transmit-family status planes into a normalized,
+    // typed TransmitDelta and emit transmitChanged (aetherd RFC 2.3 — TransmitModel
+    // touchpoint). Each owns its SmartSDR wire keys, "1"→bool, ok-guarded +
+    // clamped numeric parses, uppercase, and list split; the model applies the
+    // present fields. Called from the matching RadioModel status choke points.
+    void decodeTransmitStatus(const QMap<QString, QString>& kvs);
+    // Decode radio-global status ("radio …" / "radio slices …" etc.) into the
+    // normalized RadioDelta and emit radioChanged (aetherd RFC 2.3 — RadioModel
+    // residual). Present-only, ok-guarded numeric parses.
+    void decodeRadioStatus(const QMap<QString, QString>& kvs);
+    // Full info reply: missing/invalid region clears the observation.
+    void decodeRadioInfoMetadata(const QString& body);
+    void decodeInterlockStatus(const QMap<QString, QString>& kvs);
+    void decodeAtuStatus(const QMap<QString, QString>& kvs);
+    void decodeApdStatus(const QMap<QString, QString>& kvs);
+    // Translate a SmartSDR "amplifier <handle> …" status into a typed AmpDelta
+    // and emit amplifierChanged (aetherd 2.4 — AmpModel decode split, #4094).
+    // `model` is the wire "model" key (TunerGeniusXL routes to the tuner, not
+    // here); `removed` marks an "amplifier <handle> removed". Stateless — the
+    // presence latch / operate change-gating live in AmpModel::applyChanges.
+    void decodeAmplifierStatus(const QString& handle, const QString& model,
+                               const QMap<QString, QString>& kvs, bool removed);
+    // Translate a SmartSDR TGXL tuner status (the "atu <handle> …" and
+    // "amplifier <handle> model=TunerGeniusXL …" kv-sets) into a typed
+    // TunerDelta and emit tunerChanged (aetherd 2.4 — TunerModel decode split,
+    // #4092). Present-only, strict-parity with the prior TunerModel::applyStatus.
+    // `handle` is the (sanitized) TGXL object handle RadioModel extracted; it is
+    // cached here to source the tuner encode path (#4198).
+    void decodeTunerStatus(const QString& handle, const QMap<QString, QString>& kvs);
+    // Drop the cached amp/tuner encode handles (#4198). Called on radio
+    // disconnect/reset, where RadioModel clears the model-side presence outside
+    // the decode path — without this the stale handle could survive a reconnect
+    // to a *different* radio and be used to build a bogus relay command.
+    void clearExtensionHandles();
+    void decodeApdSamplerStatus(const QMap<QString, QString>& kvs);
+    // Decode the Flex GPS-status line ("gps …", '#'-separated key=value tokens)
+    // into a present-only GpsDelta and emit gpsChanged (aetherd RFC 2.3 —
+    // RadioModel residual). Satellite counts are numeric; the rest keep the
+    // radio's string form (units included).
+    void decodeGpsStatus(const QString& rawBody);
+    // Decode a Flex memory-slot status kv-set (keyed by slot index) into a
+    // normalized MemoryDelta and emit memoryChanged (aetherd RFC 2.3 — RadioModel
+    // residual). Sets delta.removed for "in_use=0" / a bare "removed"; carries
+    // text fields raw (the model sanitises). Present-only, ok-guarded numerics.
+    void decodeMemoryStatus(int index, const QMap<QString, QString>& kvs);
+    // Parse a Flex "profile <type> …" status body into a ProfileDelta and emit
+    // profileChanged (aetherd RFC 2.3 — RadioModel residual). Handles the raw
+    // ('^'-list, space-containing values) list/current form and the plain
+    // importing/exporting flags. profileType is "tx"/"mic"/"global"; empty for a
+    // flags-only kv-set with no profile type.
+    void decodeProfileStatus(const QString& profileType, const QString& rawBody);
+    void decodeProfileFlags(const QMap<QString, QString>& kvs);
+
+private:
+    void send(const QString& cmd);
+    void sendTx(const QString& cmd, const TxCoordinator::Command& command);
+    void sendSlice(const QString& cmd);   // guarded slice path (§6)
+    void sendSliceTune(int sliceId, const SliceTuneRequest& request);
+
+    RadioConnection*  m_connection{nullptr};    // owned; lives on m_connThread
+    QThread*          m_connThread{nullptr};    // owned (this-parented)
+    PanadapterStream* m_panStream{nullptr};     // owned; lives on m_networkThread
+    QThread*          m_networkThread{nullptr}; // owned (this-parented)
+    std::function<bool(const QString&, CommandReply)> m_sink;
+    AnsweredCommandSink m_answeredSink;
+    std::function<bool(const QString&, const RadioSetupCompletion&)> m_setupSink;
+    quint64 m_nicknameSession{0};
+    quint64 m_nicknameRequest{0};
+    quint64 m_nicknameAppliedRequest{0};
+    quint64 m_tuneOutputSession = 0;
+    QMap<int, quint64> m_tuneOutputRequests;
+    QSet<int> m_tuneOutputKnownBands;
+    std::function<void(const QString&, const TxCoordinator::Command&)> m_txSink;
+    std::function<void(const QString&)> m_sliceSink;
+    std::function<QString()> m_modelProvider;
+    bool firmwareAtLeast(const QVersionNumber& minimum) const;
+    int nrsLevelMaximum() const;
+    int m_announcedNrsLevelMaximum = 100;
+    bool m_announcedCwProfiles = false;
+    std::function<QString()> m_firmwareVersionProvider;
+    std::function<bool()> m_autoAgcThresholdLicenseProvider;
+    std::function<std::optional<bool>()> m_dspResetLicenseProvider;
+    std::function<quint32()> m_sequenceProvider;
+
+    // Decode-side handle state (#4198). Captured from the amplifier/tgxl status
+    // decode and consumed by invokeExtension() to build the amp/tuner relay wire,
+    // so RadioModel no longer threads the Flex handle through the encode arg.
+    // Touched only on the main thread — both the decode (RadioModel::handleStatus)
+    // and the encode intent lambdas run there — so a plain QString needs no sync.
+    QString m_ampHandle;
+    QString m_tunerHandle;
+
+    // Radio-declared capacity (#5594 item 3), 0 until the radio says. Cleared by
+    // clearExtensionHandles() on disconnect so a different radio cannot inherit
+    // the previous one's limits.
+    int m_reportedMaxSlices{0};
+    int m_reportedMaxPanadapters{0};
+
+    // The model name the last capabilitiesChanged() announcement described
+    // (#5594, M1). Flex's whole capability table is derived from the model name
+    // — capabilitiesFor(caps.model) seeds maxSlices, the DSP tier and the rest —
+    // and that name arrives in a `radio ...` status AFTER the connect edge, so
+    // without this the descriptor silently changed with nothing announcing it.
+    // Held here rather than compared through m_modelProvider so the guard does
+    // not depend on radioChanged being delivered synchronously.
+    // Cleared by clearExtensionHandles() on disconnect: a reconnect to a
+    // DIFFERENT radio must announce again.
+    QString m_announcedModel;
+
+    // Lets a test drive a completed lookup without a network peer; the schema
+    // re-read in applyPublishedReleases() cannot be pinned any other way.
+    friend class FlexBackendTestAccess;
+
+    // The newest SmartSDR release FlexRadio publishes, empty until known.
+    // Reported through capabilities() so the status bar can say whether the
+    // connected radio is behind without any code above the seam knowing where
+    // SmartSDR releases are listed.
+    //
+    // ASKED ONLY ON CONNECT TO A FLEX. flexradio.com is contacted when this
+    // backend reaches a radio — never at launch, never for a station that
+    // connects to something else, never for one that only opens the app. A
+    // SUCCESSFUL answer is cached in AppSettings as one family-wide feature
+    // document, so for a day a disconnect and reconnect, a switch between
+    // radios, and a later launch all reuse it instead of asking.
+    //
+    // What this does NOT bound: a failed lookup writes nothing, so no window
+    // starts and every later connect asks again until one succeeds. And a
+    // cached answer older than a day is still adopted (and drawn) while the
+    // refresh runs, and stays if that refresh fails — so an offline station
+    // keeps showing its last verdict, however old.
+    QMap<int, QString> m_publishedReleases;
+    FirmwareStager* m_firmwareVersions{nullptr};
+    bool m_firmwareLookupInFlight{false};
+
+    // Records a completed lookup: caches it under the schema read at that
+    // moment, and publishes it if it changed. Split out of the completion
+    // lambda so a test can drive it without a live HTTP peer.
+    void applyPublishedReleases(const QMap<int, QString>& releases);
+
+    // Loads the cached published releases, and looks them up again only if that
+    // cache is missing or stale. Driven by onRadioSessionEstablished(), so it
+    // covers a SmartLink session as well as a LAN one.
+    void refreshPublishedFirmwareVersion();
+
+    // The family-wide AppSettings feature document holding that cache.
+    static constexpr const char* kPublishedFirmwareFeature = "publishedFirmware";
+    static constexpr int kPublishedFirmwareSchema = 2;
+};
+
+}  // namespace AetherSDR
