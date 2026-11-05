@@ -6781,6 +6781,16 @@ void VfoWidget::applyAnanAgcAuto()
     if (on && !agcOff) {
         m_agcTSlider->setEnabled(false);
         m_agcValueLbl->setEnabled(false);
+        // The AGC-T slider shows where Auto has put the gain (Thetis moves
+        // AGC-T the same way); the operator's own AGC-T is restored with Auto off.
+        if (ui.agcAutoT[rx] >= 0) {
+            const QSignalBlocker b(m_agcTSlider);
+            m_agcTSlider->setValue(std::clamp(ui.agcAutoT[rx], m_agcTSlider->minimum(),
+                                              m_agcTSlider->maximum()));
+            m_agcValueLbl->setText(QString::number(ui.agcAutoT[rx]));
+            m_agcTSlider->setToolTip(tr("Auto AGC: noise floor %1 dBm + NF+ %2 dB -> AGC-T %3")
+                .arg(ui.agcAutoFloorDbm[rx], 0, 'f', 1).arg(ui.agcNfOffsetDb[rx]).arg(ui.agcAutoT[rx]));
+        }
     }
 }
 

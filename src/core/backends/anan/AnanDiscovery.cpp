@@ -184,6 +184,17 @@ QList<QHostAddress> AnanDiscovery::broadcastTargets(
     return targets;
 }
 
+QString AnanDiscovery::modelName(std::uint8_t boardId)
+{
+    const AnanModel def = defaultModelFor(boardId);
+    const QByteArray key = AppSettings::instance()
+        .value(QStringLiteral("AnanModel_b%1").arg(int(boardId)), QString()).toString().toLatin1();
+    AnanModel m = modelFromKey(key.constData(), std::size_t(key.size())).value_or(def);
+    if (modelTraits(m).boardId != modelTraits(def).boardId)
+        m = def;
+    return QString::fromLatin1(modelTraits(m).key);
+}
+
 QString AnanDiscovery::stableSerial(const std::array<std::uint8_t, 6>& mac, std::uint8_t boardId)
 {
     std::array<std::uint8_t, 6> id{mac[0], mac[1], mac[2], 0, 0, boardId};
@@ -367,8 +378,7 @@ void AnanDiscovery::onReadyRead()
         info.family   = QStringLiteral("anan");
         info.address  = dg.senderAddress();
         info.port     = kRadioPort;
-        info.model    = QString::fromLatin1(
-            boardProfileFor(reply->boardId).value_or(defaultBoardProfile()).modelName);
+        info.model    = modelName(reply->boardId);
         info.name     = info.model;
         info.serial   = stableSerial(reply->mac, reply->boardId);
         info.nickname = effectiveNickname(QStringLiteral("anan"), info.serial, info.model);

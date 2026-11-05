@@ -2394,8 +2394,8 @@ ConnectionPanel::AnanProbeResult ConnectionPanel::probeAnan(
             const auto reply = anan::parseDiscoveryReply(
                 std::span<const std::uint8_t>(
                     reinterpret_cast<const std::uint8_t*>(d.constData()), std::size_t(d.size())));
-            // ANAN-100D port: ANGELIA (100D), ORION (200D) and SATURN (G2) --
-            // the same predicate AnanDiscovery applies to broadcast replies.
+            // ANAN-100D port: every Protocol 2 ANAN board -- the same
+            // predicate AnanDiscovery applies to broadcast replies.
             if (!reply || !reply->isSupportedAnan())
                 continue;
 
@@ -2403,9 +2403,7 @@ ConnectionPanel::AnanProbeResult ConnectionPanel::probeAnan(
             info.family   = QString::fromLatin1(kFamilyAnan);
             info.address  = dest;
             info.port     = anan::kRadioPort;
-            info.model    = QString::fromLatin1(
-                anan::boardProfileFor(reply->boardId)
-                    .value_or(anan::defaultBoardProfile()).modelName);
+            info.model    = anan::AnanDiscovery::modelName(reply->boardId);
             info.name     = info.model;
             info.serial   = anan::AnanDiscovery::stableSerial(reply->mac, reply->boardId);
             info.nickname = anan::AnanDiscovery::effectiveNickname(info.family, info.serial,

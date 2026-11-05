@@ -355,19 +355,128 @@ int Hl2Backend::nearestIqRateHz(double requestedHz) const noexcept
     return best;
 }
 
+bool Hl2Backend::ananOnSixMeters() const noexcept
+{
+    // bandKeyForHz() files everything above 32 MHz as "8m": on the ANAN, 6 m.
+    return m_currentBandKey == QLatin1String("8m") || m_currentBandKey == QLatin1String("6m");
+}
+
 double Hl2Backend::couplerWatts(int raw) const noexcept
 {
-    // Thetis console.cs, ANAN-100D: bridge 0.095 V/W^0.5-ish, 3.3 V ref,
-    // 12-bit ADC, offset 6 counts. watts = V^2 / bridge.
-    constexpr double kBridgeVolt = 0.095;
-    constexpr double kRefVolt = 3.3;
-    constexpr int kAdcOffset = 6;
-    const double v = std::max(0, raw - kAdcOffset) / 4095.0 * kRefVolt;
+    // Thetis console.cs computeAlexFwdPower, by model (anan::ModelTraits):
+    // V = (raw - offset) / 4095 * Vref, W = V^2 / bridge. ANAN-100D: bridge
+    // 0.095, 3.3 V, offset 6.
     // Uncorrected (operator, 31.10): the per-band Power Meter Calibration
     // applies to the displayed forward power only (ananFwdDisplayWatts), and
     // SWR is computed from these clean readings. (The single "AnanFwdPowerCal"
     // factor of 29.10 is gone.)
-    return v * v / kBridgeVolt;
+    return anan::couplerWatts(ananTraits().fwd, raw, ananOnSixMeters());
+}
+
+double Hl2Backend::couplerRevWatts(int raw) const noexcept
+{
+    // Thetis computeRefPower: its own constants per model (ANAN-100D: bridge
+    // 0.095, 0.5 on 6 m, 3.3 V, offset 3), not the forward ones.
+    return anan::couplerWatts(ananTraits().rev, raw, ananOnSixMeters());
+}
+
+void Hl2Backend::resolveAnanModel()
+{
+    const anan::AnanModel def = anan::defaultModelFor(m_ananBoardId);
+    const QByteArray key = AppSettings::instance()
+        .value(QStringLiteral("AnanModel_b%1").arg(int(m_ananBoardId)), QString()).toString().toLatin1();
+    anan::AnanModel m = anan::modelFromKey(key.constData(), std::size_t(key.size())).value_or(def);
+    // Only a model this board can be.
+    if (anan::modelTraits(m).boardId != anan::modelTraits(def).boardId)
+        m = def;
+    if (m != m_ananModel || !m_ananModelLogged) {
+        m_ananModelLogged = true;
+        qCInfo(lcHl2) << "ANAN: board" << int(m_ananBoardId) << "->" << anan::modelTraits(m).key;
+    }
+    m_ananModel = m;
+}
+
+QVariantMap Hl2Backend::ananHwFields() const
+{
+    const auto& t = ananTraits();
+    const auto profile = anan::boardProfileFor(m_ananBoardId).value_or(anan::defaultBoardProfile());
+    QStringList models;
+    for (const anan::AnanModel m : anan::modelsForBoard(m_ananBoardId ? m_ananBoardId : anan::kBoardIdAngelia))
+        models << QString::fromLatin1(anan::modelTraits(m).key);
+    const auto& st = AppSettings::instance();
+    auto on = [&st](const char* key, bool def) {
+        return st.value(QLatin1String(key), def ? QStringLiteral("True") : QStringLiteral("False"))
+                   .toString() == QLatin1String("True");
+    };
+    return QVariantMap{
+        {QStringLiteral("ananBoardId"), int(m_ananBoardId)},
+        {QStringLiteral("ananModel"), QString::fromLatin1(t.key)},
+        {QStringLiteral("ananModels"), models},
+        {QStringLiteral("ananOrionMic"), t.orionMic},
+        {QStringLiteral("ananXlrMic"), t.xlrMic},
+        {QStringLiteral("ananAdc2Bank"), profile.hasAdc1FilterBank},
+        {QStringLiteral("ananPureSignal"), profile.psSupported},
+        {QStringLiteral("ananMicPttOff"), on("AnanMicPttOff", false)},
+        {QStringLiteral("ananMicTipPtt"), on("AnanMicTipPtt", false)},
+        {QStringLiteral("ananMicBias"), on("AnanMicBias", false)},
+        {QStringLiteral("ananMicXlr"), on("AnanMicXlr", false)},
+        {QStringLiteral("ananAdc2GndOnTx"), on("AnanAdc2GndOnTx", true)},
+    };
+}
+
+void Hl2Backend::applyAnanHwFields(const QVariantMap& in)
+{
+    auto& st = AppSettings::instance();
+    bool any = false;
+    for (const char* k : {"AnanMicPttOff", "AnanMicTipPtt", "AnanMicBias", "AnanMicXlr", "AnanAdc2GndOnTx"}) {
+        // "AnanMicPttOff" <-> field "ananMicPttOff"
+        QString field = QString::fromLatin1(k);
+        field[0] = field[0].toLower();
+        const auto it = in.constFind(field);
+        if (it == in.constEnd())
+            continue;
+        st.setValue(QLatin1String(k), it->toBool() ? QStringLiteral("True") : QStringLiteral("False"));
+        any = true;
+    }
+    const auto modelIt = in.constFind(QStringLiteral("ananModel"));
+    const anan::AnanModel was = m_ananModel;
+    if (modelIt != in.constEnd() && m_ananBoardId != 0) {
+        st.setValue(QStringLiteral("AnanModel_b%1").arg(int(m_ananBoardId)), modelIt->toString());
+        any = true;
+    }
+    if (!any)
+        return;
+    st.save();
+    resolveAnanModel();
+    pushAnanModelOptions();
+    if (m_ananModel != was && m_connected) {
+        m_havePaVolts = m_havePaAmps = false;
+        defineMeters();
+        emit capabilitiesChanged();
+    }
+}
+
+void Hl2Backend::pushAnanModelOptions()
+{
+    if (!m_metis)
+        return;
+    const auto& t = ananTraits();
+    const auto& st = AppSettings::instance();
+    auto on = [&st](const char* key, bool def) {
+        return st.value(QLatin1String(key), def ? QStringLiteral("True") : QStringLiteral("False"))
+                   .toString() == QLatin1String("True");
+    };
+    int bits = 0;
+    if (t.orionMic) {
+        if (on("AnanMicPttOff", false))  bits |= anan::kMicPttDisabled;
+        if (on("AnanMicTipPtt", false))  bits |= anan::kMicTipIsPtt;
+        if (on("AnanMicBias", false))    bits |= anan::kMicBiasOn;
+    }
+    if (t.xlrMic && on("AnanMicXlr", false))
+        bits |= anan::kMicXlr;
+    QMetaObject::invokeMethod(m_metis, "setMicControl", Qt::QueuedConnection, Q_ARG(int, bits));
+    QMetaObject::invokeMethod(m_metis, "setAdc1GroundOnTx", Qt::QueuedConnection,
+                              Q_ARG(bool, on("AnanAdc2GndOnTx", true)));
 }
 
 double Hl2Backend::ananFwdDisplayWatts(double watts) const
@@ -387,15 +496,14 @@ std::optional<double> Hl2Backend::couplerSwr(int fwdRaw, int revRaw) const noexc
     const double fwd = couplerWatts(fwdRaw);
     if (!(fwd > 0.0))
         return std::nullopt;
-    const double rev = std::min(couplerWatts(revRaw), fwd * 0.998);
+    const double rev = std::min(couplerRevWatts(revRaw), fwd * 0.998);
     const double rho = std::sqrt(rev / fwd);
     return (1.0 + rho) / (1.0 - rho);
 }
 
 QString Hl2Backend::radioDisplayName() const
 {
-    return QString::fromLatin1(
-        anan::boardProfileFor(m_ananBoardId).value_or(anan::defaultBoardProfile()).modelName);
+    return QString::fromLatin1(ananTraits().key);
 }
 
 Hl2Backend::Hl2Backend(QObject* parent)
@@ -842,6 +950,7 @@ Hl2Backend::Hl2Backend(QObject* parent)
         m_paTempC = 0.0;
         m_haveSupplyVolts = false;
         m_supplyVolts = 0.0;
+        m_havePaVolts = m_havePaAmps = false;
         anan::AnanUiState::instance().sampleRateHz = 0;   // rate label off
         if (m_connected) {
             m_connected = false;
@@ -1417,7 +1526,12 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         // while the LNA is on (as pushed to the radio).
         const int smRx = std::clamp(ids->ddcIndex, 0, 1);
         const int smAtt = std::max(0, m_ananAdcAttPushed[std::clamp(m_ananAdc[smRx], 0, 1)]);
-        const double dbm = m_dbRef.toDbm(dbfs) + anan::AnanUiState::instance().sMeterOffsetDb(smAtt, m_ananLnaPushed == 1);
+        // The model's front end against the ANAN-100D the reference was set
+        // on (Thetis RXMeterCalbrationOffsetDefaults: 0.98 dB for the 100D).
+        const double modelDb = ananTraits().rxMeterOffsetDb
+                             - anan::modelTraits(anan::AnanModel::Anan100D).rxMeterOffsetDb;
+        const double dbm = m_dbRef.toDbm(dbfs) + modelDb
+                         + anan::AnanUiState::instance().sMeterOffsetDb(smAtt, m_ananLnaPushed == 1);
         if ((m_ukKeyed || m_ukPost) && ids->ddcIndex == 0)
             m_ukCur.sMeter = std::max(m_ukCur.sMeter, static_cast<float>(dbm));
 
@@ -3101,7 +3215,7 @@ RadioCapabilities Hl2Backend::capabilities() const
     // hides the temperature gauge, which would otherwise sit empty.
     c.hasSupplyVoltageTelemetry = true;
     c.hasPaTemperatureTelemetry = false;
-    c.hasPaCurrentTelemetry = false;
+    c.hasPaCurrentTelemetry = ananTraits().hasAmps;
     // PROC runs in this host's ClientComp (hostModulates), not in the radio.
     c.speechProcessorControl = std::nullopt;
     c.voxControl = std::nullopt;
@@ -3388,6 +3502,7 @@ void Hl2Backend::connectRadio(const RadioConnectRequest& request)
                 if (mp.localAddress.isNull())
                     mp.localAddress = d.localAddress;
                 m_ananBoardId = d.reply.boardId;
+                resolveAnanModel();
                 if (d.reply.numRx > 0) {
                     m_boardMaxRx = d.reply.numRx;
                     break;
@@ -3408,6 +3523,10 @@ void Hl2Backend::connectRadio(const RadioConnectRequest& request)
         qCInfo(lcHl2) << "HL2: board reports" << m_boardMaxRx << "receiver(s)";
     }
     mp.boardMaxRx = m_boardMaxRx;
+    // ANAN-100D port: the model's mic connector / ADC2 options, in place
+    // before the session sends its first Transmitter Specific packet.
+    resolveAnanModel();
+    pushAnanModelOptions();
     // The filter board must be right from the first config frame: the radio
     // reports no state. All receivers start on one frequency, so this is that
     // frequency's filter (see applyBandFilter()). The receive byte, since some
@@ -7450,7 +7569,7 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
         // with them is visible on the air, not in a reply.
         if (verb == QLatin1String("hw.get")) {
             if (requestId != 0) {
-                emit extensionResult(requestId, QVariantMap{
+                QVariantMap hwReply{
                     {QStringLiteral("codec"), static_cast<int>(m_hw.codec)},
                     {QStringLiteral("ditherBit"), m_hw.ditherBit},
                     // The intent AND the wire value. No variant overrides the
@@ -7466,7 +7585,9 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
                     {QStringLiteral("cl1RefClock"), m_hw.cl1RefClock},
                     {QStringLiteral("atuGateware"), m_hw.atuGateware},
                     {QStringLiteral("speakerLevelPercent"), m_hw.speakerLevelPercent},
-                });
+                };
+                hwReply.insert(ananHwFields());
+                emit extensionResult(requestId, hwReply);
             }
             return;
         }
@@ -7506,8 +7627,9 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
                 next.speakerLevelPercent = Hl2HardwareOptions::clampSpeakerLevel(
                     in.value(QStringLiteral("speakerLevelPercent")).toInt());
             applyHardwareOptions(next, /*persist=*/true);
+            applyAnanHwFields(in);
             if (requestId != 0) {
-                emit extensionResult(requestId, QVariantMap{
+                QVariantMap hwReply{
                     {QStringLiteral("codec"), static_cast<int>(m_hw.codec)},
                     {QStringLiteral("ditherBit"), m_hw.ditherBit},
                     {QStringLiteral("ditherBitOnWire"), m_hw.ditherBitOnWire()},
@@ -7517,7 +7639,9 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
                     {QStringLiteral("cl1RefClock"), m_hw.cl1RefClock},
                     {QStringLiteral("atuGateware"), m_hw.atuGateware},
                     {QStringLiteral("speakerLevelPercent"), m_hw.speakerLevelPercent},
-                });
+                };
+                hwReply.insert(ananHwFields());
+                emit extensionResult(requestId, hwReply);
             }
             return;
         }
@@ -8178,7 +8302,7 @@ IRadioBackend::HealthSnapshot Hl2Backend::healthSnapshot(std::int64_t nowNs) con
         opt(t.reversePowerRaw));
     put("reversePowerW", QStringLiteral("Reverse (W, approx)"),
         t.reversePowerRaw
-            ? QVariant(couplerWatts(*t.reversePowerRaw)) : QVariant());
+            ? QVariant(couplerRevWatts(*t.reversePowerRaw)) : QVariant());
     // SWR from linearized counts (#4578), absent below kMinForwardCountsForSwr
     // like the TX:SWR meter, where the ratio would be noise.
     {
@@ -9530,6 +9654,7 @@ void Hl2Backend::ananAutoAgcStep(int rx)
         if (std::isfinite(r->autoAgcTopDb)) {
             r->autoAgcTopDb = std::numeric_limits<double>::quiet_NaN();
             ui.agcAutoTopDb[rx] = r->autoAgcTopDb;
+            ui.agcAutoT[rx] = -1;
             if (r->dsp)
                 QMetaObject::invokeMethod(r->dsp, "setAgc", Qt::QueuedConnection,
                     Q_ARG(int, wdspAgcMode(r->agcMode)), Q_ARG(double, agcCeilingFor(*r)));
@@ -9561,6 +9686,12 @@ void Hl2Backend::ananAutoAgcStep(int rx)
                                 << QString::number(m_dbRef.agcCeilingDb(r->agcThresholdDb), 'f', 1) << ")";
     r->autoAgcTopDb = top;
     ui.agcAutoTopDb[rx] = top;
+    // Where the manual AGC-T would give the same gain (the inverse of
+    // Hl2DbReference::agcCeilingDb), for the AGC-T slider to show.
+    ui.agcAutoT[rx] = static_cast<int>(std::clamp(
+        std::lround((top - m_dbRef.agcCeilingDb(0)) / hl2::Hl2DbReference::kAgcCeilingDbPerUnit),
+        0L, 100L));
+    ui.agcAutoFloorDbm[rx] = m_ananFloor[rx];
     if (r->dsp)
         QMetaObject::invokeMethod(r->dsp, "setAgc", Qt::QueuedConnection,
             Q_ARG(int, wdspAgcMode(r->agcMode)), Q_ARG(double, top));
@@ -9953,7 +10084,13 @@ void Hl2Backend::defineMeters()
     // ANAN-100D port: supply rail from the P2 status packet. "+13.8A" is the
     // name MeterModel binds to supplyVolts(), which Radio Vitals (MTR) shows.
     def(10, QStringLiteral("RAD"), QStringLiteral("+13.8A"), QStringLiteral("Volts"),
-        0.0, 20.0,     QStringLiteral("Supply voltage"));
+        0.0, ananTraits().volts == anan::VoltsSource::PaUserAdc0 ? 60.0 : 20.0,
+        ananTraits().volts == anan::VoltsSource::PaUserAdc0 ? QStringLiteral("PA voltage")
+                                                             : QStringLiteral("Supply voltage"));
+    // ANAN-7000DLE/8000DLE/G2/G2E: PA drain current (the status bar's "Id").
+    if (ananTraits().hasAmps)
+        def(11, QStringLiteral("RAD"), QStringLiteral("PACURRENT"), QStringLiteral("Amps"),
+            0.0, 50.0, QStringLiteral("PA drain current"));
 }
 
 void Hl2Backend::publishTelemetry(const Hl2Telemetry& t)
@@ -9993,7 +10130,7 @@ void Hl2Backend::publishTelemetry(const Hl2Telemetry& t)
     }
     if (t.reversePowerRaw)
         emit meterUpdate(QStringLiteral("TX:REFPWR"),
-                         wattsToDbm(couplerWatts(*t.reversePowerRaw)));
+                         wattsToDbm(couplerRevWatts(*t.reversePowerRaw)));
     if (t.forwardPowerRaw && (*t.forwardPowerRaw != m_lastFwdRaw)) {
         m_lastFwdRaw = *t.forwardPowerRaw;
         // The sample count shows whether the RADDR-1 stream itself is thin
@@ -10032,7 +10169,17 @@ void Hl2Backend::publishTelemetry(const Hl2Telemetry& t)
         emit meterUpdate(QStringLiteral("RAD:PATEMP"), m_paTempC);
     }
 
-    if (t.supplyVoltsRaw) {
+    if (ananTraits().volts == anan::VoltsSource::PaUserAdc0 && t.paVoltsRaw) {
+        // ANAN-7000DLE/8000DLE/G2/G2E: the PA rail on User ADC0, a
+        // (22 k + 1 k) / 1.1 k divider into the slow ADC (Thetis
+        // convertToVolts; deskHPSDR: 3.3 V on the G2E, 5 V elsewhere).
+        const double volts = *t.paVoltsRaw / 4095.0 * ananTraits().userAdcRefVolts * (23.0 / 1.1);
+        m_paVolts = m_havePaVolts ? (0.2 * volts + 0.8 * m_paVolts) : volts;
+        if (!m_havePaVolts)
+            qCInfo(lcHl2) << "ANAN: PA volts ADC raw" << *t.paVoltsRaw << "->" << volts << "V";
+        m_havePaVolts = true;
+        emit meterUpdate(QStringLiteral("RAD:+13.8A"), m_paVolts);
+    } else if (t.supplyVoltsRaw) {
         // V = raw / 4095 * 3.3 at the ADC pin (P2 spec, Appendix A), times the
         // board's divider -- Thetis uses (4.7 k + 0.82 k) / 0.82 k. Trimmed by
         // "AnanSupplyVoltsScale" (read once) if a voltmeter disagrees.
@@ -10047,6 +10194,17 @@ void Hl2Backend::publishTelemetry(const Hl2Telemetry& t)
             qCInfo(lcHl2) << "ANAN: supply ADC raw" << *t.supplyVoltsRaw << "->" << volts << "V";
         m_haveSupplyVolts = true;
         emit meterUpdate(QStringLiteral("RAD:+13.8A"), m_supplyVolts);
+    }
+
+    if (ananTraits().hasAmps && t.paAmpsRaw) {
+        // PA drain current, User ADC1 (Thetis convertToAmps):
+        // A = (raw * Vref[mV] / 4095 - voff) / sens.
+        const auto& tr = ananTraits();
+        const double mv = *t.paAmpsRaw * tr.userAdcRefVolts * 1000.0 / 4095.0;
+        const double amps = std::max(0.0, (mv - tr.ampVoffMv) / tr.ampSensMvPerA);
+        m_paAmps = m_havePaAmps ? (0.3 * amps + 0.7 * m_paAmps) : amps;
+        m_havePaAmps = true;
+        emit meterUpdate(QStringLiteral("RAD:PACURRENT"), m_paAmps);
     }
 
     m_telemetry = t;

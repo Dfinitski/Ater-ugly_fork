@@ -80,9 +80,14 @@ inline constexpr std::uint32_t kDspClockHz = 122'880'000;
 // 4 = ORION (ANAN-200D), 10 = SATURN (ANAN-G2). The three share the Protocol 2
 // wire format; what differs is collected here so the packet builders, and
 // nothing above them, branch on the board.
-inline constexpr std::uint8_t kBoardIdAngelia = 3;
-inline constexpr std::uint8_t kBoardIdOrion = 4;
-inline constexpr std::uint8_t kBoardIdSaturn = 10;
+inline constexpr std::uint8_t kBoardIdHermes = 1;      // ANAN-10 / ANAN-100
+inline constexpr std::uint8_t kBoardIdHermesII = 2;    // ANAN-10E / ANAN-100B
+inline constexpr std::uint8_t kBoardIdAngelia = 3;     // ANAN-100D
+inline constexpr std::uint8_t kBoardIdOrion = 4;       // ANAN-200D
+inline constexpr std::uint8_t kBoardIdOrion2 = 5;      // ANAN-7000DLE / 8000DLE / Orion MkII / Anvelina Pro3
+inline constexpr std::uint8_t kBoardIdSaturn = 10;     // ANAN-G2 / G2-1K
+inline constexpr std::uint8_t kBoardIdSaturnMkII = 11; // ANAN-G2 (MkII board)
+inline constexpr std::uint8_t kBoardIdHermesC10 = 20;  // ANAN-G2E
 
 // How the 32-bit Alex words are interpreted by the radio.
 enum class AlexScheme {
@@ -96,6 +101,13 @@ enum class AlexScheme {
     // passes the TX low-pass bank (bits 20-23, 29-31), which therefore has to be
     // set for the receive frequency while receiving.
     LegacyHighPassLowPass,
+    // ANAN-7000DLE/8000DLE/G2/G2-1K/G2E (Thetis "MKII BPF"; deskHPSDR
+    // new_protocol.c NEW_DEVICE_ORION2/SATURN/G2E): bits 1-6/12 select a
+    // receive BAND-PASS filter (1.5, 2.1, 5.5, 11, 22, 35 MHz edges) for ADC0
+    // in Alex0 and for ADC1 in Alex1; the receive path does NOT pass the TX
+    // low-pass bank, which follows the transmit frequency only. RX-only
+    // inputs use the master RX select bit 14; Alex1 bit 8 grounds ADC1 on TX.
+    Orion2BandPass,
 };
 
 struct BoardProfile {
@@ -119,6 +131,18 @@ struct BoardProfile {
     // A separate receive filter bank for ADC1 (Alex1 low half). SATURN has
     // one; ANGELIA/ORION's second ADC has no Alex filters.
     bool hasAdc1FilterBank = false;
+    // ANAN-100D port: receive ADCs on the board (Hermes boards and the G2E
+    // have one). The TX DAC is ADC index numAdcs in the DDC-Specific packet.
+    int numAdcs = 2;
+    // PureSignal as this client runs it: feedback on DDC0 and the DAC on DDC1
+    // while the receivers stay on DDC2+ (rxDdcBase >= 2). The single-ADC
+    // boards receive on DDC0/DDC1 themselves, so it is not offered there.
+    bool psSupported = true;
+    // The status packet bytes 8-53 carry the Odyssey firmware's buffer and
+    // link counters (layout version in byte 47). Only on the ANAN-100D /
+    // 200D, which that firmware runs on; elsewhere those bytes are the
+    // stock firmware's user ADCs.
+    bool odysseyStatus = true;
 };
 
 // The profile for a Discovery board id, or nullopt for a board this backend
@@ -128,6 +152,66 @@ struct BoardProfile {
 // The profile used when no Discovery reply identifies the board: this port's
 // target radio, the ANAN-100D.
 [[nodiscard]] BoardProfile defaultBoardProfile() noexcept;
+
+// ---- Models (ANAN-100D port) ----
+//
+// One board id covers several radios (Thetis HardwareSpecific: ORIONMKII = 5
+// is the 7000DLE, 8000DLE, Orion MkII and Anvelina Pro3; SATURN = 10 the G2
+// and G2-1K), which the radio does not report, so the operator picks the
+// model (Setup > Radio, the radio's page); defaultModelFor() is the first
+// guess. What differs per model is collected in ModelTraits.
+enum class AnanModel : int {
+    Anan10 = 0, Anan100, Anan10E, Anan100B, Anan100D, Anan200D,
+    Anan7000DLE, Anan8000DLE, OrionMkII, AnvelinaPro3,
+    AnanG2, AnanG2_1K, AnanG2E,
+};
+inline constexpr int kAnanModelCount = 13;
+
+// A directional coupler reading -> watts (Thetis console.cs computeAlexFwdPower
+// / computeRefPower): V = (raw - offset) / 4095 * refVolts, W = V^2 / bridge.
+struct CouplerCal {
+    double bridgeVolts = 0.095;
+    double bridgeVolts6m = 0.095;   // the reverse bridge differs on 6 m on some models
+    double refVolts = 3.3;
+    int adcOffset = 6;
+};
+
+// Where the voltage readout comes from.
+enum class VoltsSource {
+    HermesSupply,   // status bytes 49-50, 3.3 V ADC, (4.7 k + 0.82 k) / 0.82 k divider
+    PaUserAdc0,     // status bytes 57-58 (User ADC0), (22 k + 1 k) / 1.1 k divider
+};
+
+struct ModelTraits {
+    AnanModel model = AnanModel::Anan100D;
+    const char* key = "ANAN-100D";     // settings value and display name
+    std::uint8_t boardId = kBoardIdAngelia;
+    CouplerCal fwd;
+    CouplerCal rev;
+    VoltsSource volts = VoltsSource::HermesSupply;
+    double userAdcRefVolts = 5.0;      // PaUserAdc0 / drain current ADC full scale
+    // PA drain current (User ADC1, status bytes 55-56): A = (mV - voff) / sens
+    // (Thetis convertToAmps, HardwareSpecific.GetDefaultVoltCalibration).
+    bool hasAmps = false;
+    double ampVoffMv = 360.0;
+    double ampSensMvPerA = 120.0;
+    // Transmitter Specific byte 50 bits 2-4 (Thetis "Orion" mic: PTT disable,
+    // tip/ring, bias) and bit 5 (G2 balanced XLR input).
+    bool orionMic = false;
+    bool xlrMic = false;
+    // Thetis HardwareSpecific.RXMeterCalbrationOffsetDefaults.
+    double rxMeterOffsetDb = 0.98;
+};
+
+[[nodiscard]] const ModelTraits& modelTraits(AnanModel m) noexcept;
+// The models a board id can be, the first being the default; empty for a
+// board this backend does not drive.
+[[nodiscard]] std::vector<AnanModel> modelsForBoard(std::uint8_t boardId);
+[[nodiscard]] AnanModel defaultModelFor(std::uint8_t boardId) noexcept;
+// Model by its key ("ANAN-7000DLE"), or nullopt.
+[[nodiscard]] std::optional<AnanModel> modelFromKey(const char* key, std::size_t len) noexcept;
+// Watts for a coupler reading on a band (6 m: hz > 35 MHz).
+[[nodiscard]] double couplerWatts(const CouplerCal& cal, int raw, bool sixMeters) noexcept;
 
 // 24-bit signed full scale. (1<<23)-1, not 1<<23 -- see MetisProtocol.h's
 // kFullScale for the reasoning (the largest magnitude a 24-bit two's
@@ -179,12 +263,12 @@ struct DiscoveryReply {
     // firmware version are the load-bearing fields for that. This predicate
     // only answers "should a radio picker show this reply as an ANAN-G2".
     [[nodiscard]] constexpr bool isSaturn() const noexcept { return boardId == kBoardIdSaturn; }
-    // ANAN-100D port: the boards boardProfileFor() drives (ANGELIA, ORION,
-    // SATURN). Same picker-only rule as isSaturn() above.
-    [[nodiscard]] constexpr bool isSupportedAnan() const noexcept
+    // ANAN-100D port: the boards boardProfileFor() drives (every Protocol 2
+    // ANAN: Hermes, Hermes II, Angelia, Orion, Orion II, Saturn, G2E). Same
+    // picker-only rule as isSaturn() above.
+    [[nodiscard]] bool isSupportedAnan() const noexcept
     {
-        // ANAN-100D port: ANGELIA / ORION only (ANAN-G2 support removed).
-        return boardId == kBoardIdAngelia || boardId == kBoardIdOrion;
+        return boardProfileFor(boardId).has_value();
     }
 };
 
@@ -276,7 +360,16 @@ std::array<std::uint8_t, 60> buildTransmitSpecific(std::uint32_t seq = 0,
                                                    const CwKeyerOptions& cw = {},
                                                    int txAttenuationDb = 0,
                                                    int psFeedbackAttDb = -1,
-                                                   int psFeedbackAdc = 0) noexcept;
+                                                   int psFeedbackAdc = 0,
+                                                   std::uint8_t micControlBits = 0) noexcept;
+// micControlBits: byte 50 bits 2-5 as Thetis network.c CmdTx (mic_control):
+// bit 2 mic PTT disabled, bit 3 PTT on tip / mic on ring, bit 4 mic bias on,
+// bit 5 balanced (XLR) input (G2). Only the Orion / Orion II / Saturn boards
+// read them; bits 0-1 (line in, boost) come from micBoost.
+inline constexpr std::uint8_t kMicPttDisabled = 0x04;
+inline constexpr std::uint8_t kMicTipIsPtt = 0x08;
+inline constexpr std::uint8_t kMicBiasOn = 0x10;
+inline constexpr std::uint8_t kMicXlr = 0x20;
 // psFeedbackAdc 1: the PS feedback comes in on ADC1 (RX2 input) -- the
 // feedback attenuator goes to byte 58 (ADC1) instead of 59 (ADC0).
 // psFeedbackAttDb >= 0 (PureSignal on): byte 59, the ADC0 step attenuator
@@ -468,6 +561,11 @@ struct HighPriorityOptions {
     // 1 = EXT1, 2 = RX bypass) and DDC0/DDC1 on the transmit frequency.
     bool psEnabled = false;
     int psFeedbackSource = 0;
+    // Orion2BandPass only: Alex1 bit 8, ADC1's input grounded while
+    // transmitting (Thetis "BPF2 Gnd on TX"); not while ADC1 carries the
+    // PureSignal feedback (psFeedbackOnAdc1).
+    bool adc1GroundOnTx = false;
+    bool psFeedbackOnAdc1 = false;
 };
 inline constexpr std::uint32_t kAlexPsBit = std::uint32_t{1} << 18;
 inline constexpr std::uint32_t kAlexRxExt1 = std::uint32_t{1} << 9;

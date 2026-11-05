@@ -3849,8 +3849,17 @@ void RxApplet::applyAnanAgcAuto()
     // theme, operator 04.11): the offset is kept and used once Auto is on.
     m_agcNfSlider->setEnabled(true);
     m_agcNfValueLbl->setEnabled(on && !agcOff);
-    if (on && !agcOff)
+    if (on && !agcOff) {
         m_agcTSlider->setEnabled(false);
+        // Where Auto has put the gain, in AGC-T units (as the slice flag).
+        if (ui.agcAutoT[rx] >= 0) {
+            const QSignalBlocker b(m_agcTSlider);
+            m_agcTSlider->setValue(std::clamp(ui.agcAutoT[rx], m_agcTSlider->minimum(),
+                                              m_agcTSlider->maximum()));
+            m_agcTSlider->setToolTip(tr("Auto AGC: noise floor %1 dBm + NF+ %2 dB -> AGC-T %3")
+                .arg(ui.agcAutoFloorDbm[rx], 0, 'f', 1).arg(ui.agcNfOffsetDb[rx]).arg(ui.agcAutoT[rx]));
+        }
+    }
 }
 
 void RxApplet::syncAutoAgcThreshold()

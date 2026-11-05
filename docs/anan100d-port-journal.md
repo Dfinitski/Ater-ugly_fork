@@ -1912,6 +1912,74 @@ Operator: option 2 — Auto makes the AGC follow the floor, with the offset set 
   - Its 20 px height makes the row as high as the SQL / AGC rows, so the spacing between the sliders is the same.
 - The value label in the flag is 63 px wide (AGC-T value + Auto), so the NF+ slider ends where the AGC-T slider ends.
 
+## 127. Every Protocol 2 ANAN: G2, 7000DLE and the rest (05.11.2026, build 170)
+
+- Report: users of the ANAN-G2 Ultra and the 7000DLE could not connect. Cause: discovery (`isSupportedAnan()`) listed only board 3 (ANGELIA) and 4 (ORION). The G2 (SATURN, board 10) and the 7000DLE (ORION II, board 5) replies were dropped, so the radios never appeared.
+- Boards now driven (Thetis `HPSDRHW`, deskHPSDR `NEW_DEVICE_*`). Receivers per board still come from Discovery byte 20 (DDC count) minus the receiver base, capped at 4.
+
+  | Board | Models | DDCs | ADCs | Alex | PS |
+  |---|---|---|---|---|---|
+  | 1 HERMES | ANAN-10, ANAN-100 | RX from DDC0 | 1 | classic HPF + LPF | no |
+  | 2 HERMES II | ANAN-10E, ANAN-100B | RX from DDC0 | 1 | classic | no |
+  | 3 ANGELIA | ANAN-100D | RX from DDC2, PS DDC0/1 | 2 | classic | yes |
+  | 4 ORION | ANAN-200D | as 100D | 2 | classic | yes |
+  | 5 ORION II | 7000DLE, 8000DLE, Orion MkII, Anvelina Pro3 | as 100D | 2 | band-pass ADC0 + ADC1 | yes |
+  | 10/11 SATURN | ANAN-G2, G2-1K | as 100D | 2 | band-pass ADC0 + ADC1 | yes |
+  | 20 HermesC10 | ANAN-G2E | RX from DDC0 | 1 | band-pass ADC0 | no |
+
+- New Alex scheme `Orion2BandPass` (deskHPSDR `new_protocol.c`, NEW_DEVICE_ORION2/SATURN/G2E):
+  - ADC0 band-pass in Alex0 and ADC1 band-pass in Alex1, edges 1.5 / 2.1 / 5.5 / 11 / 22 / 35 MHz;
+  - the TX LPF follows the TX frequency only (the receive path does not go through it);
+  - T/R relay and the PS bit in both words;
+  - Alex1 bit 8 grounds the ADC1 input on TX, except while PS takes its feedback on ADC1;
+  - PS feedback "EXT1" does not exist on these radios and falls back to the RX bypass input;
+  - General byte 59 = 0x03 (Alex0 and Alex1).
+- PureSignal runs as on the 100D (DDC0/DDC1, receivers on DDC2+). It is not offered on the single-ADC boards (Hermes, G2E), whose receivers use DDC0/DDC1. The transport refuses it there and logs it.
+- The Odyssey buffer/link counters in status bytes 8-53 are read only on boards 3/4. On the other boards those bytes are the stock firmware's user ADCs.
+- Model (`anan::ModelTraits`, P2Protocol). One board id covers several radios and the radio does not say which, so the operator chooses. The setting is `AnanModel_b<board>`; the default is the first in the table. The model decides:
+  - Power meter (Thetis `computeAlexFwdPower` / `computeRefPower`). Forward and reflected now have their own constants (V = (raw − offset)/4095·Vref, W = V²/bridge). **ANAN-100D: the reflected power now uses Thetis' own reflected constants (bridge 0.095, 0.5 on 6 m, offset 3) instead of the forward ones; SWR on 6 m changes.**
+    - 200D: 0.108 / 5 V / 4, reflected 0.108 (6 m 0.5) / 2.
+    - 7000DLE, G2, G2-1K, G2E, Anvelina: 0.12 / 5 V / 32, reflected 0.15 (6 m 0.7) / 28.
+    - 8000DLE, Orion MkII: 0.08 / 5 V / 18, reflected 0.08 / 16.
+  - Volts: 7000DLE/8000DLE/G2/G2-1K/Anvelina/G2E show the PA rail from User ADC0 (status bytes 57-58, ×5 V/4095×23/1.1; 3.3 V on the G2E). The others keep the supply from bytes 49-50.
+  - PA drain current, User ADC1 (bytes 55-56): A = (mV − voff)/sens.
+    - 7000DLE/Anvelina: 340/88.
+    - G2/G2-1K: 0/66.23.
+    - 8000DLE, G2E: 360/120.
+    - Published as meter RAD:PACURRENT; the status bar shows "Id … A" while transmitting.
+  - Temperature: no ANAN reports one over Protocol 2 (neither Thetis nor deskHPSDR shows one), so the status bar shows volts and current.
+  - S-meter: Thetis' per-model meter offset relative to the 100D (7000/8000/MkII/Anvelina +3.86 dB, G2 −5.46 dB). The S-meter Calibration correction comes on top.
+- Setup > Radio: the "ANAN Hardware" page is renamed to the connected model. It gains:
+  - **Model**: the models of this board. A note says when PureSignal is not available.
+  - **Microphone & Connectors**:
+    - Thetis "Orion" mic options (200D, 7000DLE, 8000DLE, MkII, Anvelina, G2, G2-1K): Mic PTT, PTT on tip / mic on ring, Mic bias. These are Transmitter Specific byte 50 bits 2-4.
+    - G2/G2-1K: balanced XLR input (bit 5).
+    - Two-ADC band-pass boards: "RX2 input grounded on transmit".
+    - Keys: `AnanMicPttOff`, `AnanMicTipPtt`, `AnanMicBias`, `AnanMicXlr`, `AnanAdc2GndOnTx`.
+  - The PA Level and Power Meter Calibration groups stay as they were, with the same keys for every model.
+- The picker shows the chosen model name for the board (`AnanDiscovery::modelName`).
+- Not verified on the radios: nobody here has a G2 or a 7000DLE. The bits are deskHPSDR's and Thetis', which both drive these radios.
+
+## 128. AUTO ATT did not latch; the AGC-T slider shows what Auto AGC does (05.11.2026, build 170, no number change)
+
+- Operator: the attenuator's AUTO button does not stay on. He also thinks Auto AGC does nothing, and that NF+ is only a trim of the current AGC gain rather than a target.
+- AUTO ATT, the cause. The panel's widgets and the backend name the pans differently:
+  - the widgets know a pan by the model's neutral id (`0xe1000000`);
+  - `AnanUiState` (receiver per pan, ATT ownership) is filled by the backend under its own id (`hl2-0`).
+  - So `rxForPan()` always returned −1. The click stored nothing (`setAutoWanted` needs rx 0/1), and the 250 ms poll put the button back off.
+  - No log of any session has the line "ANAN AUTO ATT RX… on": the loop never ran.
+  - The same miss is why the slice flag and RX Control had to fall back to the slice number (section 123).
+- Fix: `AnanUiState::panIdToBackend`, installed by RadioModel (`backendPanIdFor`); `rxForPan` / `ownsAtt` translate first.
+- Auto AGC, from the log of 18:40 (build 170). The loop runs: every change of NF+ gives a new AGC gain. But the measured floor stayed at −120.4…−121.0 dBm the whole time, so Auto had nothing to follow.
+  - Auto also gives the same gain as the manual AGC-T at NF+ ≈ 29 dB (92.5 against 92.8 dB). Switching Auto on or off at that setting changes nothing you can hear.
+- What Auto does (as Thetis): it sets the AGC threshold to floor + NF+ every 500 ms.
+  - NF+ is the set point: the noise in the pauses stays NF+ dB below the AGC output level, whatever the floor.
+  - Auto moves the gain when the floor in dBFS moves: band, antenna, ATT / LNA, band noise, filter width.
+  - With the floor fixed, NF+ only moves the gain, as the AGC-T slider would.
+- Now visible: with Auto on, the AGC-T slider (slice flag and RX Control) shows where Auto has put the gain, in AGC-T units. The backend computes it as the inverse of `Hl2DbReference::agcCeilingDb`, `AnanUiState::agcAutoT`.
+  - The slider's tooltip shows floor, NF+ and the resulting AGC-T.
+  - The operator's own AGC-T comes back with Auto off.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

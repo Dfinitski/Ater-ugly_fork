@@ -297,6 +297,11 @@ void P2Transport::configureSession(const BoardProfile& profile, bool fromReply)
     m_boardWait->stop();
     m_profile = profile;
     m_configured = true;
+    if (!m_profile.psSupported && m_psEnabled) {
+        std::lock_guard<std::mutex> lock(m_txMutex);
+        m_psEnabled = false;
+        qCWarning(lcAnanP2T) << "ANAN: PureSignal is not available on the" << m_profile.modelName << "-- off";
+    }
     if (m_discoveredNumDdc > 0)
         m_numRx = std::min(m_numRx, receiversForBoard(m_profile, m_discoveredNumDdc));
     qCInfo(lcAnanP2T).nospace()
@@ -389,11 +394,14 @@ void P2Transport::sendGeneral()
 void P2Transport::sendDdcSpecific()
 {
     std::vector<DdcConfig> ddcs;
+    // A single-ADC board (Hermes, G2E) has only ADC0 to give.
+    const int lastAdc = std::max(0, m_profile.numAdcs - 1);
     for (int i = 0; i < m_numRx; ++i)
-        ddcs.push_back(DdcConfig{rateKsps(), m_rxAdc[static_cast<std::size_t>(i)]});
+        ddcs.push_back(DdcConfig{rateKsps(), std::min(m_rxAdc[static_cast<std::size_t>(i)], lastAdc)});
     sendDatagram(*m_sock,
-                 buildDdcSpecific(ddcs, /*numAdcs=*/2, m_dither, m_random, m_profile.rxDdcBase,
-                                  PsDdcOptions{m_psEnabled && m_mox, m_psLoopback ? 2 : m_psAdc}),
+                 buildDdcSpecific(ddcs, m_profile.numAdcs, m_dither, m_random, m_profile.rxDdcBase,
+                                  PsDdcOptions{m_psEnabled && m_mox,
+                                               m_psLoopback ? m_profile.numAdcs : m_psAdc}),
                  m_p.host, kDdcSpecificPort, m_counters.txBytes, m_counters.txPackets);
 }
 
@@ -446,9 +454,23 @@ void P2Transport::sendHighPriority(bool run)
         qCInfo(lcAnanP2T) << "ANAN: User Out" << QString::number(o.openCollector, 2).rightJustified(7, QLatin1Char('0'))
                           << (o.transmitting ? (m_tunerStart ? "TUNE" : "TX") : "RX");
     }
+    o.adc1GroundOnTx = m_adc1GndOnTx;
+    o.psFeedbackOnAdc1 = m_psAdc == 1;
     if (run) {
         if (m_profile.alexScheme == AlexScheme::LegacyHighPassLowPass) {
             o.adc0Filter = legacyAlexHpfFor(static_cast<double>(m_rxHz[filterRx]));
+        } else if (m_profile.alexScheme == AlexScheme::Orion2BandPass) {
+            // Each ADC's bank follows the first receiver listening to it
+            // (deskHPSDR); ADC1 with no receiver of its own takes RX1's band.
+            std::size_t adc1Rx = filterRx;
+            for (int i = 0; i < m_numRx; ++i) {
+                if (m_rxAdc[static_cast<std::size_t>(i)] == 1) {
+                    adc1Rx = static_cast<std::size_t>(i);
+                    break;
+                }
+            }
+            o.adc0Filter = alexRxFilterFor(static_cast<double>(m_rxHz[filterRx]));
+            o.adc1Filter = alexRxFilterFor(static_cast<double>(m_rxHz[adc1Rx]));
         } else {
             o.adc0Filter = alexRxFilterFor(static_cast<double>(m_rxHz[0]));
             o.adc1Filter = o.adc0Filter;
@@ -659,7 +681,10 @@ void P2Transport::handleStatus(std::span<const std::uint8_t> b)
     m_driveAtomic.store(m_drive, std::memory_order_relaxed);
     m_revRaw = be16(22);
     m_supplyRaw = be16(49);   // supply volts ADC (spec p.40)
-    handleBufferStatus(b);
+    m_userAdc1Raw = be16(55); // User ADC1: PA drain current (Thetis getUserADC1)
+    m_userAdc0Raw = be16(57); // User ADC0: PA volts (Thetis getUserADC0)
+    if (m_profile.odysseyStatus)
+        handleBufferStatus(b);
     const bool overload = (b[5] & 0x01) != 0;   // ADC0
     const bool ptt = (b[4] & 0x01) != 0;
     const bool paddle = m_cwKeyer.enabled && (b[4] & 0x06) != 0;   // dot / dash
@@ -785,8 +810,11 @@ void P2Transport::publishTelemetry()
         t.forwardPowerPeakRaw = m_fwdRaw;
         t.forwardPowerSamples = 1;
     }
-    if (m_statusPackets > 0)
+    if (m_statusPackets > 0) {
         t.supplyVoltsRaw = m_supplyRaw;
+        t.paVoltsRaw = m_userAdc0Raw;
+        t.paAmpsRaw = m_userAdc1Raw;
+    }
     m_overloadInWindow = false;
     emit telemetryUpdated(t);
 }
@@ -1216,6 +1244,13 @@ void P2Transport::setPureSignal(bool enabled, int feedbackSource, int attDb)
 {
     feedbackSource = std::clamp(feedbackSource, 0, 2);
     attDb = std::clamp(attDb, 0, 31);
+    // Not on the boards whose receivers sit on DDC0/DDC1 (BoardProfile::
+    // psSupported); the profile is the default ANGELIA one until the
+    // Discovery reply has configured the session.
+    if (enabled && m_configured && !m_profile.psSupported) {
+        qCWarning(lcAnanP2T) << "ANAN: PureSignal is not available on the" << m_profile.modelName;
+        enabled = false;
+    }
     if (enabled == m_psEnabled && feedbackSource == m_psSource && attDb == m_psAttDb)
         return;
     const bool changedOnOff = enabled != m_psEnabled;
@@ -1494,6 +1529,30 @@ void P2Transport::setMicBoost(bool on)
     if (m_run && m_configured)
         sendTransmitSpecific();
 }
+void P2Transport::setMicControl(int bits)
+{
+    const auto b = static_cast<std::uint8_t>(bits & (kMicPttDisabled | kMicTipIsPtt | kMicBiasOn | kMicXlr));
+    if (b == m_micControl)
+        return;
+    m_micControl = b;
+    qCInfo(lcAnanP2T).nospace() << "ANAN P2 transport: mic PTT " << ((b & kMicPttDisabled) ? "off" : "on")
+                                << ", PTT on " << ((b & kMicTipIsPtt) ? "tip" : "ring")
+                                << ", bias " << ((b & kMicBiasOn) ? "on" : "off")
+                                << ", input " << ((b & kMicXlr) ? "XLR" : "3.5 mm");
+    if (m_run && m_configured)
+        sendTransmitSpecific();
+}
+
+void P2Transport::setAdc1GroundOnTx(bool on)
+{
+    if (on == m_adc1GndOnTx)
+        return;
+    m_adc1GndOnTx = on;
+    qCInfo(lcAnanP2T) << "ANAN P2 transport: ADC2 input grounded on TX" << (on ? "on" : "off");
+    if (m_run && m_configured)
+        sendHighPriority(true);
+}
+
 void P2Transport::setCl1RefClock(bool) {}
 void P2Transport::setAtuTuneRequest(bool) {}
 void P2Transport::setIoBoardTxFrequencyHz(quint64) {}
@@ -1536,7 +1595,8 @@ void P2Transport::sendTransmitSpecific()
     if (!m_sock)
         return;
     sendDatagram(*m_sock, buildTransmitSpecific(m_txSpecSeq++, m_micBoost, m_cwKeyer, m_txAttDb,
-                                                m_psEnabled ? m_psAttDb : -1, m_psAdc), m_p.host, kTransmitSpecificPort,
+                                                m_psEnabled ? m_psAttDb : -1, m_psAdc, m_micControl),
+                 m_p.host, kTransmitSpecificPort,
                  m_counters.txBytes, m_counters.txPackets);
 }
 

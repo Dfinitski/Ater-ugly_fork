@@ -56,10 +56,168 @@ std::optional<BoardProfile> boardProfileFor(std::uint8_t boardId) noexcept
     case kBoardIdOrion:
         p.modelName = "ANAN-200D";
         return p;   // same front end and DDC plan as ANGELIA
-    // ANAN-100D port: SATURN (ANAN-G2) support removed with its backend.
+    case kBoardIdHermes:
+    case kBoardIdHermesII:
+        // One ADC, classic Alex (HPF + the TX LPF in the receive path), the
+        // receivers from DDC0 (Thetis UpdateDDCs HERMES/ANAN10/ANAN100:
+        // RX1 = DDC0, RX2 = DDC1; deskHPSDR's ddc = 0 for these).
+        p.modelName = boardId == kBoardIdHermes ? "ANAN-100" : "ANAN-100B";
+        p.rxDdcBase = 0;
+        p.numAdcs = 1;
+        p.psSupported = false;
+        p.odysseyStatus = false;
+        return p;
+    case kBoardIdOrion2:
+    case kBoardIdSaturn:
+    case kBoardIdSaturnMkII:
+        // Band-pass filters for both ADCs, Alex0 and Alex1 enabled (deskHPSDR
+        // general_buffer[59] = 0x03), the receivers on DDC2/DDC3 and
+        // PureSignal on DDC0/DDC1 exactly as ANGELIA (Thetis UpdateDDCs puts
+        // the ANAN-100D/200D/7000D/8000D/G2/G2-1K in one case).
+        p.modelName = boardId == kBoardIdOrion2 ? "ANAN-7000DLE" : "ANAN-G2";
+        p.alexScheme = AlexScheme::Orion2BandPass;
+        p.alexEnableMask = 0x03;
+        p.hasSpeakerAmpMute = true;
+        p.hasAdc1FilterBank = true;
+        p.odysseyStatus = false;
+        return p;
+    case kBoardIdHermesC10:
+        // ANAN-G2E: one ADC with the 7000-style band-pass bank (deskHPSDR
+        // NEW_DEVICE_G2E), receivers from DDC0 like the Hermes boards.
+        p.modelName = "ANAN-G2E";
+        p.rxDdcBase = 0;
+        p.numAdcs = 1;
+        p.alexScheme = AlexScheme::Orion2BandPass;
+        p.psSupported = false;
+        p.odysseyStatus = false;
+        return p;
     default:
         return std::nullopt;
     }
+}
+
+namespace {
+
+// Thetis console.cs computeAlexFwdPower / computeRefPower, by model.
+constexpr CouplerCal kFwd100{0.095, 0.095, 3.3, 6};
+constexpr CouplerCal kRev100{0.095, 0.5, 3.3, 3};
+constexpr CouplerCal kFwdDefault{0.09, 0.09, 3.3, 6};
+constexpr CouplerCal kRevDefault{0.09, 0.09, 3.3, 3};
+constexpr CouplerCal kFwd200{0.108, 0.108, 5.0, 4};
+constexpr CouplerCal kRev200{0.108, 0.5, 5.0, 2};
+constexpr CouplerCal kFwd7000{0.12, 0.12, 5.0, 32};
+constexpr CouplerCal kRev7000{0.15, 0.7, 5.0, 28};
+constexpr CouplerCal kFwd8000{0.08, 0.08, 5.0, 18};
+constexpr CouplerCal kRev8000{0.08, 0.08, 5.0, 16};
+
+ModelTraits traits(AnanModel m, const char* key, std::uint8_t board, CouplerCal fwd,
+                   CouplerCal rev) noexcept
+{
+    ModelTraits t;
+    t.model = m;
+    t.key = key;
+    t.boardId = board;
+    t.fwd = fwd;
+    t.rev = rev;
+    return t;
+}
+
+const std::array<ModelTraits, kAnanModelCount>& allTraits() noexcept
+{
+    static const std::array<ModelTraits, kAnanModelCount> table = [] {
+        std::array<ModelTraits, kAnanModelCount> a{};
+        a[0] = traits(AnanModel::Anan10, "ANAN-10", kBoardIdHermes, kFwdDefault, kRevDefault);
+        a[1] = traits(AnanModel::Anan100, "ANAN-100", kBoardIdHermes, kFwd100, kRev100);
+        a[2] = traits(AnanModel::Anan10E, "ANAN-10E", kBoardIdHermesII, kFwdDefault, kRevDefault);
+        a[3] = traits(AnanModel::Anan100B, "ANAN-100B", kBoardIdHermesII, kFwd100, kRev100);
+        a[4] = traits(AnanModel::Anan100D, "ANAN-100D", kBoardIdAngelia, kFwd100, kRev100);
+        a[5] = traits(AnanModel::Anan200D, "ANAN-200D", kBoardIdOrion, kFwd200, kRev200);
+        a[5].orionMic = true;
+        a[6] = traits(AnanModel::Anan7000DLE, "ANAN-7000DLE", kBoardIdOrion2, kFwd7000, kRev7000);
+        a[7] = traits(AnanModel::Anan8000DLE, "ANAN-8000DLE", kBoardIdOrion2, kFwd8000, kRev8000);
+        a[8] = traits(AnanModel::OrionMkII, "Orion MkII", kBoardIdOrion2, kFwd8000, kRev8000);
+        a[9] = traits(AnanModel::AnvelinaPro3, "Anvelina Pro3", kBoardIdOrion2, kFwd7000, kRev7000);
+        a[10] = traits(AnanModel::AnanG2, "ANAN-G2", kBoardIdSaturn, kFwd7000, kRev7000);
+        a[11] = traits(AnanModel::AnanG2_1K, "ANAN-G2-1K", kBoardIdSaturn, kFwd7000, kRev7000);
+        a[12] = traits(AnanModel::AnanG2E, "ANAN-G2E", kBoardIdHermesC10, kFwd7000, kRev7000);
+        for (int i = 6; i <= 12; ++i) {
+            ModelTraits& t = a[std::size_t(i)];
+            // Thetis HasVolts / HasAmps: 7000D, 8000D, Anvelina, G2, G2-1K, G2E
+            // (not the plain Orion MkII).
+            const bool va = t.model != AnanModel::OrionMkII;
+            t.volts = va ? VoltsSource::PaUserAdc0 : VoltsSource::HermesSupply;
+            t.hasAmps = va;
+            t.orionMic = t.model != AnanModel::AnanG2E;
+            t.rxMeterOffsetDb = 4.841644;   // Thetis: 7000D/8000D/MkII/Anvelina
+        }
+        // GetDefaultVoltCalibration: 7000D/Anvelina 340 mV / 88 mV per A;
+        // G2/G2-1K 0 / 66.23; the rest 360 / 120.
+        a[6].ampVoffMv = a[9].ampVoffMv = 340.0;
+        a[6].ampSensMvPerA = a[9].ampSensMvPerA = 88.0;
+        for (int i : {10, 11}) {
+            a[std::size_t(i)].ampVoffMv = 0.001;
+            a[std::size_t(i)].ampSensMvPerA = 66.23;
+            a[std::size_t(i)].xlrMic = true;
+            a[std::size_t(i)].rxMeterOffsetDb = -4.476;
+        }
+        // G2E: 3.3 V slow ADCs (deskHPSDR rx_panadapter.c).
+        a[12].userAdcRefVolts = 3.3;
+        a[12].rxMeterOffsetDb = 0.98;
+        return a;
+    }();
+    return table;
+}
+
+}  // namespace
+
+const ModelTraits& modelTraits(AnanModel m) noexcept
+{
+    const int i = std::clamp(static_cast<int>(m), 0, kAnanModelCount - 1);
+    return allTraits()[static_cast<std::size_t>(i)];
+}
+
+std::vector<AnanModel> modelsForBoard(std::uint8_t boardId)
+{
+    std::vector<AnanModel> out;
+    const std::uint8_t b = boardId == kBoardIdSaturnMkII ? kBoardIdSaturn : boardId;
+    const AnanModel def = defaultModelFor(boardId);
+    for (const ModelTraits& t : allTraits()) {
+        if (t.boardId == b)
+            out.push_back(t.model);
+    }
+    // The default first.
+    std::stable_partition(out.begin(), out.end(), [def](AnanModel m) { return m == def; });
+    return out;
+}
+
+AnanModel defaultModelFor(std::uint8_t boardId) noexcept
+{
+    switch (boardId) {
+    case kBoardIdHermes:     return AnanModel::Anan100;
+    case kBoardIdHermesII:   return AnanModel::Anan100B;
+    case kBoardIdOrion:      return AnanModel::Anan200D;
+    case kBoardIdOrion2:     return AnanModel::Anan7000DLE;
+    case kBoardIdSaturn:
+    case kBoardIdSaturnMkII: return AnanModel::AnanG2;
+    case kBoardIdHermesC10:  return AnanModel::AnanG2E;
+    default:                 return AnanModel::Anan100D;
+    }
+}
+
+std::optional<AnanModel> modelFromKey(const char* key, std::size_t len) noexcept
+{
+    for (const ModelTraits& t : allTraits()) {
+        if (std::strlen(t.key) == len && std::memcmp(t.key, key, len) == 0)
+            return t.model;
+    }
+    return std::nullopt;
+}
+
+double couplerWatts(const CouplerCal& cal, int raw, bool sixMeters) noexcept
+{
+    const double v = std::max(0, raw - cal.adcOffset) / 4095.0 * cal.refVolts;
+    const double bridge = sixMeters ? cal.bridgeVolts6m : cal.bridgeVolts;
+    return bridge > 0.0 ? v * v / bridge : 0.0;
 }
 
 BoardProfile defaultBoardProfile() noexcept
@@ -131,7 +289,8 @@ std::array<std::uint8_t, 60> buildTransmitSpecific(std::uint32_t seq, bool micBo
                                                    const CwKeyerOptions& cw,
                                                    int txAttenuationDb,
                                                    int psFeedbackAttDb,
-                                                   int psFeedbackAdc) noexcept
+                                                   int psFeedbackAdc,
+                                                   std::uint8_t micControlBits) noexcept
 {
     std::array<std::uint8_t, 60> pkt{};
     writeU32be(&pkt[0], seq);
@@ -155,7 +314,7 @@ std::array<std::uint8_t, 60> buildTransmitSpecific(std::uint32_t seq, bool micBo
     // 14..16: DUC rate / bits -- fixed 192 ksps / 24 bit on this hardware.
     // mic: no line-in (bit 0), boost +20 dB (bit 1) on request, mic PTT
     // ENABLED (bit 2 = 0).
-    pkt[50] = micBoost ? 0x02 : 0x00;
+    pkt[50] = static_cast<std::uint8_t>((micBoost ? 0x02 : 0x00) | (micControlBits & 0x3c));
     pkt[51] = 0;     // line-in gain
     // 57..59: step attenuator of ADC2 / ADC1 / ADC0 during transmit
     // (Thetis CmdTx, SetTxAttenData; default 31 there).
@@ -508,6 +667,68 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
         if (opts.tunerStart)
             pkt[1400] |= std::uint8_t(1u << 2);
         // User Out / open collectors (spec p.27, Thetis network.c).
+        pkt[1401] = std::uint8_t((opts.openCollector << 1) & 0xfe);
+        pkt[1443] = static_cast<std::uint8_t>(
+            std::clamp(adc0AttenuationDb, 0, kMaxStepAttenuationDb));
+        pkt[1442] = static_cast<std::uint8_t>(
+            std::clamp(adc1AttenuationDb, 0, kMaxStepAttenuationDb));
+        return pkt;
+    }
+
+    if (opts.alexScheme == AlexScheme::Orion2BandPass) {
+        // ANAN-7000DLE/8000DLE/G2/G2-1K/G2E (deskHPSDR new_protocol.c,
+        // NEW_DEVICE_ORION2/SATURN/G2E; alex.h ALEX_ANAN7000_*).
+        std::uint32_t alex0 = 0;
+        std::uint32_t alex1 = 0;
+        const bool tx = run && opts.transmitting;
+        if (opts.paEnabled) {
+            if (tx)
+                alex0 |= kAlexTxRelay;
+            alex1 |= kAlexTxRelay;
+        }
+        if (opts.psEnabled) {
+            if (tx)
+                alex0 |= kAlexPsBit;
+            alex1 |= kAlexPsBit;
+        }
+        // ADC0 and ADC1 band-pass banks (the series bank: one relay, never 0).
+        if (opts.adc0Filter)
+            alex0 |= alexRxFilterBits(*opts.adc0Filter);
+        else
+            alex0 |= std::uint32_t{1} << 12;
+        if (opts.boardHasAdc1FilterBank) {
+            if (opts.adc1Filter)
+                alex1 |= alexRxFilterBits(*opts.adc1Filter);
+            else
+                alex1 |= std::uint32_t{1} << 12;
+            // ADC1 grounded while transmitting, unless it is the PS feedback.
+            if (tx && opts.adc1GroundOnTx && !(opts.psEnabled && opts.psFeedbackOnAdc1))
+                alex1 |= std::uint32_t{1} << 8;
+        }
+        (void)bypassAdc0Filters;
+        (void)bypassAdc1Filters;
+        // The TX low-pass bank follows the transmit frequency only: on these
+        // boards the receive path does not run through it.
+        const double txHz = opts.txFrequencyHz > 0.0 ? opts.txFrequencyHz
+                                                     : opts.rxLpfFrequencyHz;
+        const std::uint32_t txLpf = legacyAlexLpfBitsFor(txHz);
+        alex0 |= txLpf;
+        alex1 |= txLpf;
+        // PureSignal feedback while transmitting: internal coupler = no RX
+        // input bit; EXT1-on-TX does not exist here and falls back to the RX
+        // bypass input, as deskHPSDR does (rxant 106/107).
+        if (tx && opts.psEnabled && opts.psFeedbackSource != 0)
+            alex0 |= kAlexRxBypass;
+        // Antennas: Alex0 the receive antenna (the TX one while transmitting),
+        // Alex1 always the TX antenna.
+        alex0 |= legacyAlexAntennaBit(tx ? opts.txAntenna : opts.rxAntenna);
+        alex1 |= legacyAlexAntennaBit(opts.txAntenna);
+        writeU32be(&pkt[1432], alex0);
+        writeU32be(&pkt[1428], alex1);
+        if (opts.muteSpeakerAmp && opts.boardHasSpeakerAmpMute)
+            pkt[1400] = std::uint8_t(1u << 1);
+        if (opts.tunerStart)
+            pkt[1400] |= std::uint8_t(1u << 2);
         pkt[1401] = std::uint8_t((opts.openCollector << 1) & 0xfe);
         pkt[1443] = static_cast<std::uint8_t>(
             std::clamp(adc0AttenuationDb, 0, kMaxStepAttenuationDb));

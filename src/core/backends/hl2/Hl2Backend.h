@@ -26,6 +26,7 @@
 #include "core/backends/hl2/Hl2Receivers.h"
 #include "core/backends/hl2/MetisProtocol.h"   // Hl2Telemetry
 #include "core/backends/anan/AnanTxMonitor.h"
+#include "core/backends/anan/P2Protocol.h"   // AnanModel / ModelTraits
 
 #include <span>
 #include <atomic>
@@ -470,6 +471,24 @@ private:
     // ANAN-100D port: m_ananBoardId is Discovery byte 11 (0 = not yet
     // known; the name then defaults to ANAN-100D).
     std::uint8_t m_ananBoardId = 0;
+    // ANAN-100D port: which radio the board is (one board id covers several
+    // models; the operator's choice, AppSettings "AnanModel_b<boardId>").
+    anan::AnanModel m_ananModel = anan::AnanModel::Anan100D;
+    void resolveAnanModel();
+    bool m_ananModelLogged = false;
+    [[nodiscard]] const anan::ModelTraits& ananTraits() const noexcept
+    {
+        return anan::modelTraits(m_ananModel);
+    }
+    // Mic connector / ADC2 options of this model to the transport.
+    void pushAnanModelOptions();
+    // hw.get / hw.set: the model and its connector options.
+    [[nodiscard]] QVariantMap ananHwFields() const;
+    void applyAnanHwFields(const QVariantMap& in);
+    double m_paVolts = 0.0;
+    bool m_havePaVolts = false;
+    double m_paAmps = 0.0;
+    bool m_havePaAmps = false;
     double m_tuningMinHz = 100'000.0;
     double m_tuningMaxHz = 38'400'000.0;
     [[nodiscard]] QString radioDisplayName() const;
@@ -480,6 +499,8 @@ private:
     // ANAN-100D port: coupler counts -> watts / SWR for THIS radio (HL2:
     // MetisProtocol's Quisk curve; ANAN-100D: Thetis' Alex bridge formula).
     [[nodiscard]] double couplerWatts(int raw) const noexcept;
+    [[nodiscard]] double couplerRevWatts(int raw) const noexcept;
+    [[nodiscard]] bool ananOnSixMeters() const noexcept;
     [[nodiscard]] std::optional<double> couplerSwr(int fwdRaw, int revRaw) const noexcept;
 public:
     // ANAN-100D port: AUTO attenuator target -- the panadapter noise floor it

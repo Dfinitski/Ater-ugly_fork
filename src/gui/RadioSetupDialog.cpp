@@ -1327,6 +1327,7 @@ RadioSetupDialog::RadioSetupDialog(RadioModel* model, AudioEngine* audio,
         QStringLiteral("anan adc dither random ltc2208 spur"),
         [this] { return buildHl2HardwareTab(); });
     m_hl2HardwarePageIndex = m_pageIndexes.value(QStringLiteral("ANAN Hardware"));
+    m_hl2HardwareItem = hwItem;
     setNavigationItemHidden(hwItem, !declaresHl2Extension());
     connect(m_model, &RadioModel::connectionStateChanged, this, [this, hwItem] {
         settleNavigationLayout(m_navigation,
@@ -4046,10 +4047,76 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     setTone(adcHint, Tone::Hint);
     adcHint->setWordWrap(true);
     avb->addWidget(adcHint);
+
+    // ANAN-100D port: which radio this board is (Thetis "Radio Model"). One
+    // board id covers several models (the 7000DLE, 8000DLE, Orion MkII and
+    // Anvelina Pro3 share the Orion II board; the G2 and G2-1K the Saturn),
+    // and the model decides the power meter, the volts / current readout and
+    // the connector options below. The page is named after it.
+    auto* modelGroup = new QGroupBox("Model");
+    auto* mvb = new QVBoxLayout(modelGroup);
+    mvb->setSpacing(6);
+    auto* modelRow = new QHBoxLayout;
+    auto* modelLbl = new QLabel("Radio model");
+    auto* modelCombo = new QComboBox;
+    AetherSDR::applyComboStyle(modelCombo);
+    modelCombo->setObjectName(QStringLiteral("ananHwModel"));
+    modelCombo->setAccessibleName(QStringLiteral("Radio model"));
+    modelCombo->setToolTip(QStringLiteral(
+        "The radio this board is. The board does not report it: the ANAN-7000DLE,\n"
+        "8000DLE, Orion MkII and Anvelina Pro3 share one board, as do the G2 and G2-1K."));
+    modelCombo->setMinimumWidth(160);
+    modelRow->addWidget(modelLbl);
+    modelRow->addWidget(modelCombo);
+    modelRow->addStretch(1);
+    mvb->addLayout(modelRow);
+    auto* psNote = new QLabel(
+        "PureSignal is not available on this radio: its receivers use the DDCs "
+        "PureSignal needs.");
+    setTone(psNote, Tone::Hint);
+    psNote->setWordWrap(true);
+    psNote->setVisible(false);
+    mvb->addWidget(psNote);
+    controls->append(modelCombo);
+
+    // Microphone jack and receive input options (Thetis Setup > General >
+    // Hardware Config, "Orion" mic panel; Saturn mic input; "BPF2 Gnd on TX").
+    auto* connGroup = new QGroupBox("Microphone && Connectors");
+    auto* cvb = new QVBoxLayout(connGroup);
+    cvb->setSpacing(6);
+    auto mkChk = [&](const char* text, const char* name, const char* tip) {
+        auto* c = new QCheckBox(QString::fromLatin1(text));
+        c->setObjectName(QString::fromLatin1(name));
+        c->setToolTip(QString::fromLatin1(tip));
+        cvb->addWidget(c);
+        controls->append(c);
+        return c;
+    };
+    auto* micPttChk = mkChk("Mic PTT", "ananHwMicPtt",
+        "The PTT line of the front-panel microphone jack keys the radio.");
+    auto* micTipChk = mkChk("PTT on tip, microphone on ring", "ananHwMicTipPtt",
+        "Off (default): microphone and bias on the tip, PTT on the ring.\n"
+        "On: PTT on the tip, microphone and bias on the ring.");
+    auto* micBiasChk = mkChk("Mic bias", "ananHwMicBias",
+        "Bias voltage for an electret microphone.");
+    auto* micXlrChk = mkChk("Balanced XLR microphone input", "ananHwMicXlr",
+        "ANAN-G2: the balanced XLR input instead of the 3.5 mm jack.");
+    auto* gndChk = mkChk("RX2 input grounded on transmit", "ananHwAdc2Gnd",
+        "Grounds the second ADC's input (RX2 / BPF2) while transmitting.\n"
+        "Not applied while PureSignal takes its feedback on that ADC.");
+    auto* connNone = new QLabel("This radio has no microphone or input options.");
+    setTone(connNone, Tone::Hint);
+    connNone->setVisible(false);
+    cvb->addWidget(connNone);
+
+    vbox->addWidget(modelGroup);
+    vbox->addWidget(connGroup);
     vbox->addWidget(adcGroup);
 
     const QPointer<QCheckBox> ditherGuard(ditherChk);
-    m_hl2HardwareReseed = [this, ditherGuard, ditherChk, randomChk, noRadioLbl, controls] {
+    m_hl2HardwareReseed = [this, ditherGuard, ditherChk, randomChk, noRadioLbl, controls,
+                           modelCombo, psNote, micPttChk, micTipChk, micBiasChk, micXlrChk,
+                           gndChk, connNone, connGroup] {
         if (!ditherGuard)
             return;
         IRadioBackend* backend = m_model->backend();
@@ -4077,6 +4144,38 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
             const QSignalBlocker b2(randomChk);
             ditherChk->setChecked(m.value(QStringLiteral("ditherBit")).toBool());
             randomChk->setChecked(m.value(QStringLiteral("randomBit")).toBool());
+            {
+                const QSignalBlocker bm(modelCombo);
+                const QString model = m.value(QStringLiteral("ananModel")).toString();
+                modelCombo->clear();
+                modelCombo->addItems(m.value(QStringLiteral("ananModels")).toStringList());
+                const int at = modelCombo->findText(model);
+                if (at >= 0)
+                    modelCombo->setCurrentIndex(at);
+                if (m_hl2HardwareItem && !model.isEmpty())
+                    m_hl2HardwareItem->setText(0, model);
+            }
+            psNote->setVisible(m.contains(QStringLiteral("ananPureSignal"))
+                               && !m.value(QStringLiteral("ananPureSignal")).toBool());
+            const bool orion = m.value(QStringLiteral("ananOrionMic")).toBool();
+            const bool xlr = m.value(QStringLiteral("ananXlrMic")).toBool();
+            const bool adc2 = m.value(QStringLiteral("ananAdc2Bank")).toBool();
+            for (QCheckBox* c : {micPttChk, micTipChk, micBiasChk, micXlrChk, gndChk})
+                c->blockSignals(true);
+            micPttChk->setChecked(!m.value(QStringLiteral("ananMicPttOff")).toBool());
+            micTipChk->setChecked(m.value(QStringLiteral("ananMicTipPtt")).toBool());
+            micBiasChk->setChecked(m.value(QStringLiteral("ananMicBias")).toBool());
+            micXlrChk->setChecked(m.value(QStringLiteral("ananMicXlr")).toBool());
+            gndChk->setChecked(m.value(QStringLiteral("ananAdc2GndOnTx"), true).toBool());
+            for (QCheckBox* c : {micPttChk, micTipChk, micBiasChk, micXlrChk, gndChk})
+                c->blockSignals(false);
+            micPttChk->setVisible(orion);
+            micTipChk->setVisible(orion);
+            micBiasChk->setVisible(orion);
+            micXlrChk->setVisible(xlr);
+            gndChk->setVisible(adc2);
+            connNone->setVisible(!orion && !xlr && !adc2);
+            connGroup->setVisible(true);
             for (const QPointer<QWidget>& w : *controls) {
                 if (w)
                     w->setEnabled(haveRadio);
@@ -4107,6 +4206,33 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     });
     connect(randomChk, &QCheckBox::toggled, this, [apply](bool on) {
         apply(QVariantMap{{QStringLiteral("randomBit"), on}});
+    });
+    connect(modelCombo, &QComboBox::currentTextChanged, this, [this, apply](const QString& model) {
+        if (model.isEmpty())
+            return;
+        apply(QVariantMap{{QStringLiteral("ananModel"), model}});
+        if (m_hl2HardwareItem)
+            m_hl2HardwareItem->setText(0, model);
+        // The options shown depend on the model.
+        QTimer::singleShot(0, this, [this] {
+            if (m_hl2HardwareReseed)
+                m_hl2HardwareReseed();
+        });
+    });
+    connect(micPttChk, &QCheckBox::toggled, this, [apply](bool on) {
+        apply(QVariantMap{{QStringLiteral("ananMicPttOff"), !on}});
+    });
+    connect(micTipChk, &QCheckBox::toggled, this, [apply](bool on) {
+        apply(QVariantMap{{QStringLiteral("ananMicTipPtt"), on}});
+    });
+    connect(micBiasChk, &QCheckBox::toggled, this, [apply](bool on) {
+        apply(QVariantMap{{QStringLiteral("ananMicBias"), on}});
+    });
+    connect(micXlrChk, &QCheckBox::toggled, this, [apply](bool on) {
+        apply(QVariantMap{{QStringLiteral("ananMicXlr"), on}});
+    });
+    connect(gndChk, &QCheckBox::toggled, this, [apply](bool on) {
+        apply(QVariantMap{{QStringLiteral("ananAdc2GndOnTx"), on}});
     });
 
     // ANAN-100D port (operator, 31.10): per-band calibration groups, three

@@ -353,6 +353,7 @@ private:
     // later would otherwise be shown — and written — with the first one's
     // hardware options.
     std::function<void()>     m_hl2HardwareReseed;
+    QTreeWidgetItem*          m_hl2HardwareItem{nullptr};   // renamed to the radio model
     // Whether the connected HL2 is locked to an external 10 MHz reference at
     // CL1. Cached from the HL2 Hardware page's hw.get reply because the control
     // it gates — the manual ppb spin box — lives on the CALIBRATION page, which

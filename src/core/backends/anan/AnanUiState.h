@@ -12,6 +12,7 @@
 #include "core/AppSettings.h"
 
 #include <QHash>
+#include <functional>
 #include <algorithm>
 #include <limits>
 #include <QString>
@@ -68,6 +69,12 @@ public:
     // Written by the backend: the AGC gain the floor law gives now (NaN = none).
     double agcAutoTopDb[2] = {std::numeric_limits<double>::quiet_NaN(),
                               std::numeric_limits<double>::quiet_NaN()};
+    // The same gain in AGC-T units (0..100, the manual slider's scale), so the
+    // AGC-T slider can show where Auto has put it (as Thetis moves AGC-T);
+    // -1 = none. Also the measured floor it came from (NaN = none).
+    int agcAutoT[2] = {-1, -1};
+    double agcAutoFloorDbm[2] = {std::numeric_limits<double>::quiet_NaN(),
+                                 std::numeric_limits<double>::quiet_NaN()};
     [[nodiscard]] static QString agcAutoKey(int rx)
     {
         return rx == 1 ? QStringLiteral("AnanRx2AgcAuto") : QStringLiteral("AnanRx1AgcAuto");
@@ -142,8 +149,19 @@ public:
         return rx == 1 ? QStringLiteral("AnanRx2AutoAtt") : QStringLiteral("AnanRx1AutoAtt");
     }
 
-    [[nodiscard]] int rxForPan(const QString& panId) const { return panRx.value(panId, -1); }
-    [[nodiscard]] bool ownsAtt(const QString& panId) const { return panOwnsAtt.value(panId, true); }
+    // The widgets know a pan by the model's neutral id ("0xe1000000"), the
+    // backend by its own ("hl2-0"); RadioModel installs the translation
+    // (RadioModel::backendPanIdFor). Without it every lookup missed: AUTO
+    // ATT never latched, and the slice flag fell back to the slice number.
+    std::function<QString(const QString&)> panIdToBackend;
+    [[nodiscard]] QString backendPan(const QString& panId) const
+    {
+        if (panRx.contains(panId) || !panIdToBackend)
+            return panId;
+        return panIdToBackend(panId);
+    }
+    [[nodiscard]] int rxForPan(const QString& panId) const { return panRx.value(backendPan(panId), -1); }
+    [[nodiscard]] bool ownsAtt(const QString& panId) const { return panOwnsAtt.value(backendPan(panId), true); }
 
     // AppSettings keys of the AUTO noise-floor target per receiver.
     [[nodiscard]] static QString floorTargetKey(int rx)

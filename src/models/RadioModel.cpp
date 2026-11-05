@@ -1,4 +1,5 @@
 #include "RadioModel.h"
+#include "core/backends/anan/AnanUiState.h"
 #include "core/backends/TuneOutputPolicy.h"
 #include <QScopedValueRollback>
 #include "TxController.h"
@@ -1963,6 +1964,11 @@ RadioModel::RadioModel(QObject* parent)
     , m_txCoordinator([this](const TxCoordinator::Operation& operation,
                             TxCoordinator::StopReason reason) { stopTxOperation(operation, reason); })
 {
+    // ANAN-100D port: the ANAN widgets look receivers up by the model's pan
+    // id; AnanUiState is keyed by the backend's (see AnanUiState::backendPan).
+    anan::AnanUiState::instance().panIdToBackend = [this](const QString& id) {
+        return backendPanIdFor(id);
+    };
     m_desktopTxActor = m_txCoordinator.registerActor({true, 0});
     // FlexLib APD.cs matches against the transmit slice, else the active one.
     m_transmitModel.setApdTxSliceResolver([this]() -> std::optional<TransmitModel::ApdTxSlice> {
@@ -2662,6 +2668,7 @@ AprsDigipeaterModel* RadioModel::aprsDigipeater()
 
 RadioModel::~RadioModel()
 {
+    anan::AnanUiState::instance().panIdToBackend = nullptr;
     // Observers may already be tearing down. Cleanup must reach the backend
     // without calling presentation slots from a partially destroyed aggregate.
     blockSignals(true);

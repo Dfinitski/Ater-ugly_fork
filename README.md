@@ -53,6 +53,10 @@ for boards shared by several models pick yours in **Setup → Radio → (model p
 - PA voltage and PA drain current in the status bar on the 7000DLE, 8000DLE, G2 and G2E.
 - Reflected power uses Thetis' own reflected-power constants for each model, so SWR readings
   change slightly, mostly on 6 m.
+- Fixed: the attenuator's AUTO button in the panadapter's antenna panel did not stay on (the
+  automatic attenuator never ran).
+- Auto AGC: with Auto on, the AGC-T slider shows where the automatic AGC has set the gain; its
+  tooltip shows the measured noise floor and the NF+ offset.
 - Only the ANAN-100D has been tested on the air. If you have one of the other radios, please try
   receive first, then transmit at low power, and report what you see (see below).
 

@@ -146,6 +146,11 @@ public:
     // ANAN-100D port: +20 dB microphone boost of the radio's mic input
     // (Transmitter Specific byte 50 bit 1).
     Q_INVOKABLE void setMicBoost(bool on);
+    // ANAN-100D port: Transmitter Specific byte 50 bits 2-5 (kMicPttDisabled,
+    // kMicTipIsPtt, kMicBiasOn, kMicXlr); masked to what the board reads.
+    Q_INVOKABLE void setMicControl(int bits);
+    // Orion2BandPass boards: ADC1's input grounded while transmitting.
+    Q_INVOKABLE void setAdc1GroundOnTx(bool on);
     // ANAN-100D port: Transmitter Specific bytes 57..59 -- the ADC step
     // attenuators while transmitting (default 31 dB, as Thetis).
     Q_INVOKABLE void setTxAttenuation(int db);
@@ -513,6 +518,8 @@ private:
     int m_revRaw = 0;
     int m_excRaw = 0;
     int m_supplyRaw = 0;     // status bytes 49-50
+    int m_userAdc0Raw = 0;   // status bytes 57-58 (PA volts on 7000/8000/G2)
+    int m_userAdc1Raw = 0;   // status bytes 55-56 (PA drain current)
 
     // ---- Codec speaker (port 1028) ----
     // 48 kHz stereo int16 from Hl2Backend's speaker tap, paced by wall clock.
@@ -550,6 +557,8 @@ private:
     quint64 m_diagSpkSubmits = 0;
     int m_diagSpkPeak = 0;
     bool m_micBoost = false;
+    std::uint8_t m_micControl = 0;
+    bool m_adc1GndOnTx = true;
     int m_txAttDb = 31;
     // Radio PTT release: the radio sends status only while PTT/TX is active,
     // and its last packet can still say "PTT"; silence means released.

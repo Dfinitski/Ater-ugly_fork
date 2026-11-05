@@ -496,6 +496,10 @@ struct Hl2Telemetry {
     // ANAN-100D port: P2 High Priority Status bytes 49-50, the supply rail
     // ADC (12-bit, 3.3 V reference behind a divider).
     std::optional<int>  supplyVoltsRaw;
+    // ANAN-100D port: Protocol 2 status User ADC0 (bytes 57-58, the PA rail on
+    // the 7000DLE/8000DLE/G2) and User ADC1 (bytes 55-56, PA drain current).
+    std::optional<int>  paVoltsRaw;
+    std::optional<int>  paAmpsRaw;
     bool ptt = false;
 
     // ADC overload as a rate. `adcOverload` is the last value, a ~10 Hz sample
