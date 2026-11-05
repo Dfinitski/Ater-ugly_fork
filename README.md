@@ -21,33 +21,11 @@
 > The fork version is identified by its build number (`AETHER_FORK_BUILD` in
 > `src/core/ForkBuild.h`); releases are tagged `build-NNN`.
 >
-> License: GPL v3, same as upstream (see `LICENSE`). The upstream overview and highlights follow.
+> License: GPL v3, same as upstream (see `LICENSE`). The highlights of upstream AetherSDR v26.10.4 follow.
 
 ---
 
-# AetherSDR
-
-**A cross-platform, open-source client for FlexRadio Systems transceivers**
-
-[![CI](https://github.com/aethersdr/AetherSDR/actions/workflows/ci.yml/badge.svg)](https://github.com/aethersdr/AetherSDR/actions/workflows/ci.yml)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
-[![Qt6](https://img.shields.io/badge/Qt-6-green.svg)](https://www.qt.io/)
-[![Signed Commits](https://img.shields.io/badge/commits-GPG%20signed-brightgreen?logo=gnuprivacyguard)](https://github.com/aethersdr/AetherSDR/commits/main)
-
-AetherSDR brings full FlexRadio operation to Linux, macOS, and Windows — each a native build, no Wine or virtual machines. A native aarch64 build also runs on Raspberry Pi and other embedded ARM devices. Built from the ground up with Qt6 and C++20, it speaks the SmartSDR protocol natively and aims to replicate the full SmartSDR experience.
-
-**Current version: 26.10.4** — CalVer (`YY.M.patch[.hotfix]`). | [Download](https://github.com/aethersdr/AetherSDR/releases/latest) | [Discussions](https://github.com/aethersdr/AetherSDR/discussions) | [What's New](https://github.com/aethersdr/AetherSDR/releases)
-
-> **Native builds for Linux, macOS, and Windows** — Linux AppImage (x86-64 + aarch64), macOS DMG (Apple Silicon + Intel), Windows installer and portable ZIP. Every platform is built, tested in CI, and released together.
-
-![AetherSDR Screenshot](docs/assets/screenshot-3dstackedtrace.JPG)
-
-<p><i>Native. Open. Yours.</i></p>
-
----
-
-## Highlights
+## Upstream AetherSDR highlights
 
 - **GPU-accelerated spectrum & waterfall** — QRhi rendering (OpenGL/Metal/D3D11) with a per-pixel FFT trace at up to **60 fps**, optional FFT Smooth and De-comb trace shaping, an optional **3D stacked-trace** mode, ~71% less CPU than the paint path, GPU-composited slice flags and multi-GPU adapter selection
 - **Multi-slice & multi-panadapter** — colour-coded VFO overlays, independent TX assignment, diversity/ESC beamforming, and up to 8 detachable pans with native VITA-49 waterfall tiles and per-flag S-meter / **SmartMTR** views
