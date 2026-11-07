@@ -879,11 +879,22 @@ void RadioModel::setupBackend(const QString& family)
             if (generation == m_backendReceiverGeneration)
                 emit codecMicLevelChanged(peakDb, avgDb);
         });
+        // On the I/O thread, straight on to AudioEngine's thread (no GUI hop).
+        connect(hl2b, &hl2::Hl2Backend::ananCodecMicPcm, this,
+                [this](const QByteArray& pcm) { emit codecMicPcm(pcm); }, Qt::DirectConnection);
+        connect(hl2b, &hl2::Hl2Backend::ananCodecMicInputChanged, this,
+                [this, generation](bool cdc) {
+            if (generation == m_backendReceiverGeneration)
+                emit codecMicInputChanged(cdc);
+        });
+        emit codecMicInputChanged(hl2b->ananCodecMicActive());
         connect(hl2b, &hl2::Hl2Backend::ananTxScopeFrame, this,
                 [this, generation](const QList<float>& dbfs, double centreMhz) {
             if (generation == m_backendReceiverGeneration)
                 emit txScopeFrameReady(dbfs, centreMhz);
         });
+    } else {
+        emit codecMicInputChanged(false);   // no codec microphone on this radio
     }
     connect(m_backend.get(), &IRadioBackend::spectrumFrameReady, this,
             [this, generation](int panId, const QByteArray& frame, const SpectrumCoverage& coverage) {

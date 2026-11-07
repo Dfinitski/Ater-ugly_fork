@@ -1,4 +1,5 @@
 #include "core/backends/anan/AnanPureSignal.h"
+#include "core/dsp/WdspTxaGuard.h"
 
 #include "core/AppSettings.h"
 #include "core/dsp/WdspPureSignal.h"
@@ -242,6 +243,9 @@ void AnanPureSignal::pushTransport()
 
 void AnanPureSignal::applyWdspParams()
 {
+    const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
+    if (!txaHold)
+        return;
     if (m_channel < 0)
         return;
 #if AETHER_WDSP_PS_CLASSIC
@@ -270,6 +274,9 @@ void AnanPureSignal::applyWdspParams()
 
 void AnanPureSignal::control(int reset, int mancal, int automode, int turnon)
 {
+    const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
+    if (!txaHold)
+        return;
     if (m_channel < 0)
         return;
     if (reset)
@@ -277,15 +284,18 @@ void AnanPureSignal::control(int reset, int mancal, int automode, int turnon)
     SetPSControl(m_channel, reset, mancal, automode, turnon);
 }
 
-void AnanPureSignal::setTxChannel(int channel)
+void AnanPureSignal::setTxChannel(int channel, unsigned generation)
 {
-    if (channel == m_channel)
+    // The TX DSP re-creates its channel with the same id on a (re)connect:
+    // the generation tells a fresh calcc from the old one (WdspTxaGuard.h).
+    if (channel == m_channel && generation == m_channelGen)
         return;
     m_channel = channel;
+    m_channelGen = generation;
     m_feedChannel.store(channel, std::memory_order_release);
     if (channel < 0)
         return;
-    qCInfo(lcAnanPs) << "PureSignal: TXA channel" << channel
+    qCInfo(lcAnanPs) << "PureSignal: TXA channel" << channel << "generation" << generation
                      << (m_s.enabled ? "(PS on)" : "(PS off)");
     applyWdspParams();
     if (m_s.enabled)
@@ -298,7 +308,8 @@ void AnanPureSignal::updateFeedGate()
 {
     const bool ok = m_s.enabled && m_keyed && !m_cw && m_channel >= 0;
     m_feedOk.store(ok, std::memory_order_release);
-    if (m_channel >= 0)
+    const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
+    if (txaHold && m_channel >= 0)
         SetPSMox(m_channel, ok ? 1 : 0);
 }
 
@@ -308,7 +319,8 @@ void AnanPureSignal::setKeyed(bool keyed, bool cw)
         return;
     if (keyed && !m_keyed) {
 #if !AETHER_WDSP_PS_CLASSIC
-        if (m_channel >= 0)
+        const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
+        if (txaHold && m_channel >= 0)
             SetPSScheckMode(m_channel, kScheckMode);   // a re-created calcc starts in mode 0
 #endif
         m_calcFails = 0;
@@ -322,6 +334,9 @@ void AnanPureSignal::setKeyed(bool keyed, bool cw)
 
 void AnanPureSignal::feed(const double* tx, const double* rx, int n, double hwPeak)
 {
+    const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
+    if (!txaHold)
+        return;
     if (hwPeak > 0.0) {
         hwPeak *= cfirPassbandGain();   // DDC1 / DUC -> DDC1 per unit at the correction
         m_hwMeasured.store(hwPeak, std::memory_order_relaxed);
@@ -399,7 +414,8 @@ void AnanPureSignal::setEnabled(bool on)
         control(1, 0, 0, 0);
         // The reset only takes effect while pscc runs (deskHPSDR): feed a few
         // blocks of zeros when nothing else is feeding.
-        if (m_channel >= 0 && !m_feedOk.load()) {
+        const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
+        if (txaHold && m_channel >= 0 && !m_feedOk.load()) {
             std::vector<double> zero(2 * kBlock, 0.0);
             for (int i = 0; i < 7; ++i)
                 pscc(m_channel, kBlock, zero.data(), zero.data());
@@ -968,6 +984,9 @@ void AnanPureSignal::heatTick()
     m_heat += (u - m_heat) * (1.0 - std::exp(-dt / tau));
     if (m_channel < 0 || m_measStep >= 0)
         return;
+    const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
+    if (!txaHold)
+        return;   // the channel is being rebuilt; setTxChannel() re-applies the delay
     const double eff = effectiveDelayNs();
     if (!std::isfinite(m_delayAppliedNs) || std::abs(eff - m_delayAppliedNs) >= kHeatApplyStepNs) {
         m_delayAppliedNs = eff;
@@ -1034,6 +1053,9 @@ void AnanPureSignal::setTwoTone(bool on)
 
 bool AnanPureSignal::saveCorrection(const QString& file)
 {
+    const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
+    if (!txaHold)
+        return false;
     if (m_channel < 0)
         return false;
     QByteArray name = file.toLocal8Bit();
@@ -1043,6 +1065,9 @@ bool AnanPureSignal::saveCorrection(const QString& file)
 
 bool AnanPureSignal::restoreCorrection(const QString& file)
 {
+    const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
+    if (!txaHold)
+        return false;
     if (m_channel < 0 || !m_s.enabled)
         return false;
     QByteArray name = file.toLocal8Bit();
@@ -1058,6 +1083,9 @@ bool AnanPureSignal::restoreCorrection(const QString& file)
 AnanPureSignal::Status AnanPureSignal::status() const
 {
     Status s;
+    const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
+    if (!txaHold)
+        return s;
     s.available = m_channel >= 0;
     s.enabled = m_s.enabled;
     s.twoTone = m_twoTone;
@@ -1352,6 +1380,9 @@ void AnanPureSignal::measureImd()
 
 bool AnanPureSignal::display(Disp& out) const
 {
+    const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
+    if (!txaHold)
+        return false;
     if (m_channel < 0)
         return false;
     constexpr int kMax = 8192;   // calcc collects 16 x 256 samples
@@ -1417,6 +1448,9 @@ bool AnanPureSignal::display(Disp& out) const
 
 void AnanPureSignal::tick()
 {
+    const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
+    if (!txaHold)
+        return;
     if (m_channel < 0)
         return;
     heatTick();

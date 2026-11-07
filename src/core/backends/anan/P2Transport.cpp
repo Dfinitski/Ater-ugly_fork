@@ -80,9 +80,17 @@ P2Transport::P2Transport(QObject* parent) : hl2::MetisClient(parent)
     m_connectTimer = new QTimer(this);
     m_connectTimer->setSingleShot(true);
     connect(m_connectTimer, &QTimer::timeout, this, [this] {
-        if (!m_up)
+        if (!m_up) {
+            // ANAN-100D port (06.11): what the radio did send meanwhile --
+            // nothing at all, or a session (mic / status) without DDC I/Q.
+            qCWarning(lcAnanP2T).nospace()
+                << "ANAN P2 transport: no I/Q within " << kConnectTimeoutMs << " ms; from the radio: "
+                << m_counters.rxPackets << " packets, mic " << (m_diagMicPkts - m_connMicPkts0)
+                << ", status " << m_statusPackets << ", Discovery reply "
+                << (m_configured ? "yes" : "no");
             emit connectFailed(QStringLiteral("no IQ stream from the radio within %1 ms of start")
                                    .arg(kConnectTimeoutMs));
+        }
     });
 
     m_watchdog = new QTimer(this);
@@ -195,7 +203,9 @@ QList<hl2::MetisClient::Discovered> P2Transport::discover(int timeoutMs,
 
 bool P2Transport::start(const hl2::MetisClient::Params& params)
 {
-    stop();
+    // Not stop(): a PureSignal push queued ahead of this start is the new
+    // session's and stays.
+    stopSession(false);
     m_p = params;
     m_numRx = effectiveNumRx(params);
     m_numRx = std::clamp(m_numRx, 1, kMaxDdcs);
@@ -220,6 +230,12 @@ bool P2Transport::start(const hl2::MetisClient::Params& params)
         m_statusSnapValid = false;
     }
     m_phyClkDev = INT_MIN;
+    m_ref10M = kRefNone;
+    m_ref10MState = -2;
+    // A new session has had no I/Q yet (the connect timeout reports how
+    // long it waited).
+    m_sinceIq.invalidate();
+    m_connMicPkts0 = m_diagMicPkts;
     m_eeeAdv = -1;
     m_gbStatus = -1;
     for (auto& v : m_link)
@@ -230,6 +246,7 @@ bool P2Transport::start(const hl2::MetisClient::Params& params)
     m_diagClock.invalidate();
     m_diagSamples = m_diagGaps = m_diagLost = 0;
     m_adc0Overload = m_overloadInWindow = m_radioPtt = false;
+    m_ovlLogOn = false;
     m_pttLine = m_paddleDown = m_paddleHold = false;
     m_paddleHangTimer->stop();
     m_telemetryClock.invalidate();
@@ -308,9 +325,12 @@ void P2Transport::configureSession(const BoardProfile& profile, bool fromReply)
         << "ANAN P2 transport: " << m_profile.modelName << " (board " << int(m_profile.boardId)
         << (fromReply ? ", from Discovery" : ", assumed") << "), receivers on DDC"
         << m_profile.rxDdcBase << ".." << (m_profile.rxDdcBase + m_numRx - 1);
+    // Thetis' SendStart() (ChannelMaster network.c): General (1024), DDC
+    // Specific (1025), Transmitter Specific (1026), High Priority with run = 1
+    // (1027) -- the same four, in that order, at every start.
     sendGeneral();
-    sendTransmitSpecific();
     sendDdcSpecific();
+    sendTransmitSpecific();
     sendHighPriority(true);
     m_keepalive->start();
     m_watchdog->start();
@@ -335,6 +355,11 @@ void P2Transport::onBoardWaitTimeout()
 }
 
 void P2Transport::stop()
+{
+    stopSession(true);
+}
+
+void P2Transport::stopSession(bool toPowerOnState)
 {
 #ifdef Q_OS_WIN
     if (m_timerPeriodSet) {
@@ -366,8 +391,10 @@ void P2Transport::stop()
         m_txQueue.clear();
     }
     if (m_sock) {
-        if (m_configured)
+        if (m_configured) {
+            // Thetis' SendStop(): High Priority with run = 0, nothing else.
             sendHighPriority(false);
+        }
         {
             // No native send may be in flight on this descriptor once it closes.
             std::unique_lock<std::shared_mutex> guard(m_sendGuard);
@@ -381,14 +408,22 @@ void P2Transport::stop()
     m_run = false;
     m_up = false;
     m_configured = false;
+    // The next session starts as the first one in the program does: with
+    // PureSignal off. PureSignal switches itself on again once that session
+    // runs (AnanPureSignal::setTxChannel on the new TXA generation, the same
+    // push as at the first start).
+    if (toPowerOnState && m_psEnabled) {
+        std::lock_guard<std::mutex> lock(m_txMutex);
+        m_psEnabled = false;
+    }
     if (wasUp)
         emit linkDown();
 }
 
 void P2Transport::sendGeneral()
 {
-    sendDatagram(*m_sock, buildGeneral(m_profile.alexEnableMask, paEffective(), m_wb), m_p.host, kRadioPort,
-                 m_counters.txBytes, m_counters.txPackets);
+    const auto pkt = buildGeneral(m_profile.alexEnableMask, paEffective(), m_wb);
+    sendDatagram(*m_sock, pkt, m_p.host, kRadioPort, m_counters.txBytes, m_counters.txPackets);
 }
 
 void P2Transport::sendDdcSpecific()
@@ -398,11 +433,10 @@ void P2Transport::sendDdcSpecific()
     const int lastAdc = std::max(0, m_profile.numAdcs - 1);
     for (int i = 0; i < m_numRx; ++i)
         ddcs.push_back(DdcConfig{rateKsps(), std::min(m_rxAdc[static_cast<std::size_t>(i)], lastAdc)});
-    sendDatagram(*m_sock,
-                 buildDdcSpecific(ddcs, m_profile.numAdcs, m_dither, m_random, m_profile.rxDdcBase,
-                                  PsDdcOptions{m_psEnabled && m_mox,
-                                               m_psLoopback ? m_profile.numAdcs : m_psAdc}),
-                 m_p.host, kDdcSpecificPort, m_counters.txBytes, m_counters.txPackets);
+    const auto pkt = buildDdcSpecific(ddcs, m_profile.numAdcs, m_dither, m_random, m_profile.rxDdcBase,
+                                      PsDdcOptions{m_psEnabled && m_mox,
+                                                   m_psLoopback ? m_profile.numAdcs : m_psAdc});
+    sendDatagram(*m_sock, pkt, m_p.host, kDdcSpecificPort, m_counters.txBytes, m_counters.txPackets);
 }
 
 void P2Transport::sendHighPriority(bool run)
@@ -476,14 +510,14 @@ void P2Transport::sendHighPriority(bool run)
             o.adc1Filter = o.adc0Filter;
         }
     }
-    sendDatagram(*m_sock,
+    const auto pkt =
                  buildHighPriority(run,
                                    std::span<const std::uint32_t>(words.data(),
                                                                   static_cast<std::size_t>(m_numRx)),
                                    /*bypassAdc0Filters=*/!run, /*bypassAdc1Filters=*/!run,
                                    run ? ((m_mox && m_psEnabled && m_psAdc == 0) ? m_psAttDb : m_adcAtt[0]) : 0,
-                                   run ? ((m_mox && m_psEnabled && m_psAdc == 1) ? m_psAttDb : m_adcAtt[1]) : 0, o),
-                 m_p.host, kHighPriorityPort, m_counters.txBytes, m_counters.txPackets);
+                                   run ? ((m_mox && m_psEnabled && m_psAdc == 1) ? m_psAttDb : m_adcAtt[1]) : 0, o);
+    sendDatagram(*m_sock, pkt, m_p.host, kHighPriorityPort, m_counters.txBytes, m_counters.txPackets);
 }
 
 void P2Transport::onKeepaliveTick()
@@ -503,6 +537,9 @@ void P2Transport::onKeepaliveTick()
     }
     if (m_run && m_configured)
         sendHighPriority(true);
+    // (06.11, build 178) The build-173 re-send of the whole configuration
+    // while I/Q was missing is gone: Thetis does not watch the radio either.
+    // A session is started (configureSession) and stopped (stop) as a whole.
     publishLinkCounters();
     publishTelemetry();
 }
@@ -542,6 +579,21 @@ void P2Transport::handleBufferStatus(std::span<const std::uint8_t> b)
         std::array<std::uint16_t, 5> now{};
         for (int k = 0; k < 5; ++k)
             now[std::size_t(k)] = be16(kAt[k]);
+        if (layout >= 9) {
+            // v9: the 10 MHz reference (bytes 28-29), see m_ref10M.
+            const int ref = int(std::int16_t(be16(28)));
+            m_ref10M.store(ref, std::memory_order_relaxed);
+            const int state = ref == -32768 ? -1 : (std::abs(ref) <= 1 ? 0 : 1);
+            if (state != m_ref10MState) {
+                m_ref10MState = state;
+                qCInfo(lcAnanP2T).nospace().noquote()
+                    << "ANAN P2 transport: 10 MHz reference: "
+                    << (state < 0 ? QStringLiteral("no signal at the input")
+                        : state == 0 ? QStringLiteral("locked (%1 Hz)").arg(ref)
+                                     : QStringLiteral("NOT locked, oscillator %1 Hz at 10 MHz = %2 ppm")
+                                           .arg(ref).arg(ref * 0.1, 0, 'f', 1));
+            }
+        }
         if (layout >= 7) {
             // v7: the PHY's crystal against C122 (122.88 MHz, locked to the
             // 10 MHz reference when present), Hz / 8, signed.
@@ -691,9 +743,26 @@ void P2Transport::handleStatus(std::span<const std::uint8_t> b)
     if (overload)
         m_overloadInWindow = true;
     if (const unsigned ovl = b[5] & 0x03u)   // ADC0 / ADC1 overload (spec p.40)
+    {
         m_ovlLatch.fetch_or(ovl, std::memory_order_acq_rel);
-    if (overload != m_adc0Overload)
-        qCInfo(lcAnanP2T) << "ANAN P2 transport: ADC0 overload" << (overload ? "ON" : "off");
+        m_ovlDisplay.fetch_or(ovl, std::memory_order_acq_rel);
+    }
+    // The log line, debounced (operator, 06.11: the status packets now come on
+    // receive too, where the comparator chatters on a strong band): ON at the
+    // first report, off only after kOvlLogDebounceMs without one.
+    {
+        const qint64 now = steadyMs();
+        if (overload) {
+            m_ovlLogLastMs = now;
+            if (!m_ovlLogOn) {
+                m_ovlLogOn = true;
+                qCInfo(lcAnanP2T) << "ANAN P2 transport: ADC0 overload ON";
+            }
+        } else if (m_ovlLogOn && now - m_ovlLogLastMs >= kOvlLogDebounceMs) {
+            m_ovlLogOn = false;
+            qCInfo(lcAnanP2T) << "ANAN P2 transport: ADC0 overload off";
+        }
+    }
     m_adc0Overload = overload;
     m_pttLine = ptt;
     if (paddle != m_paddleDown) {
@@ -865,6 +934,13 @@ void P2Transport::handleDatagram(std::span<const std::uint8_t> bytes, quint16 se
         if (const auto reply = senderPort == kRadioPort ? parseDiscoveryReply(bytes)
                                                         : std::nullopt) {
             if (!m_configured) {
+                // ANAN-100D port (06.11): 0x03 = the radio says it already
+                // streams to a session (a host it never got "run = 0" from).
+                qCInfo(lcAnanP2T).nospace()
+                    << "ANAN P2 transport: Discovery reply: board " << int(reply->boardId) << ", firmware "
+                    << int(reply->firmwareVer) << ", protocol " << int(reply->protoVersionRaw) << ", "
+                    << int(reply->numDdc) << " DDC, "
+                    << (reply->streaming ? "STREAMING (busy with a session)" : "idle");
                 m_discoveredNumDdc = reply->numDdc;
                 const auto profile = boardProfileFor(reply->boardId);
                 configureSession(profile.value_or(defaultBoardProfile()), profile.has_value());
@@ -1594,10 +1670,9 @@ void P2Transport::sendTransmitSpecific()
 {
     if (!m_sock)
         return;
-    sendDatagram(*m_sock, buildTransmitSpecific(m_txSpecSeq++, m_micBoost, m_cwKeyer, m_txAttDb,
-                                                m_psEnabled ? m_psAttDb : -1, m_psAdc, m_micControl),
-                 m_p.host, kTransmitSpecificPort,
-                 m_counters.txBytes, m_counters.txPackets);
+    const auto pkt = buildTransmitSpecific(m_txSpecSeq++, m_micBoost, m_cwKeyer, m_txAttDb,
+                                           m_psEnabled ? m_psAttDb : -1, m_psAdc, m_micControl);
+    sendDatagram(*m_sock, pkt, m_p.host, kTransmitSpecificPort, m_counters.txBytes, m_counters.txPackets);
 }
 
 void P2Transport::setMox(bool keyed, const TxCoordinator::Operation& operation)

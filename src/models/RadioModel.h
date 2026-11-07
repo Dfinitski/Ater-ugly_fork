@@ -1382,6 +1382,10 @@ signals:
     void hardwarePttChanged(bool pressed);
     // ANAN-100D port: the radio microphone's level (dBFS), for the mic meter.
     void codecMicLevelChanged(float peakDb, float avgDb);
+    // ANAN-100D port (06.11): the radio codec's microphone for the TX voice
+    // chain (emitted on the radio I/O thread), and whether it is the input.
+    void codecMicPcm(const QByteArray& float48Mono);
+    void codecMicInputChanged(bool cdc);
     // ANAN-100D port: spectrum of the IQ sent to the radio while transmitting
     // (dBFS, centreMhz +-12 kHz) -- the TX panorama.
     void txScopeFrameReady(const QList<float>& dbfs, double centreMhz);

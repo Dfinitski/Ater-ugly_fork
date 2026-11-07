@@ -298,6 +298,11 @@ signals:
     // mic gain), ~20 per second while it is the selected source -- for the
     // Mic/CW level meter, which otherwise shows the computer's microphone.
     void ananCodecMicLevel(float peakDb, float avgDb);
+    // ANAN-100D port (06.11): the radio codec's microphone (CDC) for the TX
+    // voice chain, 48 kHz mono float -- emitted on the I/O thread while CDC is
+    // the source; and whether it is (AudioEngine switches its chain input).
+    void ananCodecMicPcm(const QByteArray& float48Mono);
+    void ananCodecMicInputChanged(bool cdc);
     // ANAN-100D port: spectrum of the IQ sent to the radio while transmitting
     // (MetisClient::txScopeFrameReady), centre converted to MHz.
     void ananTxScopeFrame(const QList<float>& dbfs, double centreMhz);
@@ -502,16 +507,6 @@ private:
     [[nodiscard]] double couplerRevWatts(int raw) const noexcept;
     [[nodiscard]] bool ananOnSixMeters() const noexcept;
     [[nodiscard]] std::optional<double> couplerSwr(int fwdRaw, int revRaw) const noexcept;
-public:
-    // ANAN-100D port: AUTO attenuator target -- the panadapter noise floor it
-    // holds, dBm, -130..-110. Shared with the ATT panel through AppSettings.
-    static constexpr const char* kAnanAutoAttTargetKey = "AnanAutoAttTargetDbm";
-    static constexpr int kAnanAutoAttTargetMinDbm = -130;
-    static constexpr int kAnanAutoAttTargetMaxDbm = -110;
-    static constexpr int kAnanAutoAttTargetDefaultDbm = -120;
-private:
-    // One step of the ANAN noise-floor AUTO loop for receiver `rx`.
-    void ananAutoAttStep(int rx, const std::vector<float>& dbm);
     // AGC follows the noise floor (AnanUiState::agcAuto, 04.11): every 500 ms
     // on receive the ceiling is set from the floor + offset and the filter.
     void ananAutoAgcStep(int rx);
@@ -527,8 +522,43 @@ private:
     bool m_ananAutoOn[2] = {false, false};
     int m_ananAutoAtt[2] = {0, 0};
     int m_ananRx2ManualAtt = 0;
-    double m_ananFloor[2] = {0.0, 0.0};
-    bool m_ananFloorOk[2] = {false, false};
+    // AUTO ATT (operator 06.11): the noise floor in dBm / 500 Hz at the ADC
+    // (ananNoiseLineStep: from the raw frame, independent of the FFT size, the
+    // rate and the zoom), and the receiver's own noise the same way, captured
+    // on request with the antenna disconnected (ananOwnNoiseCaptureStep). The
+    // target is own + the margin (AnanUiState). The Auto AGC follows the
+    // same floor.
+    double m_ananShownFloor[2] = {0.0, 0.0};
+    bool m_ananShownFloorOk[2] = {false, false};
+    // Own-noise capture (Setup > Receive): all receivers that own their
+    // attenuator at ATT 31 dB for a moment (ananOwnNoiseCaptureStep).
+    struct OwnNoiseCapture {
+        bool running = false;
+        qint64 untilMs = 0;
+        bool wanted[2] = {false, false};
+        bool done[2] = {false, false};
+        QString result;
+    };
+    OwnNoiseCapture m_ananCapture;
+    mutable double m_ananOwnNoiseAdc[2] = {0.0, 0.0};
+    mutable bool m_ananOwnNoiseLoaded[2] = {false, false};
+    [[nodiscard]] double ananOwnNoiseOfAdc(int adc) const;
+    void ananOwnNoiseCaptureStep(int rx, qint64 t);
+    QElapsedTimer m_ananOwnClock;
+    void ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, double rateHz);
+    [[nodiscard]] int ananAutoAttMarginDb(int rx) const;
+    [[nodiscard]] static double ananRbwTo500HzDb(double rateHz, std::size_t fftSize) noexcept;
+    [[nodiscard]] double ananDisplayCalDb() const;
+    // The receiver's own noise, dBm / 500 Hz at the ADC, without the meter's
+    // calibration (published with it as AnanUiState::ownFloorDbm).
+    double m_ananOwnNoise[2] = {std::numeric_limits<double>::quiet_NaN(),
+                                std::numeric_limits<double>::quiet_NaN()};
+    static constexpr int kAnanOwnNoiseMeasureMs = 800;   // averaging, after the settle
+    static constexpr int kAnanAttSettleMs = 300;          // frames still at the old ATT
+    qint64 m_ananNoiseRestartUntilMs[2] = {0, 0};
+    qint64 m_ananNoiseLogMs[2] = {-100000, -100000};
+    double m_ananSMeterRaw[2] = {std::numeric_limits<double>::quiet_NaN(),
+                                 std::numeric_limits<double>::quiet_NaN()};
     QElapsedTimer m_ananAutoClock[2];
     int m_ananAdcAttPushed[2] = {-1, -1};
     QHash<QString, int> m_ananPanEcho;
@@ -548,7 +578,15 @@ private:
     // (forwardSpeakerAudioToCodec) at "AnanCodecVolume"; microphone: port 1026
     // samples, 48 -> 24 kHz, replace the computer microphone in submitTxAudio()
     // when "AnanMicSource" is 1. "AnanMicBoost": +20 dB at the radio.
-    bool m_ananMicFromRadio = false;
+    bool m_ananMicFromRadio = false;   // AnanTxEngine modulates the radio mic (TEST only, 06.11)
+    // CDC (AnanMicSource 1, 06.11): the radio mic goes through the TX voice
+    // chain (AudioEngine), as the computer's does; read on the I/O thread.
+    std::atomic<bool> m_ananCodecToChain{false};
+    // Its 120 Hz high-pass at 48 kHz (input conditioning, I/O thread).
+    double m_cdcHpX1 = 0.0, m_cdcHpX2 = 0.0, m_cdcHpY1 = 0.0, m_cdcHpY2 = 0.0;
+public:
+    [[nodiscard]] bool ananCodecMicActive() const noexcept { return m_ananCodecToChain.load(); }
+private:
     int m_ananMicBoostPushed = -1;
     std::unique_ptr<fdv::HalfbandResampler> m_codecMicDown;
     std::vector<float> m_codecMicScratch;
@@ -668,6 +706,17 @@ private:
     std::array<std::deque<std::pair<qint64, double>>, 4> m_smHist;   // S-meter, before the key
     std::array<double, 4> m_smPreTx{-200.0, -200.0, -200.0, -200.0};
     QElapsedTimer m_smClock;
+    // S-meter rise trace (operator 05.11, "the meter takes long to come up"):
+    // when a reading jumps 15 dB over the last 0.6 s minimum, the next 1.2 s
+    // of readings (time, WDSP value, published value) go to the log once.
+    struct SmTrace {
+        qint64 startMs = -1;
+        qint64 lastEndMs = -100000;
+        double base = 0.0;
+        int readings = 0;
+        QString line;
+    };
+    std::array<SmTrace, 4> m_smTrace;
     bool m_ananDuplex{false};
     // PA Level Calibration (ANAN Hardware page): see applyDrive().
     int ananPaCalPercent() const;

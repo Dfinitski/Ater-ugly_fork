@@ -121,8 +121,10 @@ public:
     // and are reached by queued invokes only.
     void setTransport(QObject* transport);
     void setTxDsp(QObject* txDsp) { m_txDsp = txDsp; }
-    // The TXA channel id; re-applies the WDSP parameters when it changes.
-    void setTxChannel(int channel);
+    // The TXA channel id and its generation (wdsp::txaGeneration()); re-applies
+    // the WDSP parameters when either changes -- the TX DSP re-creates the
+    // channel with the same id on a reconnect.
+    void setTxChannel(int channel, unsigned generation);
     // Key edges and the CW state (no PS in CW: the FPGA keyer makes the carrier).
     void setKeyed(bool keyed, bool cw);
 
@@ -199,6 +201,7 @@ private:
     QObject* m_txDsp = nullptr;
     QTimer* m_timer = nullptr;
     int m_channel = -1;
+    unsigned m_channelGen = ~0u;
     bool m_keyed = false;
     bool m_cw = false;
     bool m_twoTone = false;

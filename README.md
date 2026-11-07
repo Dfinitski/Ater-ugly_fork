@@ -12,7 +12,11 @@
   manual per-band TX delay measurement with thermal drift compensation, Thetis-style scheck
 - HW Diag, RGMII tune, PS amplifier view and wideband monitor dialogs
 - S-meter calibration (correction, ATT and LNA compensation)
-- Thetis-style Auto AGC: AGC threshold follows the noise floor plus an adjustable offset (NF+)
+- Noise floor shown in dBm / 500 Hz at the ADC, independent of the sample rate, FFT size and zoom
+- Automatic attenuator that holds the band noise a set margin (NF+) above the receiver's own noise
+- Thetis-style Auto AGC on the same noise floor
+- One TX audio chain (equalizer, compressor, ...) for the computer and the radio microphone
+- ADC overload warning across the panadapter
 - Per-model settings page (Setup → Radio → *your model*): model selection, microphone and
   connector options, PA level and power meter calibration
 
@@ -41,22 +45,27 @@ for boards shared by several models pick yours in **Setup → Radio → (model p
 - Power meter, voltage, current and S-meter constants follow Thetis for each model. The PA level
   and power meter calibration on the model page let you match your radio.
 
-## Build 170
+## Build 190
 
-- Support for every Protocol 2 ANAN in the table above. Before this build only the ANAN-100D and
-  200D were found on the network, so ANAN-G2 and 7000DLE users could not connect.
-- ANAN-7000DLE / 8000DLE / G2 / G2-1K / G2E filter scheme (band-pass filters for both ADCs, TX
-  low-pass filter on transmit only, RX2 input grounded on TX).
-- Setup → Radio: the hardware page is named after the radio and has **Model** and
-  **Microphone & Connectors** groups. Mic PTT, PTT on tip / mic on ring, mic bias, and the G2
-  balanced XLR input are available.
-- PA voltage and PA drain current in the status bar on the 7000DLE, 8000DLE, G2 and G2E.
-- Reflected power uses Thetis' own reflected-power constants for each model, so SWR readings
-  change slightly, mostly on 6 m.
-- Fixed: the attenuator's AUTO button in the panadapter's antenna panel did not stay on (the
-  automatic attenuator never ran).
-- Auto AGC: with Auto on, the AGC-T slider shows where the automatic AGC has set the gain; its
-  tooltip shows the measured noise floor and the NF+ offset.
+Full notes: [docs/release-notes-build-190.md](docs/release-notes-build-190.md).
+
+- **Noise floor:** the panadapter trace is the power in 500 Hz on the S-meter's calibrated scale,
+  as it reaches the ADC. It no longer moves with the sample rate, FFT size, zoom or averaging. A
+  dashed line marks the measured floor.
+- **AUTO ATT:** the **NF+** slider in the ANT panel sets how many dB the band noise is held above
+  the receiver's own noise (default +10 dB, which costs 0.4 dB of sensitivity).
+- **Own noise capture, needed once for AUTO ATT:**
+  1. Connect and receive.
+  2. Disconnect the antenna or terminate the input with 50 Ω.
+  3. Press **Setup → Receive → Receiver Noise Floor → Capture**.
+  4. Reconnect the antenna and switch AUTO on.
+- **ADC overload warning:** a blinking red "ADCn OVERLOAD" across the panadapter.
+- **Transmit:** the computer microphone (PC) and the radio's codec microphone (CDC) go through the
+  same TX audio chain. RF Power and Tune follow watts.
+- **Stability:** fixed the crash on reconnect; stop / start works as in Thetis. A crash leaves
+  `aethersdr-crash-*.txt` and `.dmp` files in the log folder.
+- HW Diag has a 10 MHz Reference group. HW Diag and the overload warning on receive need firmware
+  that sends status packets on receive.
 - Only the ANAN-100D has been tested on the air. If you have one of the other radios, please try
   receive first, then transmit at low power, and report what you see (see below).
 
@@ -81,7 +90,8 @@ session where the problem happened.
    - in Explorer: `%LOCALAPPDATA%\AetherSDR\logs`
      (usually `C:\Users\<you>\AppData\Local\AetherSDR\logs`).
 3. Attach the newest file, `aethersdr-YYYYMMDD-HHMMSS.log`. A new file is started each time the
-   program runs, named by date and time.
+   program runs, named by date and time. If the program closed unexpectedly, also attach the
+   `aethersdr-crash-*.txt` and `aethersdr-crash-*.dmp` files from the same folder.
 
 In the issue, please say:
 - the radio model and the model selected on the Setup → Radio page;

@@ -1170,6 +1170,8 @@ private:
                         const QRect& wfRect = QRect());
     void drawSpotMarkers(QPainter& p, const QRect& specRect);
     void drawAutoSqlFloor(QPainter& p, const QRect& specRect);
+    void drawAnanNoiseFloor(QPainter& p, const QRect& specRect);
+    void drawAnanAdcOverload(QPainter& p, const QRect& specRect);
     void drawSquelchLine(QPainter& p, const QRect& specRect);
     void updateAutoSquelchFromBins(const QVector<float>& binsDbm);
     QRect leftOccludedRect() const;
@@ -1765,7 +1767,9 @@ private:
     bool  m_kiwiSdrSquelchPinnedDisplayNormValid{false};
     bool  m_kiwiSdrSquelchMeterFloorValid{false};
     QVector<float> m_kiwiSdrSquelchMeterSamples;
-    QTimer* m_squelchLineHideTimer{nullptr}; // auto-hides yellow line 3 s after enable/adjust (manual SQL only)
+    QTimer* m_squelchLineHideTimer{nullptr};
+    QTimer* m_ananOverlayPoll{nullptr};   // ANAN noise line / overload warning -> overlay dirty
+    QString m_ananOverlaySig; // auto-hides yellow line 3 s after enable/adjust (manual SQL only)
     bool  m_autoSquelchFloorVisible{true};
     bool  m_autoSquelchEnabled{false};
     float m_sqlNoiseFloorDbm{-999.0f};  // auto-squelch own two-pass trimmed-mean EWMA

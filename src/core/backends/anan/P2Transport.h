@@ -201,6 +201,8 @@ public:
     // ADC overload bits (bit 0 ADC0, bit 1 ADC1) seen in the status packets
     // since the last call; any thread (PureSignal auto-attenuate).
     unsigned takeOverloadLatch() { return m_ovlLatch.exchange(0u, std::memory_order_acq_rel); }
+    // The same bits for the panadapter's overload warning (its own latch).
+    unsigned takeDisplayOverload() { return m_ovlDisplay.exchange(0u, std::memory_order_acq_rel); }
     // Odyssey firmware buffer status (any thread): session totals, and a
     // sequence number that steps on every TX-buffer error (ran empty or
     // overflowed) while transmitting -- PureSignal pauses its learning then.
@@ -281,6 +283,7 @@ private:
 
     void handleDatagram(std::span<const std::uint8_t> bytes, quint16 senderPort);
     void configureSession(const BoardProfile& profile, bool fromReply);
+    void stopSession(bool toPowerOnState);   // stop(): true; start(): false
     void sendGeneral();
     void sendDdcSpecific();
     void sendHighPriority(bool run);
@@ -318,6 +321,14 @@ private:
     quint64 m_diagStatusSeen = 0;              // m_statusPackets at the last diag line
     std::atomic<int> m_driveAtomic{0}, m_fwdAtomic{0};
     std::atomic<int> m_eeeAdv{-1}, m_gbStatus{-1};
+    // Layout v9, bytes 28-29: 10 MHz reference -- the 10 MHz input's periods
+    // counted over one second of the 122.88 MHz clock, minus 10 000 000
+    // (signed, 1 = 1 Hz = 0.1 ppm). 0 / +-1: the loop is locked; a steady
+    // other value: not locked, the oscillator's error against the reference;
+    // -32768: no 10 MHz at the input. kRefNone until a v9 status.
+    static constexpr int kRefNone = INT_MIN;
+    std::atomic<int> m_ref10M{kRefNone};
+    int m_ref10MState = -2;   // logged state: -1 no input, 0 locked, 1 not locked
     std::atomic<quint64> m_ducSentTotal{0};
     mutable std::mutex m_statusSnapMutex;
     std::array<std::uint8_t, 60> m_statusSnap{};
@@ -552,6 +563,7 @@ private:
     bool m_spkLeadSent = false;
     // Codec diagnostics per diag period (ANAN diag line).
     quint64 m_diagMicPkts = 0;
+    quint64 m_connMicPkts0 = 0;   // m_diagMicPkts at start() (connect-timeout report)
     std::atomic<quint64> m_diagSpkPkts{0};
     quint64 m_diagSpkSilent = 0;
     quint64 m_diagSpkSubmits = 0;
@@ -569,6 +581,10 @@ private:
     // changes, so the overload bit is latched per telemetry window.
     bool m_adc0Overload = false;
     std::atomic<unsigned> m_ovlLatch{0u};
+    std::atomic<unsigned> m_ovlDisplay{0u};
+    bool m_ovlLogOn = false;        // debounced ADC0 overload state, for the log
+    qint64 m_ovlLogLastMs = 0;
+    static constexpr qint64 kOvlLogDebounceMs = 200;
     bool m_overloadInWindow = false;
     bool m_radioPtt = false;
     // ANAN-100D port: FPGA keyer state.

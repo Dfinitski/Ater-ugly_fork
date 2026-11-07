@@ -209,12 +209,13 @@ void PhoneCwApplet::applyRadioMicChoice()
     if (!m_micSourceCombo || !m_accBtn || !radioMicMode())
         return;
     auto& st = AppSettings::instance();
-    const int micSource = std::clamp(st.value(QStringLiteral("AnanMicSource"), 0).toInt(), 0, 2);
+    const int micSource = st.value(QStringLiteral("AnanMicSource"), 0).toInt() == 1 ? 1 : 0;
     const bool boost = st.value(QStringLiteral("AnanMicBoost"), QStringLiteral("False")).toString()
                        == QLatin1String("True");
     {
         const QSignalBlocker blocker(m_micSourceCombo);
-        const QStringList items{QStringLiteral("PC"), QStringLiteral("MIC"), QStringLiteral("TEST")};
+        // 06.11: no TEST source -- the PureSignal widget has the 2-tone.
+        const QStringList items{QStringLiteral("PC"), QStringLiteral("CDC")};
         QStringList existing;
         for (int i = 0; i < m_micSourceCombo->count(); ++i)
             existing << m_micSourceCombo->itemText(i);
@@ -401,7 +402,7 @@ void PhoneCwApplet::buildPhonePanel()
                     auto& st = AppSettings::instance();
                     const QString t = m_micSourceCombo->currentText();
                     st.setValue(QStringLiteral("AnanMicSource"),
-                                t == QLatin1String("MIC") ? 1 : t == QLatin1String("TEST") ? 2 : 0);
+                                t == QLatin1String("CDC") ? 1 : 0);
                     st.save();
                 }
                 return;

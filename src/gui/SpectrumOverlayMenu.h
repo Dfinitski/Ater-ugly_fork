@@ -430,6 +430,7 @@ private:
     QPushButton* m_ananLnaBtn{nullptr};   // ANAN-100D port
     void syncAnanAntennas();
     QLabel*      m_attTargetValue{nullptr};
+    static QString attMarginToolTip();
     int          m_attRx{-2};                  // receiver this pan shows (AnanUiState)
     bool         m_attOwnerShown{true};
     void syncAttOwnership();

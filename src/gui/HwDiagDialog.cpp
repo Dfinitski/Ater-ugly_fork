@@ -71,7 +71,8 @@ HwDiagDialog::HwDiagDialog(RadioModel* model, QWidget* parent)
     top->addWidget(group(tr("Ethernet: radio receive (PC → radio)"), m_eth));
     top->addWidget(group(tr("PHY KSZ9031"), m_phy));
     top->addWidget(group(tr("Radio buffers (since the program started the radio)"), m_buf));
-    top->addWidget(group(tr("Codec and clocks (since radio power-on)"), m_codec));
+    top->addWidget(group(tr("Codec (since radio power-on)"), m_codec));
+    top->addWidget(group(tr("10 MHz Reference"), m_ref));
 
     auto* row = new QHBoxLayout;
     m_reset = new QPushButton(tr("Reset counters"));
@@ -131,7 +132,7 @@ void HwDiagDialog::tick()
     auto* t = be ? qobject_cast<anan::P2Transport*>(be->ananTransport()) : nullptr;
     if (!t) {
         m_head->setText(tr("<b>Radio not connected.</b>"));
-        for (QLabel* l : {m_eth, m_phy, m_buf, m_codec})
+        for (QLabel* l : {m_eth, m_phy, m_buf, m_codec, m_ref})
             l->setText(QStringLiteral("--"));
         m_have = false;
         return;
@@ -293,6 +294,60 @@ void HwDiagDialog::tick()
                             "+2 per mic settings change)")
                              .arg(cnt(d(kPllLoss))).arg(int(b[51]))
                              .arg(d(kCodecWrites)).arg(int(b[52])));
+    }
+
+    // 10 MHz reference (layout v9, bytes 28-29; operator 06.11: its own group,
+    // everything shown also with no signal at the input): the 10 MHz input's
+    // periods in one second of the 122.88 MHz clock, minus 10 000 000;
+    // signed, 1 = 1 Hz = 0.1 ppm; -32768 = no 10 MHz at the input.
+    if (layout < 9) {
+        m_ref->setText(tr("Not in this firmware (needs layout 9 or later)."));
+    } else {
+        constexpr int kNoSignal = -32768;
+        const int v = int(std::int16_t(be16(28)));
+        m_ref10M.emplace_back(now, v);
+        while (!m_ref10M.empty() && now - m_ref10M.front().first > 5000)
+            m_ref10M.pop_front();
+        int lo = 0, hi = 0, nSig = 0;
+        for (const auto& p : m_ref10M) {
+            if (p.second == kNoSignal)
+                continue;
+            lo = nSig ? std::min(lo, p.second) : p.second;
+            hi = nSig ? std::max(hi, p.second) : p.second;
+            ++nSig;
+        }
+        const int state = v == kNoSignal ? -1 : (std::abs(v) <= 1 ? 0 : 1);
+        if (state != m_refState) {
+            if (m_refState != -2)
+                ++m_refChanges;
+            m_refState = state;
+            m_refSinceMs = now;
+        }
+        const QString status = state < 0
+            ? tr("<span style='color:%1'><b>no signal</b></span> at the 10 MHz input").arg(kAmber)
+            : state == 0 ? tr("<span style='color:%1'><b>locked</b></span>").arg(kGreen)
+                         : tr("<span style='color:%1'><b>NOT locked</b></span>").arg(kRed);
+        const QString reading = state < 0
+            ? tr("%1 (no signal code)").arg(v)
+            : tr("<b>%1%2 Hz</b> at 10 MHz = %1%3 ppm").arg(v > 0 ? QStringLiteral("+") : QString())
+                  .arg(v).arg(v * 0.1, 0, 'f', 1);
+        const QString range = nSig
+            ? tr("%1..%2 Hz (%3 of %4 readings with a signal)").arg(lo).arg(hi).arg(nSig).arg(m_ref10M.size())
+            : tr("-- (no signal in all %1 readings)").arg(m_ref10M.size());
+        // The 122.88 MHz clock against the reference: v Hz at 10 MHz is
+        // 12.288 v Hz at 122.88 MHz.
+        const QString clock = state < 0
+            ? tr("runs on the radio's own oscillator (nothing to compare it with)")
+            : state == 0 ? tr("follows the 10 MHz reference")
+                         : tr("%1%2 Hz from the reference (%1%3 ppm)")
+                               .arg(v > 0 ? QStringLiteral("+") : QString())
+                               .arg(v * 12.288, 0, 'f', 1).arg(v * 0.1, 0, 'f', 1);
+        m_ref->setText(tr("State: %1 &nbsp;(for %2 s; %3 changes since this window opened)<br>"
+                          "Reading (bytes 28-29): %4<br>"
+                          "Last 5 s: %5<br>"
+                          "122.88 MHz clock: %6")
+                           .arg(status).arg((now - m_refSinceMs) / 1000).arg(m_refChanges)
+                           .arg(reading).arg(range).arg(clock));
     }
 
     // "Count 4000 packets".

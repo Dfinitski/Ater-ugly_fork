@@ -966,43 +966,45 @@ void SpectrumOverlayMenu::buildAntPanel()
     gainRow->addWidget(m_autoRfGainCheck);
     vbox->addLayout(gainRow);
 
-    // ANAN-100D port: the noise floor the AUTO attenuator holds (dBm). Shown
-    // only when the RF gain control is an attenuator (setRfGainRange()); read
-    // by Hl2Backend::ananAutoAttStep() from the same AppSettings key.
+    // ANAN-100D port (06.11): the AUTO attenuator's margin -- how many dB the
+    // band noise is held above the receiver's own noise (both in dBm / 500 Hz
+    // at the ADC, Hl2Backend::ananNoiseLineStep). Shown only when the RF gain
+    // control is an attenuator (setRfGainRange()); read by the backend from
+    // the same AppSettings key.
     m_attTargetRow = new QWidget(m_antPanel);
     applyTransparentStyle(m_attTargetRow, QStringLiteral("attTargetRow"));
     auto* targetRow = new QHBoxLayout(m_attTargetRow);
     targetRow->setContentsMargins(0, 0, 0, 0);
     targetRow->setSpacing(4);
-    auto* targetLabel = new QLabel(QStringLiteral("Floor:"));
+    auto* targetLabel = new QLabel(QStringLiteral("NF+"));
     targetLabel->setStyleSheet(kLabelStyle);
     targetLabel->setFixedWidth(34);
     targetRow->addWidget(targetLabel);
     m_attTargetSlider = new GuardedSlider(Qt::Horizontal);
     m_attTargetSlider->setObjectName(QStringLiteral("antennaAttTargetSlider"));
-    m_attTargetSlider->setAccessibleName(QStringLiteral("AUTO attenuator noise floor target"));
-    m_attTargetSlider->setRange(-130, -110);
+    m_attTargetSlider->setAccessibleName(QStringLiteral("AUTO attenuator noise margin"));
+    m_attTargetSlider->setRange(0, AetherSDR::anan::AnanUiState::kAutoAttMarginMaxDb);
     m_attTargetSlider->setSingleStep(1);
     m_attTargetSlider->setPageStep(5);
     applyPrimarySliderStyle(m_attTargetSlider);
-    m_attTargetSlider->setToolTip(QStringLiteral(
-        "AUTO attenuator target: the panadapter noise floor it holds, -130..-110 dBm"));
+    m_attTargetSlider->setToolTip(attMarginToolTip());
     const int savedTarget = std::clamp(
         AppSettings::instance()
-            .value(AetherSDR::anan::AnanUiState::floorTargetKey(0), -120).toInt(),
-        -130, -110);
+            .value(AetherSDR::anan::AnanUiState::autoAttMarginKey(0),
+                   AetherSDR::anan::AnanUiState::kAutoAttMarginDefaultDb).toInt(),
+        0, AetherSDR::anan::AnanUiState::kAutoAttMarginMaxDb);
     m_attTargetSlider->setValue(savedTarget);
     targetRow->addWidget(m_attTargetSlider, 1);
-    auto* targetValue = new QLabel(QStringLiteral("%1 dBm").arg(savedTarget));
+    auto* targetValue = new QLabel(QStringLiteral("+%1 dB").arg(savedTarget));
     targetValue->setStyleSheet(kLabelStyle);
     targetValue->setFixedWidth(56);
     targetValue->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     targetRow->addWidget(targetValue);
     m_attTargetValue = targetValue;
     connect(m_attTargetSlider, &QSlider::valueChanged, this, [this, targetValue](int v) {
-        targetValue->setText(QStringLiteral("%1 dBm").arg(v));
+        targetValue->setText(QStringLiteral("+%1 dB").arg(v));
         AppSettings::instance().setValue(
-            AetherSDR::anan::AnanUiState::floorTargetKey(m_attRx < 0 ? 0 : m_attRx), v);
+            AetherSDR::anan::AnanUiState::autoAttMarginKey(m_attRx < 0 ? 0 : m_attRx), v);
     });
     connect(m_attTargetSlider, &QSlider::sliderReleased, this,
             [] { AppSettings::instance().save(); });
@@ -3449,6 +3451,15 @@ void SpectrumOverlayMenu::syncAnanAntennas()
     }
 }
 
+QString SpectrumOverlayMenu::attMarginToolTip()
+{
+    return tr("AUTO attenuator: how many dB the band noise is held above the receiver's own noise.\n"
+              "The receiver's own noise then costs this much sensitivity:\n"
+              "  +3 dB: 1.8 dB    +6 dB: 1.0 dB    +10 dB: 0.4 dB    +20 dB: 0.04 dB\n"
+              "A lower margin means more attenuation (more headroom against overload),\n"
+              "a higher one less attenuation for no gain in sensitivity.");
+}
+
 void SpectrumOverlayMenu::syncAttOwnership()
 {
     if (m_rfGainIsAttenuator)
@@ -3458,17 +3469,22 @@ void SpectrumOverlayMenu::syncAttOwnership()
     const auto& ui = AetherSDR::anan::AnanUiState::instance();
     const int rx = ui.rxForPan(m_panId);
     const bool owner = ui.ownsAtt(m_panId);
-    if (rx != m_attRx && m_attTargetSlider) {
-        m_attRx = rx;
-        const int v = std::clamp(
-            AppSettings::instance()
-                .value(AetherSDR::anan::AnanUiState::floorTargetKey(rx < 0 ? 0 : rx), -120)
-                .toInt(),
-            -130, -110);
-        QSignalBlocker b(m_attTargetSlider);
-        m_attTargetSlider->setValue(v);
-        if (m_attTargetValue)
-            m_attTargetValue->setText(QStringLiteral("%1 dBm").arg(v));
+    if (m_attTargetSlider) {
+        // The margin per receiver (06.11): band noise above the receiver's
+        // own, both in dBm / 500 Hz at the ADC.
+        const int r = rx < 0 ? 0 : std::min(rx, 1);
+        if (rx != m_attRx && !m_attTargetSlider->isSliderDown()) {
+            m_attRx = rx;
+            const int v = std::clamp(
+                AppSettings::instance()
+                    .value(AetherSDR::anan::AnanUiState::autoAttMarginKey(r),
+                           AetherSDR::anan::AnanUiState::kAutoAttMarginDefaultDb).toInt(),
+                0, AetherSDR::anan::AnanUiState::kAutoAttMarginMaxDb);
+            QSignalBlocker b(m_attTargetSlider);
+            m_attTargetSlider->setValue(v);
+            if (m_attTargetValue)
+                m_attTargetValue->setText(QStringLiteral("+%1 dB").arg(v));
+        }
     }
     const bool autoOn = owner && rx >= 0 && rx < 2 && ui.autoWanted[rx];
     if (m_autoRfGainCheck->isChecked() != autoOn) {

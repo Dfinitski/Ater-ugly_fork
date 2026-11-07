@@ -1969,6 +1969,39 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
 
     m_panStats.clock.start();  // panstats rates are meaningless without an epoch
 
+    // ANAN-100D port (operator, 06.11: the overload test and the noise-line
+    // checkbox showed only after some other repaint): the noise line and the
+    // ADC overload warning live in the CACHED overlay layer, which is redrawn
+    // only when marked dirty. Their state is polled here and the overlay is
+    // marked dirty when what it would draw changes -- including each blink.
+    m_ananOverlayPoll = new QTimer(this);
+    m_ananOverlayPoll->setInterval(100);
+    connect(m_ananOverlayPoll, &QTimer::timeout, this, [this] {
+        if (!m_overlayMenu)
+            return;
+        const auto& ui = AetherSDR::anan::AnanUiState::instance();
+        const int rx = ui.rxForPan(m_overlayMenu->panId());
+        QString sig;
+        if (rx >= 0 && rx < 2) {
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            const bool lineShown = ui.showNoiseLine && std::isfinite(ui.shownFloorDbm[rx])
+                                   && now - ui.shownFloorAtMs[rx] <= 3000;
+            const int adc = std::clamp(ui.rxAdc[rx], 0, 1);
+            const bool ovl = ui.adcOverloadTest || now - ui.adcOverloadAtMs[adc] <= 1000;
+            sig = QStringLiteral("%1|%2|%3|%4|%5")
+                      .arg(lineShown ? std::lround(ui.shownFloorDbm[rx] * 2.0) : -99999)
+                      .arg(lineShown && std::isfinite(ui.ownFloorDbm[rx]) ? std::lround(ui.ownFloorDbm[rx]) : -99999)
+                      .arg(ovl ? 1 : 0)
+                      .arg(ovl && (now / 400) % 2 == 0 ? 1 : 0)
+                      .arg(adc);
+        }
+        if (sig != m_ananOverlaySig) {
+            m_ananOverlaySig = sig;
+            markOverlayDirty();
+        }
+    });
+    m_ananOverlayPoll->start();
+
     setMinimumHeight(100);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     setAutoFillBackground(false);
@@ -4799,6 +4832,76 @@ void SpectrumWidget::drawAutoSqlFloor(QPainter& p, const QRect& specRect)
     p.drawText(specRect.right() - p.fontMetrics().horizontalAdvance(lbl) - 4, y - 2, lbl);
 }
 
+// ANAN-100D port (operator, 06.11): ADC overload -- a large half-transparent
+// red "ADCn OVERLOAD" across the middle of the panadapter of a receiver whose
+// ADC the radio reports clipping (status byte 5; held 1 s after the last
+// report), blinking. Setup > Receive can show it for a test.
+void SpectrumWidget::drawAnanAdcOverload(QPainter& p, const QRect& specRect)
+{
+    if (!m_overlayMenu)
+        return;
+    const auto& ui = AetherSDR::anan::AnanUiState::instance();
+    const int rx = ui.rxForPan(m_overlayMenu->panId());
+    if (rx < 0 || rx > 1)
+        return;
+    const int adc = std::clamp(ui.rxAdc[rx], 0, 1);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (!ui.adcOverloadTest && now - ui.adcOverloadAtMs[adc] > 1000)
+        return;
+    if ((now / 400) % 2 != 0)
+        return;   // blink: 400 ms on, 400 ms off
+    QFont f = p.font();
+    f.setBold(true);
+    f.setPixelSize(std::max(18, specRect.height() / 5));
+    p.save();
+    p.setFont(f);
+    p.setPen(QColor(255, 30, 30, 120));
+    p.drawText(specRect, Qt::AlignCenter, QStringLiteral("ADC%1 OVERLOAD").arg(adc + 1));
+    p.restore();
+}
+
+// ANAN-100D port (operator, 06.11): the noise floor in dBm / 500 Hz at the
+// ADC, on this ruler (Hl2Backend::ananNoiseLineStep: from the raw frame, so
+// it does not move with the rate, the FFT size, the zoom or AVG). The base
+// of the AUTO attenuator; the receiver's own noise, once measured, is the
+// short mark at the right edge.
+void SpectrumWidget::drawAnanNoiseFloor(QPainter& p, const QRect& specRect)
+{
+    if (!m_overlayMenu || m_dynamicRange <= 0.0f)
+        return;
+    const auto& ui = AetherSDR::anan::AnanUiState::instance();
+    if (!ui.showNoiseLine)
+        return;   // Setup > Receive
+    const int rx = ui.rxForPan(m_overlayMenu->panId());
+    if (rx < 0 || rx > 1 || !std::isfinite(ui.shownFloorDbm[rx])
+        || QDateTime::currentMSecsSinceEpoch() - ui.shownFloorAtMs[rx] > 3000)
+        return;
+    const auto yFor = [&](double dbm) {
+        const float norm = (m_refLevel - static_cast<float>(dbm)) / m_dynamicRange;
+        return specRect.top() + static_cast<int>(std::clamp(norm, 0.0f, 1.0f) * specRect.height());
+    };
+    const double floorDbm = ui.shownFloorDbm[rx];
+    const int y = yFor(floorDbm);
+    const QColor c = AetherSDR::theme::withAlpha("color.accent.success", 190);
+    p.setPen(QPen(c, 1, Qt::DashLine));
+    p.drawLine(specRect.left(), y, specRect.right() - DBM_STRIP_W, y);
+    if (std::isfinite(ui.ownFloorDbm[rx])) {
+        const int yo = yFor(ui.ownFloorDbm[rx]);
+        p.setPen(QPen(c, 2));
+        p.drawLine(specRect.right() - DBM_STRIP_W - 24, yo, specRect.right() - DBM_STRIP_W, yo);
+    }
+    QFont f = p.font();
+    f.setPointSize(8);
+    p.setFont(f);
+    p.setPen(c);
+    const QString lbl = std::isfinite(ui.ownFloorDbm[rx])
+        ? QStringLiteral("Noise %1 dBm/500 Hz (own %2%3)").arg(std::lround(floorDbm))
+              .arg(floorDbm - ui.ownFloorDbm[rx] >= 0 ? QStringLiteral("+") : QString())
+              .arg(std::lround(floorDbm - ui.ownFloorDbm[rx]))
+        : QStringLiteral("Noise %1 dBm/500 Hz").arg(std::lround(floorDbm));
+    p.drawText(specRect.left() + 6, y - 3, lbl);
+}
+
 void SpectrumWidget::setSquelchScale(std::optional<SquelchLevelScale> scale)
 {
     if (m_squelchScale == scale) {
@@ -4852,6 +4955,15 @@ void SpectrumWidget::drawSquelchLine(QPainter& p, const QRect& specRect)
             return;
         }
         squelchDbm = static_cast<float>(m_squelchScale->thresholdDb(m_flexSquelchLevel));
+        // ANAN-100D port (06.11): the scale maps onto per-bin levels; this
+        // panadapter draws bins referred to 500 Hz and calibrated -- the
+        // line moves with the trace (AnanUiState::panShiftDb).
+        if (m_overlayMenu) {
+            const auto& ui = AetherSDR::anan::AnanUiState::instance();
+            const int ananRx = ui.rxForPan(m_overlayMenu->panId());
+            if (ananRx >= 0 && ananRx < 2)
+                squelchDbm += static_cast<float>(ui.panShiftDb[ananRx]);
+        }
         label = m_squelchScale->unit.isEmpty()
             ? QStringLiteral("SQL %1").arg(m_flexSquelchLevel)
             : QStringLiteral("SQL %1 %2").arg(squelchDbm, 0, 'f', 1).arg(m_squelchScale->unit);
@@ -15128,6 +15240,8 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
             // the (frequency) x-axis carries over there. Suppress them in 3D.
             if (!is3D) {
                 drawAutoSqlFloor(p, specRect);
+                drawAnanNoiseFloor(p, specRect);
+                drawAnanAdcOverload(p, specRect);
                 drawSquelchLine(p, specRect);
             }
 
@@ -16298,6 +16412,8 @@ void SpectrumWidget::paintEvent(QPaintEvent* ev)
     // dB-axis overlays don't map onto the 3D surface (see GPU path) — suppress.
     if (!is3D) {
         drawAutoSqlFloor(p, specRect);
+        drawAnanNoiseFloor(p, specRect);
+        drawAnanAdcOverload(p, specRect);
         drawSquelchLine(p, specRect);
     }
 

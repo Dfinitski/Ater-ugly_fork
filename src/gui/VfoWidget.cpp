@@ -6788,7 +6788,7 @@ void VfoWidget::applyAnanAgcAuto()
             m_agcTSlider->setValue(std::clamp(ui.agcAutoT[rx], m_agcTSlider->minimum(),
                                               m_agcTSlider->maximum()));
             m_agcValueLbl->setText(QString::number(ui.agcAutoT[rx]));
-            m_agcTSlider->setToolTip(tr("Auto AGC: noise floor %1 dBm + NF+ %2 dB -> AGC-T %3")
+            m_agcTSlider->setToolTip(tr("Auto AGC: noise floor %1 dBm / 500 Hz + NF+ %2 dB -> AGC-T %3")
                 .arg(ui.agcAutoFloorDbm[rx], 0, 'f', 1).arg(ui.agcNfOffsetDb[rx]).arg(ui.agcAutoT[rx]));
         }
     }

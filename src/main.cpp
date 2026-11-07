@@ -16,6 +16,7 @@
 #include "core/GpuSelector.h"
 #include "core/QtAudioBackendGuard.h"
 #include "core/LogManager.h"
+#include "core/CrashDump.h"
 #include "core/ShutdownTrace.h"
 #include "core/SystemInventory.h"
 #include "core/MacMicPermission.h"
@@ -655,6 +656,8 @@ int main(int argc, char* argv[])
     // Bounded historical footprint: retention by age + total size cap,
     // both configurable in AppSettings["LogRetention"]. (#2498)
     AetherSDR::LogManager::instance().pruneOldLogs(logDir);
+    // ANAN-100D port: a crash leaves a report and a minidump beside the logs.
+    AetherSDR::CrashDump::install(logDir, logPath);
 
     // Skip stderr when it's a pipe to a non-draining parent (Stream Deck
     // "Run Command", systemd user services, GUI launchers).  Once the

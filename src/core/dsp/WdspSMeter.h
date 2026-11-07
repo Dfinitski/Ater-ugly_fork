@@ -104,9 +104,10 @@ private:
 // alias -- the meter would show whichever instant landed on the tick.
 class SMeterSmoother final {
 public:
-    // 100 ms is the cadence MetisClient publishes radio telemetry at
-    // (kTelemetryMinIntervalMs), so every host-DSP meter updates on one clock.
-    static constexpr std::int64_t kPublishIntervalMs = 100;
+    // ANAN-100D port: 50 ms, Thetis' meter update interval (console.cs
+    // meter_delay = 50). Was 100 ms, MetisClient's telemetry cadence: with
+    // the needle's own attack on top the reading reached the needle late.
+    static constexpr std::int64_t kPublishIntervalMs = 50;
     // Flex's own meter ballistics, from MeterModel's forward-power smoothing:
     // fast attack so a peak is not missed, slow decay so the needle settles.
     // Reused rather than re-invented so an operator moving between radios

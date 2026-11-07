@@ -332,6 +332,10 @@ public:
     Q_INVOKABLE void clearTxAccumulators();
     void discardTxMedia(const TxCoordinator::Context& context);
     void feedDaxTxAudio(const QByteArray& float32pcm, const TxCoordinator::Context& context);
+    // ANAN-100D port: the radio codec's microphone (CDC) as the TX chain's
+    // input instead of the computer's capture (48 kHz mono float).
+    Q_INVOKABLE void setExternalMicInput(bool on);
+    Q_INVOKABLE void feedExternalMic(const QByteArray& float48Mono);
 
     // Plays RADE decoded speech (int16 stereo 24kHz) bypassing m_radeMode block
     void feedDecodedSpeech(const QByteArray& pcm);
@@ -884,6 +888,10 @@ private slots:
     void onCwRecordPump();
 
 private:
+    // ANAN-100D port: the TX voice chain from its input on (both microphones).
+    void runTxVoiceTail(QByteArray& data, bool capturedFloat32);
+    std::atomic<bool> m_externalMicActive{false};
+    static constexpr int kExternalMicRate = 48000;
     enum class RxAudioBuffer {
         Main,
         KiwiSdr,

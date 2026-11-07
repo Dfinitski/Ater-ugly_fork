@@ -1568,6 +1568,13 @@ MainWindow::MainWindow(QWidget* parent)
         m_radioModel.submitTxAudio(pcm, AudioEngine::DEFAULT_SAMPLE_RATE,
                                    source, context);
     });
+    // ANAN-100D port (06.11): the radio codec's microphone (CDC) is the TX
+    // voice chain's input when selected -- one chain for both microphones.
+    // From the radio's I/O thread straight to AudioEngine's.
+    connect(&m_radioModel, &RadioModel::codecMicPcm, m_audio, &AudioEngine::feedExternalMic,
+            Qt::QueuedConnection);
+    connect(&m_radioModel, &RadioModel::codecMicInputChanged, m_audio, &AudioEngine::setExternalMicInput,
+            Qt::QueuedConnection);
     wireModemAudioCompletion();
     wireTxAudioAuthority();
     connect(&m_radioModel.transmitModel(), &TransmitModel::moxChanged,

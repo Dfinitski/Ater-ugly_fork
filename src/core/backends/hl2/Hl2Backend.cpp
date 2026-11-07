@@ -12,6 +12,7 @@
 
 #include "core/backends/hl2/Hl2RxDsp.h"
 #include "core/dsp/WdspProcessTally.h"
+#include "core/dsp/WdspTxaGuard.h"
 #include "core/backends/hl2/Hl2TxDsp.h"
 #include "core/backends/hl2/Hl2AdcPairing.h"
 #include "core/backends/hl2/Hl2BandMemoryPolicy.h"
@@ -33,6 +34,7 @@
 #include "core/LogManager.h"
 #include <QFile>
 #include <QFileInfo>
+#include <QDateTime>
 #include "core/RadioSettingsScope.h"
 #include "core/backends/hl2/Hl2FreqCal.h"
 #include "core/backends/hl2/Hl2Settings.h"
@@ -552,11 +554,22 @@ Hl2Backend::Hl2Backend(QObject* parent)
     connect(m_ananAdcTimer, &QTimer::timeout, this, [this] {
         if (!m_metis)
             return;
+        // ADC overload (status byte 5, bits 0 / 1) for the panadapter's
+        // warning (06.11): the time each ADC was last seen clipping.
+        {
+            auto& ui = anan::AnanUiState::instance();
+            const unsigned ovl = static_cast<anan::P2Transport*>(m_metis)->takeDisplayOverload();
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            for (int adc = 0; adc < 2; ++adc)
+                if (ovl & (1u << adc))
+                    ui.adcOverloadAtMs[adc] = now;
+        }
         for (int rx = 0; rx < 2; ++rx) {
             const QString key = rx == 0 ? QStringLiteral("AnanRx1Adc")
                                         : QStringLiteral("AnanRx2Adc");
             const int adc = AppSettings::instance().value(key, 0).toInt() == 1 ? 1 : 0;
             m_ananAdc[rx] = adc;
+            anan::AnanUiState::instance().rxAdc[rx] = adc;
             if (adc == m_ananAdcPushed[rx])
                 continue;
             m_ananAdcPushed[rx] = adc;
@@ -585,8 +598,14 @@ Hl2Backend::Hl2Backend(QObject* parent)
         }
         ananApplyCodecSettings();
         ananPushCwKeyer();
-        if (m_ps)
-            m_ps->setTxChannel(m_txDsp ? m_txDsp->wdspChannelId() : -1);
+        // Read the id only while the TX thread is not rebuilding the channel
+        // (WdspTxaGuard.h); a skipped tick is picked up by the next one.
+        if (m_ps) {
+            const wdsp::TxaShared txaHold;
+            if (txaHold)
+                m_ps->setTxChannel(m_txDsp ? m_txDsp->wdspChannelId() : -1,
+                                   wdsp::txaGeneration().load(std::memory_order_acquire));
+        }
         // ANAN-100D port: Thetis runs the TXA CFIR on every Protocol 2 radio.
         if (m_txDsp && !m_ananCfirPushed) {
             m_ananCfirPushed = true;
@@ -763,6 +782,39 @@ Hl2Backend::Hl2Backend(QObject* parent)
         };
         connect(p2, &anan::P2Transport::codecMicReady, m_txEngine, &anan::AnanTxEngine::onMicPacket,
                 Qt::QueuedConnection);
+        // ANAN-100D port (operator, 06.11: one processing chain for both
+        // microphones, the input switched at its start): with CDC selected
+        // the radio's microphone goes to AudioEngine's TX voice chain, like
+        // the computer's. On the I/O thread, straight from the packet: a
+        // DC / hum / PTT-step high-pass (120 Hz, 2nd-order Butterworth --
+        // input conditioning, as a sound card's driver does), then out.
+        // AnanTxEngine still gets every packet: it clocks the DUC.
+        connect(p2, &anan::P2Transport::codecMicReady, this, [this](const std::vector<float>& s48) {
+            if (!m_ananCodecToChain.load(std::memory_order_relaxed) || s48.empty())
+                return;
+            static const auto coef = [] {
+                constexpr double kPi = 3.14159265358979323846;
+                const double k = std::tan(kPi * 120.0 / 48000.0), q = 1.0 / std::sqrt(2.0);
+                const double norm = 1.0 / (1.0 + k / q + k * k);
+                return std::array<double, 5>{norm, -2.0 * norm, norm, 2.0 * (k * k - 1.0) * norm,
+                                             (1.0 - k / q + k * k) * norm};
+            }();
+            QByteArray out(static_cast<int>(s48.size() * sizeof(float)), Qt::Uninitialized);
+            auto* o = reinterpret_cast<float*>(out.data());
+            for (std::size_t i = 0; i < s48.size(); ++i) {
+                const double x = s48[i];
+                double y = coef[0] * x + coef[1] * m_cdcHpX1 + coef[2] * m_cdcHpX2 - coef[3] * m_cdcHpY1
+                         - coef[4] * m_cdcHpY2;
+                if (std::abs(y) < 1e-20)
+                    y = 0.0;
+                m_cdcHpX2 = m_cdcHpX1;
+                m_cdcHpX1 = x;
+                m_cdcHpY2 = m_cdcHpY1;
+                m_cdcHpY1 = y;
+                o[i] = static_cast<float>(y);
+            }
+            emit ananCodecMicPcm(out);
+        }, Qt::DirectConnection);
         m_txThread = new QThread(this);
         m_txThread->setObjectName(QStringLiteral("anan-tx"));
         m_txDsp->moveToThread(m_txThread);
@@ -1431,17 +1483,6 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
                     std::size_t{32}, n);
         }
         const std::size_t first = n / 2 - std::min(n / 2, keep / 2);
-        // Bins narrower than the 1024-point default read a lower noise floor;
-        // the AUTO attenuator's targets were set at 1024.
-        const float autoAttCorrDb = n > 1024
-            ? static_cast<float>(10.0 * std::log10(static_cast<double>(n) / 1024.0)) : 0.0f;
-        if (ids->ddcIndex < 2 && !txOnAir) {   // our own TX is no noise floor
-            std::vector<float> forAuto(bins.begin() + static_cast<std::ptrdiff_t>(first),
-                                       bins.begin() + static_cast<std::ptrdiff_t>(first + keep));
-            for (float& v : forAuto)
-                v = static_cast<float>(v + off) + autoAttCorrDb;
-            ananAutoAttStep(ids->ddcIndex, forAuto);
-        }
         // ANAN-100D port: always kOutBins points -- a bin count that changes
         // with every zoom step made the panadapter and waterfall restart --
         // peak-held when the view holds more bins, linear when fewer. dBFS ->
@@ -1449,19 +1490,35 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         // derived full scale (+3 dB) minus LNA gain, so the trace holds still
         // across gain changes.
         constexpr std::size_t kOutBins = 1024;
+        // ANAN-100D port (operator, 06.11: "the drawn floor must sit on the
+        // noise line, at any zoom and any panadapter width"): the trace is
+        // the power in 500 Hz -- each bin, whose noise bandwidth is
+        // 1.5 * rate / N (Hanning), referred to 500 Hz; a pixel holding
+        // several bins takes their MEAN power (a peak of noise bins sits
+        // above the noise). Plus the S-meter's calibration (Setup > Receive,
+        // and the model's offset), not its ATT / LNA options: what reaches
+        // the ADC, on the meter's calibrated scale. The noise line
+        // (ananNoiseLineStep) is the same quantity, so the two coincide; a
+        // steady carrier reads its power when a pixel spans about 500 Hz,
+        // higher on narrower bins (the price of a noise-true display).
+        const double panShift = ananRbwTo500HzDb(rate, n) + ananDisplayCalDb();
+        const double dispOff = off + panShift;
+        if (ids->ddcIndex < 2)
+            anan::AnanUiState::instance().panShiftDb[ids->ddcIndex] = panShift;
         auto resample = [&](const std::vector<float>& src) {
             std::vector<float> out(kOutBins);
             if (keep == kOutBins) {
                 for (std::size_t i = 0; i < keep; ++i)
-                    out[i] = static_cast<float>(src[first + i] + off);
+                    out[i] = static_cast<float>(src[first + i] + dispOff);
             } else if (keep > kOutBins) {
                 for (std::size_t o = 0; o < kOutBins; ++o) {
                     const std::size_t b0 = first + o * keep / kOutBins;
                     const std::size_t b1 = std::max(b0 + 1, first + (o + 1) * keep / kOutBins);
-                    float peak = src[b0];
-                    for (std::size_t b = b0 + 1; b < b1; ++b)
-                        peak = std::max(peak, src[b]);
-                    out[o] = static_cast<float>(peak + off);
+                    double sum = 0.0;
+                    for (std::size_t b = b0; b < b1; ++b)
+                        sum += std::pow(10.0, 0.1 * static_cast<double>(src[b]));
+                    out[o] = static_cast<float>(10.0 * std::log10(sum / static_cast<double>(b1 - b0) + 1e-30)
+                                                + dispOff);
                 }
             } else {
                 for (std::size_t o = 0; o < kOutBins; ++o) {
@@ -1471,7 +1528,7 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
                     const std::size_t i1 = std::min(i0 + 1, keep - 1);
                     const double t = xc - static_cast<double>(i0);
                     out[o] = static_cast<float>((1.0 - t) * src[first + i0]
-                                                + t * src[first + i1] + off);
+                                                + t * src[first + i1] + dispOff);
                 }
             }
             return out;
@@ -1482,6 +1539,8 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
             wf.viewportBounds = true;
         }
         const std::vector<float> dbm = resample(bins);
+        if (ids->ddcIndex < 2 && !txOnAir && raw.size() == n)
+            ananNoiseLineStep(ids->ddcIndex, raw, rate);
         emit spectrumFrameReady(ui, floatBytes(dbm), wf);
     });
 
@@ -1530,6 +1589,7 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         // on (Thetis RXMeterCalbrationOffsetDefaults: 0.98 dB for the 100D).
         const double modelDb = ananTraits().rxMeterOffsetDb
                              - anan::modelTraits(anan::AnanModel::Anan100D).rxMeterOffsetDb;
+        m_ananSMeterRaw[smRx] = m_dbRef.toDbm(dbfs) + modelDb;   // for the noise-floor check
         const double dbm = m_dbRef.toDbm(dbfs) + modelDb
                          + anan::AnanUiState::instance().sMeterOffsetDb(smAtt, m_ananLnaPushed == 1);
         if ((m_ukKeyed || m_ukPost) && ids->ddcIndex == 0)
@@ -1555,16 +1615,60 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         }
         if (m_keyed || m_radioPtt) {
             r->sMeter.reset();
+            m_smTrace[mi].startMs = -1;
             return;
         }
         // After the over the DSP publishes again only once the over has left
         // its chain, with the meter put back at its pre-over reading.
 
+        // Detector (Setup > Receive, S-meter): Peak (Thetis "Signal") or
+        // Average ("Sig Avg"); a change starts the needle afresh.
+        {
+            const bool peak = anan::AnanUiState::instance().sMeterPeak;
+            if (producer->sMeterPeak() != peak) {
+                producer->setSMeterPeak(peak);
+                r->sMeter.reset();
+                qCInfo(lcHl2) << "ANAN S-meter detector RX" << (mi + 1) << (peak ? "peak" : "average");
+            }
+        }
+
         // Smooth EVERY sample, publish only on the tick -- SMeterSmoother,
         // per receiver so a strong signal on one does not drive another's
         // needle.
-        if (const auto out = r->sMeter.feed(dbm))
+        const auto out = r->sMeter.feed(dbm);
+        if (out)
             emit meterUpdate(sliceMeterName(ui), *out);
+
+        // Rise trace: what the meter does after a signal appears.
+        {
+            auto& tr = m_smTrace[mi];
+            const qint64 now = m_smClock.elapsed();
+            if (tr.startMs < 0) {
+                double lo = dbm;
+                for (const auto& p : m_smHist[mi])
+                    lo = std::min(lo, p.second);
+                if (dbm > lo + 15.0 && now - tr.lastEndMs > 10000) {
+                    tr.startMs = now;
+                    tr.base = lo;
+                    tr.readings = 0;
+                    tr.line.clear();
+                }
+            }
+            if (tr.startMs >= 0) {
+                ++tr.readings;
+                if (out)
+                    tr.line += QStringLiteral(" %1:%2/%3").arg(now - tr.startMs)
+                                   .arg(dbm, 0, 'f', 0).arg(*out, 0, 'f', 0);
+                if (now - tr.startMs >= 1200) {
+                    qCInfo(lcHl2).noquote() << QStringLiteral(
+                        "ANAN S-meter rise RX%1 (%2, from %3 dBm, %4 readings in %5 ms; ms:wdsp/published):%6")
+                        .arg(mi + 1).arg(producer->sMeterPeak() ? QStringLiteral("peak") : QStringLiteral("average"))
+                        .arg(tr.base, 0, 'f', 0).arg(tr.readings).arg(now - tr.startMs).arg(tr.line);
+                    tr.lastEndMs = now;
+                    tr.startMs = -1;
+                }
+            }
+        }
     });
 
     // The name the lambda above publishes under has to EXIST as a definition or
@@ -2169,12 +2273,17 @@ void Hl2Backend::ananApplyCodecSettings()
                             == QLatin1String("True");
     m_hw.speakerLevelPercent = codecMuted
         ? 0 : std::clamp(st.value(QStringLiteral("CodecVolume"), 50).toInt(), 0, 100);
-    const int micSource = st.value(QStringLiteral("AnanMicSource"), 0).toInt();
-    const bool fromRadio = micSource == 1 || micSource == 2;
-    const bool testTone = micSource == 2;
-    if (fromRadio != m_ananMicFromRadio || testTone != m_ananTestTone) {
+    // 06.11: PC (0) and CDC (1) both go through the TX voice chain
+    // (AudioEngine). The TEST source is gone from the list (the PureSignal
+    // widget has its own 2-tone); an old stored 2 reads as PC.
+    const int micSource = st.value(QStringLiteral("AnanMicSource"), 0).toInt() == 1 ? 1 : 0;
+    const bool testTone = false;
+    const bool fromRadio = testTone;
+    const bool cdc = micSource == 1;
+    if (fromRadio != m_ananMicFromRadio || testTone != m_ananTestTone || cdc != m_ananCodecToChain.load()) {
         m_ananMicFromRadio = fromRadio;
         m_ananTestTone = testTone;
+        m_ananCodecToChain.store(cdc);
         if (m_txEngine) {
             m_txEngine->setMicFromRadio(fromRadio);
             m_txEngine->setTestTone(testTone);
@@ -2182,7 +2291,9 @@ void Hl2Backend::ananApplyCodecSettings()
 
         qCInfo(lcHl2) << "ANAN: microphone"
                       << (testTone ? "TEST two-tone (700 + 1900 Hz)"
-                                   : fromRadio ? "radio (codec)" : "computer");
+                                   : cdc ? "CDC (radio codec), through the TX voice chain"
+                                         : "PC (computer), through the TX voice chain");
+        emit ananCodecMicInputChanged(cdc);
         pushTxCompressor();
     }
     const int boost = st.value(QStringLiteral("AnanMicBoost"), QStringLiteral("False")).toString()
@@ -6475,7 +6586,9 @@ void Hl2Backend::pushTxCompressor()
     // -5..-8, flat. So the leveler is always on for the radio mic, and the
     // compression without PROC is 10 dB; PROC NOR / DX / DX+ = 14 / 17 / 20.
     static constexpr double kGainDb[3] = {14.0, 17.0, 20.0};
-    const bool on = m_ananMicFromRadio && !m_ananTestTone;
+    // 06.11: one chain for both microphones -- the same compression and
+    // leveler for PC and CDC; none for the TEST two-tone.
+    const bool on = !m_ananTestTone;
     const double gain = m_codecProcOn ? kGainDb[std::clamp(m_codecProcLevel, 0, 2)] : 10.0;
     if (on == m_txCompPushedOn && gain == m_txCompPushedGain)
         return;
@@ -7116,9 +7229,19 @@ void Hl2Backend::applyDrive(int percent)
     // power sliders means. Default 64 % = 162/255, the old 100 W figure.
     m_ananLastDrivePercent = clamped;
     const int cal = ananPaCalPercent();
+    // ANAN-100D port (operator, 06.11: "half the slider is much more than
+    // half the power", worst on TUNE, whose carrier is full scale): the
+    // sqrt law above holds for a PA whose output goes with drive^2; one in
+    // compression at the 100 % point gives more than half at 50 %. The PA's
+    // real law is output ~ drive^gamma, and the slider takes
+    // drive = full * (percent / 100)^(1 / gamma): watts proportional to the
+    // slider. gamma = 2 would be the ideal PA (the old law); the operator
+    // measured 0.91 with a wattmeter (06.11, build 174's two-point method),
+    // and that is a constant -- the sliders need no more accuracy than this.
+    constexpr double gamma = 0.91;
     m_ananPaCalApplied = m_currentBandKey + QLatin1Char(':') + QString::number(cal);
     const int drive = static_cast<int>(std::lround(
-        255.0 * cal / 100.0 * std::sqrt(static_cast<double>(clamped) / 100.0)));
+        255.0 * cal / 100.0 * std::pow(static_cast<double>(clamped) / 100.0, 1.0 / gamma)));
     setTxDriveLevel(std::clamp(drive, 0, 255));
 }
 
@@ -9515,6 +9638,8 @@ int Hl2Backend::ananRxAtt(int rx) const
 {
     if (rx < 0 || rx > 1)
         return 0;
+    if (m_ananCapture.running && m_ananCapture.wanted[rx])
+        return anan::kMaxStepAttenuationDb;   // own-noise capture (Setup > Receive)
     if (m_ananAutoOn[rx])
         return m_ananAutoAtt[rx];
     return rx == 0 ? std::clamp(-m_lnaGainDb, 0, anan::kMaxStepAttenuationDb)
@@ -9571,7 +9696,7 @@ void Hl2Backend::ananSyncUiState()
         if (on) {
             // Start from the attenuation the receiver had by hand.
             m_ananAutoAtt[rx] = ananRxAtt(rx);
-            m_ananFloorOk[rx] = false;
+            m_ananShownFloorOk[rx] = false;
             m_ananAutoClock[rx].invalidate();
         }
         m_ananAutoOn[rx] = on;
@@ -9580,37 +9705,87 @@ void Hl2Backend::ananSyncUiState()
     ananPushAttenuators();
 }
 
-void Hl2Backend::ananAutoAttStep(int rx, const std::vector<float>& dbm)
+// ANAN-100D port (operator, 06.11): the noise floor on the panadapter, the
+// AUTO attenuator's base. The drawn trace cannot be one: each bin holds the
+// noise of its own bandwidth (Hanning, 1.5 * rate / N: 563 Hz at 384 k /
+// 1024, 18 Hz at 48 k / 4096), and a zoomed-out view keeps the PEAK of the
+// bins under each pixel. So the floor comes from the raw frame (all bins of
+// the DDC, before AVG and before the display resampling):
+//  - in linear power a noise-only bin is exponentially distributed, its
+//    median is ln 2 of its mean -- the median of the middle 80 % (the DDC
+//    edges roll off) over ln 2 is the mean noise per bin, and signals have
+//    to fill a third of the span before they move it;
+//  - the mean per bin is referred to 500 Hz: - 10 log10(1.5 rate / N)
+//    + 10 log10(500). That holds at any rate, FFT size or zoom.
+// The level is the ruler's (the panadapter's dBm, a tone reads its power):
+// what reaches the ADC -- not corrected for the attenuator or the S-meter
+// options. It is drawn as a line on the panadapter (AnanUiState
+// shownFloorDbm) and is what AUTO ATT holds.
+void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, double rateHz)
 {
-    // anan165: the floor is estimated whether or not AUTO ATT runs -- the
-    // AGC follows it too (ananAutoAgcStep).
-    if (rx < 0 || rx > 1 || dbm.size() < 64 || m_keyed || m_radioPtt)
+    if (rx < 0 || rx > 1 || rawDbfs.size() < 64 || rateHz <= 0.0 || m_keyed || m_radioPtt)
         return;
-    // Noise floor of the frame: the 20th percentile of the middle 90 % of the
-    // bins (the edges carry the DDC roll-off), smoothed across frames.
-    const std::size_t edge = dbm.size() / 20;
-    std::vector<float> mid(dbm.begin() + static_cast<std::ptrdiff_t>(edge),
-                           dbm.end() - static_cast<std::ptrdiff_t>(edge));
-    const std::size_t k = mid.size() / 5;
-    std::nth_element(mid.begin(), mid.begin() + static_cast<std::ptrdiff_t>(k), mid.end());
-    const double floorNow = mid[k];
-    m_ananFloor[rx] = m_ananFloorOk[rx] ? 0.8 * m_ananFloor[rx] + 0.2 * floorNow : floorNow;
-    m_ananFloorOk[rx] = true;
+    const std::size_t n = rawDbfs.size();
+    const std::size_t e = n / 10;
+    std::vector<double> p;
+    p.reserve(n - 2 * e);
+    for (std::size_t i = e; i < n - e; ++i)
+        p.push_back(std::pow(10.0, 0.1 * static_cast<double>(rawDbfs[i])));
+    const std::size_t mid = p.size() / 2;
+    std::nth_element(p.begin(), p.begin() + static_cast<std::ptrdiff_t>(mid), p.end());
+    const double meanPerBin = p[mid] / std::log(2.0);
+    if (!(meanPerBin > 0.0))
+        return;
+    // Kept WITHOUT the meter's calibration (AUTO ATT works on differences);
+    // published with it, on the ruler the trace is drawn on.
+    const double now = 10.0 * std::log10(meanPerBin) + m_dbRef.offsetDb() + ananRbwTo500HzDb(rateHz, n);
+    // In dB, after the mean was taken in power: smoothing only.
+    m_ananShownFloor[rx] = m_ananShownFloorOk[rx] ? 0.8 * m_ananShownFloor[rx] + 0.2 * now : now;
+    m_ananShownFloorOk[rx] = true;
+    auto& ui = anan::AnanUiState::instance();
+    const double calDb = ananDisplayCalDb();
+    ui.shownFloorDbm[rx] = m_ananShownFloor[rx] + calDb;
+    m_ananOwnNoise[rx] = ananOwnNoiseOfAdc(m_ananAdc[rx]);
+    ui.ownFloorDbm[rx] = m_ananOwnNoise[rx] + calDb;   // NaN until captured
+    ui.shownFloorAtMs[rx] = QDateTime::currentMSecsSinceEpoch();
+
+    if (!m_ananOwnClock.isValid())
+        m_ananOwnClock.start();
+    const qint64 t = m_ananOwnClock.elapsed();
+    // After an own-noise measurement switches the ATT, the frames already in
+    // flight still carry the old one: the smoothing starts afresh until then.
+    if (t < m_ananNoiseRestartUntilMs[rx])
+        m_ananShownFloorOk[rx] = false;
+    // The Auto AGC follows the same floor.
     ananAutoAgcStep(rx);
-    if (!m_ananAutoOn[rx])
+    ananOwnNoiseCaptureStep(rx, t);
+
+    // A check against the S-meter (Average, no options): in a 500 Hz filter
+    // with no signal in it, the two should agree within about 1 dB.
+    if (t - m_ananNoiseLogMs[rx] >= 10000) {
+        m_ananNoiseLogMs[rx] = t;
+        const Receiver* r = this->rx(rx);
+        qCInfo(lcHl2).nospace()
+            << "ANAN noise floor RX" << rx + 1 << ": " << QString::number(ui.shownFloorDbm[rx], 'f', 1)
+            << " dBm / 500 Hz at the ADC, calibrated (" << n << "-point FFT at " << rateHz << " Hz); S-meter "
+            << QString::number(m_ananSMeterRaw[rx] + anan::AnanUiState::instance().sMeterCorrDb, 'f', 1)
+            << " dBm calibrated, without ATT/LNA options, filter "
+            << (r ? r->filterHighHz - r->filterLowHz : 0) << " Hz, ATT " << ananRxAtt(rx) << " dB";
+    }
+
+    if (!m_ananAutoOn[rx] || m_ananCapture.running)
         return;
+    if (!std::isfinite(m_ananOwnNoise[rx]) || !m_ananShownFloorOk[rx])
+        return;   // never captured (Setup > Receive): AUTO waits
 
     // Act at most every 400 ms, so each change shows in the smoothed floor.
     if (m_ananAutoClock[rx].isValid() && m_ananAutoClock[rx].elapsed() < 400)
         return;
     m_ananAutoClock[rx].restart();
 
-    const int target = std::clamp(
-        AppSettings::instance()
-            .value(anan::AnanUiState::floorTargetKey(rx), kAnanAutoAttTargetDefaultDbm)
-            .toInt(),
-        kAnanAutoAttTargetMinDbm, kAnanAutoAttTargetMaxDbm);
-    const double error = m_ananFloor[rx] - target;   // > 0: floor too high -> more ATT
+    // The target: band noise this many dB above the receiver's own.
+    const double target = m_ananOwnNoise[rx] + ananAutoAttMarginDb(rx);
+    const double error = m_ananShownFloor[rx] - target;   // > 0: floor too high -> more ATT
     if (std::abs(error) < 1.5)
         return;
     const int att = m_ananAutoAtt[rx];
@@ -9622,7 +9797,102 @@ void Hl2Backend::ananAutoAttStep(int rx, const std::vector<float>& dbm)
     m_ananAutoAtt[rx] = next;
     ananPushAttenuators();
     // Frames already in flight still carry the old ATT.
-    m_ananFloor[rx] -= (next - att);
+    m_ananShownFloor[rx] -= (next - att);
+}
+
+// A bin's noise bandwidth (Hanning: 1.5 bins of rate / N) referred to 500 Hz.
+double Hl2Backend::ananRbwTo500HzDb(double rateHz, std::size_t fftSize) noexcept
+{
+    constexpr double kHanningEnbwBins = 1.5;
+    constexpr double kRefBandwidthHz = 500.0;
+    if (rateHz <= 0.0 || fftSize == 0)
+        return 0.0;
+    return 10.0 * std::log10(kRefBandwidthHz / (kHanningEnbwBins * rateHz / static_cast<double>(fftSize)));
+}
+
+// The S-meter's calibration, for the panadapter: the operator's correction
+// (Setup > Receive) and the model's front-end offset against the 100D --
+// not the ATT / LNA options (the panadapter shows what reaches the ADC).
+double Hl2Backend::ananDisplayCalDb() const
+{
+    return anan::AnanUiState::instance().sMeterCorrDb + ananTraits().rxMeterOffsetDb
+         - anan::modelTraits(anan::AnanModel::Anan100D).rxMeterOffsetDb;
+}
+
+double Hl2Backend::ananOwnNoiseOfAdc(int adc) const
+{
+    adc = std::clamp(adc, 0, 1);
+    if (!m_ananOwnNoiseLoaded[adc]) {
+        m_ananOwnNoiseLoaded[adc] = true;
+        bool ok = false;
+        const double v = AppSettings::instance().value(anan::AnanUiState::ownNoiseKey(adc)).toDouble(&ok);
+        m_ananOwnNoiseAdc[adc] = ok ? v : std::numeric_limits<double>::quiet_NaN();
+    }
+    return m_ananOwnNoiseAdc[adc];
+}
+
+// The receiver's own noise, on request (Setup > Receive, operator 06.11),
+// with the antenna disconnected: every receiver that owns its ADC's
+// attenuator goes to ATT 31 dB (what is left after the attenuator is the
+// receiver's own noise), the frames still at the old ATT are let through
+// (kAnanAttSettleMs), the floor is averaged for kAnanOwnNoiseMeasureMs and
+// stored per ADC; then the attenuators go back.
+void Hl2Backend::ananOwnNoiseCaptureStep(int rx, qint64 t)
+{
+    auto& ui = anan::AnanUiState::instance();
+    auto& c = m_ananCapture;
+    if (!c.running) {
+        if (!ui.ownNoiseCaptureRequested)
+            return;
+        ui.ownNoiseCaptureRequested = false;
+        c = {};
+        c.running = true;
+        c.untilMs = t + kAnanAttSettleMs + kAnanOwnNoiseMeasureMs;
+        for (int r = 0; r < 2; ++r) {
+            c.wanted[r] = static_cast<int>(m_rx.size()) > r && ananOwnsAtt(r);
+            m_ananNoiseRestartUntilMs[r] = t + kAnanAttSettleMs;
+        }
+        ananPushAttenuators();
+        ui.ownNoiseStatus = tr("Measuring (ATT %1 dB)...").arg(anan::kMaxStepAttenuationDb);
+        qCInfo(lcHl2) << "ANAN own noise: capture, ATT" << anan::kMaxStepAttenuationDb << "dB for"
+                      << kAnanAttSettleMs + kAnanOwnNoiseMeasureMs << "ms";
+        return;
+    }
+    if (t < c.untilMs)
+        return;
+    if (c.wanted[rx] && !c.done[rx] && m_ananShownFloorOk[rx]) {
+        c.done[rx] = true;
+        const int adc = std::clamp(m_ananAdc[rx], 0, 1);
+        const double v = m_ananShownFloor[rx];
+        m_ananOwnNoiseAdc[adc] = v;
+        m_ananOwnNoiseLoaded[adc] = true;
+        auto& st = AppSettings::instance();
+        st.setValue(anan::AnanUiState::ownNoiseKey(adc), QString::number(v, 'f', 1));
+        st.setValue(anan::AnanUiState::ownNoiseDateKey(adc),
+                    QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
+        st.save();
+        c.result += (c.result.isEmpty() ? QString() : QStringLiteral(", "))
+                  + tr("ADC%1 %2 dBm / 500 Hz").arg(adc + 1).arg(v + ananDisplayCalDb(), 0, 'f', 1);
+        qCInfo(lcHl2).nospace() << "ANAN own noise ADC" << adc + 1 << ": " << QString::number(v, 'f', 1)
+                                << " dBm / 500 Hz at the ADC (calibrated "
+                                << QString::number(v + ananDisplayCalDb(), 'f', 1) << "), RX" << rx + 1;
+    }
+    const bool all = (!c.wanted[0] || c.done[0]) && (!c.wanted[1] || c.done[1]);
+    if (!all && t < c.untilMs + 1000)
+        return;
+    c.running = false;
+    for (int r = 0; r < 2; ++r)
+        m_ananNoiseRestartUntilMs[r] = t + kAnanAttSettleMs;
+    ananPushAttenuators();
+    ui.ownNoiseStatus = c.result.isEmpty() ? tr("No receive data -- not measured.") : tr("Captured: %1").arg(c.result);
+}
+
+int Hl2Backend::ananAutoAttMarginDb(int rx) const
+{
+    return std::clamp(AppSettings::instance()
+                          .value(anan::AnanUiState::autoAttMarginKey(rx), anan::AnanUiState::kAutoAttMarginDefaultDb)
+                          .toInt(),
+                      0, anan::AnanUiState::kAutoAttMarginMaxDb);
 }
 
 double Hl2Backend::agcCeilingFor(const Receiver& r) const
@@ -9640,9 +9910,10 @@ double Hl2Backend::agcCeilingFor(const Receiver& r) const
 // rebuild (agcCeilingFor()). out_target and var_gain are WDSP's wcpAGC
 // values for this host: out_target = 1.0 * (1 - e^-4) * 0.9999 (n_tau 4),
 // var_gain = 10^(slope / 200) with WdspChannel's slope 35.
-// The floor m_ananFloor is in display dBm referred to 1024-point bins of
-// the DDC rate (see the caller); a bin-centred tone reads kToneGainDb high
-// in Hl2Spectrum, so that is taken off to get WDSP's dBFS.
+// The floor (06.11) is the panadapter's noise floor, dBm / 500 Hz at the
+// ADC (ananNoiseLineStep), referred back to a 1024-point Hanning bin of the
+// DDC rate -- what WDSP's per-bin threshold means; a bin-centred tone reads
+// kToneGainDb high in Hl2Spectrum, so that is taken off to get WDSP's dBFS.
 void Hl2Backend::ananAutoAgcStep(int rx)
 {
     Receiver* r = this->rx(rx);
@@ -9662,7 +9933,7 @@ void Hl2Backend::ananAutoAgcStep(int rx)
         }
         return;
     }
-    if (!m_ananFloorOk[rx] || m_sampleRateHz <= 0)
+    if (!m_ananShownFloorOk[rx] || m_sampleRateHz <= 0)
         return;
     if (m_ananAgcClock[rx].isValid() && m_ananAgcClock[rx].elapsed() < 500)
         return;
@@ -9671,7 +9942,8 @@ void Hl2Backend::ananAutoAgcStep(int rx)
     static const double kVarGainDb = 35.0 / 10.0;   // 20 log10(10^(35 / 200))
     const double bwHz = std::max(50.0, double(std::abs(r->filterHighHz - r->filterLowHz)));
     const double noiseOffsetDb = 10.0 * std::log10(bwHz * 1024.0 / double(m_sampleRateHz));
-    const double floorDbfsBin = m_ananFloor[rx] - m_dbRef.offsetDb() - Hl2Spectrum::kToneGainDb;
+    const double floorBinDbm = m_ananShownFloor[rx] - ananRbwTo500HzDb(double(m_sampleRateHz), 1024);
+    const double floorDbfsBin = floorBinDbm - m_dbRef.offsetDb() - Hl2Spectrum::kToneGainDb;
     const double threshDbfs = floorDbfsBin + double(ui.agcNfOffsetDb[rx]);
     const double top = std::clamp(kOutTargetDb - kVarGainDb - (threshDbfs + noiseOffsetDb), 0.0,
                                   hl2::Hl2DbReference::kAgcCeilingDbMax);
@@ -9680,7 +9952,7 @@ void Hl2Backend::ananAutoAgcStep(int rx)
         return;
     if (first || std::abs(top - r->autoAgcTopDb) >= 3.0)
         qCInfo(lcHl2).nospace() << "ANAN Auto AGC RX" << rx + 1 << ": floor "
-                                << QString::number(m_ananFloor[rx], 'f', 1) << " dBm + "
+                                << QString::number(ui.shownFloorDbm[rx], 'f', 1) << " dBm / 500 Hz + "
                                 << ui.agcNfOffsetDb[rx] << " dB, filter " << int(bwHz) << " Hz -> AGC gain "
                                 << QString::number(top, 'f', 1) << " dB (manual AGC-T law "
                                 << QString::number(m_dbRef.agcCeilingDb(r->agcThresholdDb), 'f', 1) << ")";
@@ -9691,7 +9963,7 @@ void Hl2Backend::ananAutoAgcStep(int rx)
     ui.agcAutoT[rx] = static_cast<int>(std::clamp(
         std::lround((top - m_dbRef.agcCeilingDb(0)) / hl2::Hl2DbReference::kAgcCeilingDbPerUnit),
         0L, 100L));
-    ui.agcAutoFloorDbm[rx] = m_ananFloor[rx];
+    ui.agcAutoFloorDbm[rx] = ui.shownFloorDbm[rx];   // the noise line, calibrated
     if (r->dsp)
         QMetaObject::invokeMethod(r->dsp, "setAgc", Qt::QueuedConnection,
             Q_ARG(int, wdspAgcMode(r->agcMode)), Q_ARG(double, top));

@@ -407,7 +407,9 @@ void MainWindow::wireDspApplets()
             if (m_radioModel.transmitModel().micSelection() != "PC" && !m_audio->isRadeMode()) return;
             // ANAN-100D port: the radio's own microphone is selected -- its
             // meter comes from codecMicLevelChanged below.
-            if (AppSettings::instance().value("AnanMicSource", 0).toInt() != 0) return;
+            // (PC and CDC both run through the TX voice chain since 06.11;
+            // only TEST is metered by the backend.)
+            if (AppSettings::instance().value("AnanMicSource", 0).toInt() == 2) return;
             constexpr float kDecayPerUpdate = 1.0f;  // ~20 dB/sec at 20 updates/sec
             // Level: fast attack, slow decay
             if (avgDb > *heldLevel)
@@ -428,7 +430,7 @@ void MainWindow::wireDspApplets()
         auto heldPeak  = std::make_shared<float>(-150.0f);
         connect(&m_radioModel, &RadioModel::codecMicLevelChanged,
                 this, [this, heldLevel, heldPeak](float peakDb, float avgDb) {
-            if (AppSettings::instance().value("AnanMicSource", 0).toInt() == 0) return;
+            if (AppSettings::instance().value("AnanMicSource", 0).toInt() != 2) return;
             constexpr float kDecayPerUpdate = 1.0f;
             *heldLevel = avgDb > *heldLevel ? avgDb : qMax(avgDb, *heldLevel - kDecayPerUpdate);
             *heldPeak = peakDb > *heldPeak ? peakDb : qMax(*heldLevel, *heldPeak - kDecayPerUpdate * 0.5f);

@@ -9039,7 +9039,8 @@ bool AudioEngine::startTxStream(const QHostAddress& radioAddress, quint16 radioP
         } else {
             m_txResampler.reset();
         }
-        return m_txVoiceProcessor->prepare(m_txInputRate, 16384);
+        return m_txVoiceProcessor->prepare(
+            m_externalMicActive.load(std::memory_order_acquire) ? kExternalMicRate : m_txInputRate, 16384);
     };
 
     if (!applyNegotiatedFormat(fmt)) {
@@ -9590,6 +9591,11 @@ void AudioEngine::onTxAudioReady()
 
     m_txCaptureHealth.recordMicRead(txCaptureNowMs());
 
+    // ANAN-100D port: the radio codec's microphone is the chain's input
+    // (feedExternalMic); the computer's capture is read and dropped.
+    if (m_externalMicActive.load(std::memory_order_acquire))
+        return;
+
     // Canonicalize immediately after capture: TX voice is logically mono
     // carried as stereo int16, so choose/average the real mic channel before
     // any resampling, RADE/DAX branch, test tone, DSP, gain, limiter, or meter.
@@ -9701,6 +9707,47 @@ void AudioEngine::onTxAudioReady()
         return;
     }
 
+    runTxVoiceTail(data, capturedFloat32);
+}
+
+// ANAN-100D port (operator, 06.11: "one processing chain for both
+// microphones, the input is switched at its very start"): the radio codec's
+// microphone (CDC) enters here -- 48 kHz mono float, from the radio's clock,
+// in place of the computer's capture -- and runs the same TX voice chain
+// (EQ, gate, compressor ..., mic gain, limiter) with the same settings.
+void AudioEngine::setExternalMicInput(bool on)
+{
+    if (on == m_externalMicActive.load(std::memory_order_relaxed))
+        return;
+    m_externalMicActive.store(on, std::memory_order_release);
+    // The chain runs at its input's rate: the codec's 48 kHz, or the device's.
+    m_txVoiceProcessor->prepare(on ? kExternalMicRate : m_txInputRate, 16384);
+    qCInfo(lcAudio) << "AudioEngine: TX chain input"
+                    << (on ? "radio codec microphone (CDC, 48 kHz)" : "computer microphone");
+}
+
+void AudioEngine::feedExternalMic(const QByteArray& float48Mono)
+{
+    if (!m_externalMicActive.load(std::memory_order_acquire) || float48Mono.isEmpty())
+        return;
+    const auto* in = reinterpret_cast<const float*>(float48Mono.constData());
+    const int frames = float48Mono.size() / static_cast<int>(sizeof(float));
+    // The canonical capture form: mono duplicated into stereo, float32.
+    QByteArray data(frames * 2 * static_cast<int>(sizeof(float)), Qt::Uninitialized);
+    auto* out = reinterpret_cast<float*>(data.data());
+    for (int i = 0; i < frames; ++i) {
+        const float v = std::isfinite(in[i]) ? in[i] : 0.0f;
+        out[2 * i] = v;
+        out[2 * i + 1] = v;
+    }
+    runTxVoiceTail(data, /*capturedFloat32=*/true);
+}
+
+// The TX voice chain from its input on (ANAN-100D port, 06.11: one chain
+// for every microphone -- onTxAudioReady() for the computer's, and
+// feedExternalMic() for the radio codec's).
+void AudioEngine::runTxVoiceTail(QByteArray& data, bool capturedFloat32)
+{
     // DAX TX mode: VirtualAudioBridge handles TX audio via feedDaxTxAudio().
     // Don't send mic audio — it would conflict with the DAX stream.
     if (m_daxTxMode) return;

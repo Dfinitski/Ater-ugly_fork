@@ -82,6 +82,7 @@
 #include <QCheckBox>
 #include <QDoubleValidator>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QVector>
 #include <QDesktopServices>
 #include <QUrl>
@@ -3427,6 +3428,25 @@ QWidget* RadioSetupDialog::buildRxTab()
         row->addSpacing(12);
         row->addWidget(useLna);
         row->addWidget(lna);
+        row->addSpacing(12);
+        // Detector: Thetis' "Signal" (peak, its default) or "Sig Avg".
+        auto* detLbl = new QLabel("Detector:");
+        applyLabelStyle(detLbl);
+        auto* det = new QComboBox;
+        AetherSDR::applyComboStyle(det);
+        det->setObjectName(QStringLiteral("ananSMeterDetector"));
+        det->addItem(QStringLiteral("Peak"));
+        det->addItem(QStringLiteral("Average"));
+        det->setCurrentIndex(ui.sMeterPeak ? 0 : 1);
+        det->setToolTip(QStringLiteral(
+            "Peak (Thetis \"Signal\", default): the needle is up as soon as a signal appears.\n"
+            "Average (Thetis \"Sig Avg\"): 100 ms power average; reads noise lower, follows\n"
+            "speech more slowly. A steady carrier reads the same on both."));
+        connect(det, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [](int i) {
+            AetherSDR::anan::AnanUiState::instance().setSMeterDetector(i == 0);
+        });
+        row->addWidget(detLbl);
+        row->addWidget(det);
         row->addStretch(1);
         const QPointer<QDoubleSpinBox> corrP(corr);
         const QPointer<QCheckBox> attP(useAtt), lnaOnP(useLna);
@@ -3442,6 +3462,103 @@ QWidget* RadioSetupDialog::buildRxTab()
         connect(useAtt, &QCheckBox::toggled, this, apply);
         connect(useLna, &QCheckBox::toggled, this, apply);
         connect(lna, QOverload<int>::of(&QSpinBox::valueChanged), this, apply);
+        vbox->addWidget(group);
+    }
+
+    {
+        // Receiver noise floor (operator, 06.11): the panadapter's noise line
+        // (dBm / 500 Hz at the ADC) and the receiver's own noise, the base of
+        // the AUTO attenuator. It cannot be measured on the air -- on 40 m the
+        // antenna noise is far above it even at ATT 31 dB -- so it is captured
+        // here with the antenna disconnected (Hl2Backend::ananOwnNoiseCaptureStep).
+        auto& ui = AetherSDR::anan::AnanUiState::instance();
+        auto* group = new QGroupBox("Receiver Noise Floor");
+        auto* gv = new QVBoxLayout(group);
+        gv->setSpacing(6);
+        auto* show = new QCheckBox("Show the noise floor line on the panadapter");
+        show->setObjectName(QStringLiteral("ananShowNoiseLine"));
+        show->setChecked(ui.showNoiseLine);
+        connect(show, &QCheckBox::toggled, this,
+                [](bool on) { AetherSDR::anan::AnanUiState::instance().setShowNoiseLine(on); });
+        gv->addWidget(show);
+        auto* ovlTest = new QCheckBox("Test the ADC overload warning on the panadapter");
+        ovlTest->setObjectName(QStringLiteral("ananAdcOverloadTest"));
+        ovlTest->setChecked(ui.adcOverloadTest);
+        ovlTest->setToolTip(QStringLiteral(
+            "Shows the blinking \"ADC OVERLOAD\" as if the radio reported clipping (not saved).\n"
+            "The radio sends its overload flag in the status packets."));
+        connect(ovlTest, &QCheckBox::toggled, this,
+                [](bool on) { AetherSDR::anan::AnanUiState::instance().adcOverloadTest = on; });
+        gv->addWidget(ovlTest);
+        auto* warn = new QLabel(
+            "Own noise: disconnect the antenna from the receiver input (or terminate it with "
+            "50 Ohm) before Capture. Every receiver goes to ATT 31 dB for about a second.");
+        setTone(warn, Tone::Warn);
+        warn->setWordWrap(true);
+        gv->addWidget(warn);
+        auto* row = new QHBoxLayout;
+        auto* capture = new QPushButton("Capture");
+        capture->setObjectName(QStringLiteral("ananCaptureOwnNoise"));
+        capture->setToolTip(QStringLiteral(
+            "Measure the receiver's own noise (dBm / 500 Hz at the ADC) and store it per ADC.\n"
+            "The AUTO attenuator holds the band noise this far plus its margin."));
+        auto* status = new QLabel;
+        status->setWordWrap(true);
+        applyLabelStyle(status);
+        auto stored = [] {
+            QStringList parts;
+            auto& st = AppSettings::instance();
+            const double cal = AetherSDR::anan::AnanUiState::instance().sMeterCorrDb;
+            for (int adc = 0; adc < 2; ++adc) {
+                bool ok = false;
+                const double v = st.value(AetherSDR::anan::AnanUiState::ownNoiseKey(adc)).toDouble(&ok);
+                if (ok)
+                    parts << QStringLiteral("ADC%1 %2 dBm / 500 Hz (%3)").arg(adc + 1)
+                                 .arg(v + cal, 0, 'f', 1)
+                                 .arg(st.value(AetherSDR::anan::AnanUiState::ownNoiseDateKey(adc)).toString());
+            }
+            return parts.isEmpty() ? QStringLiteral("Not captured yet: AUTO ATT waits for it.")
+                                   : QStringLiteral("Stored: ") + parts.join(QStringLiteral(", "));
+        };
+        status->setText(stored());
+        row->addWidget(capture);
+        row->addWidget(status, 1);
+        gv->addLayout(row);
+        const QPointer<QLabel> statusP(status);
+        auto* poll = new QTimer(group);
+        poll->setInterval(300);
+        auto sinceRequest = std::make_shared<QElapsedTimer>();
+        connect(capture, &QPushButton::clicked, this, [statusP, poll, sinceRequest] {
+            auto& u = AetherSDR::anan::AnanUiState::instance();
+            u.ownNoiseStatus.clear();
+            u.ownNoiseCaptureRequested = true;
+            sinceRequest->start();
+            if (statusP)
+                statusP->setText(QStringLiteral("Waiting for receive data..."));
+            poll->start();
+        });
+        connect(poll, &QTimer::timeout, this, [statusP, poll, sinceRequest, stored] {
+            auto& u = AetherSDR::anan::AnanUiState::instance();
+            if (!statusP)
+                return;
+            if (u.ownNoiseCaptureRequested && sinceRequest->elapsed() > 3000) {
+                u.ownNoiseCaptureRequested = false;
+                statusP->setText(QStringLiteral("No receive data -- is the radio connected and receiving?"));
+                poll->stop();
+                return;
+            }
+            if (!u.ownNoiseStatus.isEmpty()) {
+                statusP->setText(u.ownNoiseStatus);
+                if (u.ownNoiseStatus.startsWith(QStringLiteral("Captured"))
+                    || u.ownNoiseStatus.startsWith(QStringLiteral("No receive"))) {
+                    poll->stop();
+                    QTimer::singleShot(4000, statusP, [statusP, stored] {
+                        if (statusP)
+                            statusP->setText(stored());
+                    });
+                }
+            }
+        });
         vbox->addWidget(group);
     }
 
@@ -3958,7 +4075,7 @@ QWidget* RadioSetupDialog::buildAnanAudioTab()
     micCombo->setObjectName(QStringLiteral("ananMicSource"));
     AetherSDR::applyComboStyle(micCombo);
     micCombo->addItem("Computer microphone");
-    micCombo->addItem("Radio microphone jack");
+    micCombo->addItem("Radio codec microphone (CDC)");
     micCombo->setCurrentIndex(st.value(QStringLiteral("AnanMicSource"), 0).toInt() == 1 ? 1 : 0);
     connect(micCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [](int i) {
         AppSettings::instance().setValue(QStringLiteral("AnanMicSource"), i == 1 ? 1 : 0);

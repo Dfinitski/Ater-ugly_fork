@@ -1,5 +1,6 @@
 #include "core/backends/hl2/Hl2TxDsp.h"
 #include "core/dsp/WdspPureSignal.h"
+#include "core/dsp/WdspTxaGuard.h"
 
 #include <algorithm>
 #include <cmath>
@@ -33,7 +34,13 @@ double blackman(std::size_t n, std::size_t N)
 #endif
 
 Hl2TxDsp::Hl2TxDsp(QObject* parent) : QObject(parent) {}
-Hl2TxDsp::~Hl2TxDsp() = default;
+Hl2TxDsp::~Hl2TxDsp()
+{
+    // PureSignal may still be polling this channel (WdspTxaGuard.h).
+    std::unique_lock lock(wdsp::txaRebuildMutex());
+    m_channel.reset();
+    wdsp::txaGeneration().fetch_add(1, std::memory_order_acq_rel);
+}
 
 // AETHER_HL2_TX_TXA selects one implementation at compile time; the other is
 // not in the binary (#5678). TXA needs only SetTXAMode and SetTXABandpassFreqs
@@ -50,6 +57,13 @@ Hl2TxDsp::~Hl2TxDsp() = default;
 
 bool Hl2TxDsp::buildModulator(std::string* error)
 {
+    // ANAN-100D port (06.11, crash on reconnect): PureSignal reaches this
+    // channel's calcc from the GUI and transport threads; no one may be
+    // inside it while it is destroyed and re-created (WdspTxaGuard.h).
+    std::unique_lock txaLock(wdsp::txaRebuildMutex());
+    struct NextGeneration {
+        ~NextGeneration() { wdsp::txaGeneration().fetch_add(1, std::memory_order_acq_rel); }
+    } nextGeneration;   // counted on every exit, refused channel included
     m_channel.reset();
     m_modulatorRunning = false;
     m_exchangePending.clear();

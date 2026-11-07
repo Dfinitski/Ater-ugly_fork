@@ -45,6 +45,10 @@ public:
         sMeterUseLna = st.value(QStringLiteral("AnanSMeterUseLna"), QStringLiteral("False")).toString()
                        == QLatin1String("True");
         sMeterLnaGainDb = std::clamp(st.value(QStringLiteral("AnanSMeterLnaGainDb"), 0).toInt(), 0, 99);
+        sMeterPeak = st.value(QStringLiteral("AnanSMeterDetector"), QStringLiteral("Peak")).toString()
+                     != QLatin1String("Average");
+        showNoiseLine = st.value(QStringLiteral("AnanShowNoiseLine"), QStringLiteral("True")).toString()
+                        == QLatin1String("True");
         for (int rx = 0; rx < 2; ++rx) {
             agcAuto[rx] = st.value(agcAutoKey(rx), QStringLiteral("False")).toString() == QLatin1String("True");
             agcNfOffsetDb[rx] = std::clamp(st.value(agcOffsetKey(rx), kAgcNfOffsetDefaultDb).toInt(),
@@ -73,6 +77,28 @@ public:
     // AGC-T slider can show where Auto has put it (as Thetis moves AGC-T);
     // -1 = none. Also the measured floor it came from (NaN = none).
     int agcAutoT[2] = {-1, -1};
+    // Written by the backend (06.11): the noise floor in dBm / 500 Hz at the
+    // ADC on the meter's calibrated scale (drawn as a line; not corrected for
+    // the attenuator), and the receiver's own noise the same way (captured in
+    // Setup > Receive; NaN = never captured). AUTO ATT holds the floor at
+    // own + the margin.
+    double shownFloorDbm[2] = {std::numeric_limits<double>::quiet_NaN(),
+                               std::numeric_limits<double>::quiet_NaN()};
+    double ownFloorDbm[2] = {std::numeric_limits<double>::quiet_NaN(),
+                             std::numeric_limits<double>::quiet_NaN()};
+    // When shownFloorDbm was last written (ms since epoch): the panadapter
+    // draws the line only while it is fresh (not after a disconnect).
+    qint64 shownFloorAtMs[2] = {0, 0};
+    // ADC overload (06.11): when each ADC was last reported clipping (ms
+    // since epoch, by the backend), which ADC each receiver listens to, and
+    // a test switch (Setup > Receive) that shows the warning without one.
+    qint64 adcOverloadAtMs[2] = {0, 0};
+    int rxAdc[2] = {0, 0};
+    bool adcOverloadTest = false;
+    // What the panadapter adds to a per-bin level to draw it (06.11: the
+    // referral of a bin to 500 Hz plus the meter's calibration); lines that
+    // are mapped on the per-bin scale (the amsq squelch line) add it too.
+    double panShiftDb[2] = {0.0, 0.0};
     double agcAutoFloorDbm[2] = {std::numeric_limits<double>::quiet_NaN(),
                                  std::numeric_limits<double>::quiet_NaN()};
     [[nodiscard]] static QString agcAutoKey(int rx)
@@ -104,6 +130,16 @@ public:
     bool sMeterUseAtt = false;
     bool sMeterUseLna = false;
     int sMeterLnaGainDb = 0;
+    // Detector (Thetis' two receive meter modes): Peak "Signal" (default, as
+    // Thetis) or Average "Sig Avg". See Hl2RxDsp::setSMeterPeak.
+    bool sMeterPeak = true;
+    void setSMeterDetector(bool peak)
+    {
+        sMeterPeak = peak;
+        auto& st = AppSettings::instance();
+        st.setValue(QStringLiteral("AnanSMeterDetector"), peak ? QStringLiteral("Peak") : QStringLiteral("Average"));
+        st.save();
+    }
 
     [[nodiscard]] double sMeterOffsetDb(int attDb, bool lnaOn) const
     {
@@ -163,11 +199,43 @@ public:
     [[nodiscard]] int rxForPan(const QString& panId) const { return panRx.value(backendPan(panId), -1); }
     [[nodiscard]] bool ownsAtt(const QString& panId) const { return panOwnsAtt.value(backendPan(panId), true); }
 
-    // AppSettings keys of the AUTO noise-floor target per receiver.
-    [[nodiscard]] static QString floorTargetKey(int rx)
+    // The noise-floor line on the panadapter (Setup > Receive, 06.11).
+    bool showNoiseLine = true;
+    void setShowNoiseLine(bool on)
     {
-        return rx == 1 ? QStringLiteral("AnanAutoAttTargetDbmRx2")
-                       : QStringLiteral("AnanAutoAttTargetDbm");
+        showNoiseLine = on;
+        auto& st = AppSettings::instance();
+        st.setValue(QStringLiteral("AnanShowNoiseLine"), on ? QStringLiteral("True") : QStringLiteral("False"));
+        st.save();
+    }
+    // The receiver's own noise per ADC (operator, 06.11: on 40 m the antenna
+    // noise is far above it even at ATT 31 dB, so it cannot be measured on
+    // the air). Captured on request (Setup > Receive) with the antenna
+    // disconnected, at ATT 31 dB; dBm / 500 Hz at the ADC, WITHOUT the
+    // meter's calibration. The GUI sets ownNoiseCaptureRequested; the
+    // backend measures, stores the key and writes ownNoiseStatus.
+    bool ownNoiseCaptureRequested = false;
+    QString ownNoiseStatus;
+    [[nodiscard]] static QString ownNoiseKey(int adc)
+    {
+        return adc == 1 ? QStringLiteral("AnanOwnNoiseDbmAdc2") : QStringLiteral("AnanOwnNoiseDbmAdc1");
+    }
+    [[nodiscard]] static QString ownNoiseDateKey(int adc)
+    {
+        return adc == 1 ? QStringLiteral("AnanOwnNoiseDateAdc2") : QStringLiteral("AnanOwnNoiseDateAdc1");
+    }
+
+    // AppSettings keys of the AUTO ATT margin per receiver: how many dB the
+    // band noise is held above the receiver's own noise (06.11; it replaced
+    // the absolute "AnanAutoAttTargetDbm"). The receiver's own noise then
+    // costs 10 log10(1 + 10^(-margin/10)) dB of sensitivity: +3 dB 1.8,
+    // +6 dB 1.0, +10 dB 0.4, +20 dB 0.04.
+    static constexpr int kAutoAttMarginDefaultDb = 10;
+    static constexpr int kAutoAttMarginMaxDb = 30;
+    [[nodiscard]] static QString autoAttMarginKey(int rx)
+    {
+        return rx == 1 ? QStringLiteral("AnanAutoAttMarginDbRx2")
+                       : QStringLiteral("AnanAutoAttMarginDb");
     }
 };
 

@@ -441,6 +441,13 @@ public:
     // AGC gain of the last block (dB), and the peaks since the last take of
     // what the channel was fed (zeros while muted) and what it put out.
     float ananAgcGainDb() const noexcept { return m_ananAgcGainDb.load(std::memory_order_relaxed); }
+    // ANAN-100D port: S-meter detector. Peak = WDSP RXA_S_PK, Thetis' default
+    // "Signal" meter (console.cs current_meter_rx_mode = SIGNAL_STRENGTH):
+    // the block's highest |IQ|^2, so the needle is up on the first block of a
+    // signal; Average = RXA_S_AV, Thetis "Sig Avg" (a 100 ms power average).
+    // Any thread; read by the DSP thread per reading.
+    void setSMeterPeak(bool peak) noexcept { m_sMeterPeak.store(peak, std::memory_order_relaxed); }
+    bool sMeterPeak() const noexcept { return m_sMeterPeak.load(std::memory_order_relaxed); }
     float ananTakeInPeak() noexcept { return m_ananInPeak.exchange(0.0f, std::memory_order_relaxed); }
     float ananTakeOutPeak() noexcept { return m_ananOutPeak.exchange(0.0f, std::memory_order_relaxed); }
     // The applied mute state, not the request: Hl2Backend posts setAudioMuted()
@@ -647,6 +654,7 @@ private:
     std::size_t m_smPos{0};
     void applyAgcHold();
     int m_outMuteFrames{0};   // output frames still silenced after the over
+    std::atomic<bool> m_sMeterPeak {true};
     std::atomic<float> m_ananInPeak {0.0f};
     std::atomic<float> m_ananOutPeak {0.0f};
     std::atomic<std::int64_t> m_adcPeakAtNs {0};

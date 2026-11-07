@@ -1980,6 +1980,324 @@ Operator: option 2 — Auto makes the AGC follow the floor, with the offset set 
   - The slider's tooltip shows floor, NF+ and the resulting AGC-T.
   - The operator's own AGC-T comes back with Auto off.
 
+## 129. S-meter: Thetis' peak detector, 50 ms publishing, rise trace (05.11.2026, build 171)
+
+- Operator: the S-meter takes a long time to come up, as if it were tied to the panadapter's FFT settings. It should average by the usual rules and respond fast. Asked what exactly he sees: a slow **rise**.
+- The chain, read through:
+  - WDSP RXA S-meter `RXA_S_AV`: a power EMA with τ = 100 ms;
+  - one reading per 48 kHz-equivalent block, about 47/s;
+  - `SMeterSmoother`: attack 0.5, decay 0.15 per reading, published every 100 ms;
+  - needle: 45 ms up, 180 ms down.
+  - Nothing in it depends on the FFT (the spectrum is computed separately and does not gate the meter).
+  - The arithmetic for a carrier step from −116 to −60 dBm: the published value is within 2 dB after about 0.15 s.
+  - A slow rise must therefore come either from what is measured (speech on a 100 ms power average comes up syllable by syllable) or from somewhere not yet seen. Hence the trace below.
+- Thetis, the reference:
+  - the default receive meter is "Signal" = `RXA_S_PK` (`current_meter_rx_mode = SIGNAL_STRENGTH`), the block's highest |IQ|², up on the first block of a signal;
+  - "Sig Avg" = `RXA_S_AV`;
+  - its display smooths with rise 0.8 / decay 0.2 every `meter_delay` = 50 ms, which per our 21 ms readings is our 0.5 attack. Our decay is a little faster.
+- Changes:
+  - Detector selectable in Setup > Receive > S-meter Calibration: **Peak** (default, as Thetis) or **Average**. Key `AnanSMeterDetector`; `Hl2RxDsp::setSMeterPeak`, atomic, read per reading on the DSP thread.
+    - A steady carrier reads the same on both.
+    - Band noise reads higher on Peak, about 10 dB, as in Thetis' "Signal".
+  - `SMeterSmoother::kPublishIntervalMs` 100 → 50 ms (Thetis `meter_delay`).
+  - Rise trace in the log: "ANAN S-meter rise RXn". It fires when a reading is 15 dB over the minimum of the last 0.6 s, at most once per 10 s. It records 1.2 s of readings as ms:WDSP/published and the number of readings. This shows whether the meter itself is slow, or something after it.
+
+## 130. AUTO ATT from the drawn panadapter floor; 10 MHz reference in HW Diag (05.11.2026, build 172)
+
+- Rise trace, build 171: with a generator at −73 dBm in CW 500 Hz, the published S-meter reading reaches its value within 60–150 ms, at 48 readings/s. The operator: "very fast now".
+- AUTO ATT ran up to 31 dB (log 21:15: reconnect with ATT 31 dB).
+  - The display is not corrected for the attenuator, so the floor cannot go below the receiver's own noise (about −113 dBm on this trace).
+  - The fixed target of −120 dBm was therefore unreachable.
+  - The floor also depends on bin width: rate, FFT size and zoom.
+- Operator: the target should refer to what the panadapter shows, start at the radio's own floor, and go at most 30 dB above it.
+- Done:
+  - **Floor estimate.** `ananShownFloorStep` takes the floor of the DRAWN trace: the 1024-point output after zoom resampling and AVG, 20th percentile of the middle 90 %, smoothed 0.8/0.2. The AGC keeps its floor normalised to 1024-point bins (`m_ananFloor`).
+  - **Own floor.**
+    - Measured when AUTO goes on for the first time, or when the trace's scale changes (rate / FFT size / zoom / AVG) and has held for 2 s.
+    - ATT goes to 31 dB for 800 ms + 4 × AVG time. The floor read then is `AnanUiState::ownFloorDbm`, and ATT returns to its previous value.
+    - Logged as "ANAN AUTO ATT RXn: own floor on the panadapter …".
+    - Kept across AUTO off/on while the scale is the same: it is the receiver's noise, not the antenna's.
+  - **Target.**
+    - Slider "Floor" from own to own + 30 dB (`kAnanAutoAttTargetRangeDb`), in dBm as on the trace. Until the measurement the range is −140..−80.
+    - A saved target below own (the old −120) becomes own + 10 dB.
+    - Regulation waits while the measurement runs.
+- **10 MHz reference** (firmware layout 0x09), status bytes 28-29, signed: the 10 MHz input's periods over one second of 122.88 MHz, minus 10 000 000; 1 = 1 Hz = 0.1 ppm.
+  - 0 / ±1 → locked;
+  - a steady other value → not locked, the oscillator's error against the reference;
+  - −32768 → no 10 MHz at the input.
+  - HW Diag, "Codec and clocks": state, value, ppm and the last 5 s range.
+  - The transport logs each state change ("ANAN P2 transport: 10 MHz reference: …").
+
+## 131. Crash report and minidump (06.11.2026, build 173)
+
+- First users. One switched the radio off with its power button while the program was connected. When he switched it on again, the program closed without a word.
+- What the log could have said: nothing at the end. The log is written by an asynchronous writer, so its last queue dies with the process. There was no crash handler; Windows offers only its own error report.
+- What the path is (read from the code, not reproduced):
+  - Power off → no I/Q → after 2 s the transport's watchdog gives linkDown, but the session stays "running". The keepalive keeps sending High Priority with run = 1, and MOX ends at the transport.
+  - RadioModel goes to disconnected and discovery resumes.
+  - After `kLinkLostGraceMs`, the radio's discovery reply (the radio booted again) makes `maybeAutoConnectAnan` start a full `connectToRadio`. That runs `Hl2Backend::connectRadio` → `P2Transport::start()` (which calls `stop()` first) while the old session's receivers and DSP chains still stand.
+  - Link drops where the radio stayed on (03.11) healed by themselves (I/Q resumed, no new connect), so this reconnect after a real power cycle has not been seen in a log.
+- New `src/core/CrashDump.h` (header-only, Windows), installed in `main()` once the log directory is known. It catches:
+  - an unhandled SEH exception (access violation …);
+  - `abort()` (qFatal, a failed assert, `std::terminate`);
+  - the CRT's invalid-parameter and pure-virtual-call traps.
+- It writes next to the logs:
+  - `aethersdr-crash-<date>-<time>.txt`: the exception code, the address, module + offset (readable without symbols), read/write address of an access violation, thread, fork build, the session's log file;
+  - `aethersdr-crash-<date>-<time>.dmp`: a minidump (thread info, indirectly referenced memory, unloaded modules), opened in Visual Studio / WinDbg with that build's `AetherSDR.pdb`.
+- Then the log writer gets up to 2 s to put its queue on disk. It runs in its own thread, because the writer may be the thread that crashed. Windows' own report still follows (`EXCEPTION_CONTINUE_SEARCH`). dbghelp is loaded at crash time; no build file change.
+- The user has an ANAN-7000DLE with stock firmware. The operator has never seen this on the 100D, so it may be specific to that radio. What differs at power-on:
+  - A radio that boots knows nothing of the session. Our session after the watchdog drop sends only High Priority (run = 1) every 100 ms. It never sends the General / DDC Specific / Transmitter Specific packets, so the stream cannot come back by itself.
+  - When the radio answers discovery again, the program starts a fresh connect on top of the old session after 3 s. That path had never been exercised with a radio that had really restarted.
+- Fixes (still build 173):
+  - `P2Transport::onKeepaliveTick`: while the session runs and the I/Q is missing longer than `kSilenceTimeoutMs`, the whole configuration goes out once a second: General, Transmitter Specific, DDC Specific (High Priority is already every tick). The expected sequence numbers are cleared, because a restarted radio counts from 0. Log: "no I/Q -- sending the whole configuration …" and "I/Q back". To a radio that is still running this is the same configuration again.
+  - `MainWindow::maybeAutoConnectAnan`: after a link loss, a radio that answers discovery again first gets `kRebootRecoverMs` = 5 s for the old session to recover before a fresh connect (`m_ananSeenSinceLostMs`, cleared at every loss). Log: "answers again after the link loss -- waiting …".
+  - The fresh-connect path itself is not fixed: the crash place is still unknown. CrashDump reports it if it happens.
+- Next step: the 7000DLE user tries build 173; on a crash he sends the logs folder (.txt, .dmp, log).
+
+## 132. Power and Tune sliders: the PA's power law (06.11.2026, build 174)
+
+- Users:
+  - one of the power sliders (it is Tune) "is not tied to the per-band level calibration and gives too much power";
+  - half the slider gives much more than half the power. Wanted: a linear characteristic in watts, as a formula; the operator checks it with a wattmeter.
+- What the code does: RF Power and Tune both go through `applyDrive()`, which includes the per-band PA Level Calibration (`AnanPaCal_<band>`). Every caller was checked: `setTxPower`, `setTune`, `setTunePower`, the band-memory paths, the 250 ms re-apply after a calibration change. Nothing bypasses it.
+- Why Tune reads high:
+  - its carrier is full scale (amplitude 1.0), while speech averages about 4 dB below its peaks;
+  - the law was drive = full × √(percent), Thetis' law, which gives watts ∝ percent only if the PA's output goes with drive². A PA that is already compressing at the 100 % point (100 W) gives more than half the power at 50 %. On a constant carrier that shows at once.
+- Change: drive = full × (percent/100)^(1/γ), where γ is the PA's real law (output ∝ drive^γ). Key `AnanPaPowerLaw`, 0.8..2.5, default 2.0 = the old law.
+  - Setup > Radio > *model page* > group **PA Power Law**: γ, plus two wattmeter readings (slider 100 % and 50 %) and **Apply**.
+  - Derivation: with the law in force g, drive(50 %) = full·0.5^(1/g) and W50/W100 = 0.5^(γ/g), so **γ = g · log2(W100 / W50)**. One measurement is enough; a second one with the new law should give 50 %.
+  - The 250 ms re-apply now also follows a change of γ.
+- Open: γ is global. If the compression differs much by band, the next step is per band.
+
+## 133. Crash on reconnect: PureSignal inside a TXA channel being rebuilt (06.11.2026, build 175)
+
+- The operator's own crash on build 174 (100D, Radio tab stop → start, auto-connect): `aethersdr-crash-20261106-180804`, exception 0xC0000005, **writing address 0x24** in ntdll + 0x1A12D, GUI thread. Log: "HL2 TXA modulator: channel 1 open", then the crash.
+- Minidump (read without PDB: the exe's exports, WDSP symbols and the call sites):
+  - GUI thread: the AnanPureSignal status timer → `AnanPureSignal::tick()` → WDSP `GetPSInfo(1, …)` → `EnterCriticalSection(&txa[1].calcc->cs_update)`;
+  - the critical section had been deleted (DebugInfo = NULL, hence the write to 0x24).
+- Cause:
+  - `Hl2TxDsp::buildModulator()` (TX thread) runs on every connect. It destroys the TXA channel (`m_channel.reset()` → `destroy_txa` → `destroy_calcc` → `DeleteCriticalSection`) and creates it again **with the same id 1**.
+  - Meanwhile AnanPureSignal keeps calling the PS functions from the GUI thread (status/tick/heat timers, the PS dialog) and feeding `pscc` from the transport thread.
+  - Nothing synchronised the two. `Hl2Backend` calls `setTxChannel(id)` every tick, but the id did not change, so PureSignal never knew the channel was new: its WDSP parameters (scheck mode, feedback rate, HW peak, delays) stayed on the old channel only.
+  - The race window is short (destroy … create), so it shows only sometimes, on reconnect. It is probably also what the 7000DLE user had.
+- Fix:
+  - New `src/core/dsp/WdspTxaGuard.h`: a process-wide `std::shared_mutex` `txaRebuildMutex()` and a counter `txaGeneration()`.
+  - `Hl2TxDsp::buildModulator()` and `~Hl2TxDsp()` hold the mutex **exclusively** around destroying/creating the channel. The generation goes up on every exit, a refused channel included.
+  - Every AnanPureSignal path into WDSP takes `wdsp::TxaShared` (a shared **try**-lock, nested on one thread, outermost only):
+    - `status`, `display`, `save`/`restoreCorrection`, `applyWdspParams`, `control`, `feed`, `tick` return their default when a rebuild is running (one poll or one feed block dropped, never waited for);
+    - `setEnabled`, `setKeyed`, `updateFeedGate`, `heatTick` still change their state and skip only the WDSP call.
+  - `setTxChannel(channel, generation)`: a new generation with the same id counts as a new channel, so the WDSP parameters, the PS control and the feed gate are applied again. Log: "PureSignal: TXA channel 1 generation N".
+  - `Hl2Backend` reads the TX DSP's channel id under the shared lock too (it dereferences the channel pointer that the TX thread resets); a skipped tick is picked up by the next one.
+- The TX thread waits only for the PS calls already running (microseconds); the GUI thread never takes the mutex exclusively, so there is no deadlock path.
+- Compile check: errcheck on AnanPureSignal.cpp, Hl2TxDsp.cpp and Hl2Backend.cpp against build 170, no new errors.
+
+## 134. Radio tab stop → start never came back: the previous session's I/Q clock (06.11.2026, build 176)
+
+- Build 175 on the operator's 100D: no crash any more, but stop → start on the Radio tab never connected again. Every retry, about every 3 s, ended with "no IQ stream from the radio within 2000 ms of start" (log 20261106-182950).
+- Each retry got the Discovery reply ("ANAN-100D (board 3, from Discovery)"), so the configuration was sent. But **0.1 s** after start the log already showed "no I/Q -- sending the whole configuration once a second".
+- Cause: my own build 173 change. `onKeepaliveTick` decides "the radio restarted" from `m_sinceIq.elapsed() > kSilenceTimeoutMs`, and `start()` did not reset `m_sinceIq`. The clock of the previous session was still running, so a brand-new session looked silent at once. General, TX Specific and DDC Specific then went out again every second over a session the radio had only just started, and the radio never streamed.
+- The same stop → start worked on build 172 (log 20261106-172958, 17:38:08: I/Q at once). It was not seen on 173/174 because the reconnect crashed first (section 133).
+- Fix: `P2Transport::start()` invalidates `m_sinceIq`. The re-send now runs only in a session that had I/Q and lost it. A radio that never answers is handled by the connect timeout, as before.
+- Open, for the firmware: the operator's 100D evidently does not take a repeated General / DDC Specific during a running session without stopping the stream. If so, the re-send would also prevent recovery after a short network drop to a radio that did **not** restart. To check: pull the cable for 3 s while connected; the log should show "I/Q back". If it does not, the re-send must first send run = 0 and then run = 1 (a start edge), or be dropped.
+
+## 135. Not even a fresh start connects: what the radio does answer (06.11.2026, build 177)
+
+- Build 176, a fresh program start (log 20261106-183618): every attempt ends with "no IQ stream within 2000 ms".
+  - The Discovery reply comes every time ("from Discovery"), and the re-send from section 134 no longer fires.
+  - The program side is the same as the start that worked at 18:29:51 in the same build family, where I/Q came within milliseconds of the configuration. More time does not help, because a running radio answers at once.
+  - What changed is the radio. It had just taken about 25 sessions in a row from build 175, each with General / TX Specific / DDC Specific re-sent once a second.
+- So the radio (Odyssey firmware) is most likely stuck in some state of its own, and power-cycling it is the test.
+- Diagnostics added (P2Transport):
+  - the Discovery reply is logged: board, firmware, protocol, DDC count, and status **idle / STREAMING** (byte 4 = 0x03: the radio says it already serves a session);
+  - at the connect timeout, what the radio sent in those 2 s: all packets, mic, status, whether a Discovery reply came. Mic or status without I/Q means the session runs but the DDC is not enabled; nothing at all means the radio did not take the session.
+
+## 136. A session is started and stopped as a whole, as in Thetis (06.11.2026, build 178)
+
+- Build 177 after the radio was power-cycled (log 20261106-184136):
+  - the first start works;
+  - stop → start 4 s later fails: "no I/Q within 2000 ms; from the radio: 1466 packets, mic 1465, status 0, Discovery reply yes". The Discovery reply says **idle**.
+  - So the radio takes run = 1 (the mic stream runs) but the DDC sends nothing. Retries over the next 20 s do not help; only power-cycling the radio does.
+- What the logs show over time:
+  - stop → start that worked: 14 s (06.11 17:37:54 → 17:38:08), 13 min and 29 min apart;
+  - stop → start that failed: 6 s (18:30:00 → 18:30:06) and 4 s (18:41:48 → 18:41:52) apart.
+  - So the gap between run = 0 and the next start matters, and after a failed start the radio stays stuck. That points at the firmware; the question is with the operator.
+- Thetis (ChannelMaster network.c):
+  - `SendStart()`: run = 1, then General (1024), DDC Specific / CmdRx (1025), Transmitter Specific / CmdTx (1026), High Priority (1027);
+  - `SendStop()`: High Priority with run = 0, then the sockets close.
+  - It does not watch the radio's state. The General every 500 ms runs only with the watchdog bit set.
+- Changes:
+  - The build-173 recovery is gone completely: the configuration re-send in `P2Transport::onKeepaliveTick` and the `kRebootRecoverMs` wait in `MainWindow` (MainWindow*.cpp/.h are back to build 170).
+  - `configureSession` sends the four in Thetis' order: General, DDC Specific, Transmitter Specific, High Priority run = 1 (it was General, TX, DDC, HP).
+  - `stop()` sends High Priority run = 0 as before. After it, the session state goes back to the program's power-on state: PureSignal off. The next session therefore starts with the same packets as the first one, and PureSignal switches on again in it through the same push as at the first start (`AnanPureSignal::setTxChannel` on the new TXA generation).
+    - `start()` uses `stopSession(false)`, so a PureSignal push already queued for the new session is not undone.
+  - Log: every packet that starts or stops a session ("ANAN P2 packet General / DDC Specific / Transmitter Specific / High Priority run=1 / run=0"), in hex up to the last non-zero byte, so two sessions can be compared byte by byte.
+
+## 137. Packet log removed; the PA power law is a constant 0.91 (06.11.2026, build 179)
+
+- With build 178, stop → start works for the operator (with the Thetis start/stop order). The start/stop packet hex log (section 136) is removed at his request. Thetis order and the PureSignal reset at stop() stay.
+- PA power law: the operator measured γ = 0.91 with a wattmeter (build 174's two-point method). It is now the constant `gamma = 0.91` in `Hl2Backend::applyDrive`. The "PA Power Law" group in Setup > Radio is gone (RadioSetupDialog.cpp is back to build 171), and so is the key `AnanPaPowerLaw`. The 250 ms re-apply key is band:cal again.
+- While idle, the program still broadcasts the ANAN Discovery once a second (AnanDiscovery, paused while connected). That is left on purpose: it shows whether the radio is reachable.
+
+## 138. The noise floor in dBm / 500 Hz at the ADC; AUTO ATT holds a margin above the receiver's own noise (06.11.2026, build 180)
+
+- Operator: users do not know what floor to set. The drawn trace's floor depends on the measuring bandwidth, and nothing gives a proper base. Wanted: the panadapter always shows the real floor on its ruler, independent of the DDC rate, the FFT and the zoom, and roughly equal to what the meter measures in a 500 Hz filter. The level is what reaches the ADC (not corrected for the attenuator; the S-meter applies its options if the user wants them). The AUTO target is a difference above the receiver's own noise.
+- Why the drawn trace cannot be the base: Hl2Spectrum uses a Hanning window and is tone-normalised, so each bin holds the noise of 1.5·Fs/N Hz (563 Hz at 384 k / 1024, 18 Hz at 48 k / 4096: 15 dB apart on the same band). A zoomed-out view also keeps the peak of the bins under each pixel.
+- `Hl2Backend::ananNoiseLineStep(rx, raw, rate)`, on every frame (not during TX):
+  - takes the raw frame: all bins of the DDC, before AVG and before the display resampling, the middle 80 %;
+  - in linear power, a noise-only bin is exponentially distributed, with median = ln 2 · mean. So mean per bin = median / ln 2. Signals have to fill about a third of the span before they move it;
+  - refers it to 500 Hz: + offsetDb (the panadapter's ruler) − 10·log10(1.5·Fs/N) + 10·log10(500), then an EMA in dB (0.8 / 0.2);
+  - stores it in AnanUiState::shownFloorDbm (with a timestamp).
+- `SpectrumWidget::drawAnanNoiseFloor`: a dashed line at that level, labelled "Noise −NNN dBm/500 Hz (own +MM)", plus a short mark at the receiver's own noise by the dB scale. It is drawn only while the value is fresh (≤ 3 s), so it disappears after a disconnect and during TX.
+- AUTO ATT (the loop moved from ananAutoAttStep, which now only feeds the Auto AGC floor):
+  - own noise = the same measure at ATT 31 dB: 300 ms settle (frames still at the old ATT), then 800 ms. Measured when AUTO goes on and when the DDC rate changes. Zoom, FFT size and AVG no longer trigger a re-measure.
+  - target = own + margin. Margin per receiver: keys `AnanAutoAttMarginDb` / `AnanAutoAttMarginDbRx2`, 0..30, default +10 (they replace `AnanAutoAttTargetDbm*`).
+  - The receiver's own noise then costs 10·log10(1 + 10^(−margin/10)) dB of sensitivity: +3 → 1.8, +6 → 1.0, +10 → 0.4, +20 → 0.04 dB.
+  - The step law is unchanged: 0.6 × error, dead band ±1.5 dB, at most every 400 ms.
+- ATT panel: the row "Noise:" is a margin slider 0..+30 dB ("+10 dB"), plus "now +N" (current noise − own). Its tooltip carries the sensitivity table.
+- Check in the log every 10 s per receiver: "ANAN noise floor RXn: X dBm / 500 Hz at the ADC (N-point FFT at F Hz); S-meter Y dBm without options, filter W Hz, ATT A dB". In a 500 Hz CW filter with no signal and S-meter Average, X and Y should agree within about 1 dB. If they do not, the difference is the pan-vs-meter scale (the panadapter's tone reads +6.02 dB, Hl2Spectrum::kToneGainDb) and is to be found, not fitted.
+
+## 139. The trace is the power in 500 Hz, on the meter's calibrated scale (06.11.2026, build 181)
+
+- Build 180, operator (log 20261106-194038):
+  - the noise line does not sit on the drawn floor; the drawn floor moves with the zoom and the panadapter width;
+  - the calibrated meter reads −120 dBm in 500 Hz, the line −116.
+- What the log shows about the line itself:
+  - it is independent of rate and FFT: −115.0…−117.1 at 384 / 192 / 96 / 48 kHz, −116.7…−116.8 at 1024 / 4096 / 8192 points;
+  - own noise −116.7…−117.4 at every rate.
+  - Against the S-meter without options:
+    - 500 Hz filter: meter −116.5 / −118.0 / −118.3, line −116.7…−116.8, so about 0.8 dB apart;
+    - 2800 Hz filter: meter −105…−110, line + 10·log10(2800/500) = −109.3.
+  - So the estimate agrees with the meter. The 3–4 dB to "−120 calibrated" is the operator's S-meter calibration correction, which the line did not carry.
+- Changes (`Hl2Backend`):
+  - The panadapter trace (and the waterfall, the same resampling) is the power in 500 Hz: each bin + `ananRbwTo500HzDb(rate, N)` = 10·log10(500 / (1.5·rate/N)).
+  - A pixel holding several bins takes their **mean** power instead of the peak. The peak of noise bins sits above the noise, which is why the floor rose when zoomed out.
+  - Plus `ananDisplayCalDb()`: the S-meter calibration correction (Setup > Receive) and the model's front-end offset against the 100D. Not the ATT / LNA options: the panadapter shows what reaches the ADC, on the meter's calibrated scale.
+  - The noise line and the own noise are published with the same calibration (AnanUiState). Internally, `m_ananShownFloor` and `m_ananOwnNoise` stay without it, so AUTO ATT works on differences that a calibration change does not move.
+  - The 10 s check line now compares the calibrated line with the calibrated S-meter (without ATT/LNA options).
+- The price of a noise-true display: a steady carrier reads its power when a pixel spans about 500 Hz. On narrower bins it reads higher, by 10·log10(500 / pixel or bin bandwidth). At full span with many bins per pixel, a weak narrow carrier is averaged with the noise around it, like a wider RBW on an analyser.
+- Open:
+  - the amsq squelch line on the panadapter (capabilities' SquelchLevelScale) still uses the per-bin scale, so it is offset by the same normalisation;
+  - the Auto AGC floor (`ananAutoAttStep`, per-bin at 1024) is unchanged.
+
+## 140. One scale for the floor: own noise captured in Setup > Receive; Auto AGC and the squelch line on the noise line (06.11.2026, build 182)
+
+- Operator: the program cannot measure the receiver's own noise on the air. On 40 m the antenna noise is far above it even at ATT 31 dB. Wanted:
+  - an option in Setup > Receive to capture it, with a reminder that the antenna must be disconnected;
+  - a checkbox for the noise line;
+  - the squelch line and the Auto AGC on the same scale.
+- Own noise (`Hl2Backend::ananOwnNoiseCaptureStep`):
+  - The automatic ATT 31 measurement at AUTO on / rate change is gone.
+  - Setup > Receive, new group **Receiver Noise Floor**:
+    - "Show the noise floor line on the panadapter" (key `AnanShowNoiseLine`, default on);
+    - a warning: disconnect the antenna (or terminate it in 50 Ohm), every receiver goes to ATT 31 dB for about a second;
+    - **Capture**, with a status line showing what is stored, per ADC, with the date.
+  - Capture:
+    - every receiver that owns its ADC's attenuator goes to ATT 31 (`ananRxAtt` returns 31 while the capture runs);
+    - 300 ms settle, then 800 ms averaging of the noise line;
+    - stored per ADC, without the meter's calibration: `AnanOwnNoiseDbmAdc1/2` and `AnanOwnNoiseDateAdc1/2`;
+    - then the attenuators go back.
+    - No receive data within 3 s gives "is the radio connected?".
+  - AUTO ATT waits while there is no stored own noise. The ATT panel's "now" tooltip says where to capture it.
+- Auto AGC (`ananAutoAgcStep`):
+  - follows the noise line: floor per 1024-point Hanning bin = noise line − `ananRbwTo500HzDb(rate, 1024)` (WDSP's per-bin threshold), called from ananNoiseLineStep;
+  - the old estimate (20th percentile of the averaged bins, `ananAutoAttStep`, `m_ananFloor`) is removed. With AVG the 20th percentile sat about 0.5–1 dB under the mean, so the AGC gain moves by about that much;
+  - log, AnanUiState::agcAutoFloorDbm and the AGC-T tooltips (RxApplet, VfoWidget) show the calibrated noise line in dBm / 500 Hz.
+- amsq squelch line: its scale maps onto per-bin levels. The backend now publishes `AnanUiState::panShiftDb[rx]` (the bin's referral to 500 Hz plus the calibration, as added to the trace). `SpectrumWidget::drawSquelchLine` adds it on ANAN pans, so the line stays where it was relative to the trace and the noise.
+
+## 141. HW Diag on receive: the DUC zero stream while the window is open (06.11.2026, build 183)
+
+- Operator: HW Diag (and with it the 10 MHz reference line) seems to work only while PureSignal is active. Wanted: working while its window is open, off when it is closed.
+- The logs:
+  - 05.11 20:07–20:10: "status packets 0" on receive; from MOX ON at 20:08:03 they rise at 20 / s; after MOX off at 20:09:36 they stop again (1862 and no more).
+  - 06.11 19:40: 0 all session (no transmission), so no "10 MHz reference" line either.
+  - So the radio's status packets (port 1025) arrive only while we transmit, although the firmware note says every 50 ms on receive.
+  - The one thing a transmission adds on the PC side is the DUC I/Q stream (port 1029). Thetis sends it all the time (ChannelMaster, zeros on receive); this program only while keyed. PureSignal is not the condition: on 05.11 it was on from 20:07:25 and the status still started only at MOX.
+- Change:
+  - `P2Transport::renewDiagStream(bool)`: while renewed, a 5 ms precise timer sends zero DUC I/Q at the DUC rate (800 packets / s, the shared `m_txSeq`) when not MOX and a session runs. MOX and PTT stay off, so nothing reaches the air. A late timer does not burst more than 16 packets.
+  - `HwDiagDialog::tick` renews it every 250 ms while the window is visible; `hideEvent` ends it. With no renewal for 1.5 s it stops by itself.
+  - Log: "HW Diag open -- DUC zero stream on receive …" / "… closed -- DUC zero stream off".
+- To check: HW Diag open on receive → "Radio status: layout v9, packets N" grows, and the 10 MHz line appears. If it does not, the firmware itself gates the status packets on PTT, and the change is to be reverted.
+- Side effect to watch: the first MOX with the window open finds the radio's TX FIFO already running on zeros; the over's lead may overflow it at the start (counted in "TX samples dropped because the FIFO was full").
+
+## 142. Build 183's DUC zero stream reverted; the ATT row is "NF+" again (06.11.2026, build 184)
+
+- Operator on build 183: HW Diag still works only while transmitting. So the DUC stream is not what starts the status packets; the firmware sends them only under PTT. Reverted: P2Transport.cpp/.h back to build 179, HwDiagDialog.cpp/.h back to build 172. The status gating is a firmware matter.
+- ATT panel (operator: "everything is clear and works well now"):
+  - the margin slider's caption is "NF+" again;
+  - the "now +N" label is removed, so the slider has its former width, like the other sliders in the panel;
+  - the value still reads "+N dB" (margin above the receiver's own noise).
+
+## 143. One TX voice chain for both microphones: PC / CDC switched at its input (06.11.2026, build 185)
+
+- Operator: "why two processing branches for two microphones? The inputs are to be switched at the input of the whole chain, one chain with the same settings." The trigger: the TX equalizer was not heard in the radio's MON.
+- What it was:
+  - The MON (codec and PC) is the transmitted IQ demodulated (AnanTxEngine::onIq), so it always played what went on the air.
+  - The computer microphone ran through AudioEngine's TX voice chain (TxVoiceProcessor: RN2, gate, EQ, de-ess, compressor, tube, ..., mic gain, limiter).
+  - The radio microphone went from the I/O thread straight into AnanTxEngine::micChain → modulator, past all of that. So the EQ was never on the air with the radio mic.
+- Now (`AnanMicSource`: 0 PC, 1 CDC, 2 TEST):
+  - **CDC**:
+    - `Hl2Backend` takes each codec mic packet on the I/O thread (DirectConnection on `codecMicReady`), applies the 120 Hz Butterworth high-pass (input conditioning against bias, hum and the PTT step, now at 48 kHz), and emits `ananCodecMicPcm` (48 kHz mono float).
+    - RadioModel relays it on the same thread (no GUI hop) to `AudioEngine::feedExternalMic` (queued, AudioEngine's thread). It builds the canonical stereo float block and runs `runTxVoiceTail`: the former tail of `onTxAudioReady`, moved out unchanged. Same chain, same settings, same taps (monitor, recorder, scope, PC mic meter), same `txTransportPcmReady` → `submitTxAudio` → modulator.
+    - `AudioEngine::setExternalMicInput(bool)` (from `ananCodecMicInputChanged` / RadioModel `codecMicInputChanged`, false on every non-ANAN backend):
+      - re-prepares TxVoiceProcessor at 48 kHz (or back at the device rate; the device-format path keeps 48 kHz while CDC is the input);
+      - while it is set, the computer's capture is read and dropped.
+  - **PC**: as before.
+  - **TEST**: the two-tone stays AnanTxEngine's own (fromRadio = TEST only). It does not go through the chain, and with it the PC mic is dropped as before.
+  - AnanTxEngine still gets every mic packet: they clock the DUC (txDeviceTick).
+- The same settings, also for the TXA compressor and leveler (`pushTxCompressor`): on for PC and CDC (before only for the radio mic), off for TEST.
+- Mic meter: PC and CDC both show AudioEngine's PC-mic meter (post chain); only TEST shows the backend's codec meter.
+- UI: the Phone applet's source list is "PC / CDC / TEST" (was "PC / MIC / TEST"); Setup's combo reads "Radio codec microphone (CDC)".
+- Costs:
+  - CDC now has the PC path's DUC prime (kTxPrimeComputer 4096 instead of 1536 samples, +13 ms) plus the TxVoiceProcessor's 48 → 24 kHz conversion;
+  - the radio-mic TX capture (txcap-mic.wav) and the per-over radio-mic trace come only from AnanTxEngine's micChain, i.e. with TEST now.
+
+## 144. No TEST mic source; ADC overload warning across the panadapter (06.11.2026, build 186)
+
+- TEST (two-tone as a microphone source) was in the Phone applet list since the radio-mic work (AnanMicSource 2). The operator: remove it, the PureSignal widget has its own 2-Tone.
+  - The list is "PC / CDC".
+  - An old stored 2 reads as PC: `Hl2Backend::ananApplyCodecSettings` takes 1 as CDC and anything else as PC; testTone is always false there.
+- ADC overload. What there was:
+  - the status byte 5 bits (0 ADC0, 1 ADC1) fed PureSignal's auto-attenuator (takeOverloadLatch), the log ("ADC0 overload ON/off") and the small front-end lamp in the overlay menu (frontEndOverload, ADC0 only).
+  - Nothing on the panadapter.
+- New:
+  - P2Transport has a second latch for the display (`takeDisplayOverload`), so the PS latch is not stolen.
+  - The backend's 300 ms ADC timer writes `AnanUiState::adcOverloadAtMs[adc]` and each receiver's ADC (`rxAdc`).
+  - `SpectrumWidget::drawAnanAdcOverload`: a large bold half-transparent red "ADCn OVERLOAD" (alpha 120, a fifth of the panadapter height) in the middle of the pan of a receiver whose ADC clipped within the last 1 s, blinking 400 / 400 ms. Drawn in both paint paths, next to the noise line.
+  - Setup > Receive > Receiver Noise Floor: "Test the ADC overload warning on the panadapter" shows it without an overload (not saved).
+- Limitation: the overload flag comes only with the status packets, which this firmware sends only under PTT (sections 141, 142). On receive the warning cannot appear until the firmware sends status packets on receive too.
+
+## 145. ADC0 overload log line debounced, 200 ms (06.11.2026, build 187)
+
+- The operator has fixed the firmware: status packets now come on receive too (the cause of sections 141, 142 and 144). HW Diag, the 10 MHz line, the overload warning and the PA / supply meters work on receive with no program change.
+- The log's "ADC0 overload ON / off" was written on every edge. On receive, on a strong band, the comparator chatters up to the packet rate.
+- `P2Transport::handleStatus`: ON at the first report; off only after `kOvlLogDebounceMs` = 200 ms without one (m_ovlLogOn / m_ovlLogLastMs, reset at start). Only the log is debounced. PureSignal's latch, the display latch (held 1 s on the panadapter) and m_adc0Overload / the front-end window are unchanged.
+
+## 146. Noise line and overload warning: the cached overlay is redrawn when they change (06.11.2026, build 188)
+
+- Operator on build 187:
+  - the overload test checkbox did nothing until the settings window was closed, and then the warning came and went as he retuned by clicking the panadapter;
+  - the noise-line checkbox behaved oddly too.
+- Cause: SpectrumWidget draws these lines in its CACHED overlay layer (the same pass as the auto-SQL floor and the squelch line). That layer is redrawn only after `markOverlayDirty()`. Nothing marked it dirty for the noise line, the overload warning or their blink, so they showed only when another change (a retune) redrew the overlay.
+- Fix: `m_ananOverlayPoll`, a 100 ms timer in SpectrumWidget. For an ANAN pan it builds a signature of what the two would draw:
+  - whether the line is shown, its level (0.5 dB steps) and the own-noise mark;
+  - whether the warning is active, the blink phase (400 ms) and the ADC.
+  - It calls `markOverlayDirty()` when the signature changes, so the checkboxes act at once and the warning blinks.
+
+## 147. HW Diag: a group of its own for the 10 MHz reference (06.11.2026, build 189)
+
+- Operator: a separate group at the bottom for the 10 MHz reference, with everything that came with the last diagnostics change, and all parameters shown also with "no signal".
+- HwDiagDialog: the "Codec and clocks" group is now "Codec" (PLL lock losses and SPI writes only). The new group **10 MHz Reference** (layout v9, bytes 28-29) sits below it:
+  - State (no signal / locked / NOT locked), how long it has been in that state, and the number of state changes since the window opened;
+  - Reading: the signed value (Hz at 10 MHz, and ppm), or the raw −32768 code with "no signal";
+  - Last 5 s: min..max of the readings with a signal, and how many of the readings had one;
+  - 122.88 MHz clock: follows the reference / v·12.288 Hz (v·0.1 ppm) from it / on the radio's own oscillator;
+  - PHY crystal against the 122.88 MHz clock (bytes 53-54): ppm and Hz at 125 MHz, marked absolute when the reference is locked, otherwise against the radio's own oscillator. The same figure is still in the PHY group.
+
+## 148. 10 MHz group without the PHY crystal line; release notes for build 190 (06.11.2026, build 190)
+
+- Operator: the PHY crystal line stays only in the PHY group, not duplicated in the 10 MHz Reference group. Removed there.
+- `docs/release-notes-build-190.md`: the GitHub release text for builds 171–190 (noise floor in dBm / 500 Hz, AUTO ATT margin NF+ and the own-noise capture procedure, overload warning, S-meter detector, 10 MHz group, one TX chain PC / CDC, power sliders, the reconnect fixes, the crash report).
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

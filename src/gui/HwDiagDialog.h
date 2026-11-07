@@ -54,6 +54,10 @@ private:
     QLabel* m_phy = nullptr;
     QLabel* m_buf = nullptr;
     QLabel* m_codec = nullptr;
+    QLabel* m_ref = nullptr;     // 10 MHz reference (layout v9)
+    int m_refState = -2;         // -1 no signal, 0 locked, 1 not locked; -2 none yet
+    long long m_refSinceMs = 0;
+    int m_refChanges = 0;
     QPushButton* m_reset = nullptr;
     QPushButton* m_count = nullptr;
     QPlainTextEdit* m_log = nullptr;
@@ -67,6 +71,7 @@ private:
     std::deque<std::pair<long long, unsigned long long>> m_fcsHist;   // (ms, FCS total)
     // Level ranges over the last ~5 s.
     std::deque<std::pair<long long, int>> m_txLevels, m_spkLevels;
+    std::deque<std::pair<long long, int>> m_ref10M;   // bytes 28-29 (v9), last 5 s
 
     // "Count 4000 packets".
     bool m_counting = false;

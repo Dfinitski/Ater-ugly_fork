@@ -997,7 +997,8 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq)
         if (m_meterTap.tick()) {
             // Computed always (full duplex); published only outside an over
             // -- inside it the meter hears our own transmitter.
-            const double sm = m_channel->meter(WdspChannel::Meter::SignalAverage);
+            const double sm = m_channel->meter(sMeterPeak() ? WdspChannel::Meter::SignalPeak
+                                                            : WdspChannel::Meter::SignalAverage);
             if (!inOver) {
                 m_smRing[m_smPos] = sm;
                 m_smPos = (m_smPos + 1) % m_smRing.size();
