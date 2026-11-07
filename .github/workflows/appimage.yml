@@ -1,7 +1,9 @@
 # Ater-ugly_fork (ANAN fork): the upstream AetherSDR AppImage workflow, x86_64
 # only, restored on 06.11.2026 for an Ubuntu x64 build. Runs by hand
 # (workflow_dispatch), on a build-NNN tag (the AppImage is attached to that
-# release), and once when this file changes on main.
+# release), and once when this file changes on main. A hand run with
+# release_tag set builds main and attaches the AppImage to that existing
+# release (for a tag pushed before this workflow existed, e.g. build-190).
 name: Linux AppImage
 
 on:
@@ -10,6 +12,11 @@ on:
     branches: [main]
     paths: ['.github/workflows/appimage.yml']
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Attach the AppImage to this existing release (e.g. build-190); empty = artifact only'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -485,9 +492,11 @@ jobs:
           find "$plugins" -maxdepth 1 -type d -name 'wayland-*' | sort
 
       - name: Build AppImage
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           # Branch refs contain slashes, which cannot appear in the output name.
-          SAFE_REF="${GITHUB_REF_NAME//[^A-Za-z0-9._-]/_}"
+          REF="${RELEASE_TAG:-$GITHUB_REF_NAME}"; SAFE_REF="${REF//[^A-Za-z0-9._-]/_}"
           export LDAI_OUTPUT="AetherSDR-ANAN-${SAFE_REF}-${{ matrix.arch }}.AppImage"
           # linuxdeploy scans dependencies again when generating the image.
           # Prefer the staged closure and retain the original build prefixes.
@@ -499,10 +508,12 @@ jobs:
       # .tar.xz on purpose: sign-release.yml downloads and checksums *.zip, so
       # a .zip here would change SHA256SUMS.txt.
       - name: Package debug symbols
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         continue-on-error: true   # never blocks the release; see "Split debug symbols"
         run: |
           set -euo pipefail
-          SAFE_REF="${GITHUB_REF_NAME//[^A-Za-z0-9._-]/_}"
+          REF="${RELEASE_TAG:-$GITHUB_REF_NAME}"; SAFE_REF="${REF//[^A-Za-z0-9._-]/_}"
           "./AetherSDR-ANAN-${SAFE_REF}-${{ matrix.arch }}.AppImage" --appimage-extract > /dev/null
           while read -r name _ id _; do
             shipped=$(find squashfs-root -type f -name "$name" -print -quit)
@@ -528,9 +539,10 @@ jobs:
             AetherSDR-*-symbols.tar.xz
 
       - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
           files: |
             AetherSDR-*.AppImage
             AetherSDR-*-symbols.tar.xz
