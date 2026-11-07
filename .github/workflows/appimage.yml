@@ -369,6 +369,19 @@ jobs:
           cp -v "$GST_PATH/libgstpipewiresrc.so" AppDir/usr/lib/gstreamer-1.0/ || \
             echo "note: libgstpipewiresrc.so absent; PipeWire hosts use pulsesrc via pipewire-pulse"
 
+      # ANAN fork: FreeDV (FDV mode) -- libfdv from MicronSDR, built from its
+      # sources (third_party/libfdv/src/build_linux.sh: codec2, rade_c, opus at
+      # the same revisions as the Windows DLLs). FdvEngine loads libfdv from the
+      # executable's directory, as on Windows. Not fatal: without it the
+      # AppImage simply has no FDV mode.
+      - name: Build FreeDV (libfdv.so + libcodec2)
+        continue-on-error: true
+        run: |
+          bash third_party/libfdv/src/build_linux.sh "$RUNNER_TEMP/fdv-deps" "$RUNNER_TEMP/fdv-out"
+          cp -v "$RUNNER_TEMP/fdv-out/libfdv.so" AppDir/usr/bin/
+          mkdir -p AppDir/usr/lib
+          cp -v "$RUNNER_TEMP"/fdv-out/libcodec2.so.* AppDir/usr/lib/
+
       - name: Download linuxdeploy + Qt plugin
         run: |
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.arch }}.AppImage
