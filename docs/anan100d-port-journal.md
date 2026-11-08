@@ -2882,7 +2882,9 @@ The bursts themselves come from the PC (speaker packets leave as soon as WDSP pr
 - README.md: PureSignal column for Hermes / Hermes II "Protocol 1 only", the Protocol 1 section
   lists PureSignal, "Build 211" summary replaced by "Build 220".
 - Source of builds 212-220 pushed to main; archive: the build 211 archive with the build 220 exe
-  (Desktop\AetherSDR-Release\AetherSDR.exe built 15:26) and README-build220.md.
+  (Desktop\AetherSDR-Release\AetherSDR.exe built 15:26) and README-build220.md; 87 entries,
+  153009474 bytes, SHA-256 14ffd874a83151ffa398be246484e9278078b7e9d1da2568175e68fe8a77a87e; saved to
+  Desktop\AetherSDR-Release. Commit 14d2bff on main.
 
 ## 5. Где брать удалённый код
 
