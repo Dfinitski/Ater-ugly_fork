@@ -36,6 +36,12 @@ public:
     void setFlexExtensions(bool on)  { m_flexExtensions = on; }
     bool flexExtensions() const      { return m_flexExtensions; }
 
+    // ANAN port (build 192): the Thetis dialect — the TS-2000 base (ID019) plus
+    // Thetis' own ZZ set (Console/CAT/CATCommands.cs, CATStructs.xml), so a
+    // logger set up for Thetis / PowerSDR works unchanged. Implies ZZ commands.
+    void setThetisDialect(bool on)   { m_thetis = on; if (on) m_flexExtensions = true; }
+    bool thetisDialect() const       { return m_thetis; }
+
     // AI state: set by the session when AI enable/disable commands arrive.
     // processCommand() reads this for AI query responses (AI; / ZZAI;).
     bool aiEnabled() const           { return m_aiEnabled; }
@@ -171,6 +177,10 @@ private:
     QString splitCommand(const QString& prefix, const QString& arg);
 
     QString processCommandImpl(const QString& cmd);
+    // Thetis ZZ commands (name = "ZZxx", arg = the rest). Unknown -> "?;".
+    QString processThetisZZ(const QString& name, const QString& arg);
+    QString thetisIF();
+    QString thetisTune(const QString& arg);
 
     SliceModel* sliceA() const;
     SliceModel* sliceB() const;
@@ -185,6 +195,8 @@ private:
     int         m_vfoA{0};
     int         m_vfoB{-1};
     bool        m_flexExtensions{true};
+    bool        m_thetis{false};
+    bool        m_weTuned{false};   // ZZTU1 from this client started a tune
     bool        m_aiEnabled{false};
     // Reported split state (this client's intent). Set SYNCHRONOUSLY in
     // enableSplit/teardownSplit because setTxSlice() updates the slice's TX flag

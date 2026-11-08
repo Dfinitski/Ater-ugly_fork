@@ -11,6 +11,7 @@
 #include "SpectrumWidget.h"
 #include "SpectrumOverlayWheelGuard.h"
 #include "AutoBlackMode.h"
+#include "WaterfallImpulseBlanker.h"
 #include "GuardedSlider.h"
 #include "FftTraceDecomb.h"
 #include "FftTraceSmoothing.h"
@@ -91,6 +92,14 @@ SliceModel* antennaTargetSliceForPan(RadioModel* radioModel,
 }
 
 // FFT Smooth / De-comb value label: 0 is "Off", anything else the number.
+// NB Blank slider value (5..95 = threshold 1.05..1.95) as the dB rise it
+// stands for on an absolute row (WaterfallImpulseBlanker::dbMargin).
+static QString blankerMarginText(int sliderValue)
+{
+    return QStringLiteral("%1 dB").arg(
+        AetherSDR::WaterfallImpulseBlanker::dbMargin(1.0f + sliderValue / 100.0f), 0, 'f', 1);
+}
+
 static QString offOrValueText(int value)
 {
     return value == 0 ? SpectrumOverlayMenu::tr("Off") : QString::number(value);
@@ -1924,6 +1933,7 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         ++row;
     };
 
+
     // Helper: section header — small-caps label + thin divider, spans all 4
     // columns. Splits the panel into Panadapter / Waterfall / Background /
     // Appearance / 3D View / System groups so users can scan for the control
@@ -1977,7 +1987,7 @@ void SpectrumOverlayMenu::buildDisplayPanel()
 
         makeToggle("Heat Map", m_heatMapBtn);
         makeToggle("Grid", m_showGridBtn, true);
-        makeToggle("Wt Avg", m_weightedAvgBtn);
+        makeToggle("Log Avg", m_weightedAvgBtn);
         m_heatMapBtn->setObjectName("displayHeatMapBtn");
         m_showGridBtn->setObjectName("displayShowGridBtn");
         m_weightedAvgBtn->setObjectName("displayWeightedAvgBtn");
@@ -2039,64 +2049,10 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         emit fftAverageChanged(v);
     });
 
-    // FPS — 60 ceiling: the per-pixel trace path made per-frame prep cost
-    // width-flat (~120 µs), so the display, not the client, is the limit.
-    // The radio clamps what it will actually deliver.
-    makeRow("FFT FPS:", 5, 60, 25, m_fpsSlider, m_fpsLabel);
-    m_fpsSlider->setObjectName("displayFftFpsSlider");
-    connect(m_fpsSlider, &QSlider::valueChanged, this, [this](int v) {
-        m_fpsLabel->setText(QString::number(v));
-        emit fftFpsChanged(v);
-    });
-
-    // Smooth — display-only smoothing across frequency, in linear power (the
-    // panadapter's counterpart of the AetherRX/TX EQ's Smoothing). The value
-    // is the half-width in pixels; the client applies it to every radio.
-    makeRow("FFT Smooth:", 0, AetherSDR::kFftSmoothingMaxHalfWidthPx, 0,
-            m_smoothSlider, m_smoothLabel);
-    m_smoothSlider->setObjectName("displayFftSmoothSlider");
-    m_smoothSlider->setAccessibleName(tr("FFT smoothing"));
-    m_smoothSlider->setToolTip(
-        tr("Smooths the spectrum trace across frequency, averaging each point "
-           "with its neighbors up to this many pixels either side.\n"
-           "Averages in linear power, so the floor reads its true average "
-           "power, about 1-1.5 dB above the unsmoothed trace's middle. "
-           "Waterfall and noise-floor readings are not affected. 0 = off."));
-    m_smoothSlider->setAccessibleDescription(
-        tr("Averages the spectrum trace across this many pixels either side. "
-           "Zero is off. The waterfall is not affected."));
-    m_smoothLabel->setText(offOrValueText(0));
-    connect(m_smoothSlider, &QSlider::valueChanged, this, [this](int v) {
-        m_smoothLabel->setText(offOrValueText(v));
-        emit fftSmoothingChanged(v);
-    });
-
-    // De-comb — replaces the trace with its cepstral true envelope, a smooth
-    // curve over the comb a zoomed-in pan draws across SSB voice (the
-    // speaker's pitch harmonics), keeping the signal's outline and peak level.
-    // The value is the widest harmonic spacing removed, in Hz; 0 is off.
-    makeRow("De-comb Hz:", 0, AetherSDR::kFftDecombMaxHz, 0,
-            m_decombHzSlider, m_decombHzLabel);
-    m_decombHzSlider->setObjectName("displayFftDecombHzSlider");
-    m_decombHzSlider->setSingleStep(10);
-    m_decombHzSlider->setPageStep(50);
-    m_decombHzSlider->setAccessibleName(tr("FFT de-comb width in hertz"));
-    m_decombHzSlider->setToolTip(
-        tr("Removes the comb of voice harmonics a zoomed-in panadapter draws "
-           "across an SSB signal, drawing a smooth curve over the harmonic peaks "
-           "so the signal keeps its outline and peak level.\n"
-           "The value is the widest harmonic spacing removed, in Hz. Voices are "
-           "about 100-250 Hz; 300 covers most. 0 = off.\n"
-           "Rounds a signal's steep edges by about half this width. "
-           "The noise floor and the waterfall are not changed."));
-    m_decombHzSlider->setAccessibleDescription(
-        tr("Removes the comb of voice harmonics from the spectrum trace, up to "
-           "this spacing in hertz. Zero is off. The waterfall is not changed."));
-    m_decombHzLabel->setText(offOrValueText(0));
-    connect(m_decombHzSlider, &QSlider::valueChanged, this, [this](int v) {
-        m_decombHzLabel->setText(offOrValueText(v));
-        emit fftDecombHzChanged(v);
-    });
+    // ANAN port (build 199): no FFT FPS, FFT Smooth or De-comb rows. The FPS
+    // is fixed at 25 (MainWindow_Wiring requests it for a locally shaped pan);
+    // smoothing and de-comb stay off (SpectrumWidget::loadFftTraceShaping).
+    // The members stay null; every sync below checks them.
 
     // Line Width
     {
@@ -2194,55 +2150,37 @@ void SpectrumOverlayMenu::buildDisplayPanel()
     }
 
     // ── Noise Floor reference line ────────────────────────────────────────
-    makeRowWithBtn("FFT Floor:", 1, 99, 75, m_floorSlider, m_floorLabel,
-                   m_floorEnableBtn, "Auto");
+    // ANAN port (build 199): the floor tracking is always on (no Auto button)
+    // and the slider is the height of the floor line above the bottom, so its
+    // minimum puts the floor at the bottom. The widget keeps "% from top":
+    // position = 100 - slider value. No NF Range row (the radio-side range).
+    makeRow("FFT Floor:", 1, 99, 100 - 75, m_floorSlider, m_floorLabel);
     m_floorSlider->setObjectName("displayNoiseFloorSlider");
-    m_floorEnableBtn->setObjectName("displayNoiseFloorEnableBtn");
-    m_floorSlider->setEnabled(false);
-    connect(m_floorEnableBtn, &QPushButton::toggled, this, [this](bool on) {
-        m_floorSlider->setEnabled(on);
-        emit noiseFloorEnableChanged(on);
-    });
     connect(m_floorSlider, &QSlider::valueChanged, this, [this](int v) {
         m_floorLabel->setText(QString::number(v));
-        emit noiseFloorPositionChanged(v);
+        emit noiseFloorPositionChanged(100 - v);
     });
-
-    // Radio-owned: the slider shows what the pan reported and sends a request.
-    const int rangeSteps = qRound(kNoiseFloorRangeMaximumDb / kNoiseFloorRangeStepDb);
-    makeRow("NF Range:", 0, rangeSteps, 3, m_floorRangeSlider, m_floorRangeLabel);
-    m_floorRangeSlider->setObjectName("displayNoiseFloorRangeSlider");
-    m_floorRangeSlider->setAccessibleName(tr("Noise floor range"));
-    m_floorRangeSlider->setPageStep(2);
-    static_cast<GuardedSlider*>(m_floorRangeSlider)->setDragValueFormatter([](int v) {
-        return QStringLiteral("%1 dB").arg(v * kNoiseFloorRangeStepDb, 0, 'f', 1);
-    });
-    m_floorRangeLabel->setText(QStringLiteral("-"));
-    connect(m_floorRangeSlider, &QSlider::valueChanged, this, [this](int v) {
-        m_floorRangeLabel->setText(QString::number(v * kNoiseFloorRangeStepDb, 'f', 1));
-        if (!m_floorRangeSlider->isSliderDown()) {
-            requestNoiseFloorRange();
-        }
-    });
-    connect(m_floorRangeSlider, &QSlider::sliderReleased,
-            this, &SpectrumOverlayMenu::requestNoiseFloorRange);
-    syncNoiseFloorRange();
 
     makeHeader("WATERFALL");
 
-    // NB Blank + Off/On
+    // NB Blank + Off/On. ANAN port (build 201): the row is one unaveraged
+    // FFT frame and the blanker tests its median (the noise floor); the slider
+    // is the rise above the last 32 rows that marks an impulse, 0.2 dB per step
+    // (1..19 dB, default 3). See WaterfallImpulseBlanker.h.
     makeRowWithBtn("NB Blank:", 5, 95, 15, m_wfBlankerThreshSlider, m_wfBlankerThreshLabel,
                    m_wfBlankerBtn, "Off");
     m_wfBlankerThreshSlider->setObjectName("displayWfBlankerThreshSlider");
     m_wfBlankerBtn->setObjectName("displayWfBlankerBtn");
-    m_wfBlankerBtn->setToolTip("Suppress impulse noise stripes in waterfall");
+    m_wfBlankerBtn->setToolTip("Hides impulse noise in the waterfall: a row whose noise floor jumps "
+                               "above the recent rows is lowered back to their floor; signals stay.");
+    m_wfBlankerThreshLabel->setText(blankerMarginText(15));
     connect(m_wfBlankerBtn, &QPushButton::toggled, this, [this](bool on) {
         m_wfBlankerBtn->setText(on ? "On" : "Off");
         emit wfBlankerEnabledChanged(on);
     });
     connect(m_wfBlankerThreshSlider, &QSlider::valueChanged, this, [this](int v) {
         float t = 1.0f + v / 100.0f;
-        m_wfBlankerThreshLabel->setText(QString::number(t, 'f', 2));
+        m_wfBlankerThreshLabel->setText(blankerMarginText(v));
         emit wfBlankerThresholdChanged(t);
     });
 
@@ -2252,10 +2190,13 @@ void SpectrumOverlayMenu::buildDisplayPanel()
     //   AUTO on  → noise-floor offset (0..100, 50 = noise floor), value
     //              persists in m_blackAutoOffsetValue and emits
     //              wfAutoBlackOffsetChanged.
-    makeRowWithBtn("Black Level:", 0, 100, 50, m_blackSlider, m_blackLabel,
-                   m_autoBlackBtn, "SW", &m_blackTitleLabel);
+    // ANAN port (build 200): no Off/SW/HW button. The mode is always SW (the
+    // client-side noise-floor estimate), so the full-width slider is always
+    // the offset from the noise floor (50 = at the floor). m_autoBlackBtn
+    // stays null; every use checks it.
+    makeRow("Black Level:", 0, 100, 50, m_blackSlider, m_blackLabel,
+            &m_blackTitleLabel);
     m_blackSlider->setObjectName("displayBlackLevelSlider");
-    m_autoBlackBtn->setObjectName("displayAutoBlackBtn");
     connect(m_blackSlider, &QSlider::valueChanged, this, [this](int v) {
         m_blackLabel->setText(m_kiwiWaterfallControlMode
             ? kiwiWaterfallDbText(v)
@@ -2272,28 +2213,6 @@ void SpectrumOverlayMenu::buildDisplayPanel()
             m_blackManualValue = v;
             emit wfBlackLevelChanged(v);
         }
-    });
-    // One click advances the mode: Off → SW → HW → Off, or Off → SW → Off on a
-    // radio that computes no black level of its own (AutoBlackMode::modeCount).
-    // In Kiwi mode the same button requests the computed auto floor/ceiling scale.
-    connect(m_autoBlackBtn, &QPushButton::clicked, this, [this]() {
-        if (m_kiwiWaterfallControlMode) {
-            if (m_autoBlackBtn) {
-                QSignalBlocker blocker(m_autoBlackBtn);
-                m_autoBlackBtn->setChecked(true);
-            }
-            emit kiwiWaterfallAutoRequested();
-            return;
-        }
-
-        // From what the operator can SEE, not from a masked intent: showing SW
-        // and advancing to HW-as-SW again would look like a dead button. A click
-        // is a real choice on this radio, so it overwrites the stored intent —
-        // the one case where losing a stashed HW is correct.
-        applyAutoBlackMode(
-            AutoBlackMode::nextOnClick(m_autoBlackMode,
-                                       m_radioSideAutoBlackAvailable),
-            /*emitSignals=*/true);
     });
     applyAutoBlackMode(m_autoBlackMode, /*emitSignals=*/false);  // initial label/slider role
 
@@ -2680,7 +2599,7 @@ void SpectrumOverlayMenu::buildDisplayPanel()
 
     // Display panel tooltips
     setFftAverageDescriptions({}, {});
-    m_fpsSlider->setToolTip("FFT refresh rate in frames per second.");
+    if (m_fpsSlider) m_fpsSlider->setToolTip("FFT refresh rate in frames per second.");
     m_fillSlider->setToolTip("Opacity of the spectrum fill area below the trace.");
     if (m_heatMapBtn) m_heatMapBtn->setToolTip("Colors the spectrum trace by signal strength instead of a single color.");
     if (m_showGridBtn) m_showGridBtn->setToolTip("Show or hide the frequency and dB grid lines on the panadapter.");
@@ -2688,13 +2607,13 @@ void SpectrumOverlayMenu::buildDisplayPanel()
     m_blackSlider->setToolTip("Waterfall black level. Decrease to darken the noise floor.");
     if (m_autoBlackBtn) m_autoBlackBtn->setToolTip("Automatically adjusts the waterfall black level to match the current noise floor.");
     m_rateSlider->setToolTip("Waterfall rate. 1% = slowest; 100% = fastest.");
-    if (m_wfBlankerThreshSlider) m_wfBlankerThreshSlider->setToolTip("Waterfall noise blanking threshold. Higher values blank less.");
+    if (m_wfBlankerThreshSlider) m_wfBlankerThreshSlider->setToolTip("How far (dB) a row's noise floor must jump above the recent rows to be blanked. Lower blanks more.");
     if (m_freqGridSpacingCmb) m_freqGridSpacingCmb->setToolTip("Frequency grid line spacing. Auto adapts to the current span.");
     if (m_freqScaleFontCmb) m_freqScaleFontCmb->setToolTip("Text size of the frequency scale labels. The scale strip grows to fit larger sizes.");
     if (m_colorSchemeCmb) m_colorSchemeCmb->setToolTip("Selects the waterfall color palette.");
     if (m_bgOpacitySlider) m_bgOpacitySlider->setToolTip("Opacity of the background image overlay.");
     if (m_floorEnableBtn) m_floorEnableBtn->setToolTip("Shows a noise floor reference line on the spectrum display.");
-    if (m_floorSlider) m_floorSlider->setToolTip("Vertical position of the noise floor reference line (% from top).");
+    if (m_floorSlider) m_floorSlider->setToolTip("Height of the noise floor line above the bottom of the spectrum (%). The display range follows the noise floor automatically.");
 
     // No adjustSize() here: toggleDisplayPanel() sizes the panel from the
     // scroll content's hint (clamped to the parent) on every show.
@@ -2809,7 +2728,8 @@ void SpectrumOverlayMenu::setFftAverageDescriptions(const QString& average, cons
     }
     if (m_weightedAvgBtn) {
         m_weightedAvgBtn->setToolTip(weighted.isEmpty()
-            ? tr("Weights recent FFT frames more heavily for faster response to signal changes.")
+            ? tr("Log Avg on: the frames are averaged in dB. The noise reads about 2.5 dB lower and grassier.\n"
+                 "Off: power average. The noise reads at its true level, matching the noise floor line and the S-meter.")
             : weighted);
         m_weightedAvgBtn->setAccessibleDescription(weighted);
     }
@@ -2840,8 +2760,10 @@ void SpectrumOverlayMenu::syncDisplaySettings(int avg, int fps, int fillPct,
 
     m_avgSlider->setValue(avg);
     m_avgLabel->setText(QString::number(avg));
-    m_fpsSlider->setValue(fps);
-    m_fpsLabel->setText(QString::number(fps));
+    if (m_fpsSlider) {
+        m_fpsSlider->setValue(fps);
+        m_fpsLabel->setText(QString::number(fps));
+    }
     m_fillSlider->setValue(fillPct);
     m_fillLabel->setText(QString::number(fillPct));
     m_weightedAvgBtn->setChecked(weightedAvg);
@@ -2857,16 +2779,19 @@ void SpectrumOverlayMenu::syncDisplaySettings(int avg, int fps, int fillPct,
     // Reflect the persisted 3-way auto-black mode on the cycle button + slider.
     // (m_blackManualValue / m_blackAutoOffsetValue were just set above; the
     // helper picks the right one for the mode and updates the label/tooltip.)
-    const int abMode = !autoBlack ? 0 : (autoBlackRadioSide ? 2 : 1);
+    // ANAN port (build 200): always SW (no mode button).
+    Q_UNUSED(autoBlack);
+    Q_UNUSED(autoBlackRadioSide);
+    const int abMode = 1;
     applyAutoBlackMode(abMode, /*emitSignals=*/false);
     syncWfLineDuration(rate);
 
     if (m_floorSlider) {
-        QSignalBlocker bf(m_floorSlider), be(m_floorEnableBtn);
-        m_floorSlider->setValue(floorPos);
-        m_floorLabel->setText(QString::number(floorPos));
-        m_floorEnableBtn->setChecked(floorEnable);
-        m_floorSlider->setEnabled(floorEnable);
+        QSignalBlocker bf(m_floorSlider);
+        const int height = 100 - std::clamp(floorPos, 1, 99);
+        m_floorSlider->setValue(height);
+        m_floorLabel->setText(QString::number(height));
+        Q_UNUSED(floorEnable);   // always on (build 199)
     }
     if (m_heatMapBtn) {
         QSignalBlocker bh(m_heatMapBtn);
@@ -3059,7 +2984,8 @@ void SpectrumOverlayMenu::syncKiwiWaterfallSettings(int minDbm, int maxDbm,
     m_gainLabel->setText(kiwiWaterfallDbText(clampedMax));
     m_blackSlider->setValue(clampedMin);
     m_blackLabel->setText(kiwiWaterfallDbText(clampedMin));
-    m_autoBlackBtn->setChecked(autoScale);
+    if (m_autoBlackBtn)
+        m_autoBlackBtn->setChecked(autoScale);
     m_rateSlider->setValue(clampedRate);
     m_rateLabel->setText(kiwiWaterfallRateText(clampedRate));
 }
@@ -3078,28 +3004,30 @@ void SpectrumOverlayMenu::syncNoiseFloorPosition(int pos)
 {
     if (!m_floorSlider) return;
 
-    const int clamped = std::clamp(pos, 1, 99);
+    const int height = 100 - std::clamp(pos, 1, 99);   // build 199: inverted
     QSignalBlocker block(m_floorSlider);
-    m_floorSlider->setValue(clamped);
+    m_floorSlider->setValue(height);
     if (m_floorLabel) {
-        m_floorLabel->setText(QString::number(clamped));
+        m_floorLabel->setText(QString::number(height));
     }
 }
 
 void SpectrumOverlayMenu::syncPanProcessingSettings(int avg, int fps,
                                                      bool weightedAvg)
 {
-    if (!m_avgSlider || !m_fpsSlider || !m_weightedAvgBtn) {
+    if (!m_avgSlider || !m_weightedAvgBtn) {
         return;
     }
 
     const QSignalBlocker avgBlocker(m_avgSlider);
-    const QSignalBlocker fpsBlocker(m_fpsSlider);
     const QSignalBlocker weightedBlocker(m_weightedAvgBtn);
     m_avgSlider->setValue(avg);
     m_avgLabel->setText(QString::number(avg));
-    m_fpsSlider->setValue(fps);
-    m_fpsLabel->setText(QString::number(fps));
+    if (m_fpsSlider) {   // no FFT FPS row since build 199
+        const QSignalBlocker fpsBlocker(m_fpsSlider);
+        m_fpsSlider->setValue(fps);
+        m_fpsLabel->setText(QString::number(fps));
+    }
     m_weightedAvgBtn->setChecked(weightedAvg);
 }
 
@@ -3170,10 +3098,11 @@ void SpectrumOverlayMenu::syncExtraDisplaySettings(bool blankerOn, float blanker
     }
     if (m_wfBlankerThreshSlider) {
         QSignalBlocker b(m_wfBlankerThreshSlider);
-        int sliderVal = static_cast<int>((blankerThresh - 1.0f) * 100.0f);
+        // Rounded: 1.15f - 1 is 0.1499..., which truncated to 14.
+        int sliderVal = qRound((blankerThresh - 1.0f) * 100.0f);
         m_wfBlankerThreshSlider->setValue(sliderVal);
         if (m_wfBlankerThreshLabel)
-            m_wfBlankerThreshLabel->setText(QString::number(blankerThresh, 'f', 2));
+            m_wfBlankerThreshLabel->setText(blankerMarginText(sliderVal));
     }
     if (m_bgOpacitySlider) {
         QSignalBlocker b(m_bgOpacitySlider);

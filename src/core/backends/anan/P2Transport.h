@@ -16,9 +16,21 @@
 //   sequence gaps           -> per-DDC sequence numbers
 // HL2-only controls (CL1 clock, IO board, ATU request, EP4 bandscope, RQST/ACK
 // registers) are no-ops here.
+//
+// ANAN port (build 194): the same boards with Protocol 1 firmware. One radio
+// state for both; the protocol is the one the radio answers discovery with
+// (Protocol 2 preferred), and only the wire differs: Protocol 1 carries the
+// state as the C&C rotation of the EP2 packets (P1Protocol.h, after Thetis
+// networkproto1.c), sent on the radio's clock (one per 126 codec samples of
+// EP6 traffic) with the speaker audio; the receivers come from the DDCs of
+// the Thetis plan in the EP6 packets, into the same alignment queues.
+// Transmit (build 197): the same TX path at 192 ksps, decimated 4:1 to the
+// 48 ksps I/Q of the EP2 packets; the radio mic from EP6 drives the modulator
+// as on Protocol 2. PureSignal: not yet.
 
 #include "core/backends/hl2/MetisClient.h"
 #include "core/backends/anan/P2Protocol.h"
+#include "core/backends/anan/P1Protocol.h"
 #include "core/backends/anan/AnanTxScope.h"
 
 #include <QByteArray>
@@ -134,6 +146,8 @@ public:
     }
 
     [[nodiscard]] const BoardProfile& boardProfile() const noexcept { return m_profile; }
+    // The session runs (or last ran) Protocol 1. Any thread.
+    [[nodiscard]] bool isProtocol1() const noexcept { return m_p1Atomic.load(std::memory_order_relaxed); }
     // ANAN-100D port: which ADC (0 = ADC1, 1 = ADC2) feeds receiver `rx`.
     Q_INVOKABLE void setReceiverAdc(int rx, int adc);
     // ANAN-100D port: step attenuator of one ADC (0 or 1), 0..31 dB.
@@ -282,6 +296,34 @@ private:
     static constexpr std::size_t kMaxAheadPackets = 8;
 
     void handleDatagram(std::span<const std::uint8_t> bytes, quint16 senderPort);
+    // ---- Protocol 1 (build 194) ----
+    void handleP1Ep6(std::span<const std::uint8_t> bytes);
+    // EP4 wide bandscope (Metis "How it works" V1.33: 512 x 16-bit raw ADC
+    // samples per packet, a buffer of 16384 starting at a sequence number
+    // whose low 5 bits are 0; ADC0 only).
+    void handleP1Ep4(std::span<const std::uint8_t> bytes);
+    int m_p1WbOrder = 0;            // 1 once the first EP4 packet was logged
+    QElapsedTimer m_p1WbClock;      // host-side frame rate (updateMs)
+    bool m_p1WbAdc2Logged = false;
+    void sendP1Ep2();
+    void sendP1Start();   // Thetis SendStartToMetis: C&C priming, then EF FE 04 01
+    [[nodiscard]] P1CcState p1State() const;
+    [[nodiscard]] int p1RateCode() const noexcept;
+    bool m_p1 = false;                       // this session is Protocol 1
+    std::atomic<bool> m_p1Atomic{false};
+    std::optional<BoardProfile> m_p1Pending; // a P1 reply, waiting for a P2 one
+    std::uint8_t m_p1Gateware = 0;
+    P1DdcPlan m_p1Plan;
+    int m_p1CcIdx = 0;
+    std::uint32_t m_p1Seq = 0;
+    quint64 m_p1AudioAcc = 0;                // EP2 pacing: rounds x 48000
+    int m_p1StartTries = 0;
+    P1TxDecimator m_p1TxDec;                 // 192 -> 48 ksps TX I/Q (m_txMutex)
+    std::vector<float> m_p1Mic;              // radio mic, gathered into 64-sample packets
+    int m_p1MicPhase = 0;
+    bool m_p1RateLogged = false;
+    std::optional<int> m_p1Firmware;
+    std::vector<std::vector<std::complex<float>>> m_p1Ddc;
     void configureSession(const BoardProfile& profile, bool fromReply);
     void stopSession(bool toPowerOnState);   // stop(): true; start(): false
     void sendGeneral();
@@ -337,7 +379,10 @@ private:
     std::atomic<unsigned> m_radioTxLevelSeq{0};    // +1 per status packet (HW Diag)
     void sendTransmitSpecific();
     void beginTxStream();
-    void fillTxPacket(std::complex<float>* out);
+    void fillTxPacket(std::complex<float>* out, int n = kDucSamplesPerPacket);
+    // Level statistics, the DUC snapshot and the TX panorama for n samples
+    // just filled at 192 ksps (both protocols). m_txMutex held.
+    void accountTxSamples(const std::complex<float>* buf, int n);
     // Sends the DUC packets due by m_txDevSamples (+ lead). m_txMutex held.
     void txPumpLocked();
     // sendto() on the session socket from any thread (AnanNativeUdp.h);

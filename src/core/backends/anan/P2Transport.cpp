@@ -1,5 +1,7 @@
 #include "core/backends/anan/P2Transport.h"
 #include "core/backends/anan/AnanNativeUdp.h"
+#include "core/backends/anan/P1Protocol.h"
+#include "core/AppSettings.h"
 
 #include <QStringList>
 #include <QCoreApplication>
@@ -167,6 +169,11 @@ QList<hl2::MetisClient::Discovered> P2Transport::discover(int timeoutMs,
     s.writeDatagram(reinterpret_cast<const char*>(pkt.data()),
                     static_cast<qint64>(pkt.size()), target,
                     port ? port : kRadioPort);
+    // Build 194: the same boards with Protocol 1 firmware answer only this.
+    const auto pkt1 = hl2::discoveryRequest();
+    s.writeDatagram(reinterpret_cast<const char*>(pkt1.data()),
+                    static_cast<qint64>(pkt1.size()), target,
+                    port ? port : kRadioPort);
 
     QDeadlineTimer deadline(timeoutMs);
     QSet<QString> seen;
@@ -176,6 +183,27 @@ QList<hl2::MetisClient::Discovered> P2Transport::discover(int timeoutMs,
         while (s.hasPendingDatagrams()) {
             const QNetworkDatagram dg = s.receiveDatagram();
             const QByteArray data = dg.data();
+            if (const auto r1 = hl2::parseDiscoveryReply(asBytes(data))) {
+                // Protocol 1 firmware (EF FE 02/03 ...): its board type mapped
+                // to the Protocol 2 id the profiles and models are keyed by.
+                const auto id = p2BoardIdForP1(r1->boardId);
+                if (!id)
+                    continue;
+                const QString key = dg.senderAddress().toString();
+                if (seen.contains(key))
+                    continue;
+                seen.insert(key);
+                noteProtocol1Host(dg.senderAddress().toIPv4Address(), true);
+                Discovered d;
+                d.reply.mac = r1->mac;
+                d.reply.gatewareVersion = r1->gatewareVersion;
+                d.reply.boardId = *id;
+                d.reply.streaming = r1->streaming;
+                d.reply.numRx = 2;   // RX1 / RX2 of the Thetis DDC plan
+                d.address = dg.senderAddress();
+                out.append(d);
+                continue;
+            }
             const auto reply = parseDiscoveryReply(asBytes(data));
             if (!reply || !reply->isSupportedAnan())
                 continue;
@@ -183,6 +211,7 @@ QList<hl2::MetisClient::Discovered> P2Transport::discover(int timeoutMs,
             if (seen.contains(key))
                 continue;
             seen.insert(key);
+            noteProtocol1Host(dg.senderAddress().toIPv4Address(), false);
             const BoardProfile profile =
                 boardProfileFor(reply->boardId).value_or(defaultBoardProfile());
             Discovered d;
@@ -216,6 +245,18 @@ bool P2Transport::start(const hl2::MetisClient::Params& params)
     m_configured = false;
     m_up = false;
     m_discoveredNumDdc = 0;
+    m_p1 = false;
+    m_p1Pending.reset();
+    m_p1Seq = 0;
+    m_p1CcIdx = 0;
+    m_p1AudioAcc = 0;
+    m_p1StartTries = 0;
+    m_p1RateLogged = false;
+    m_p1Firmware.reset();
+    m_p1WbOrder = 0;
+    m_p1WbClock.invalidate();
+    m_p1Mic.clear();
+    m_p1MicPhase = 0;
     m_expectedSeq.fill(std::nullopt);
     for (auto& q : m_pending)
         q.clear();
@@ -298,6 +339,10 @@ bool P2Transport::start(const hl2::MetisClient::Params& params)
     qCInfo(lcAnanP2T).nospace() << "ANAN P2 transport: Discovery to " << m_p.host.toString()
                                 << ":" << kRadioPort << " from local port " << m_sock->localPort()
                                 << (sent > 0 ? "" : " -- SEND FAILED: ") << (sent > 0 ? QString() : m_sock->errorString());
+    // Build 194: and the Protocol 1 one. A radio answers one of them; a
+    // Protocol 2 reply wins (onBoardWaitTimeout / handleDatagram).
+    sendDatagram(*m_sock, hl2::discoveryRequest(), m_p.host, kRadioPort,
+                 m_counters.txBytes, m_counters.txPackets);
     m_boardWait->start(kBoardWaitMs);
     m_connectTimer->start(kConnectTimeoutMs);
     m_linkClock.start();
@@ -318,6 +363,46 @@ void P2Transport::configureSession(const BoardProfile& profile, bool fromReply)
         std::lock_guard<std::mutex> lock(m_txMutex);
         m_psEnabled = false;
         qCWarning(lcAnanP2T) << "ANAN: PureSignal is not available on the" << m_profile.modelName << "-- off";
+    }
+    m_p1Atomic.store(m_p1, std::memory_order_relaxed);
+    if (m_p1) {
+        // Protocol 1 (build 194). PureSignal and the Odyssey status are
+        // Protocol 2 features here; the DDC plan is Thetis'.
+        m_profile.psSupported = false;
+        m_profile.odysseyStatus = false;
+        if (m_psEnabled) {
+            std::lock_guard<std::mutex> lock(m_txMutex);
+            m_psEnabled = false;
+        }
+        std::uint8_t planBoard = m_profile.boardId;
+        if (planBoard == kBoardIdHermes) {
+            // Protocol 1 reports ANAN-10E / 100B as HERMES; the operator's
+            // model choice (Setup > Radio) tells them apart (Thetis does the same).
+            const QByteArray key = AppSettings::instance()
+                .value(QStringLiteral("AnanModel_b%1").arg(int(kBoardIdHermes)), QString())
+                .toString().toLatin1();
+            const auto m = modelFromKey(key.constData(), std::size_t(key.size()));
+            if (m && (*m == AnanModel::Anan10E || *m == AnanModel::Anan100B))
+                planBoard = kBoardIdHermesII;
+        }
+        m_p1Plan = p1DdcPlanFor(planBoard);
+        m_numRx = std::clamp(m_numRx, 1, 2);
+        m_p1Ddc.assign(static_cast<std::size_t>(m_p1Plan.nddc), {});
+        qCInfo(lcAnanP2T).nospace()
+            << "ANAN P1 transport: " << m_profile.modelName << " (Protocol 1 firmware, gateware "
+            << int(m_p1Gateware) << "), " << m_p1Plan.nddc << " DDC, RX1 on DDC" << m_p1Plan.rxDdc[0]
+            << (m_numRx > 1 ? QStringLiteral(", RX2 on DDC%1").arg(m_p1Plan.rxDdc[1]) : QString())
+            << ", " << hl2::sampleRateHz(static_cast<hl2::SampleRate>(p1RateCode())) / 1000 << " ksps"
+            << "";
+        {
+            std::lock_guard<std::mutex> lock(m_spkMutex);
+            m_spkQueue.clear();
+        }
+        m_spkCv.notify_one();   // the speaker thread stands aside (it waits on m_p1Atomic)
+        sendP1Start();
+        m_keepalive->start();
+        m_watchdog->start();
+        return;
     }
     if (m_discoveredNumDdc > 0)
         m_numRx = std::min(m_numRx, receiversForBoard(m_profile, m_discoveredNumDdc));
@@ -349,6 +434,11 @@ void P2Transport::onBoardWaitTimeout()
 {
     if (!m_run || m_configured)
         return;
+    if (m_p1Pending) {
+        m_p1 = true;
+        configureSession(*m_p1Pending, true);
+        return;
+    }
     qCWarning(lcAnanP2T) << "ANAN P2 transport: no Discovery reply within" << kBoardWaitMs
                          << "ms; assuming" << defaultBoardProfile().modelName;
     configureSession(defaultBoardProfile(), false);
@@ -391,7 +481,12 @@ void P2Transport::stopSession(bool toPowerOnState)
         m_txQueue.clear();
     }
     if (m_sock) {
-        if (m_configured) {
+        if (m_configured && m_p1) {
+            // Thetis SendStopToMetis: EF FE 04 00 (sent twice, it is UDP).
+            for (int i = 0; i < 2; ++i)
+                sendDatagram(*m_sock, hl2::metisCommand(0x00), m_p.host, kRadioPort,
+                             m_counters.txBytes, m_counters.txPackets);
+        } else if (m_configured) {
             // Thetis' SendStop(): High Priority with run = 0, nothing else.
             sendHighPriority(false);
         }
@@ -422,12 +517,16 @@ void P2Transport::stopSession(bool toPowerOnState)
 
 void P2Transport::sendGeneral()
 {
+    if (m_p1)
+        return;   // Protocol 1: the C&C rotation carries the state
     const auto pkt = buildGeneral(m_profile.alexEnableMask, paEffective(), m_wb);
     sendDatagram(*m_sock, pkt, m_p.host, kRadioPort, m_counters.txBytes, m_counters.txPackets);
 }
 
 void P2Transport::sendDdcSpecific()
 {
+    if (m_p1)
+        return;
     std::vector<DdcConfig> ddcs;
     // A single-ADC board (Hermes, G2E) has only ADC0 to give.
     const int lastAdc = std::max(0, m_profile.numAdcs - 1);
@@ -441,7 +540,7 @@ void P2Transport::sendDdcSpecific()
 
 void P2Transport::sendHighPriority(bool run)
 {
-    if (!m_sock)
+    if (!m_sock || m_p1)
         return;
     std::array<std::uint32_t, kMaxDdcs> words{};
     for (int i = 0; i < m_numRx; ++i)
@@ -535,8 +634,14 @@ void P2Transport::onKeepaliveTick()
             emit radioPttChanged(false);
         }
     }
-    if (m_run && m_configured)
+    if (m_run && m_configured && m_p1) {
+        // Thetis retries the start until EP6 flows (5 x 10 ms); here every
+        // keepalive until I/Q or the connect timeout.
+        if (!m_up && ++m_p1StartTries <= 20)
+            sendP1Start();
+    } else if (m_run && m_configured) {
         sendHighPriority(true);
+    }
     // (06.11, build 178) The build-173 re-send of the whole configuration
     // while I/Q was missing is gone: Thetis does not watch the radio either.
     // A session is started (configureSession) and stopped (stop) as a whole.
@@ -929,6 +1034,36 @@ void P2Transport::onReadyRead()
 
 void P2Transport::handleDatagram(std::span<const std::uint8_t> bytes, quint16 senderPort)
 {
+    // Protocol 1 (build 194): every packet starts EF FE.
+    if (bytes.size() >= 11 && bytes[0] == 0xEF && bytes[1] == 0xFE) {
+        if (bytes[2] == 0x01) {
+            if (m_p1 && m_configured) {
+                if (bytes[3] == 0x04)
+                    handleP1Ep4(bytes);
+                else
+                    handleP1Ep6(bytes);
+            }
+            return;
+        }
+        if ((bytes[2] == 0x02 || bytes[2] == 0x03) && !m_configured && !m_p1Pending) {
+            if (const auto r1 = hl2::parseDiscoveryReply(bytes)) {
+                const auto id = p2BoardIdForP1(r1->boardId);
+                qCInfo(lcAnanP2T).nospace()
+                    << "ANAN transport: Protocol 1 Discovery reply: board " << int(r1->boardId)
+                    << ", gateware " << int(r1->gatewareVersion) << ", "
+                    << (r1->streaming ? "STREAMING (busy with a session)" : "idle")
+                    << (id ? QString() : QStringLiteral(" -- not a board this backend drives"));
+                if (id) {
+                    noteProtocol1Host(m_p.host.toIPv4Address(), true);
+                    m_p1Gateware = r1->gatewareVersion;
+                    m_p1Pending = boardProfileFor(*id);
+                    // A Protocol 2 reply would have come first; give it until
+                    // the board wait ends, then run Protocol 1.
+                }
+            }
+        }
+        return;
+    }
     const auto frame = parseDdcFrame(bytes);
     if (!frame) {
         if (const auto reply = senderPort == kRadioPort ? parseDiscoveryReply(bytes)
@@ -942,6 +1077,8 @@ void P2Transport::handleDatagram(std::span<const std::uint8_t> bytes, quint16 se
                     << int(reply->numDdc) << " DDC, "
                     << (reply->streaming ? "STREAMING (busy with a session)" : "idle");
                 m_discoveredNumDdc = reply->numDdc;
+                m_p1 = false;
+                noteProtocol1Host(m_p.host.toIPv4Address(), false);
                 const auto profile = boardProfileFor(reply->boardId);
                 configureSession(profile.value_or(defaultBoardProfile()), profile.has_value());
             }
@@ -1237,6 +1374,8 @@ void P2Transport::setReceiverCount(int count)
     int n = std::clamp(effectiveNumRx(p), 1, kMaxDdcs);
     if (m_discoveredNumDdc > 0)
         n = std::min(n, receiversForBoard(m_profile, m_discoveredNumDdc));
+    if (m_p1)
+        n = std::min(n, 2);   // RX1 / RX2 of the Protocol 1 DDC plan
     if (n == m_numRx)
         return;
     // New receivers start on receiver 0's frequency until Hl2Backend tunes them.
@@ -1418,6 +1557,20 @@ void P2Transport::setWideband(int adcMask, int updateMs)
         n = -1;
     qCInfo(lcAnanP2T) << "ANAN: wideband" << (wb.enableMask ? "on" : "off")
                       << "mask" << int(wb.enableMask) << "every" << int(wb.updateMs) << "ms";
+    if (m_p1) {
+        // Protocol 1: bit 1 of the start command runs the wide bandscope
+        // (EP4), which carries ADC0 only.
+        if ((wb.enableMask & 0x02) && !m_p1WbAdc2Logged) {
+            m_p1WbAdc2Logged = true;
+            qCWarning(lcAnanP2T) << "ANAN P1 transport: the Protocol 1 wide bandscope carries ADC1 only";
+        }
+        m_wbBuf[0].clear();
+        m_p1WbClock.invalidate();
+        if (m_run && m_configured && m_sock)
+            sendDatagram(*m_sock, hl2::metisCommand((wb.enableMask & 0x01) ? 0x03 : 0x01), m_p.host,
+                         kRadioPort, m_counters.txBytes, m_counters.txPackets);
+        return;
+    }
     if (m_run && m_configured)
         sendGeneral();
 }
@@ -1562,7 +1715,11 @@ void P2Transport::speakerSenderLoop()
         {
             std::unique_lock<std::mutex> lock(m_spkMutex);
             constexpr std::size_t kPkt = 2 * kCodecFramesPerPacket;
-            m_spkCv.wait(lock, [this] { return m_spkQuit || m_spkQueue.size() >= kPkt; });
+            // Protocol 1: the speaker audio rides in the EP2 packets (sendP1Ep2).
+            m_spkCv.wait(lock, [this] {
+                return m_spkQuit
+                    || (!m_p1Atomic.load(std::memory_order_relaxed) && m_spkQueue.size() >= kPkt);
+            });
             if (m_spkQuit)
                 return;
             for (auto& v : buf) {
@@ -1668,7 +1825,7 @@ void P2Transport::requestBandscopeFrame()
 
 void P2Transport::sendTransmitSpecific()
 {
-    if (!m_sock)
+    if (!m_sock || m_p1)
         return;
     const auto pkt = buildTransmitSpecific(m_txSpecSeq++, m_micBoost, m_cwKeyer, m_txAttDb,
                                            m_psEnabled ? m_psAttDb : -1, m_psAdc, m_micControl);
@@ -1702,6 +1859,8 @@ void P2Transport::setMox(bool keyed, const TxCoordinator::Operation& operation)
             m_ducSnapFill = 0;
         }
         beginTxStream();
+        if (m_p1)
+            m_p1TxDec.reset();
     } else {
         m_txTimer->stop();
         m_txQueue.clear();
@@ -1815,9 +1974,8 @@ void P2Transport::beginTxStream()
 static_assert(kDucSampleRateHz == anan::TxScope::kSampleRateHz,
               "TxScope's frequency axis assumes the DUC rate");
 
-void P2Transport::fillTxPacket(std::complex<float>* out)
+void P2Transport::fillTxPacket(std::complex<float>* out, int n)
 {
-    constexpr int n = kDucSamplesPerPacket;
     constexpr double fs = kDucSampleRateHz;
     if (m_toneAmp > 0.0) {
         const double step = 2.0 * std::numbers::pi * m_toneHz / fs;
@@ -1971,9 +2129,85 @@ void P2Transport::txDeviceTick(int ducSamples)
     txPumpLocked();
 }
 
+void P2Transport::accountTxSamples(const std::complex<float>* buf, int n)
+{
+    // Live = primed and 25 ms past the RF Delay (the start and the 2 ms
+    // rise are silent by design; an underflow is counted on its own).
+    const std::uint64_t liveFrom = static_cast<std::uint64_t>(
+        std::max(0, m_rfDelayMs.load(std::memory_order_relaxed))) * kDucSampleRateHz / 1000
+        + kDucSampleRateHz / 40;
+    const bool live = m_txPrimed && m_txSamplesOut > liveFrom && !m_cwMode && m_toneAmp <= 0.0;
+    for (int k = 0; k < n; ++k) {
+        const auto& v = buf[k];
+        const double p = double(v.real()) * v.real() + double(v.imag()) * v.imag();
+        if (live && p < 1e-8) {   // |x| < 1e-4 of full scale (-80 dBFS)
+            ++m_hostZeroRun;
+        } else {
+            if (m_hostZeroRun >= 64) {
+                ++m_hostZeroRuns;
+                m_hostZeroLastLen = m_hostZeroRun;
+                m_hostZeroLastSeq = m_txSeq;
+                m_hostZeroLastQueue = m_txQueue.size();
+            }
+            m_hostZeroRun = 0;
+        }
+        m_ovPeak = std::max(m_ovPeak, p);
+        m_ovSumSq += p;
+        m_hwDucPk = std::max(m_hwDucPk, p);
+        if (++m_hwDucN == kDucSampleRateHz / 2) {   // 0.5 s (PS HW peak)
+            m_hwDucLast.store(m_hwDucPk, std::memory_order_relaxed);
+            m_hwDucPk = 0.0;
+            m_hwDucN = 0;
+        }
+        m_ovWinSumSq += p;
+        m_envPeak = std::max(m_envPeak, p);
+        if (++m_envN == kDucSampleRateHz / 20) {   // 50 ms
+            emit txEnvelopePeak(static_cast<float>(10.0 * std::log10(std::max(m_envPeak, 1e-14))));
+            m_envPeak = 0.0;
+            m_envN = 0;
+        }
+        m_ovTrSum += p;
+        if (++m_ovTrN == kDucSampleRateHz / 4) {   // 250 ms trace
+            if (m_ovTrace.size() < 24)
+                m_ovTrace.push_back(m_ovTrSum / m_ovTrN);
+            m_ovTrSum = 0.0;
+            m_ovTrN = 0;
+        }
+        if (++m_ovWinCount == kDucSampleRateHz / 10) {   // 100 ms
+            m_ovWinMax = std::max(m_ovWinMax, m_ovWinSumSq / m_ovWinCount);
+            m_ovWinSumSq = 0.0;
+            m_ovWinCount = 0;
+        }
+    }
+    m_ovCount += static_cast<quint64>(n);
+    {
+        std::lock_guard<std::mutex> lock(m_ducSnapMutex);
+        if (m_ducSnap.size() != std::size_t(2 * kDucSnap))
+            m_ducSnap.assign(std::size_t(2 * kDucSnap), 0.0);
+        for (int k = 0; k < n; ++k) {
+            const auto& v = buf[k];
+            m_ducSnap[std::size_t(2 * m_ducSnapPos)] = v.real();
+            m_ducSnap[std::size_t(2 * m_ducSnapPos + 1)] = v.imag();
+            m_ducSnapPos = (m_ducSnapPos + 1) % kDucSnap;
+        }
+        m_ducSnapFill = std::min(kDucSnap, m_ducSnapFill + n);
+    }
+    // The TX panorama shows exactly these samples (TxScope applies the
+    // same clamp as buildDucIq), whatever produced them.
+    if (m_scopeFromFb.load(std::memory_order_relaxed)
+        && (!m_psEnabled || steadyMs() - m_scopeFbMs.load(std::memory_order_relaxed) > 200))
+        m_scopeFromFb.store(false, std::memory_order_relaxed);   // the feedback stopped: back to the DUC IQ
+    if (!m_scopeFromFb.load(std::memory_order_relaxed)
+        && m_txScope.push(buf, n, m_txScopeBins)) {
+        emit txScopeFrameReady(QList<float>(m_txScopeBins.begin(), m_txScopeBins.end()),
+                               static_cast<double>(m_txHz));
+    }
+}
+
 void P2Transport::txPumpLocked()
 {
-    if (!m_mox || !m_sessionUp.load(std::memory_order_acquire))
+    // Protocol 1: the EP2 sender takes the samples on the radio's clock.
+    if (!m_mox || m_p1 || !m_sessionUp.load(std::memory_order_acquire))
         return;
     const quint64 lead = quint64(kTxLeadPackets + m_leadAdj.load(std::memory_order_relaxed));
     const quint64 due = m_txDevSamples / kDucSamplesPerPacket + lead;
@@ -1986,75 +2220,7 @@ void P2Transport::txPumpLocked()
     int burst = 0;
     while (m_txPacketsSent < due && burst < 32) {
         fillTxPacket(buf);
-        // Live = primed and 25 ms past the RF Delay (the start and the 2 ms
-        // rise are silent by design; an underflow is counted on its own).
-        const std::uint64_t liveFrom = static_cast<std::uint64_t>(
-            std::max(0, m_rfDelayMs.load(std::memory_order_relaxed))) * kDucSampleRateHz / 1000
-            + kDucSampleRateHz / 40;
-        const bool live = m_txPrimed && m_txSamplesOut > liveFrom && !m_cwMode && m_toneAmp <= 0.0;
-        for (const auto& v : buf) {
-            const double p = double(v.real()) * v.real() + double(v.imag()) * v.imag();
-            if (live && p < 1e-8) {   // |x| < 1e-4 of full scale (-80 dBFS)
-                ++m_hostZeroRun;
-            } else {
-                if (m_hostZeroRun >= 64) {
-                    ++m_hostZeroRuns;
-                    m_hostZeroLastLen = m_hostZeroRun;
-                    m_hostZeroLastSeq = m_txSeq;
-                    m_hostZeroLastQueue = m_txQueue.size();
-                }
-                m_hostZeroRun = 0;
-            }
-            m_ovPeak = std::max(m_ovPeak, p);
-            m_ovSumSq += p;
-            m_hwDucPk = std::max(m_hwDucPk, p);
-            if (++m_hwDucN == kDucSampleRateHz / 2) {   // 0.5 s (PS HW peak)
-                m_hwDucLast.store(m_hwDucPk, std::memory_order_relaxed);
-                m_hwDucPk = 0.0;
-                m_hwDucN = 0;
-            }
-            m_ovWinSumSq += p;
-            m_envPeak = std::max(m_envPeak, p);
-            if (++m_envN == kDucSampleRateHz / 20) {   // 50 ms
-                emit txEnvelopePeak(static_cast<float>(10.0 * std::log10(std::max(m_envPeak, 1e-14))));
-                m_envPeak = 0.0;
-                m_envN = 0;
-            }
-            m_ovTrSum += p;
-            if (++m_ovTrN == kDucSampleRateHz / 4) {   // 250 ms trace
-                if (m_ovTrace.size() < 24)
-                    m_ovTrace.push_back(m_ovTrSum / m_ovTrN);
-                m_ovTrSum = 0.0;
-                m_ovTrN = 0;
-            }
-            if (++m_ovWinCount == kDucSampleRateHz / 10) {   // 100 ms
-                m_ovWinMax = std::max(m_ovWinMax, m_ovWinSumSq / m_ovWinCount);
-                m_ovWinSumSq = 0.0;
-                m_ovWinCount = 0;
-            }
-        }
-        m_ovCount += kDucSamplesPerPacket;
-        {
-            std::lock_guard<std::mutex> lock(m_ducSnapMutex);
-            if (m_ducSnap.size() != std::size_t(2 * kDucSnap))
-                m_ducSnap.assign(std::size_t(2 * kDucSnap), 0.0);
-            for (const auto& v : buf) {
-                m_ducSnap[std::size_t(2 * m_ducSnapPos)] = v.real();
-                m_ducSnap[std::size_t(2 * m_ducSnapPos + 1)] = v.imag();
-                m_ducSnapPos = (m_ducSnapPos + 1) % kDucSnap;
-            }
-            m_ducSnapFill = std::min(kDucSnap, m_ducSnapFill + kDucSamplesPerPacket);
-        }
-        // The TX panorama shows exactly these samples (TxScope applies the
-        // same clamp as buildDucIq), whatever produced them.
-        if (m_scopeFromFb.load(std::memory_order_relaxed)
-            && (!m_psEnabled || steadyMs() - m_scopeFbMs.load(std::memory_order_relaxed) > 200))
-            m_scopeFromFb.store(false, std::memory_order_relaxed);   // the feedback stopped: back to the DUC IQ
-        if (!m_scopeFromFb.load(std::memory_order_relaxed)
-            && m_txScope.push(buf, kDucSamplesPerPacket, m_txScopeBins)) {
-            emit txScopeFrameReady(QList<float>(m_txScopeBins.begin(), m_txScopeBins.end()),
-                                   static_cast<double>(m_txHz));
-        }
+        accountTxSamples(buf, kDucSamplesPerPacket);
         const auto pkt = buildDucIq(m_txSeq++, std::span<const std::complex<float>>(buf, kDucSamplesPerPacket));
         if (sendNative(pkt.data(), pkt.size(), kDucIqPort) < 0)
             m_nativeSendFails.fetch_add(1, std::memory_order_relaxed);
@@ -2176,6 +2342,355 @@ void P2Transport::setTxTestTone(double offsetHz, double amplitude,
     m_toneAmp = std::clamp(amplitude, 0.0, 1.0);
     if (m_toneAmp == 0.0)
         m_tonePhase = 0.0;
+}
+
+// ---- Protocol 1 (build 194) -------------------------------------------------
+//
+// The same radio state as Protocol 2, carried the Protocol 1 way (Thetis
+// ChannelMaster/networkproto1.c): the host sends EP2 packets to port 1024,
+// each with two of the 17 C&C registers in rotation and 126 samples of
+// speaker audio (and, later, TX I/Q); the radio sends EP6 packets with the
+// DDCs' I/Q interleaved, the mic word and its status in the C&C bytes.
+
+int P2Transport::p1RateCode() const noexcept
+{
+    // Protocol 1 DDCs stop at 384 ksps (C0 0 C1 bits 0-1).
+    return std::clamp(static_cast<int>(m_p.sampleRate), 0, 3);
+}
+
+P1CcState P2Transport::p1State() const
+{
+    P1CcState s;
+    s.mox = m_mox;
+    s.rateCode = p1RateCode();
+    s.nddc = m_p1Plan.nddc;
+    const std::uint32_t rx0 = m_rxHz[0];
+    const std::uint32_t rx1 = m_numRx > 1 ? m_rxHz[1] : rx0;
+    const std::uint32_t tx = m_txHz ? m_txHz : rx0;
+    // Thetis WriteMainLoop: the DDCs not carrying a receiver follow RX1
+    // (ANGELIA's DDC1, the diversity partner) or the TX frequency (the
+    // PureSignal pair).
+    s.ddcHz.fill(rx0);
+    if (s.nddc == 5) {
+        s.ddcHz[1] = rx0;
+        s.ddcHz[3] = tx;
+        s.ddcHz[4] = tx;
+    } else if (s.nddc == 4) {
+        s.ddcHz[2] = tx;
+        s.ddcHz[3] = tx;
+    }
+    s.ddcHz[static_cast<std::size_t>(m_p1Plan.rxDdc[0])] = rx0;
+    s.ddcHz[static_cast<std::size_t>(m_p1Plan.rxDdc[1])] = rx1;
+    s.txHz = tx;
+    // The ADC for each receiver's DDC (2 bits per DDC); ANGELIA's DDC1 goes
+    // with RX1. Single-ADC boards: all zero.
+    const int lastAdc = std::max(0, m_profile.numAdcs - 1);
+    const auto adcOf = [&](int rx) { return std::min(m_rxAdc[static_cast<std::size_t>(rx)], lastAdc); };
+    std::uint16_t adc = 0;
+    const auto setAdc = [&adc](int ddc, int a) {
+        adc = static_cast<std::uint16_t>((adc & ~(3u << (2 * ddc))) | (unsigned(a & 3) << (2 * ddc)));
+    };
+    setAdc(m_p1Plan.rxDdc[0], adcOf(0));
+    if (s.nddc == 5)
+        setAdc(1, adcOf(0));
+    if (m_numRx > 1)
+        setAdc(m_p1Plan.rxDdc[1], adcOf(1));
+    s.adcControl = adc;
+    // The filters follow the first receiver on ADC0, as on Protocol 2.
+    std::size_t filterRx = 0;
+    for (int i = 0; i < m_numRx; ++i) {
+        if (m_rxAdc[static_cast<std::size_t>(i)] == 0) {
+            filterRx = static_cast<std::size_t>(i);
+            break;
+        }
+    }
+    const double filterHz = static_cast<double>(m_rxHz[filterRx]);
+    s.openCollector = openCollectorBits(m_oc, filterHz, static_cast<double>(tx), m_mox, m_tunerStart);
+    s.dither = m_dither;
+    s.random = m_random;
+    s.antenna = m_mox ? m_txAnt : m_rxAnt;
+    s.duplex = true;
+    s.txAdc0AttDb = m_txAttDb;
+    s.driveLevel = cwDemoActive() ? 0 : m_drive;   // CW demo: no RF
+    s.micBoost = m_micBoost;
+    if (m_profile.alexScheme == AlexScheme::Orion2BandPass) {
+        // ORION MkII: band-pass banks per ADC, the LPF on the TX frequency.
+        std::size_t adc1Rx = filterRx;
+        for (int i = 0; i < m_numRx; ++i) {
+            if (m_rxAdc[static_cast<std::size_t>(i)] == 1) {
+                adc1Rx = static_cast<std::size_t>(i);
+                break;
+            }
+        }
+        s.alexHpf = p1AlexHpfBits(alexRxFilterFor(filterHz));
+        s.alex2Hpf = p1AlexHpfBits(alexRxFilterFor(static_cast<double>(m_rxHz[adc1Rx])));
+        s.alexLpf = p1AlexLpfBitsFor(static_cast<double>(tx));
+        s.rx2GroundOnTx = m_adc1GndOnTx;
+    } else {
+        // ANAN-10/100/100D/200D: high-pass ahead of ADC0, and the receive
+        // path through the TX low-pass bank, which therefore follows the
+        // receive frequency while receiving (as on Protocol 2).
+        s.alexHpf = p1AlexHpfBits(legacyAlexHpfFor(filterHz));
+        // The PA's harmonic filter on the TX frequency while transmitting.
+        s.alexLpf = p1AlexLpfBitsFor(m_mox ? static_cast<double>(tx) : filterHz);
+    }
+    if (m_lna && !m_mox)
+        s.alexHpf |= 0x40;   // 6 m preamp, the LNA button
+    s.paEnabled = paEffective();
+    // Mic connector (Thetis prn->mic: TRS bit 4, bias bit 5, PTT bit 6).
+    s.micControl = static_cast<std::uint8_t>(((m_micControl & kMicTipIsPtt) ? 0x10 : 0)
+                                             | ((m_micControl & kMicBiasOn) ? 0x20 : 0)
+                                             | ((m_micControl & kMicPttDisabled) ? 0x40 : 0));
+    s.rxAttDb = {m_adcAtt[0], m_adcAtt[1], 0};
+    s.cwKeyer = m_cwKeyer.enabled;
+    s.cwPaddleSwap = m_cwKeyer.paddleSwap;
+    s.cwMode = m_cwKeyer.mode;
+    s.cwSpeedWpm = m_cwKeyer.speedWpm;
+    s.cwWeight = m_cwKeyer.weight;
+    s.cwStrictSpacing = m_cwKeyer.strictSpacing;
+    s.cwSidetoneLevel = m_cwKeyer.sidetoneLevel / 2;   // 0..255 -> 0..127
+    s.cwRfDelayMs = m_cwKeyer.rfDelayMs;
+    s.cwHangMs = m_cwKeyer.hangMs;
+    s.cwSidetoneHz = m_cwKeyer.sidetoneHz;
+    return s;
+}
+
+void P2Transport::sendP1Start()
+{
+    if (!m_sock)
+        return;
+    // Thetis ForceCandCFrame + SendStartToMetis: the configuration and the
+    // frequencies first, so the radio starts on them, then "start I/Q".
+    const P1CcState st = p1State();
+    for (int i = 0; i < 2; ++i) {
+        const hl2::Cc a = p1Cc(0, st);
+        const hl2::Cc b = p1Cc(i == 0 ? 1 : 2, st);
+        sendDatagram(*m_sock, hl2::ep2Packet(m_p1Seq++, a, b), m_p.host, kRadioPort,
+                     m_counters.txBytes, m_counters.txPackets);
+    }
+    // Bit 0: I/Q + mic; bit 1: the wide bandscope (Metis "How it works").
+    sendDatagram(*m_sock, hl2::metisCommand((m_wb.enableMask & 0x01) ? 0x03 : 0x01), m_p.host,
+                 kRadioPort, m_counters.txBytes, m_counters.txPackets);
+}
+
+void P2Transport::sendP1Ep2()
+{
+    if (!m_sock)
+        return;
+    const P1CcState st = p1State();
+    const hl2::Cc a = p1Cc(m_p1CcIdx, st);
+    m_p1CcIdx = (m_p1CcIdx + 1) % kP1CcCount;
+    const hl2::Cc b = p1Cc(m_p1CcIdx, st);
+    m_p1CcIdx = (m_p1CcIdx + 1) % kP1CcCount;
+    auto pkt = hl2::ep2Packet(m_p1Seq++, a, b);
+    // Speaker audio, 126 stereo frames, if the mixer has produced them.
+    std::array<std::int16_t, 2 * hl2::kTxSamplesPerPacket> audio{};
+    bool have = false;
+    {
+        std::lock_guard<std::mutex> lock(m_spkMutex);
+        if (m_spkQueue.size() >= audio.size()) {
+            // Thetis sendProtocol1Samples swaps L and R ("firmware bug fix").
+            for (std::size_t i = 0; i < audio.size(); i += 2) {
+                audio[i + 1] = m_spkQueue.front();
+                m_spkQueue.pop_front();
+                audio[i] = m_spkQueue.front();
+                m_spkQueue.pop_front();
+            }
+            have = true;
+        }
+    }
+    if (have) {
+        hl2::ep2WriteTxAudio(pkt, std::span<const std::int16_t>(audio.data(), audio.size()));
+        m_diagSpkPkts.fetch_add(1, std::memory_order_relaxed);
+    }
+    // Transmit I/Q: 504 samples of the 192 ksps TX path (tone, CW, RF Delay,
+    // rise and priming as on Protocol 2), decimated to the 126 of this packet.
+    {
+        std::lock_guard<std::mutex> lock(m_txMutex);
+        if (st.mox) {
+            constexpr int kIn = hl2::kTxSamplesPerPacket * P1TxDecimator::kFactor;   // 504
+            std::array<std::complex<float>, kIn> buf;
+            std::array<std::complex<float>, hl2::kTxSamplesPerPacket> iq48;
+            fillTxPacket(buf.data(), kIn);
+            accountTxSamples(buf.data(), kIn);
+            m_p1TxDec.process(buf.data(), kIn, iq48.data());
+            hl2::ep2WriteTxIq(pkt, std::span<const std::complex<float>>(iq48.data(), iq48.size()));
+            ++m_txPacketsSent;
+            m_ducSentTotal.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+    sendDatagram(*m_sock, pkt, m_p.host, kRadioPort, m_counters.txBytes, m_counters.txPackets);
+}
+
+void P2Transport::handleP1Ep6(std::span<const std::uint8_t> bytes)
+{
+    if (bytes.size() != hl2::kUsbPacketSize || bytes[3] != 0x06)
+        return;   // EP4 (wideband) and anything else: not yet
+    const std::uint32_t seq = (std::uint32_t(bytes[4]) << 24) | (std::uint32_t(bytes[5]) << 16)
+                              | (std::uint32_t(bytes[6]) << 8) | std::uint32_t(bytes[7]);
+    if (m_expectedSeq[0] && seq != *m_expectedSeq[0]) {
+        const std::uint32_t lost = seq - *m_expectedSeq[0];
+        ++m_dropTotal;
+        ++m_diagGaps;
+        if (lost < 100000)
+            m_diagLost += lost;
+        emit dropsUpdated(m_dropTotal);
+        emit rxSequenceGap(lost);
+    }
+    m_expectedSeq[0] = seq + 1;
+
+    for (auto& v : m_p1Ddc)
+        v.clear();
+    const int rounds = hl2::ep6SamplesMulti(
+        bytes, std::span<std::vector<std::complex<float>>>(m_p1Ddc.data(), m_p1Ddc.size()));
+    if (rounds <= 0)
+        return;
+
+    // Status in the C&C bytes of both frames (Thetis MetisReadThreadMainLoop).
+    for (const std::size_t fs : {std::size_t{8}, std::size_t{8} + hl2::kFrameSize}) {
+        const auto st = parseP1Status(bytes.data() + fs);
+        if (!st)
+            continue;
+        if (st->overloadBits) {
+            m_ovlLatch.fetch_or(st->overloadBits & 3u, std::memory_order_acq_rel);
+            m_ovlDisplay.fetch_or(st->overloadBits & 3u, std::memory_order_acq_rel);
+        }
+        if (st->exciterRaw) m_excRaw = *st->exciterRaw;
+        if (st->fwdRaw) m_fwdRaw = *st->fwdRaw;
+        if (st->revRaw) m_revRaw = *st->revRaw;
+        if (st->userAdc0Raw) m_userAdc0Raw = *st->userAdc0Raw;
+        if (st->userAdc1Raw) m_userAdc1Raw = *st->userAdc1Raw;
+        if (st->supplyRaw) m_supplyRaw = *st->supplyRaw;
+        if (st->firmwareVersion && !m_p1Firmware) {
+            m_p1Firmware = st->firmwareVersion;
+            qCInfo(lcAnanP2T) << "ANAN P1 transport: radio firmware" << *st->firmwareVersion;
+        }
+    }
+    // Radio PTT and the keyer's paddles, from the last good frame (every
+    // frame carries them; P2's "status stopped" release does not apply).
+    for (const std::size_t fs : {std::size_t{8} + hl2::kFrameSize, std::size_t{8}}) {
+        const auto st = parseP1Status(bytes.data() + fs);
+        if (!st)
+            continue;
+        m_sinceStatus.start();
+        m_pttLine = st->ptt;
+        const bool paddle = m_cwKeyer.enabled && (st->dot || st->dash);
+        if (paddle != m_paddleDown) {
+            m_paddleDown = paddle;
+            if (paddle) {
+                m_paddleHangTimer->stop();
+                m_paddleHold = true;
+            } else if (m_paddleHold) {
+                m_paddleHangTimer->start(std::max(10, m_cwKeyer.hangMs));
+            }
+        }
+        updateRadioPtt();
+        break;
+    }
+    // The radio's mic (48 kHz, one word per rate/48k rounds), in 64-sample
+    // packets as on Protocol 2: it drives the modulator on the radio's clock
+    // (AnanTxEngine -> txDeviceTick).
+    {
+        const int rateHz = hl2::sampleRateHz(static_cast<hl2::SampleRate>(p1RateCode()));
+        p1MicSamples(bytes, m_p1Plan.nddc, std::max(1, rateHz / kCodecRateHz), m_p1MicPhase, m_p1Mic);
+        std::size_t used = 0;
+        while (m_p1Mic.size() - used >= static_cast<std::size_t>(kCodecFramesPerPacket)) {
+            std::vector<float> pkt(m_p1Mic.begin() + static_cast<std::ptrdiff_t>(used),
+                                   m_p1Mic.begin() + static_cast<std::ptrdiff_t>(used + kCodecFramesPerPacket));
+            used += kCodecFramesPerPacket;
+            m_sinceMic.start();
+            ++m_diagMicPkts;
+            m_micArrived.fetch_add(1, std::memory_order_relaxed);
+            emit codecMicReady(pkt);
+        }
+        m_p1Mic.erase(m_p1Mic.begin(), m_p1Mic.begin() + static_cast<std::ptrdiff_t>(used));
+    }
+
+    // The receivers' DDCs into the same alignment queues as Protocol 2.
+    for (int i = 0; i < m_numRx; ++i) {
+        const auto ddc = static_cast<std::size_t>(m_p1Plan.rxDdc[static_cast<std::size_t>(i)]);
+        if (ddc >= m_p1Ddc.size())
+            continue;
+        auto& q = m_pending[static_cast<std::size_t>(i)];
+        q.push_back(m_p1Ddc[ddc]);
+        if (q.size() > kMaxAheadPackets)
+            q.pop_front();
+    }
+    m_diagSamples += m_p1Ddc[0].size();
+    diagTick();
+    m_sinceIq.restart();
+    if (!m_up) {
+        m_up = true;
+        m_connectTimer->stop();
+        qCInfo(lcAnanP2T) << "ANAN P1 transport: I/Q streaming," << rounds << "samples per packet per DDC";
+        emit linkUp();
+    }
+    deliverAlignedBlocks();
+
+    // EP2 on the radio's clock: one packet per 126 codec (48 kHz) samples of
+    // the time this EP6 packet stands for (Thetis paces EP2 from the audio
+    // the radio's own I/Q produces, which comes to the same).
+    const int rateHz = hl2::sampleRateHz(static_cast<hl2::SampleRate>(p1RateCode()));
+    if (int(m_p.sampleRate) > 3 && !m_p1RateLogged) {
+        m_p1RateLogged = true;
+        qCWarning(lcAnanP2T) << "ANAN P1 transport: Protocol 1 runs at most 384 ksps; the radio streams 384";
+    }
+    m_p1AudioAcc += static_cast<quint64>(rounds) * 48000u;
+    const quint64 per = static_cast<quint64>(hl2::kTxSamplesPerPacket) * static_cast<quint64>(rateHz);
+    while (m_p1AudioAcc >= per) {
+        m_p1AudioAcc -= per;
+        sendP1Ep2();
+    }
+}
+
+void P2Transport::handleP1Ep4(std::span<const std::uint8_t> bytes)
+{
+    if (!(m_wb.enableMask & 0x01) || bytes.size() != hl2::kUsbPacketSize)
+        return;
+    const std::uint32_t seq = (std::uint32_t(bytes[4]) << 24) | (std::uint32_t(bytes[5]) << 16)
+                              | (std::uint32_t(bytes[6]) << 8) | std::uint32_t(bytes[7]);
+    const std::uint8_t* p = bytes.data() + 8;
+    if (m_p1WbOrder == 0) {
+        m_p1WbOrder = 1;
+        qCInfo(lcAnanP2T) << "ANAN P1 transport: wide bandscope packets arriving (seq" << seq << ")";
+    }
+    // 16-bit signed, LITTLE-endian, as cuSDR reads them (cusdr_dataEngine.cpp
+    // WideBandDataProcessor: s = (qint8)buf[i+1] << 8 | (quint8)buf[i]); the
+    // Metis document gives no byte order.
+    for (int i = 0; i < kWidebandSamplesPerPacket; ++i) {
+        const auto v = static_cast<std::int16_t>(std::uint16_t(p[2 * i]) | (std::uint16_t(p[2 * i + 1]) << 8));
+        m_wbScratch[static_cast<std::size_t>(i)] = static_cast<float>(v) / 32768.0f;
+    }
+    // "Start reading when the least significant 5 bits of the sequence number
+    // are zero. Then accumulate 16,384 words" -- 32 packets (cuSDR the same:
+    // (31 & seq) == 0, BIGWIDEBANDSIZE 16384 for Hermes firmware > 11 /
+    // Mercury > 32; older firmware sends 4096, not supported). A gap drops it.
+    constexpr int kPackets = 32;
+    auto& buf = m_wbBuf[0];
+    auto& next = m_wbNext[0];
+    if ((seq & 0x1Fu) == 0) {
+        buf.clear();
+        buf.reserve(kPackets * kWidebandSamplesPerPacket);
+        next = static_cast<qint64>(seq);
+    }
+    if (next < 0 || static_cast<qint64>(seq) != next) {
+        next = -1;
+        return;
+    }
+    for (float v : m_wbScratch)
+        buf.push_back(v);
+    ++next;
+    if (buf.size() >= kPackets * kWidebandSamplesPerPacket) {
+        // The radio sends buffers back to back; the host keeps the frame
+        // rate the Wideband Monitor asked for.
+        if (!m_p1WbClock.isValid() || m_p1WbClock.elapsed() >= m_wb.updateMs) {
+            m_p1WbClock.start();
+            ++m_diagWbFrames[0];
+            emit widebandFrame(0, buf);
+        }
+        buf.clear();
+        next = -1;
+    }
 }
 
 }  // namespace AetherSDR::anan

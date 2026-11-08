@@ -3,6 +3,7 @@
 #include "core/ThemeManager.h"
 #include "gui/Theme.h"
 
+#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QClipboard>
 #include <QComboBox>
@@ -18,6 +19,15 @@
 #include <QScrollArea>
 #include <QVBoxLayout>
 #include <QWidget>
+
+#include <functional>
+
+#ifdef HAVE_SERIALPORT
+#include <QSerialPortInfo>
+#ifdef Q_OS_WIN
+#include "SerialPortCombo.h"
+#endif
+#endif
 
 namespace AetherSDR {
 
@@ -77,6 +87,79 @@ const char* kEnableCheck =
 
 constexpr int kMinPort = 1024;
 constexpr int kMaxPort = 65535;
+
+// ANAN port (build 191): the CAT serial port column. Each OS lists its ports
+// its own way (populateSerialCombo); the list is re-read every time the popup
+// opens, so a USB adapter or a com0com pair added later shows up.
+class RefreshOnPopupCombo : public QComboBox {
+public:
+    std::function<void()> beforePopup;
+    void showPopup() override
+    {
+        if (beforePopup) beforePopup();
+        QComboBox::showPopup();
+    }
+};
+
+const int kSerialBauds[] = {4800, 9600, 19200, 38400, 57600, 115200};
+
+#ifdef Q_OS_WIN
+const char* kSerialTip =
+    "CAT on a COM port (Windows).\n"
+    "For a logger on this PC, install a virtual null-modem pair (com0com or\n"
+    "VSPE): choose one end here (e.g. COM11) and the other end in the logger\n"
+    "(COM12), radio type Kenwood TS-2000 (dialect TS-2000 or Flex).\n"
+    "A real COM port works the same. A port not present yet is retried every 3 s.\n"
+    "Off = TCP only.";
+#else
+const char* kSerialTip =
+    "PTY only: the logger opens the PTY path shown at the right (a virtual\n"
+    "serial port, Hamlib: Kenwood TS-2000 on that path).\n"
+    "Choose a device to serve CAT on a real serial port too (/dev/ttyUSB0 ...);\n"
+    "your user must be in the 'dialout' group. A device not present yet is\n"
+    "retried every 3 s.";
+#endif
+
+// Fill the serial combo for this OS; keeps `saved` selected (or "Off").
+void populateSerialCombo(QComboBox* combo, const QString& saved)
+{
+    const QSignalBlocker b(combo);
+    combo->clear();
+#ifdef HAVE_SERIALPORT
+    const auto ports = QSerialPortInfo::availablePorts();
+#ifdef Q_OS_WIN
+    // Windows: the COM ports present ("COM3 - USB Serial Port"), then COM1..32
+    // not present, in number order, as in the PTT/CW serial setup.
+    SerialPortCombo::populate(combo, nullptr, saved, ports);
+    combo->insertItem(0, QStringLiteral("Off"), QString());
+#else
+    // Linux: the PTY is always there; real devices by their /dev path.
+    combo->addItem(QStringLiteral("PTY only"), QString());
+    for (const auto& info : ports) {
+        const QString path = info.systemLocation();
+        const QString desc = info.description();
+        combo->addItem(desc.isEmpty() ? path : QStringLiteral("%1 - %2").arg(path, desc), path);
+    }
+    if (!saved.isEmpty() && combo->findData(saved) < 0)
+        combo->addItem(QStringLiteral("%1 (not present)").arg(saved), saved);
+#endif
+    const int idx = saved.isEmpty() ? 0 : combo->findData(saved);
+    combo->setCurrentIndex(idx >= 0 ? idx : 0);
+#else
+    combo->addItem(QStringLiteral("—"), QString());
+    combo->setEnabled(false);
+    combo->setToolTip(QStringLiteral("Built without Qt SerialPort"));
+    (void)saved;
+#endif
+}
+
+QString serialStateHtml(bool running, bool open, const QString& error)
+{
+    if (!running) return QStringLiteral("—");
+    if (open)     return QStringLiteral("<span style='color:#3cb043'>&#9679;</span>");
+    if (!error.isEmpty()) return QStringLiteral("<span style='color:#e03c31'>&#9679;</span>");
+    return QStringLiteral("—");
+}
 
 QString sliceLetter(int idx)
 {
@@ -340,7 +423,11 @@ void CatControlApplet::buildTableRows()
     addHdr("Dialect",  84, hcol++);
     addHdr("VFO A",    42, hcol++, Qt::AlignHCenter | Qt::AlignVCenter);
     addHdr("VFO B",    42, hcol++, Qt::AlignHCenter | Qt::AlignVCenter);
+    addHdr("Serial",  130, hcol++);
+    addHdr("Baud",     62, hcol++);
+    addHdr("",         14, hcol++);  // serial port state dot
 #ifndef Q_OS_WIN
+    const int ptyCol = hcol;
     addHdr("PTY",       0, hcol++);  // no fixed width — column stretches
 #endif
     addHdr("Clients",  48, hcol++);
@@ -381,9 +468,17 @@ void CatControlApplet::buildTableRows()
         row.dialectCombo->addItem("Rigctld",  static_cast<int>(CatDialect::Rigctld));
         row.dialectCombo->addItem("TS-2000",  static_cast<int>(CatDialect::TS2000));
         row.dialectCombo->addItem("Flex",     static_cast<int>(CatDialect::FlexCAT));
+        row.dialectCombo->addItem("Thetis",   static_cast<int>(CatDialect::Thetis));
+        row.dialectCombo->setToolTip(
+            "Rigctld: Hamlib NET rigctl (TCP / PTY).\n"
+            "TS-2000: Kenwood TS-2000 (ID019) - the safe choice for any logger.\n"
+            "Flex: TS-2000 + FlexRadio SmartSDR ZZ commands.\n"
+            "Thetis: TS-2000 + Thetis / PowerSDR ZZ commands (ID019),\n"
+            "for a logger set up for Thetis or PowerSDR.");
         {
-            QString d = settings.value(prefix + "Dialect", "Rigctld").toString();
-            int idx = (d == "TS2000") ? 1 : (d == "FlexCAT") ? 2 : 0;
+            const CatDialect d = catDialectFromKey(settings.value(prefix + "Dialect", "Rigctld").toString());
+            const int found = row.dialectCombo->findData(static_cast<int>(d));
+            const int idx = found >= 0 ? found : 0;
             QSignalBlocker b(row.dialectCombo);
             row.dialectCombo->setCurrentIndex(idx);
         }
@@ -420,6 +515,61 @@ void CatControlApplet::buildTableRows()
         row.vfoBCombo->lineEdit()->setAlignment(Qt::AlignCenter);
         row.vfoBCombo->lineEdit()->setReadOnly(true);
         row.vfoBCombo->lineEdit()->setFocusPolicy(Qt::NoFocus);
+
+        // Serial port (build 191) — per-OS list, refreshed when it opens
+        {
+            auto* sc = new RefreshOnPopupCombo;
+            row.serialCombo = sc;
+            ThemeManager::instance().applyStyleSheet(sc, kComboStyle);
+            sc->setFixedWidth(130);
+            sc->view()->setMinimumWidth(260);
+            sc->setToolTip(QString::fromUtf8(kSerialTip));
+            populateSerialCombo(sc, settings.value(prefix + "Serial", "").toString().trimmed());
+            sc->beforePopup = [sc]() {
+                populateSerialCombo(sc, sc->currentData().toString());
+            };
+        }
+        row.baudCombo = new QComboBox;
+        ThemeManager::instance().applyStyleSheet(row.baudCombo, kComboStyle);
+        row.baudCombo->setFixedWidth(62);
+        row.baudCombo->setToolTip("Serial speed, 8N1. Set the same in the logger;\n"
+                                  "a virtual pair (com0com, PTY) ignores it.");
+        for (int baud : kSerialBauds)
+            row.baudCombo->addItem(QString::number(baud), baud);
+        {
+            const int baud = settings.value(prefix + "SerialBaud", "9600").toInt();
+            const int idx = row.baudCombo->findData(baud);
+            QSignalBlocker b(row.baudCombo);
+            row.baudCombo->setCurrentIndex(idx >= 0 ? idx : 1);
+        }
+        row.serialState = new QLabel("—");
+        ThemeManager::instance().applyStyleSheet(row.serialState, kDimLabel);
+        row.serialState->setFixedWidth(14);
+        row.serialState->setAlignment(Qt::AlignCenter);
+        row.serialState->setTextFormat(Qt::RichText);
+        if (m_ports[i]) {
+            auto updateSerial = [this, i]() {
+                if (i >= m_rows.size()) return;
+                CatPort* p = m_ports[i];
+                const bool active = p->isRunning() && !p->serialPortName().isEmpty();
+                m_rows[i].serialState->setText(
+                    serialStateHtml(active, p->serialOpen(), p->serialError()));
+                m_rows[i].serialState->setToolTip(
+                    !active ? QString()
+                    : p->serialOpen() ? QStringLiteral("%1 open").arg(p->serialPortName())
+                    : QStringLiteral("%1: %2 (retrying)").arg(p->serialPortName(),
+                                                              p->serialError()));
+            };
+            {   // initial state: the port may already be running
+                CatPort* p = m_ports[i];
+                const bool active = p->isRunning() && !p->serialPortName().isEmpty();
+                row.serialState->setText(serialStateHtml(active, p->serialOpen(), p->serialError()));
+            }
+            connect(m_ports[i], &CatPort::serialStateChanged, this,
+                    [updateSerial](bool, const QString&) { updateSerial(); });
+            connect(m_ports[i], &CatPort::clientCountChanged, this,
+                    [updateSerial](int) { updateSerial(); });
+        }
 
         // PTY label — sizes to the actual path so the column is always wide enough
         row.ptyLabel = new QLabel("—");
@@ -474,6 +624,9 @@ void CatControlApplet::buildTableRows()
         m_grid->addWidget(row.dialectCombo, i+1, col++);
         m_grid->addWidget(row.vfoACombo,    i+1, col++);
         m_grid->addWidget(row.vfoBCombo,    i+1, col++);
+        m_grid->addWidget(row.serialCombo,  i+1, col++);
+        m_grid->addWidget(row.baudCombo,    i+1, col++);
+        m_grid->addWidget(row.serialState,  i+1, col++, Qt::AlignHCenter);
 #ifndef Q_OS_WIN
         m_grid->addWidget(row.ptyLabel,     i+1, col++);
 #endif
@@ -516,12 +669,25 @@ void CatControlApplet::buildTableRows()
                     emit configChanged();
                 });
 
+        connect(row.serialCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this, capturedI](int) {
+                    applyRowToSettings(capturedI);
+                    updateRowLocked(capturedI);
+                    emit configChanged();
+                });
+
+        connect(row.baudCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this, capturedI](int) {
+                    applyRowToSettings(capturedI);
+                    emit configChanged();
+                });
+
         m_rows.append(row);
         updateRowLocked(i);
     }
 
 #ifndef Q_OS_WIN
-    m_grid->setColumnStretch(5, 1);  // PTY column (index 5) expands to fill available width
+    m_grid->setColumnStretch(ptyCol, 1);  // PTY column expands to fill available width
 #endif
     m_grid->setRowStretch(m_portCount + 1, 1);
     m_rowsBuilt = true;
@@ -534,7 +700,9 @@ void CatControlApplet::updateRowLocked(int row)
     if (row >= m_rows.size()) return;
     PortRow& r = m_rows[row];
 
-    bool hasPort  = !r.portEdit->text().isEmpty();
+    // A serial port alone is enough to run the port (build 191).
+    bool hasPort  = !r.portEdit->text().isEmpty()
+                 || !r.serialCombo->currentData().toString().isEmpty();
     bool masterOn = AppSettings::instance().value("CatEnabled", "False").toString() == "True";
     // Lock on UI state only — isRunning() lags behind the checkbox by one applyCatPortCount cycle.
     bool locked   = masterOn && r.enableCheck->isChecked() && hasPort;
@@ -559,6 +727,8 @@ void CatControlApplet::updateRowLocked(int row)
     r.dialectCombo->setEnabled(!locked);
     r.vfoACombo->setEnabled(!locked);
     r.vfoBCombo->setEnabled(!locked && supportsVfoB);
+    r.serialCombo->setEnabled(!locked && CatPort::serialSupported());
+    r.baudCombo->setEnabled(!locked && CatPort::serialSupported());
 }
 
 // Restore the row's VFO B selector to the saved value when the (new) dialect
@@ -593,11 +763,11 @@ void CatControlApplet::applyRowToSettings(int row)
 
     s.setValue(prefix + "Enabled", r.enableCheck->isChecked() ? "True" : "False");
     s.setValue(prefix + "Port",    r.portEdit->text());
+    s.setValue(prefix + "Serial",  r.serialCombo->currentData().toString());
+    s.setValue(prefix + "SerialBaud", QString::number(r.baudCombo->currentData().toInt()));
 
     const auto dialect = static_cast<CatDialect>(r.dialectCombo->currentData().toInt());
-    const QString dialectKey = (dialect == CatDialect::TS2000)  ? "TS2000"
-                             : (dialect == CatDialect::FlexCAT) ? "FlexCAT"
-                             :                                    "Rigctld";
+    const QString dialectKey = catDialectKey(dialect);
     s.setValue(prefix + "Dialect", dialectKey);
     // VFO A always applies; persistVfo preserves a saved slice the combo can't
     // currently display (smaller radio) instead of clobbering it.

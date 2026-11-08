@@ -2170,6 +2170,8 @@ private:
     float m_wfBlankerRing[WF_BLANKER_N]{};
     int   m_wfBlankerRingIdx{0};
     int   m_wfBlankerRingCount{0};
+    int   m_wfBlankerRejectRun{0};       // consecutive impulse rows (build 201)
+    std::vector<float> m_wfBlankerScratch;   // rowMedian() workspace
     QVector<quint8> m_wfLastGoodLevels;
     QVector<quint8> m_wfLastGoodSupplementalLevels;
     WaterfallBlankerFrameBundle m_wfLastGoodFrames;

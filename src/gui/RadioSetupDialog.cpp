@@ -75,6 +75,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QList>
+#include <QDoubleSpinBox>
 #include <QPushButton>
 #include <QSlider>
 #include <QComboBox>
@@ -131,6 +132,7 @@
 #include <limits>
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <functional>
 #include <memory>
@@ -4409,6 +4411,92 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
                  0, 100, 64, false,
                  QStringLiteral("Maximum transmit level on %1: what the RF Power and Tune Power "
                                 "sliders reach at 100 %, in percent of the full drive."));
+    // PA Power Law as its mid-scale point (operator, 07.11, build 193): the
+    // drive the RF Power and Tune sliders give at 50 %, in % of the calibrated
+    // full drive (Hl2Backend::applyDrive). Every PA compresses differently, so
+    // it is set per radio. Two wattmeter readings at slider 100 % and 50 %
+    // correct it: the PA's law is W ~ drive^g, and with the mid point m in
+    // force W50/W100 = m^g, so g = ln(W50/W100) / ln(m); half the power at
+    // 50 % then needs m' = 0.5^(1/g).
+    {
+        using B = hl2::Hl2Backend;
+        auto& st = AppSettings::instance();
+        auto* lawGroup = new QGroupBox("PA Power Law");
+        auto* lv = new QVBoxLayout(lawGroup);
+        lv->setSpacing(6);
+        auto* row = new QHBoxLayout;
+        auto* midLbl = new QLabel("Drive at slider 50 %:");
+        applyLabelStyle(midLbl);
+        auto* mid = new QDoubleSpinBox;
+        mid->setObjectName(QStringLiteral("ananPaMidDrive"));
+        mid->setRange(B::kAnanPaMidDriveMin, B::kAnanPaMidDriveMax);
+        mid->setDecimals(1);
+        mid->setSingleStep(0.5);
+        mid->setSuffix(QStringLiteral(" %"));
+        mid->setValue(B::ananPaMidDrivePercent());
+        mid->setToolTip(QStringLiteral(
+            "Mid-scale of the RF Power and Tune sliders: the drive they give at 50 %,\n"
+            "in percent of the drive set for 100 % by the PA Level Calibration.\n"
+            "70.7 % = an ideal PA (power ~ drive^2). Lower for a PA that compresses.\n"
+            "Default 46.7 % (measured on an ANAN-100D)."));
+        connect(mid, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [](double v) {
+            auto& s = AppSettings::instance();
+            s.setValue(QStringLiteral("AnanPaMidDrivePct"), QString::number(v, 'f', 1));
+            s.save();
+        });
+        auto* reset = new QPushButton("Default");
+        reset->setToolTip(QStringLiteral("Back to 46.7 %"));
+        connect(reset, &QPushButton::clicked, this, [mid] {
+            mid->setValue(hl2::Hl2Backend::kAnanPaMidDriveDefault);
+        });
+        row->addWidget(midLbl);
+        row->addWidget(mid);
+        row->addWidget(reset);
+        row->addSpacing(16);
+        auto* m100Lbl = new QLabel("Measured at 100 %:");
+        applyLabelStyle(m100Lbl);
+        auto* w100 = new QDoubleSpinBox;
+        w100->setRange(0.0, 2000.0);
+        w100->setDecimals(1);
+        w100->setSuffix(QStringLiteral(" W"));
+        auto* m50Lbl = new QLabel("at 50 %:");
+        applyLabelStyle(m50Lbl);
+        auto* w50 = new QDoubleSpinBox;
+        w50->setRange(0.0, 2000.0);
+        w50->setDecimals(1);
+        w50->setSuffix(QStringLiteral(" W"));
+        auto* calc = new QPushButton("Apply");
+        calc->setToolTip(QStringLiteral(
+            "With a wattmeter, on one band (TUNE is easiest): the power at slider 100 %\n"
+            "and at slider 50 %, measured with the value above, then Apply."));
+        connect(calc, &QPushButton::clicked, this, [mid, w100, w50] {
+            const double a = w100->value(), b = w50->value();
+            const double m = mid->value() / 100.0;
+            if (a <= 0.0 || b <= 0.0 || b >= a || m <= 0.0 || m >= 1.0)
+                return;
+            const double g = std::log(b / a) / std::log(m);   // PA law W ~ drive^g
+            if (!(g > 0.0))
+                return;
+            mid->setValue(std::clamp(100.0 * std::pow(0.5, 1.0 / g),
+                                     hl2::Hl2Backend::kAnanPaMidDriveMin,
+                                     hl2::Hl2Backend::kAnanPaMidDriveMax));
+        });
+        row->addWidget(m100Lbl);
+        row->addWidget(w100);
+        row->addWidget(m50Lbl);
+        row->addWidget(w50);
+        row->addWidget(calc);
+        row->addStretch(1);
+        lv->addLayout(row);
+        auto* hint = new QLabel(
+            "The same value is used for RF Power and Tune. Set so that slider 50 % gives half "
+            "the power of slider 100 %; measure both points with the value in force, Apply "
+            "corrects it. It takes effect at once.");
+        setTone(hint, Tone::Hint);
+        hint->setWordWrap(true);
+        lv->addWidget(hint);
+        vbox->addWidget(lawGroup);
+    }
     // Power Meter Calibration: per band, the displayed forward power is
     // corrected by -50..+50 %; SWR is computed from the uncorrected readings.
     bandCalGroup(QStringLiteral("Power Meter Calibration"), QStringLiteral("AnanPwrCal_"),

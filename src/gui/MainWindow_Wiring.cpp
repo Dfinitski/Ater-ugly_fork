@@ -173,6 +173,8 @@ bool memoryRevealTargetMatches(double actualMhz, double targetMhz)
 // Pan-follow tuning internals — moved with their only callers from
 // MainWindow.cpp's anonymous namespace (#3351 Phase 1d).
 constexpr int kPanFollowAnimationDurationMs = 110;
+// ANAN port (build 199): the panadapter FFT rate (no FFT FPS control).
+constexpr int kFixedFftFps = 25;
 
 double quantizeIncrementalFollowDelta(double overshootMhz, double stepMhz)
 {
@@ -3303,12 +3305,9 @@ void MainWindow::wirePanDisplayStatus(PanadapterApplet* applet,
         // FFT FPS where the client is its declared owner. Restored into the
         // widget BEFORE the request below, which seeds the shaper and the pan
         // model from it.
-        if (clientPersistsFftFps()) {
-            if (const auto savedFps = ClientDisplaySettings::fftFps(
-                    m_radioModel.settingsScope(), sw->panIndex(), true)) {
-                sw->setFftFps(*savedFps);
-            }
-        }
+        // ANAN port (build 199): no FFT FPS control; the rate is fixed at
+        // 25, whatever an earlier build saved.
+        sw->setFftFps(kFixedFftFps);
         m_radioModel.requestPanDisplayRates(panId, sw->fftFps(),
                                             sw->wfLineDuration());
         // Same for the averaging controls: without these the backend runs at
@@ -4727,7 +4726,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         sw->setBackgroundImage(":/bg-default.jpg");
         sw->setBackgroundOpacity(80);
         sw->setBackgroundFillColor(QColor(0x0a, 0x0a, 0x14));
-        sw->setNoiseFloorEnable(false);
+        sw->setNoiseFloorEnable(true);   // always on since build 199
         sw->setNoiseFloorPosition(75);
         sw->setFreqGridSpacing(0);  // Auto (#1390)
         sw->setFreqScaleFontPt(8);  // default scale text size (#3501)

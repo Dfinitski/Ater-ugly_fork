@@ -2634,10 +2634,11 @@ void SpectrumWidget::loadSettings()
         m_fftLineColor = parsedLine;
     m_wfColorGain    = s.value(settingsKey("DisplayWfColorGain"), "50").toInt();
     m_wfBlackLevel   = s.value(settingsKey("DisplayWfBlackLevel"), "15").toInt();
-    m_wfAutoBlack    = s.value(settingsKey("DisplayWfAutoBlack"), "True").toString() == "True";
+    // ANAN port (build 200): auto-black always SW (client-side), no button.
+    m_wfAutoBlack    = true;
     m_wfAutoBlackOffset = s.value(settingsKey("DisplayWfAutoBlackOffset"), "50").toInt();
     // Auto-black source defaults to client-side (legacy look); radio-side opt-in.
-    m_wfAutoBlackRadioSide = s.value(settingsKey("DisplayWfAutoBlackRadioSide"), "False").toString() == "True";
+    m_wfAutoBlackRadioSide = false;
     PerfTelemetry::instance().setWaterfallRate(m_wfLineDuration);
     resetWfTimeScale();
     // NB Waterfall Blanker (#277)
@@ -2660,8 +2661,10 @@ void SpectrumWidget::loadSettings()
         s.value(settingsKey("DisplayFreqScaleFontPt"), "8").toInt(), 8, 14);
     m_fftLineWidth   = s.value(settingsKey("DisplayFftLineWidth"), "1.0").toFloat();
     loadFftTraceShaping();
-    // ANAN-100D port: auto noise-floor tracking on by default.
-    m_noiseFloorEnable = s.value(settingsKey("DisplayNoiseFloorEnable"), "True").toString() == "True";
+    // ANAN port (build 199): the noise-floor tracking is always on; the
+    // Display panel has no switch for it any more, so a saved "False" from an
+    // earlier build is ignored.
+    m_noiseFloorEnable = true;
     const int legacyNoiseFloorPosition = std::clamp(
         s.value(settingsKey("DisplayNoiseFloorPosition"), "75").toInt(), 1, 99);
     const int legacyDssFloorDepth = std::clamp(
@@ -2916,30 +2919,10 @@ QString SpectrumWidget::fftTraceShapingKey() const
 
 void SpectrumWidget::loadFftTraceShaping()
 {
-    // Defaults first: both off, so an absent or unreadable object leaves the
-    // trace exactly as drawn without them.
     m_fftSmoothing = 0;
     m_fftDecombHz = 0;
-
-    const QString raw = AppSettings::instance()
-        .value(fftTraceShapingKey(), QString()).toString();
-    if (raw.trimmed().isEmpty()) {
-        return;
-    }
-    QJsonParseError error;
-    const QJsonDocument doc = QJsonDocument::fromJson(raw.toUtf8(), &error);
-    if (error.error != QJsonParseError::NoError || !doc.isObject()) {
-        // Keep the defaults and do not overwrite: see loadDisplay3DSettings().
-        qCWarning(lcGui).noquote()
-            << "SpectrumWidget: ignoring invalid DisplayFftTraceShaping"
-            << fftTraceShapingKey() << error.errorString();
-        return;
-    }
-    const QJsonObject obj = doc.object();
-    m_fftSmoothing = std::clamp(obj.value(QStringLiteral("smoothPx")).toInt(0),
-                                0, AetherSDR::kFftSmoothingMaxHalfWidthPx);
-    m_fftDecombHz = std::clamp(obj.value(QStringLiteral("decombHz")).toInt(0),
-                               0, AetherSDR::kFftDecombMaxHz);
+    // ANAN port (build 199): no FFT Smooth / De-comb controls; both stay off
+    // whatever an earlier build saved (the saved object is not read).
 }
 
 void SpectrumWidget::saveFftTraceShaping()
@@ -5195,6 +5178,7 @@ void SpectrumWidget::resetWfBlankerState()
 {
     m_wfBlankerRingCount = 0;
     m_wfBlankerRingIdx = 0;
+    m_wfBlankerRejectRun = 0;
     m_wfLastGoodLevels.clear();
     m_wfLastGoodSupplementalLevels.clear();
     m_wfLastGoodFrames = {};
@@ -9302,6 +9286,9 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
 
     QVector<quint8> levels(destWidth, 0);
     QVector<quint8> supplementalLevels(destWidth, 0);
+    // Both rows from the tile, every value lowered by `shift` (the NB blanker
+    // brings an impulse row's floor back down with it; 0 otherwise).
+    auto buildLevels = [&](float shift) {
     if (tileBw > 0) {
         for (int x = 0; x < destWidth; ++x) {
             const double freq = panStartMhz + (static_cast<double>(x) / destWidth) * displayBw;
@@ -9313,7 +9300,7 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
                 const float i0 = binsIntensity[binIdx];
                 const float i1 = (binIdx + 1 < srcSize) ? binsIntensity[binIdx + 1] : i0;
                 levels[x] = encodeWaterfallLevel(
-                    intensityToWaterfallLevel(i0 + frac * (i1 - i0)));
+                    intensityToWaterfallLevel(i0 + frac * (i1 - i0) - shift));
             }
 
             // Preserve the complete native tile independently from the exact
@@ -9336,9 +9323,11 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
                     * (binsIntensity[supplementalNext]
                        - binsIntensity[supplementalBin]);
             supplementalLevels[x] = encodeWaterfallLevel(
-                intensityToWaterfallLevel(supplementalIntensity));
+                intensityToWaterfallLevel(supplementalIntensity - shift));
         }
     }
+    };
+    buildLevels(0.0f);
 
     const double incomingSupplementalCenterMhz =
         (lowFreqMhz + highFreqMhz) * 0.5;
@@ -9361,11 +9350,21 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
     // visible as a frozen, striped waterfall.  Freezing the ring across TX
     // means post-TX rows are compared against the pre-TX baseline instead.
     if (m_wfBlankerEnabled && !m_transmitting) {
-        float rowSum = 0.0f;
-        const int binCount = binsIntensity.size();
-        for (int i = 0; i < binCount; ++i)
-            rowSum += binsIntensity[i];
-        const float rowMean = (binCount > 0) ? (rowSum / binCount) : 0.0f;
+        // The row's level: the mean for a tile (#277); for an absolute dB row
+        // (ANAN: one unaveraged FFT frame) the median, i.e. the noise floor,
+        // which strong signals do not move and a broadband impulse lifts
+        // (build 201; see WaterfallImpulseBlanker.h).
+        float rowMean = 0.0f;
+        if (m_panBinsAbsolute) {
+            rowMean = WaterfallImpulseBlanker::rowMedian(binsIntensity,
+                                                         m_wfBlankerScratch);
+        } else {
+            float rowSum = 0.0f;
+            const int binCount = binsIntensity.size();
+            for (int i = 0; i < binCount; ++i)
+                rowSum += binsIntensity[i];
+            rowMean = (binCount > 0) ? (rowSum / binCount) : 0.0f;
+        }
 
         // Compute rolling baseline
         float baseline = 0.0f;
@@ -9378,13 +9377,50 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
         // row's unit: a ratio for a tile, a dB difference for an absolute dB
         // row. The unit is the declared capability, not the sign of the data —
         // see WaterfallImpulseBlanker.h.
-        const WaterfallImpulseBlanker::Decision blankerDecision =
+        WaterfallImpulseBlanker::Decision blankerDecision =
             WaterfallImpulseBlanker::decide(
                 m_panBinsAbsolute
                     ? WaterfallImpulseBlanker::RowKind::AbsoluteDb
                     : WaterfallImpulseBlanker::RowKind::TileIntensity,
                 m_wfBlankerRingCount, baseline, rowMean, m_wfBlankerThreshold);
-        if (blankerDecision.impulse) {
+        // The soft floor shift for an absolute row, while the ring has its
+        // history (build 203; WaterfallImpulseBlanker::floorShiftDb).
+        float floorShift = 0.0f;
+        if (m_panBinsAbsolute
+                && m_wfBlankerRingCount >= WaterfallImpulseBlanker::kMinHistoryRows
+                && std::isfinite(baseline)) {
+            floorShift = WaterfallImpulseBlanker::floorShiftDb(
+                rowMean - baseline,
+                WaterfallImpulseBlanker::dbMargin(m_wfBlankerThreshold));
+        }
+        // A level that stays is not an impulse (build 201): after
+        // kMaxRejectedRun rejected rows in a row, restart the ring from this
+        // row and draw it.
+        if (blankerDecision.impulse
+                && ++m_wfBlankerRejectRun >= WaterfallImpulseBlanker::kMaxRejectedRun) {
+            m_wfBlankerRingCount = 0;
+            m_wfBlankerRingIdx = 0;
+            blankerDecision = {false, rowMean};
+            floorShift = 0.0f;
+        }
+        if (floorShift > 0.0f && m_panBinsAbsolute) {
+            buildLevels(floorShift);
+            // The SW auto-black above took this row's floor before the
+            // shift; its 5 % step, moved by the same amount (the estimate is
+            // linear in a whole-row offset), as if it had seen the lowered row.
+            if (m_wfAutoBlack)
+                m_autoBlackThresh -= 0.05f * floorShift;
+        }
+        if (!blankerDecision.impulse)
+            m_wfBlankerRejectRun = 0;
+        if (blankerDecision.impulse && m_panBinsAbsolute) {
+            // ANAN port (build 202): an absolute dB row (one unaveraged FFT
+            // frame) keeps its own content, lowered by floorShift above, so
+            // the floor sits at the baseline and the signals run on through
+            // it. Substituting the last clean row (below) drew an older,
+            // quieter row: a dark stripe across a busy band, and a gap in
+            // every signal. Such a row is not cached as a good one.
+        } else if (blankerDecision.impulse) {
             // Impulse detected — replace the complete last-good capture. The
             // two pixel rows and their frequency frames are one value: mixing
             // an old viewport row with the rejected tile's supplemental row
@@ -11744,9 +11780,37 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
         const double hzPerPx = (effectiveBandwidthMhz() * 1.0e6) / contentWidth();
         int hz = m_filterDragStartHz + static_cast<int>(std::round((mx - m_filterDragStartX) * hzPerPx));
 
-        if (m_draggingFilter == FilterEdge::Low) {
+        // ANAN port (build 204): as in RX Controls (the receive filter ranges
+        // the backend declares), the edge nearest the carrier stops at it --
+        // USB / DIGU keep every edge >= 0, LSB / DIGL every edge <= 0 -- and
+        // the two edges keep at least kMinFilterWidthHz between them.
+        constexpr int kMinFilterWidthHz = 10;
+        const QString mode = ao->mode.toUpper();
+        const bool upperSideband = mode == QLatin1String("USB") || mode == QLatin1String("DIGU");
+        const bool lowerSideband = mode == QLatin1String("LSB") || mode == QLatin1String("DIGL");
+        // ANAN port (build 205): AM / SAM / FM are symmetric about the
+        // carrier. The dragged edge stays on its own side and the other edge
+        // mirrors it. At least 100 Hz from the carrier (build 206): the WDSP
+        // channel refuses an AM passband narrower than +-100 Hz
+        // (WdspChannel::setFilter), so a narrower drag reached nothing.
+        const bool symmetric = mode == QLatin1String("AM") || mode == QLatin1String("SAM")
+            || mode == QLatin1String("FM") || mode == QLatin1String("NFM");
+        constexpr int kMinSymmetricEdgeHz = 100;
+        if (symmetric) {
+            const int edge = m_draggingFilter == FilterEdge::Low
+                ? std::max(-hz, kMinSymmetricEdgeHz)
+                : std::max(hz, kMinSymmetricEdgeHz);
+            ao->filterLowHz = -edge;
+            ao->filterHighHz = edge;
+        } else if (m_draggingFilter == FilterEdge::Low) {
+            hz = std::min(hz, ao->filterHighHz - kMinFilterWidthHz);
+            if (upperSideband)
+                hz = std::max(hz, 0);
             ao->filterLowHz = hz;
         } else {
+            hz = std::max(hz, ao->filterLowHz + kMinFilterWidthHz);
+            if (lowerSideband)
+                hz = std::min(hz, 0);
             ao->filterHighHz = hz;
         }
         markOverlayDirty();

@@ -19,7 +19,8 @@ namespace AetherSDR {
 // CAT Control Applet — docked and floating views in one widget.
 //
 // Docked:   [Enable CAT]  "Pop out for configuration."
-// Floating: per-port table (En / Port / Dialect / VFO A / VFO B / PTY / Clients)
+// Floating: per-port table (En / Port / Dialect / VFO A / VFO B / Serial / Baud /
+//           PTY (not Windows) / Clients)
 //
 // AppletPanel calls setFloating(true/false) when the ContainerWidget's dock
 // mode changes. MainWindow calls setPorts() / setMaxSlices() after construction.
@@ -66,6 +67,9 @@ private:
         QComboBox* dialectCombo{nullptr};
         QComboBox* vfoACombo{nullptr};
         QComboBox* vfoBCombo{nullptr};
+        QComboBox* serialCombo{nullptr};   // build 191: COM (Windows) / tty (Linux)
+        QComboBox* baudCombo{nullptr};
+        QLabel*    serialState{nullptr};
         QLabel*    ptyLabel{nullptr};
         QLabel*    clientLabel{nullptr};
     };

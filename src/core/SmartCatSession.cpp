@@ -3,19 +3,23 @@
 #include "models/RadioModel.h"
 #include "models/SliceModel.h"
 
+#include <QAbstractSocket>
+
 namespace AetherSDR {
 
-SmartCatSession::SmartCatSession(QTcpSocket* socket, RadioModel* model,
+SmartCatSession::SmartCatSession(QIODevice* socket, RadioModel* model,
                                  int vfoA, int vfoB, bool flexExtensions,
-                                 QObject* parent)
+                                 QObject* parent, bool ownsDevice)
     : QObject(parent)
     , m_protocol(model, vfoA, vfoB, flexExtensions)
     , m_socket(socket)
     , m_model(model)
 {
-    connect(socket, &QTcpSocket::readyRead,    this, &SmartCatSession::onReadyRead);
-    connect(socket, &QTcpSocket::disconnected, this, &SmartCatSession::onDisconnected);
-    socket->setParent(this);
+    connect(socket, &QIODevice::readyRead, this, &SmartCatSession::onReadyRead);
+    if (auto* tcp = qobject_cast<QAbstractSocket*>(socket))
+        connect(tcp, &QAbstractSocket::disconnected, this, &SmartCatSession::onDisconnected);
+    if (ownsDevice)
+        socket->setParent(this);
 }
 
 SmartCatSession::~SmartCatSession()

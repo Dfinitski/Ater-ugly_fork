@@ -699,6 +699,41 @@ bool WdspChannel::setMode(Mode mode) noexcept
     return true;
 }
 
+bool WdspChannel::setFilterLive(double lowHz, double highHz) noexcept
+{
+    if (!std::isfinite(lowHz) || !std::isfinite(highHz) || lowHz >= highHz ||
+        (m_config.amReceive && (lowHz > -100 || highHz < 100
+            || lowHz < -12000 || highHz > 12000)) ||
+        m_config.wbfmReceive || m_config.direction != Direction::Receive) {
+        // WBFM's band-pass is this class's own, run inside processIq() with no
+        // lock of its own: setFilter() only.
+        return false;
+    }
+    // Claim, then look: beginControlOperation() sets its flag, then looks at
+    // ours. Both sequentially consistent, so at least one of the two sees the
+    // other -- never both inside.
+    bool expected = false;
+    if (!m_liveSetter.compare_exchange_strong(expected, true, std::memory_order_seq_cst))
+        return false;
+    if (m_controlOperation.load(std::memory_order_seq_cst)) {
+        m_liveSetter.store(false, std::memory_order_seq_cst);
+        return false;
+    }
+    {
+        // The FFTW planner only (minimum-phase design plans FFTs). Not the
+        // channel: WDSP's own double buffer and csDSP / fircore update lock
+        // keep fexchange running on the old masks until the swap.
+        const std::scoped_lock setupLock(g_setupMutex);
+        SetRXABandpassFreqs(m_channelId, m_config.amReceive ? 50.0 : lowHz,
+            m_config.amReceive ? std::max(-lowHz, highHz) : highHz);
+        RXANBPSetFreqs(m_channelId, lowHz, highHz);
+    }
+    m_config.filterLowHz = lowHz;
+    m_config.filterHighHz = highHz;
+    m_liveSetter.store(false, std::memory_order_seq_cst);
+    return true;
+}
+
 bool WdspChannel::setFilter(double lowHz, double highHz) noexcept
 {
     if (!std::isfinite(lowHz) || !std::isfinite(highHz) || lowHz >= highHz ||
@@ -1812,6 +1847,11 @@ bool WdspChannel::beginControlOperation() noexcept
                                                     std::memory_order_seq_cst)) {
         return false;
     }
+    // A setFilterLive() on another thread finishes first (build 208): it
+    // re-designs filters a control operation may be replacing. It backs off
+    // on seeing our flag, so this waits for at most one design.
+    while (m_liveSetter.load(std::memory_order_seq_cst))
+        std::this_thread::yield();
     if (m_callbacksInFlight.load(std::memory_order_seq_cst) != 0) {
         m_controlOperation.store(false, std::memory_order_seq_cst);
         return false;

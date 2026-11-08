@@ -347,6 +347,18 @@ public:
     bool reconfigure(const Config& config, std::string* error = nullptr) noexcept;
     bool setMode(Mode mode) noexcept;
     bool setFilter(double lowHz, double highHz) noexcept;
+    // ANAN port (build 208): the receive passband from a thread OTHER than the
+    // one calling processIq(), the way Thetis does it (its GUI thread calls
+    // SetRXABandpassFreqs while the DSP thread runs). WDSP designs the new
+    // filter masks in the caller's thread into the idle half of fircore's
+    // double buffer and swaps them under its own lock, so the DSP thread
+    // never waits for the design (~14 ms at 8192 taps, minimum phase) and
+    // processIq() is never refused for it -- unlike setFilter(), whose
+    // control-operation handshake drops blocks (Busy) while it runs.
+    // Excludes control operations instead: refused (false, nothing changed)
+    // while one is in progress; a control operation that starts meanwhile
+    // waits for this to finish. Same validation as setFilter().
+    bool setFilterLive(double lowHz, double highHz) noexcept;
     // ANAN-100D port: TXA speech compressor (transmit channels only).
     bool setTxCompressor(bool on, double gainDb) noexcept;
     // ANAN-100D port: TXA leveler (transmit channels only).
@@ -640,6 +652,8 @@ private:
     // different atomic across threads, and both sides could then proceed at once.
     std::atomic<unsigned> m_callbacksInFlight {0};
     std::atomic<bool> m_controlOperation {false};
+    // setFilterLive() in progress (build 208); see beginControlOperation().
+    std::atomic<bool> m_liveSetter {false};
     bool m_open = false;
     // WDSP's channel state, mirrored. Atomic because processIq() consults it on
     // the real-time path to decide whether it owns the output buffer this

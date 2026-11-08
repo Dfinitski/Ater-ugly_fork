@@ -41,6 +41,14 @@ Hl2RxDsp::Hl2RxDsp(QObject* parent) : QObject(parent)
 
 Hl2RxDsp::~Hl2RxDsp()
 {
+    // The filter worker first: it may be using m_channel (build 208).
+    {
+        std::lock_guard<std::mutex> lock(m_filterMutex);
+        m_filterQuit = true;
+    }
+    m_filterCv.notify_one();
+    if (m_filterThread.joinable())
+        m_filterThread.join();
     // Stop the channel before destroying it: WdspChannel::close()'s blocking
     // stop-and-flush can only complete while fexchange* is being called, so an
     // unstopped channel burns WDSP's 100 ms timeout (docs/HERMES.md §13 item 9b).
@@ -247,7 +255,11 @@ void Hl2RxDsp::installChannel(RebuildResult result)
                "processIq callback was in flight. The rebuild will pay WDSP's "
                "100 ms stop-and-flush timeout.";
     }
-    m_channel = std::move(result.channel);
+    {
+        // The filter worker may be designing on the outgoing channel.
+        std::lock_guard<std::mutex> life(m_channelLifeMutex);
+        m_channel = std::move(result.channel);
+    }
     m_spectrum = std::move(result.spectrum);
     // The operator's averaging, which the fresh spectrum does not know. A new
     // span is new geometry, so the average starts over (it was constructed
@@ -527,9 +539,63 @@ void Hl2RxDsp::setFilter(double lowHz, double highHz)
 {
     m_config.filterLowHz = lowHz;
     m_config.filterHighHz = highHz;
-    if (canPushToChannel()) {
-        m_channel->setFilter(lowHz, highHz);
+    {
+        std::lock_guard<std::mutex> lock(m_filterMutex);
+        if (!m_filterThread.joinable())
+            m_filterThread = std::thread([this] { filterWorkerLoop(); });
+        m_filterWantLo = lowHz;
+        m_filterWantHi = highHz;
+        m_filterPending = true;
+    }
+    m_filterCv.notify_one();
+    // The filter LENGTH (CW only: rxFilterTapsFor) stays a control operation
+    // here: RXASetNC re-plans the FIR cores. Unchanged length costs nothing.
+    if (m_channel && canPushToChannel())
         applyFilterTaps(static_cast<int>(m_notches.size()));
+}
+
+void Hl2RxDsp::filterWorkerLoop()
+{
+    int refusals = 0;
+    for (;;) {
+        double lo = 0.0, hi = 0.0;
+        {
+            std::unique_lock<std::mutex> lock(m_filterMutex);
+            m_filterCv.wait(lock, [this] { return m_filterQuit || m_filterPending; });
+            if (m_filterQuit)
+                return;
+            lo = m_filterWantLo;
+            hi = m_filterWantHi;
+            m_filterPending = false;
+        }
+        bool done = true;
+        {
+            std::lock_guard<std::mutex> life(m_channelLifeMutex);
+            if (m_channel)
+                done = m_channel->setFilterLive(lo, hi);
+        }
+        if (done) {
+            refusals = 0;
+        } else if (++refusals <= 50) {
+            // A control operation was in progress, or the mode refuses these
+            // edges. Try again shortly unless newer edges have arrived; edges
+            // still refused after 50 tries (1 s) are invalid for the mode and
+            // dropped, as setFilter() would have refused them.
+            std::unique_lock<std::mutex> lock(m_filterMutex);
+            if (!m_filterPending && !m_filterQuit) {
+                m_filterCv.wait_for(lock, std::chrono::milliseconds(20),
+                                    [this] { return m_filterQuit || m_filterPending; });
+                if (!m_filterPending && !m_filterQuit) {
+                    m_filterWantLo = lo;
+                    m_filterWantHi = hi;
+                    m_filterPending = true;
+                }
+            }
+        } else {
+            refusals = 0;
+            qCWarning(lcHl2RxDsp) << "RX passband" << lo << ".." << hi
+                                  << "Hz refused by the WDSP channel; keeping the previous one";
+        }
     }
 }
 
@@ -693,6 +759,17 @@ void Hl2RxDsp::shiftSpectrum(double deltaHz)
         return;
     const double binHz = static_cast<double>(m_config.inputSampleRateHz) / m_config.fftSize;
     m_spectrum->shiftBins(static_cast<int>(std::lround(deltaHz / binHz)));
+}
+
+void Hl2RxDsp::ncoMoved(double deltaHz)
+{
+    shiftSpectrum(deltaHz);
+    if (m_spectrum)
+        m_spectrum->reset();   // the partial window is old-NCO IQ
+    m_specSkipSamples = m_config.inputSampleRateHz * kNcoMoveSettleMs / 1000;
+    // 3 ms down, silence, 5 ms up: 20 ms in all, from the next output block.
+    m_dipTotalFrames = m_config.audioSampleRateHz * 20 / 1000;
+    m_dipFrames = m_dipTotalFrames;
 }
 
 void Hl2RxDsp::dropSpectrumAverage()
@@ -879,7 +956,10 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq)
     // snapshot without a ~9-EP6-block refill. That keeps the achieved rate
     // independent of span; signals entirely between displayed frames are not
     // seen.
-    if (spectrumFrameDue()) {
+    // Build 209: IQ still on the old NCO after a retune is not spectrum.
+    if (m_specSkipSamples > 0) {
+        m_specSkipSamples -= static_cast<int>(m_conjugated.size());
+    } else if (spectrumFrameDue()) {
         // "Due" STAYS true until a frame actually completes: one EP6 block is
         // 126 samples and a frame is 1024, so a frame boundary can be up to one
         // block away even with a full window behind it.
@@ -985,6 +1065,21 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq)
                     if (m_spectrum)
                         m_spectrum->restorePreOver();
                 }
+            }
+        }
+        if (m_dipFrames > 0 && m_dipTotalFrames > 0) {
+            // Build 209: the NCO-move dip (see ncoMoved()).
+            const int fadeDown = m_config.audioSampleRateHz * 3 / 1000;
+            const int fadeUp = m_config.audioSampleRateHz * 5 / 1000;
+            for (std::size_t k = 0; k < outN && m_dipFrames > 0; ++k, --m_dipFrames) {
+                const int done = m_dipTotalFrames - m_dipFrames;   // frames into the dip
+                float g = 0.0f;
+                if (done < fadeDown)
+                    g = 1.0f - static_cast<float>(done) / static_cast<float>(fadeDown);
+                else if (m_dipFrames <= fadeUp)
+                    g = 1.0f - static_cast<float>(m_dipFrames) / static_cast<float>(fadeUp);
+                m_stereo[2 * k] *= g;
+                m_stereo[2 * k + 1] *= g;
             }
         }
         emit audioReady(m_stereo);

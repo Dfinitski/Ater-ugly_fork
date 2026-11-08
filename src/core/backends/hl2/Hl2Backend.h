@@ -718,8 +718,20 @@ private:
     };
     std::array<SmTrace, 4> m_smTrace;
     bool m_ananDuplex{false};
+    // Build 194: the radio runs Protocol 1 firmware (rates stop at 384 ksps).
+    // Set at connect from the discovery sweep and at linkUp from the transport.
+    std::atomic<bool> m_ananP1{false};
     // PA Level Calibration (ANAN Hardware page): see applyDrive().
     int ananPaCalPercent() const;
+public:
+    // PA power law as its mid-scale point: the drive (% of the calibrated full
+    // drive) at slider 50 %, for RF Power and Tune (build 193). Public so the
+    // setup page shares the limits and the default.
+    static constexpr double kAnanPaMidDriveDefault = 46.7;   // gamma 0.91
+    static constexpr double kAnanPaMidDriveMin = 35.0;
+    static constexpr double kAnanPaMidDriveMax = 80.0;
+    static double ananPaMidDrivePercent();
+private:
     double ananFwdDisplayWatts(double watts) const;   // Power Meter Calibration
     int m_ananLastDrivePercent{-1};
     QString m_ananPaCalApplied;   // DUP (Mic applet): pans show the receivers while keyed
@@ -889,6 +901,13 @@ private:
         // the NCO, 0 = the whole DDC rate. The DDC rate itself is chosen only
         // by the rate buttons ("anan.rate"); a pan bandwidth request zooms.
         double zoomViewHz = 0.0;
+        // ANAN port (build 209): the view's centre may sit off the NCO by
+        // viewOffsetHz while the view still lies inside the captured band,
+        // so a pan drag moves the picture without retuning the DDC. Valid
+        // only while ncoHz == viewForNcoHz: any other NCO move re-centres the
+        // view on it. See panCenterHz().
+        double viewOffsetHz = 0.0;
+        double viewForNcoHz = 0.0;
 
         // RIT / XIT, Hz from the dial. Nothing on the wire echoes them, so
         // emitSliceState() publishes these back as the readout.
@@ -1061,6 +1080,20 @@ private:
     void dropPanAverage(const Receiver& r);
     // ANAN-100D port: display zoom helpers (see Receiver::zoomViewHz).
     [[nodiscard]] double panViewHz(const Receiver& r) const;
+    // ANAN port (build 209): the view centre (what the panadapter shows) and
+    // its offset from the NCO; see Receiver::viewOffsetHz.
+    [[nodiscard]] static double viewOffsetHz(const Receiver& r) noexcept
+    {
+        return (r.viewOffsetHz != 0.0 && r.viewForNcoHz == r.ncoHz) ? r.viewOffsetHz : 0.0;
+    }
+    [[nodiscard]] static double panCenterHz(const Receiver& r) noexcept
+    {
+        return r.ncoHz + viewOffsetHz(r);
+    }
+    // Retune the DDC of `r` (a pan drag that left the captured band, or the
+    // settle after one), keeping the view centre where it is.
+    void moveNcoForView(int ddc, Receiver& r, double newNcoHz, double viewCenterHz);
+    void settlePanViews();
     void applyZoomFftSize(Receiver& r);
     // ANAN-100D port: every receiver's FFT history (average and partial
     // window), whatever its averaging setting -- around an over it holds the
@@ -1220,6 +1253,7 @@ private:
     static constexpr int kBandwidthThrottleMs = 150;
     QTimer* m_bandwidthThrottle = nullptr;
     QTimer* m_zoomFftTimer = nullptr;   // ANAN-100D port: FFT size after a zoom settles
+    QTimer* m_panSettleTimer = nullptr; // build 209: view back inside the clean band after a drag
     double m_pendingBandwidthHz = 0.0;   // 0 = nothing coalesced
 
     // The IO board's README asks for at most one frequency update per 0.5 s, only

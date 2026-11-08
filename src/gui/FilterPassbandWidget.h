@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QPainter>
 #include <QMouseEvent>
+#include <QWheelEvent>
 
 namespace AetherSDR {
 
@@ -34,6 +35,9 @@ protected:
     void mousePressEvent(QMouseEvent* ev) override;
     void mouseMoveEvent(QMouseEvent* ev) override;
     void mouseReleaseEvent(QMouseEvent* ev) override;
+    // ANAN port (build 207): over an edge zone the wheel moves that edge,
+    // +/-50 Hz per notch (up = higher). Not over the centre zone.
+    void wheelEvent(QWheelEvent* ev) override;
 
 private:
     int m_lo{100};
@@ -48,6 +52,7 @@ private:
     QPoint m_dragStartPos;
     int m_dragStartLo{0};
     int m_dragStartHi{0};
+    int m_wheelAccum{0};   // angle delta not yet a whole notch (touchpads)
 
 };
 

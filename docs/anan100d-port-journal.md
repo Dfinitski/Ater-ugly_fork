@@ -2298,6 +2298,394 @@ Operator: option 2 — Auto makes the AGC follow the floor, with the offset set 
 - Operator: the PHY crystal line stays only in the PHY group, not duplicated in the 10 MHz Reference group. Removed there.
 - `docs/release-notes-build-190.md`: the GitHub release text for builds 171–190 (noise floor in dBm / 500 Hz, AUTO ATT margin NF+ and the own-noise capture procedure, overload warning, S-meter detector, 10 MHz group, one TX chain PC / CDC, power sliders, the reconnect fixes, the crash report).
 
+## 149. CAT on a serial port, chosen per OS (07.11.2026, build 191)
+
+- A user reported that CAT does not work. Operator: the problem is in the ports, and they are named and set up differently on Windows and Linux.
+- What was there: CatPort = a TCP server (rigctld / TS-2000 / Flex) plus, on Linux/macOS only, a PTY (`$XDG_RUNTIME_DIR/aethersdr/cat-A`). On Windows there was NO serial path at all: a logger that wants a COM port (N1MM, Log4OM, HRD, WSJT-X with a Kenwood rig) could not reach the program. Only TCP worked (Hamlib NET rigctl, port 4532).
+- Now each CAT port row has **Serial** and **Baud** (8N1, no flow control; 4800..115200, default 9600) and a state dot:
+  - Windows: Off, or a COM port. The list is the same as for the PTT/CW serial setup (SerialPortCombo): present ports with their description, then COM1..COM32 not present. For a logger on the same PC, use a virtual null-modem pair (com0com / VSPE): COM11 here, COM12 in the logger, radio Kenwood TS-2000.
+  - Linux: "PTY only" (the PTY stays as before), or a real tty device by its /dev path from QSerialPortInfo. A saved device that is not plugged in is kept as "(not present)". The user must be in `dialout`.
+  - The list is re-read every time the popup opens.
+- `CatPort`: `setSerialPort(name, baud)`, `openSerial` / `closeSerial` (QSerialPort, HAVE_SERIALPORT; both builds have Qt SerialPort).
+  - If the port cannot be opened (not present, busy) or is lost (ResourceError: USB unplugged), it is retried every 3 s. A changed error is logged once.
+  - The dot is green when the port is open, red with the error in the tooltip.
+  - TS-2000 / Flex on serial go through `SmartCatSession`, the same as a TCP client, so AI push and PTT release on close are the same. `SmartCatSession` now takes any QIODevice (`ownsDevice` false for the serial port; disconnect is wired only for sockets). Rigctld framing on serial goes through its own `RigctlProtocol`.
+  - `start(0)` means no TCP server. `isRunning()` is an `m_running` flag. A port runs with a TCP port ≥ 1024, a serial port, or both. A failed TCP bind no longer stops the serial side.
+- MainWindow::applyCatPortCount: keys `CatPort_N_Serial`, `CatPort_N_SerialBaud`.
+- Checked: syntax against the real Qt SerialPort headers (github.com/qt/qtserialport 6.8), with and without HAVE_SERIALPORT. errcheck diff empty. Not run on Windows or Linux yet.
+
+## 150. Thetis CAT dialect (07.11.2026, build 192)
+
+- Operator asked for it after the question "which CAT is emulated". Before this build there were Rigctld, TS-2000 (ID019) and Flex (TS-2000 + SmartSDR ZZ). On an ANAN, Flex answers `ID919;`, an ID no logger knows.
+- New dialect **Thetis** (`CatDialect::Thetis`, key "Thetis"): the TS-2000 base with `ID019;` plus Thetis' ZZ set, taken from its source (Console/CAT/CATCommands.cs, field widths from CATStructs.xml). It works on TCP, PTY and serial.
+  - `SmartCatProtocol::setThetisDialect`; `processThetisZZ` handles the ZZ commands, and the Kenwood commands are shared with the other dialects.
+  - Where Flex and Thetis use the same ZZ name for different things, the Thetis meaning is used: ZZRX is the RX1 attenuator (in Flex it is PTT off), ZZFT is the TX frequency (in Flex it is split), and ZZMD 11 is DRM (in Flex it is NFM).
+- Implemented:
+  - VFOs and mode: ZZFA, ZZFB, ZZFT; ZZMD and ZZME with Thetis mode codes 00..11, and a set is refused if the slice has no such mode; ZZIF (36 characters, with the step code and mode as in Thetis); ZZBS (read only, band from the frequency); ZZST; ZZSA and ZZSB.
+  - TX: ZZSP and ZZSW (split); ZZTX; ZZTU (tune; a tune this client started stops when the client goes away); ZZPC; ZZTO (tune power); ZZKS.
+  - Receive: ZZAG, ZZMA, ZZMB; ZZGT (0 FIXD, 2 SLOW, 3 MED, 4 FAST; LONG and CUSTOM answer "?;"); ZZSM ((dBm+140)·2 from MeterModel::sLevelForSlice, arg 0 = VFO A, 1 = VFO B); ZZFL and ZZFH (sign + 4 digits); ZZNA, ZZNR, ZZNT.
+  - RIT and XIT: ZZRT, ZZXS; ZZRF and ZZXF (sign + 4 digits, ±9999); ZZRC, ZZXC; ZZRU, ZZRD, ZZXU, ZZXD (no value moves 10 Hz; a 5-character value sets the offset).
+  - Identity and status: ZZAI (one digit); ZZPS (always 1; ZZPS0 answers "?;"); ZZID (no answer); ZZFM = 1; ZZVN = AETHERSDR_VERSION padded to 12 characters; ZZZM = the model name without "-" or spaces (ANAN100D).
+- Not implemented, so they answer "?;":
+  - ZZRX, ZZRY, ZZPA: the ATT and preamp belong to the panadapter and cannot be reached from CAT yet;
+  - ZZBS with a value, ZZFI (filter presets), ZZRM;
+  - the console, mixer, VAC and display commands.
+- In the applet, the Dialect list has gained "Thetis" and a tooltip that explains the four dialects. `catDialectFromKey` / `catDialectKey` in CatPort.h are now the only place that maps keys to dialects (MainWindow, MainWindow_Session, applet).
+- Checked: errcheck diff is empty, with and without HAVE_SERIALPORT. Not run with a logger yet.
+
+## 151. PA power law back in the settings, as the slider mid-scale (07.11.2026, build 193)
+
+- Operator: bring back the setting for the middle of the RF Power scale; Tune uses the same value. Another transceiver has a quite different characteristic.
+- Since build 179 the law was the constant γ = 0.91 in `applyDrive`. It is now set as the **mid-scale point**: the drive, in % of the calibrated full drive, that the sliders give at 50 %.
+  - drive(p) = full·cal·(p/100)^e, with 0.5^e = mid/100, so e = −log2(mid/100).
+  - Key `AnanPaMidDrivePct`, 35..80 %, default 46.7 % = 0.5^(1/0.91). The default behaves exactly like build 179. 70.7 % is the ideal square-law PA (the old √ law).
+  - `Hl2Backend::ananPaMidDrivePercent()` (static) and the constants kAnanPaMidDrive{Default,Min,Max} live in Hl2Backend.h. The setup page uses the same ones.
+  - The 250 ms re-apply key is band:cal:mid again, so a change takes effect at once, also during TX.
+- Setup > Radio > ANAN page, group **PA Power Law** between PA Level Calibration and Power Meter Calibration:
+  - "Drive at slider 50 %" with a Default button;
+  - two wattmeter readings (slider 100 % and 50 %) and **Apply**.
+  - Derivation: the PA's law is W ∝ drive^g, so with mid m in force W50/W100 = m^g. Then g = ln(W50/W100)/ln(m), and half the power at 50 % needs m′ = 0.5^(1/g).
+- Checked: errcheck diff empty. Not run.
+
+## 152. Protocol 1, step 1: receive (07.11.2026, build 194)
+
+- Operator: support the old protocol for the same ANAN boards with Protocol 1 firmware. Branch as close to the transport as possible, no second processing chain; parse the protocol as Thetis does. HL2 is left for later. Receive first; a user will test it.
+- Design: one transport, one radio state. `P2Transport` keeps every member (frequencies, ATT, ADC per receiver, antennas, Alex, OC, dither/random, mic options, CW keyer). Only the wire differs:
+  - Protocol 2: General / DDC Specific / High Priority / TX Specific.
+  - Protocol 1: the 17 C&C registers of the EP2 rotation are built from the same members.
+  - The receivers go into the same alignment queues (`m_pending` → `deliverAlignedBlocks` → `iqBlocksReady`), so everything above the transport stays as it is.
+- Framing reused from hl2/MetisProtocol (the same protocol as HL2): `discoveryRequest`, `parseDiscoveryReply`, `metisCommand`, `ep2Packet`, `ep2WriteTxAudio`, `ep6SamplesMulti`.
+- New anan/P1Protocol.{h,cpp}, after Thetis:
+  - `p1Cc(index, P1CcState)` = WriteMainLoop cases 0..16;
+  - `parseP1Status` = the EP6 C&C reading in MetisReadThreadMainLoop: overload addr 0 / 4, exciter / fwd / rev / user ADC / volts addr 1..3, PTT / dot / dash;
+  - `p1MicSamples`;
+  - Alex bits in Protocol 1 order (SetAlexHPFBits / SetAlexLPFBits);
+  - P1 board type → P2 id: 1 Hermes, 4 Angelia → 3, 5 Orion → 4, 10 Orion MkII → 5;
+  - the DDC plan of UpdateDDCs: ANGELIA/ORION/ORION MkII nddc 5, RX1 = DDC0 (DDC1 its partner on RX1), RX2 = DDC2, DDC3/4 on TX; HERMES nddc 4, RX1 = DDC0, RX2 = DDC1; HERMES II nddc 2 (chosen by the model setting ANAN-10E/100B, Protocol 1 reports HERMES for both).
+- Session:
+  - `start()` sends the P2 Discovery and the P1 one (EF FE 02).
+  - A P2 reply configures at once. A P1 reply waits for the board wait (300 ms) in case a P2 one follows, then the P1 session starts.
+  - Start as Thetis: two EP2 packets with config + TX / RX1 frequency, then EF FE 04 01. Repeated on every keepalive (100 ms, up to 20 times) until EP6 arrives.
+  - Stop: EF FE 04 00 twice.
+  - The P2 senders (sendGeneral/DdcSpecific/HighPriority/TransmitSpecific) do nothing on a P1 session. The setters still update the members, and the rotation sends them within ~9 EP2 packets.
+- EP2 runs on the radio's clock: rounds × 48000 per EP6 packet accumulate, and one EP2 goes out per 126 × rate. Each EP2 carries 126 samples of speaker audio from the same `m_spkQueue`, L/R swapped as in Thetis. The P2 speaker thread stands aside (its wait predicate checks `m_p1Atomic`).
+- Overload goes to the same latches (panadapter warning, PureSignal). The coupler / volts raw values go to the same members.
+- Limits:
+  - Protocol 1 rates stop at 384 ksps. `Hl2Backend::iqRates()` returns only the first 4 when `m_ananP1` is set: at connect from the discovery sweep (`isProtocol1Host`), at linkUp from `isProtocol1()`. A wider span is brought down to 384 at linkUp.
+  - RX1/RX2 only.
+  - MOX is refused (log line); PureSignal off; EP4 wideband and the mic: next steps.
+- Discovery (AnanDiscovery) also sends EF FE 02. A P1 radio shows as "<model> (Protocol 1)" with the same serial as under P2 (the same settings).
+- Checked: errcheck diff empty. A unit test of the encode/decode (EP6 nddc 5: 30 rounds, DDC2 value, mic decimation, status addresses 1 and 4; C&C 0/2/11/12 bytes match the Thetis layout). Not run on a radio.
+
+## 153. Protocol 1: the wide bandscope (EP4) (07.11.2026, build 195)
+
+- Neither Thetis (networkproto1.c drops EP != 6) nor deskHPSDR (old_protocol.c "case 4: not implemented") has it. The operator attached "Metis – How it works" V1.33 (VK6APH), which specifies:
+  - start command bit 1 = wide bandscope;
+  - EP4 packets `EF FE 01 04 seq` + 512 × 16-bit raw ADC samples;
+  - start at a sequence number whose low 5 bits are 0, accumulate 16384 words (32 packets).
+- Implemented on the same path as Protocol 2 (`widebandFrame(adc, samples)` → Wideband Monitor, 122.88 Msps, 16384 samples):
+  - `setWideband` over P1 sends `EF FE 04 03` / `01` at once. The start command already carries bit 1 if the monitor was on.
+  - `handleP1Ep4` assembles the 32-packet buffers, dropping one on a gap, and emits at most one frame per `updateMs`: the radio sends buffers back to back.
+  - ADC1 only; asking for ADC2 logs a warning.
+- Byte order: the document does not give it (the headers are big-endian; HL2's compatible gateware is little-endian). It is decided once per session from the first packet: the reading with the lower RMS wins (read the wrong way round, the ADC noise lands near full scale). Logged: both RMS values and the choice. To confirm on the radio.
+- Checked: errcheck diff empty. Not run.
+
+## 154. Protocol 1 wide bandscope as cuSDR does it (07.11.2026, build 196)
+
+- Operator: cuSDR has a working bandscope. The folder link was not visible to this session, so the cuSDR sources came from GitHub (xdiegool/cuSDR64, fallenangel3k/cusdr3; DL3HVH's code).
+- cuSDR:
+  - DataIO::readData EP4, KISS Konsole's "three ifs": start when `(31 & seq[7]) == 0`, append 32 packets, enqueue.
+  - WideBandDataProcessor decodes `s = (qint8)buf[i+1] << 8 | (quint8)buf[i]`: 16-bit signed, **little-endian**.
+  - 16384 samples (BIGWIDEBANDSIZE) for Hermes firmware > 11 / Mercury > 32, else 4096.
+  - Started with `EF FE 04 03` (0x01 without the bandscope).
+- Ours already matched that (start condition, 32 packets, start 0x03). Changed: the byte-order guess from build 195 is gone; the order is fixed little-endian, as cuSDR. Old Hermes firmware with 4096-sample buffers is not supported (the Wideband Monitor takes 16384).
+- Checked: errcheck diff empty.
+
+## 155. Protocol 1 transmit (07.11.2026, build 197)
+
+- Operator: transmit over Protocol 1, PureSignal aside; resample to connect to our processing.
+- The whole TX path stays at the Protocol 2 DUC rate, 192 ksps: Hl2TxDsp, AnanTxEngine, queueTxIq, fillTxPacket (tone, host CW, RF Delay, priming, the 2 ms rise), statistics, TX panorama. Only the last step differs:
+  - per EP2 packet (sent on the radio's clock, one per 126 codec samples), `sendP1Ep2` takes 504 samples with `fillTxPacket(buf, 504)`;
+  - accounts them with `accountTxSamples` (taken out of txPumpLocked, shared by both protocols);
+  - decimates them 4:1 to 126 (`P1TxDecimator`: 96-tap Blackman windowed sinc, fc 20 kHz; measured flat to 10 kHz, −1.4 dB at 18 kHz, −38.7 dB at 24 kHz, −75 dB at 28 kHz);
+  - writes them with `hl2::ep2WriteTxIq`.
+- `txPumpLocked` (the P2 DUC sender) does nothing on a P1 session. txDeviceTick keeps its bookkeeping.
+- The radio mic: `p1MicSamples` (one word per rate/48k rounds) is gathered into 64-sample packets → `codecMicReady` + `m_micArrived`, exactly as the P2 port-1026 stream. AnanTxEngine then modulates on the radio's clock as before. Upsampling is not needed: the codec is 48 kHz on both protocols.
+- C&C while MOX:
+  - C0 bit 0 in every frame;
+  - drive (C0 0x12 C1; 0 in CW demo);
+  - PA bit;
+  - TX antenna;
+  - Alex LPF on the TX frequency (legacy boards);
+  - OC TX row;
+  - the 6 m preamp off;
+  - ADC0 TX attenuation (0x1C C3 = m_txAttDb); ADC1 31 dB (Thetis).
+- Radio PTT and the keyer paddles come from EP6 C0 (every frame), into the same updateRadioPtt / hang logic as P2. The MOX refusal of build 194 is gone.
+- Not yet: PureSignal over P1 (the DDC3/4 pair), the FPGA CW keyer's IQ-LSB keying (Thetis cw_enable: dot/dash/cwx bits in the I/Q words).
+- Checked: errcheck diff empty, decimator response measured. Not run on a radio.
+
+## 156. Release archive build 197; Tools → Open Logs (07.11.2026, build 198)
+
+- Release archive `AetherSDR-ANAN-build197-win64-portable.zip`: the build 190 archive with the new exe and `README-build197.md` (= docs/release-notes-build-197.md, English, covering builds 191-197). 87 files, SHA-256 fa9aeaaf49143e73d77d24140a7cc5905bce4e6e191f0ebe0fbe72a782a56af1. Saved to Desktop\AetherSDR-Release.
+- Operator: there is no Help menu (removed in this port), so Support & Diagnostics' "Open Log Folder" cannot be reached. **Tools → Open Logs** is added at the very bottom, after a separator: it opens the folder of `LogManager::logFilePath()` (`%LOCALAPPDATA%\AetherSDR\logs`) in Explorer.
+
+## 157. Display panel trimmed: Log Avg, fixed FPS, floor always on (07.11.2026, build 199)
+
+- "Wt Avg" renamed **Log Avg**: it averages the frames in dB (Hl2Spectrum log average). The noise
+  reads about 2.5 dB lower and grassier (dB std 5.6 vs 4.3 dB per frame). Off = power average, the
+  true level, matching the noise floor line and the S-meter. Tooltip says so.
+- Removed rows: **FFT FPS** (fixed 25: kFixedFftFps in MainWindow_Wiring, requested for a locally
+  shaped pan; a saved FPS is no longer restored), **FFT Smooth** and **De-comb** (both off:
+  SpectrumWidget::loadFftTraceShaping no longer reads the saved object), **NF Range**.
+- **FFT Floor:** no Auto button; tracking always on (m_noiseFloorEnable = true at load, the Display
+  reset sets it on). The slider spans the full row and is the floor line's height above the
+  bottom: widget position (% from top) = 100 - slider. Minimum = floor at the bottom. Default 25
+  (= position 75, as before).
+- Members of the removed rows stay null; all syncs check them. tests/noise_floor_range_test and
+  spectrum_overlay_fft_fps_bounds_test look up the removed sliders (tests are off in this port).
+- Files: gui/SpectrumOverlayMenu.cpp, gui/SpectrumWidget.cpp, gui/MainWindow_Wiring.cpp, ForkBuild.h.
+
+## 158. Display panel: NB Blank removed, Black Level always SW (07.11.2026, build 200)
+
+- **NB Blank** did nothing on an ANAN. The blanker (WaterfallImpulseBlanker, #277) replaces a whole
+  waterfall row when the row's mean dB rises more than 5..95 dB (slider; default 15) above the
+  mean of the last 32 rows. ANAN rows are averaged FFT frames; an impulse is spread over the
+  frame and the averaging and lifts the row mean by far less, so the test never fired. A useful
+  waterfall blanker would have to work per bin before averaging (Hl2Spectrum), or the RX noise
+  blanker does the job. Removed: the row is gone and the blanker is forced off at load
+  (m_wfBlankerEnabled = false). Members stay null; syncExtraDisplaySettings checks them.
+- **Black Level:** the Off/SW/HW button is removed; the mode is always SW (client-side noise-floor
+  estimate): SpectrumWidget forces m_wfAutoBlack = true and m_wfAutoBlackRadioSide = false at load;
+  syncDisplaySettings applies mode 1. The slider spans the full row and is always the offset from
+  the noise floor (50 = at the floor). The Kiwi-mode sync checks the null button.
+- makeRowWithBtn has no user left and is removed.
+- Files: gui/SpectrumOverlayMenu.cpp, gui/SpectrumWidget.cpp, ForkBuild.h.
+
+## 159. NB Blank made to work on the ANAN (07.11.2026, build 201)
+
+- Operator: "why not make NB Blank work? Feed it clean rows; the band is jumpy right now."
+- The rows were already clean: Hl2Backend gives the waterfall the frame BEFORE FFT AVG, and
+  RadioModel samples one frame per row interval (no integration). So build 200's reason was wrong.
+  What was wrong was the test: on an absolute dB row it took the row MEAN and a margin of 1 dB per
+  slider step (5..95 dB, default 15 dB) above the last 32 rows. Our error, two parts:
+  - scale: one frame's noise floor spreads ~0.2 dB frame to frame (median of 1024 bins, measured
+    by simulation: 0.197 dB), so a 15 dB margin is ~75 sigma; a broadband impulse lifts the floor
+    by a few dB, never 15;
+  - level: the mean of dB bins moves with strong signals coming and going; the median is the
+    noise floor and they do not move it.
+- Now (WaterfallImpulseBlanker.h): an absolute row's level is its median (rowMedian()); margin
+  0.2 dB per step (kDbPerThresholdUnit 20: 1..19 dB, default 3 dB = 15 sigma). The Flex tile test
+  is unchanged.
+- New rule: after kMaxRejectedRun = 8 rejected rows in a row the level is taken as real (retune,
+  gain change, band opening): the ring restarts from that row and it is drawn. Without it a lasting
+  step froze the waterfall while the capped ring crept up (1 dB per row / 32).
+- NB Blank row back in the Display panel (On/Off + slider), label in dB; saved enable restored.
+  Menu sync rounds the slider value (1.15f - 1 truncated to 14).
+- Untested on the air. tests/waterfall_impulse_blanker_test checks the old 5/15/95 dB margins
+  (tests are off in this port).
+- Files: gui/WaterfallImpulseBlanker.h, gui/SpectrumWidget.{h,cpp}, gui/SpectrumOverlayMenu.cpp,
+  ForkBuild.h.
+
+## 160. NB Blank: lower the impulse row instead of substituting it (07.11.2026, build 202)
+
+- Operator, build 201 on a jumpy band: "it works now, but many black stripes; not sure it is
+  better".
+- Cause (reasoned, not measured): a rejected row was replaced by the last CLEAN row. On a band
+  whose floor keeps jumping, the last clean row is an older, quieter one, so each substitution
+  draws a row darker than its neighbours (with SW auto-black the noise sits near black), and every
+  signal has a gap there. The fill path (no cached row: the floor colour) is black outright.
+- Now, for an absolute dB row only: the row keeps its own content and every value is lowered by
+  the floor's rise (row median - baseline) -- buildLevels(shift) in updateWaterfallRow, the levels
+  loop wrapped in a lambda. The floor lands on the baseline, signals continue through the impulse.
+  The last-good cache is not updated by such a row. The Flex tile path still substitutes (#277).
+- Not addressed: the SW auto-black estimate still takes the impulse rows (5 % per row).
+- Files: gui/SpectrumWidget.cpp, gui/SpectrumOverlayMenu.cpp (tooltip), ForkBuild.h.
+
+## 161. NB Blank: soft knee, auto-black corrected (07.11.2026, build 203)
+
+- Operator, build 202: "much better, but some striping is visible".
+- Cause: a hard step at the margin. A row whose floor rose 2.9 dB (margin 3) was drawn as is, one
+  at 3.1 dB was pulled down by the whole rise: on a jumpy band neighbouring rows differ by up to the
+  margin. Second, the SW auto-black took every raised row's floor (5 % per row) before the blanker,
+  so the black level rode up behind each burst.
+- Now: every absolute row (ring with >= 8 rows) is lowered by floorShiftDb(rise, margin):
+  0 at or below the baseline, rise^2 / margin below the margin, the whole rise above it. What is
+  left standing is at most margin / 4 (0.75 dB at 3 dB), continuous, none above the margin. The
+  impulse decision (ring cap, run rule, no caching as last good) is unchanged.
+- Auto-black: after a shift, m_autoBlackThresh -= 0.05 * shift -- the same as if the EMA had seen
+  the lowered row (its noise estimate is linear in a whole-row offset).
+- Files: gui/WaterfallImpulseBlanker.h (floorShiftDb), gui/SpectrumWidget.cpp, ForkBuild.h.
+
+## 162. Panadapter filter-edge drag stops at the carrier (07.11.2026, build 204)
+
+- Operator: on the panadapter, dragging the inner filter edge must not cross the carrier, as in RX
+  Controls; LSB may take any negative value, USB any positive.
+- RX Controls gets it from the receive filter ranges the backend declares (Hl2Backend
+  capabilities: USB/DIGU low 0..11990, LSB/DIGL high -11990..0; ModeFilters::acceptsFilterEdges
+  refuses anything outside). The panadapter drag (SpectrumWidget::mouseMoveEvent, m_draggingFilter)
+  sent any value through filterChangeRequested -> SliceModel::setFilterWidth, unchecked.
+- Now the dragged edge is clamped: USB/DIGU low >= 0, LSB/DIGL high <= 0, and in every mode the two
+  edges keep >= 10 Hz apart (the declared minimum width). The edge stops at the limit instead of
+  being refused, so it follows the mouse up to it.
+- Files: gui/SpectrumWidget.cpp, ForkBuild.h.
+
+## 163. Panadapter: symmetric edge drag in AM / SAM / FM (07.11.2026, build 205)
+
+- Operator: in AM, FM, SAM dragging one edge should move the other symmetrically, and check that
+  an edge cannot be dragged past the carrier to the other side.
+- Before: nothing of the kind -- the drag moved one edge only, to any value (it could cross the
+  carrier and the other edge). The declared AM/SAM ranges (low -12000..-10, high 10..12000) were
+  only checked in RX Controls.
+- Now in AM, SAM, FM, NFM: the dragged edge stays on its own side of the carrier, at least 10 Hz
+  from it (the declared AM/SAM limit), and the other edge is its mirror: low = -edge,
+  high = +edge. An asymmetric passband becomes symmetric on the first drag.
+- Files: gui/SpectrumWidget.cpp, ForkBuild.h.
+
+## 164. Filter drag overloaded the I/O thread: edits coalesced (07.11.2026, build 206)
+
+- Operator: dragging a filter edge (panadapter or RX Controls) loads the program hard: audio
+  breaks up, the panadapter jumps and freezes, finally the audio stops and comes back only after a
+  restart.
+- Cause: every edge the drag produced went through: SliceModel -> Hl2Backend::setSliceFilter ->
+  queued Hl2RxDsp::setFilter on the hl2-io thread -> WdspChannel::setFilter, which re-designs the
+  RXA bandpass AND the NBP filter (8192 taps, minimum phase: ~14 ms per edit by the header's own
+  measurement) under the global FFTW lock. A drag gives tens of edits a second; hl2-io is the
+  thread that processes IQ and paces EP2, so it fell behind. The return value of setFilter (refused
+  while a callback is in flight) was also ignored: the edge in m_config and the one in the channel
+  could disagree.
+- The permanent silence is not explained by the code read; if it happens again with this build,
+  the log is needed.
+- Now Hl2RxDsp::setFilter keeps the newest edges and applies at most one edit per 60 ms
+  (kFilterApplyMinMs); processIqBlock() applies a held edit when due and retries a refused one. The
+  drag's last position is always applied, within 60 ms.
+- Panadapter AM/SAM/FM symmetric drag: minimum 100 Hz from the carrier (WdspChannel refuses an AM
+  passband inside +-100 Hz), was 10.
+- Files: core/backends/hl2/Hl2RxDsp.{h,cpp}, gui/SpectrumWidget.cpp, ForkBuild.h.
+
+## 165. RX Controls passband widget: mouse wheel on an edge (07.11.2026, build 207)
+
+- Operator: in the filter-edge widget, with the mouse over an edge, the wheel should move it:
+  up +50 Hz, down -50 Hz.
+- FilterPassbandWidget::wheelEvent: the same zones as a press (left of the lo line = low edge,
+  right of the hi line = high edge); the centre zone and a drag in progress pass the wheel on.
+  50 Hz per notch, notches accumulated from angleDelta (touchpads). The radio's width range
+  (constrainPassbandWidth) keeps the other edge as it is, and the edge nearest the carrier stops at
+  it: USB/DIGU low >= 0, LSB/DIGL high <= 0, AM/SAM/FM 100 Hz either side. The result goes out
+  through filterChanged like a drag (RxApplet checks acceptsFilterEdges).
+- Only RxApplet uses this widget.
+- Files: gui/FilterPassbandWidget.{h,cpp}, ForkBuild.h.
+
+## 166. Speaker silent for good: firmware FIFO-full bug (07.11.2026, firmware sources only)
+
+- Log 20:30-20:33 (build 207): speaker FIFO filled to 2000 of 2048 with overflows (20:31:21),
+  then stood at 1940 (20:31:36), then "idle" with every sample overflowing (240000 per 5 s) until
+  the program was restarted. Mic packets kept coming: the codec ran, the playout had stopped.
+- Fixed in Odyssey_3_2.0_ANP/Sources (audio_I2S.v, Odyssey.v; backup in backup_2.0/before_spkfull).
+  Not yet built. Details in the firmware note below.
+- The program side (pacing the speaker packets, a separate DSP thread) is still to be done.
+
+### Speaker FIFO stuck silent when full (fixed in the sources 2026-11-07, not yet built)
+Seen on the air (AetherSDR log 2026-11-07 20:31): after a burst of speaker packets from the PC the speaker FIFO filled up, the audio faded out and never came back (status: speaker not playing, FIFO full, every sample overflowing, 240000 per 5 s) until the program stopped the radio (run = 0).
+Cause: Rx_Audio_fifo is 2048 words with an 11-bit rdusedw, which reads **0 when the FIFO is full**. audio_I2S took that 0 as "below 260", faded out and stopped reading (holdoff); with no reads the FIFO stayed full, rdusedw stayed 0 and "> 767" never came true again.
+Fix: the FIFO's rdfull output (was unconnected) goes to audio_I2S as `full`: low water is `!full && rdusedw < 260` (also fade_evt), high water `full || rdusedw > 767`. Status byte 38-39 (speaker level) is `{4'd0, rdfull, rdusedw}`, so a full FIFO reads 2048 instead of 0. Backup of the previous files: Sources/backup_2.0/before_spkfull.
+The bursts themselves come from the PC (speaker packets leave as soon as WDSP produces them; a stall on the program's I/O thread delays and then bunches them); the program side is to be paced separately.
+
+## 167. Filter design off the DSP thread, as in Thetis (07.11.2026, build 208)
+
+- Operator: the pacing proposal is out (the speaker FIFO level is outside the official protocol;
+  most radios do not report it), the firmware fix helps only our radios -- look at how Thetis does
+  it.
+- Thetis (ChannelMaster cmbuffs.c, network.c; wdsp bandpass.c, nbp.c, fircore): the network thread
+  only copies IQ into a ring (Inbound) and releases a semaphore; a cm_main thread per stream runs
+  WDSP. Filter edits are made on the GUI thread: SetRXABandpassFreqs designs the new impulse and
+  the fircore masks THERE, into the idle half of fircore's double buffer, and only the swap takes
+  csDSP / the fircore update lock (one block at most). RXANBPSetFreqs the same (setImpulse_fircore
+  with flip). The DSP thread never waits for a design and never drops a block for it.
+- Ours: Hl2RxDsp::setFilter ran on hl2-io (WDSP, spectrum, speaker audio, EP2 pacing) and
+  WdspChannel::setFilter wrapped the call in the control-operation handshake, during which
+  processIq() returns Busy -- the block is dropped. So every edit cost the design time (~14 ms) on
+  that thread plus dropped audio, and build 206's rate limit only spaced the stalls out.
+- Our vendored WDSP has the same setters (upstream/bandpass.c, nbp.c, firmin.c calc_fircore), so
+  the Thetis arrangement applies as is:
+  - WdspChannel::setFilterLive(): same validation as setFilter() (WBFM excluded: its band-pass is
+    ours, inside processIq, unlocked); g_setupMutex (FFTW planner: minimum phase plans) around
+    SetRXABandpassFreqs + RXANBPSetFreqs; no control-operation handshake. Excludes control
+    operations by a flag pair (m_liveSetter / m_controlOperation, seq_cst, claim-then-look): it
+    backs off if one is in progress; beginControlOperation() waits for a running design to end.
+  - Hl2RxDsp: setFilter() hands the newest edges to a worker thread (filterWorkerLoop, started on
+    the first edit); edges arriving during a design replace the waiting ones. The worker holds
+    m_channelLifeMutex while it uses m_channel; installRebuiltChannel() takes it to swap the
+    channel, the destructor stops the worker first. Refused edits retried every 20 ms, dropped
+    with a warning after 1 s. The filter LENGTH (CW, RXASetNC) stays a control operation on hl2-io.
+  - Build 206's rate limit removed.
+- Not done (yet): splitting network receive from WDSP (Thetis' Inbound/cm_main). With the design
+  gone from hl2-io, check first whether it is still needed.
+- Files: core/dsp/WdspChannel.{h,cpp}, core/backends/hl2/Hl2RxDsp.{h,cpp}, ForkBuild.h.
+
+## 168. Pan drag without retuning the DDC (07.11.2026, build 209)
+
+- Operator (build 208 good: filter edits clean, also in CW): while dragging the panadapter the bins
+  go jelly-like and lag, some fall out of the filter, the audio distorts. Redrawing the pan must not
+  redo the FFT -- only the bins that are replaced; in zoom there is margin on the sides.
+- Cause: Hl2Backend::setPanCenter retuned the DDC on every drag step (~30 a second): NCO command
+  to the radio, WDSP shift and spectrum axis (shiftBins) at once. The IQ arrives on the new NCO a
+  few ms after the command, so for those ms the shift did not match the IQ (audio off-tune, the
+  distortion) and the average mixed frames of two axes (the jelly); the frame in flight was also
+  labelled with the new centre.
+- Now:
+  - The view has its own centre: Receiver::viewOffsetHz (valid while ncoHz == viewForNcoHz, so any
+    other NCO move -- slice tune out of the window, band memory -- re-centres it). panCenterHz()
+    = NCO + offset; emitPanState reports it; the spectrum lambda crops the FFT at the offset (the
+    waterfall coverage too).
+  - setPanCenter moves only the view while it fits the captured band (during a drag up to 96 % of
+    the rate, i.e. into the DDC filter's roll-off edges). In zoom that covers most drags with no
+    retune at all. When the view would leave it, moveNcoForView() retunes with a lead (the view
+    lands near the trailing side): at full span (view 80 %) one retune per ~55 kHz of drag at
+    384 ksps instead of 30 a second.
+  - 400 ms after the last centre command settlePanViews() brings a view left in the roll-off back
+    into the clean 80 % by the smallest retune.
+  - Each retune: shift + Hl2RxDsp::ncoMoved(delta): the average moves by delta (shiftBins), the
+    partial window is dropped and the spectrum is not fed for 12 ms (old-NCO IQ in flight); the
+    audio dips for 20 ms (3 ms fade, silence, 5 ms fade back) over the time shift and IQ disagree.
+    A jump of more than half the span still drops the average.
+- Untested on the radio. Assumed: bin index increases with frequency in the conjugated spectrum
+  (Hl2RxDsp's handedness note), as the pan axis does.
+- Files: core/backends/hl2/Hl2Backend.{h,cpp}, core/backends/hl2/Hl2RxDsp.{h,cpp}, ForkBuild.h.
+
+## 169. Waterfall from the whole captured band (07.11.2026, build 210)
+
+- Operator: in zoom the panadapter has margin when dragged, the waterfall has none -- let it work
+  from all available bins and draw what the screen needs.
+- Was: the waterfall coverage was the viewport crop (resample(raw) over the view,
+  viewportBounds = true; RadioModel gave it the pan's bounds), so nothing outside the view existed.
+- Now the spectrum lambda sends the whole captured band as the coverage: 96 % of the rate (the
+  drag reach of build 209), true RF bounds from the NCO (bin k at (k - n/2) * rate / n),
+  viewportBounds false, at most 8192 bins (mean power per output bin; fewer FFT bins go as they
+  are). The widget treats it as it treats a Flex tile wider than the pan: draws the viewport from
+  it at full resolution and keeps the whole row as the supplemental row, which it uses when a pan
+  asks for frequencies outside the original viewport.
+- Note: the supplemental row is stored at the widget's width (destWidth pixels over the whole
+  band), so in deep zoom the part revealed by a drag is coarser until new rows replace it.
+- The NB blanker's median and the SW auto-black now see the whole band (both noise-floor
+  estimates; the roll-off edges are a small minority of the bins).
+- Files: core/backends/hl2/Hl2Backend.cpp, ForkBuild.h.
+
+## 170. New-release link in the status bar (07.11.2026, build 211)
+
+- Operator: on start, check once for a newer release on our GitHub; if there is one, show its name
+  at the bottom right; a click opens the release page in the browser.
+- MainWindow::wireUpdateChecker (the AetherSDR checker stays off): 8 s after start, one GET of
+  api.github.com/repos/Dfinitski/Ater-ugly_fork/releases?per_page=20 (Accept
+  application/vnd.github+json, User-Agent "Ater-ugly_fork/<build>", 15 s timeout). Of the
+  non-draft releases tagged "build-N" whose page is under
+  github.com/Dfinitski/Ater-ugly_fork/releases/, the highest N above AETHER_FORK_BUILD wins.
+  Prereleases count too (the list endpoint, not /latest).
+- Shown as a permanent status-bar widget (right side): "New release: <release name>" (name trimmed
+  to 80 characters, HTML-escaped), link colour #4fc3f7, tooltip; a click opens the URL with
+  QDesktopServices, only if it is https://github.com/... Nothing shown on errors (logged at info).
+- The releases on GitHub now: build-169, 170, 190. Build 197 was packed but not published.
+- Files: gui/MainWindow_Menus.cpp, ForkBuild.h.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

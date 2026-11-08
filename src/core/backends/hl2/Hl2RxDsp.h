@@ -8,6 +8,9 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 #include <chrono>
 #include <cmath>
 #include <complex>
@@ -231,6 +234,12 @@ public:
     // ANAN-100D port: the NCO moved by deltaHz -- shift the spectrum average
     // (Hl2Spectrum::shiftBins) rather than dropping it. DSP thread.
     Q_INVOKABLE void shiftSpectrum(double deltaHz);
+    // ANAN port (build 209): the backend retuned the DDC by deltaHz (and sent
+    // the matching shift). IQ already on its way was taken on the old NCO:
+    // for kNcoMoveSettleMs the spectrum is not fed (its average is moved by
+    // deltaHz now) and the audio dips -- a short fade, silence, fade back --
+    // over the time the shift and the IQ disagree.
+    Q_INVOKABLE void ncoMoved(double deltaHz);
     // What the installed spectrum is actually running, for tests. DSP thread.
     [[nodiscard]] double spectrumAverageMsApplied() const noexcept
     {
@@ -620,6 +629,27 @@ private:
     double m_squelchOffsetDb = 0.0;
     // True while the channel has refused the current request; see setSquelch().
     bool m_squelchPending = false;
+    // ANAN port (build 208): the passband is designed on a thread of its
+    // own, as Thetis designs it on its GUI thread, never on this one. Each
+    // edit re-designs the RXA bandpass and NBP filters (8192 taps, minimum
+    // phase: ~14 ms); done here (the thread that runs WDSP, the spectrum and
+    // the radio's speaker audio) a filter drag stalled all three. setFilter()
+    // only hands the newest edges to filterWorkerLoop(), which applies them
+    // with WdspChannel::setFilterLive() (WDSP swaps the new masks in under its
+    // own lock; processIq() keeps running on the old ones meanwhile). Edges
+    // that arrive during a design replace the waiting ones: a drag costs one
+    // design at a time, ending on its last position.
+    void filterWorkerLoop();
+    std::thread m_filterThread;
+    std::mutex m_filterMutex;              // the fields below
+    std::condition_variable m_filterCv;
+    bool m_filterQuit = false;
+    bool m_filterPending = false;
+    double m_filterWantLo = 0.0;
+    double m_filterWantHi = 0.0;
+    // Held by the worker while it uses m_channel, and by this thread while it
+    // replaces or destroys m_channel.
+    std::mutex m_channelLifeMutex;
     WdspChannel::NoiseBlankerFill m_nbFill = WdspChannel::NoiseBlankerFill::Zero;
     std::atomic<WdspChannel::NoiseBlanker> m_nbAppliedKind
         {WdspChannel::NoiseBlanker::Off};
@@ -648,6 +678,10 @@ private:
     int m_pressBlankFrames{0};
     double m_preOverAgcVolts{0.0};
     int m_specRestoreSamples{0};
+    static constexpr int kNcoMoveSettleMs = 12;
+    int m_specSkipSamples{0};      // build 209: IQ not fed to the spectrum after an NCO move
+    int m_dipFrames{0};            // build 209: output frames left in the NCO-move dip
+    int m_dipTotalFrames{0};
     double m_preOverSMeterDb{-400.0};
     bool m_restorePending{false};
     std::array<double, 32> m_smRing{};   // S-meter readings (~47/s), before an over

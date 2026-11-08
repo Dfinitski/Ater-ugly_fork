@@ -6513,18 +6513,23 @@ void MainWindow::applyCatPortCount()
         // (#3693). Receiver capacity bounds the VFO-letter choices per port
         // (ReceiverSlotCount::catLetters() feeds the applet), not whether a
         // port runs.
-        const bool shouldRun   = masterOn && portEnabled && (portNum >= 1024);
+        // ANAN port (build 191): a serial endpoint alone also runs the port
+        // (Windows COM / Linux tty, CatPort.h); TCP then stays off.
+        const QString serial   = CatPort::serialSupported()
+                                     ? s.value(prefix + "Serial", "").toString().trimmed()
+                                     : QString();
+        const bool tcpOk       = portNum >= 1024 && portNum <= 65535;
+        const bool shouldRun   = masterOn && portEnabled && (tcpOk || !serial.isEmpty());
 
         if (shouldRun && !catPort(i)->isRunning()) {
             // Re-apply config in case dialect/VFO was changed while stopped
-            QString d = s.value(prefix + "Dialect", "Rigctld").toString();
-            CatDialect dial = (d == "FlexCAT") ? CatDialect::FlexCAT
-                            : (d == "TS2000")  ? CatDialect::TS2000
-                            : CatDialect::Rigctld;
+            const CatDialect dial =
+                catDialectFromKey(s.value(prefix + "Dialect", "Rigctld").toString());
             catPort(i)->setDialect(dial);
             catPort(i)->setVfoA(s.value(prefix + "VfoA", "0").toInt());
             catPort(i)->setVfoB(s.value(prefix + "VfoB", "-1").toInt());
-            catPort(i)->start(static_cast<quint16>(portNum));
+            catPort(i)->setSerialPort(serial, s.value(prefix + "SerialBaud", "9600").toInt());
+            catPort(i)->start(tcpOk ? static_cast<quint16>(portNum) : quint16(0));
         } else if (!shouldRun && catPort(i)->isRunning()) {
             catPort(i)->stop();
         }

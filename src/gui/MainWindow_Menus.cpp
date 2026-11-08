@@ -7,6 +7,7 @@
 // Contributors are recognised in the Contributor Logbook, which the About
 // window links to.
 
+#include "core/LogManager.h"
 #include "MainWindow.h"
 #include "models/CwDecodeSettings.h"
 #include "AetherBuildIdentity.h"   // generated at build time (#5804)
@@ -74,6 +75,14 @@
 #include <QCoreApplication>
 #include <QCheckBox>
 #include <QDesktopServices>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QRegularExpression>
+#include <QStatusBar>
+#include <QFileInfo>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QJsonObject>
@@ -1743,6 +1752,14 @@ void MainWindow::buildMenuBar()
     toolsMenu->addAction("Runtime Monitor...", this, [this] {
         showSystemInfoDialog();
     });
+    // Build 198 (operator, 07.11): the Help menu is gone, and with it Support
+    // & Diagnostics' "Open Log Folder"; the logs to send with a report open
+    // from here, at the very bottom.
+    toolsMenu->addSeparator();
+    toolsMenu->addAction("Open Logs", this, [] {
+        const QFileInfo fi(LogManager::instance().logFilePath());
+        QDesktopServices::openUrl(QUrl::fromLocalFile(fi.absolutePath()));
+    });
 
     m_gpsDashboardAction = gpsDashboardAction;
 
@@ -2291,6 +2308,75 @@ void MainWindow::wireUpdateChecker()
 
     // ANAN-100D port (operator, 01.11): no automatic check against the
     // AetherSDR release feed -- this build is not an AetherSDR release.
+
+    // Build 211 (operator, 07.11): once per start, this fork's own releases.
+    // A release tagged "build-N" with N above AETHER_FORK_BUILD puts a link
+    // at the right of the status bar; a click opens its page in the browser.
+    // Quiet on any failure (offline, rate limit): nothing to show.
+    QTimer::singleShot(8000, this, [this] {
+        auto* net = new QNetworkAccessManager(this);
+        QNetworkRequest req(QUrl(QStringLiteral(
+            "https://api.github.com/repos/Dfinitski/Ater-ugly_fork/releases?per_page=20")));
+        req.setRawHeader("Accept", "application/vnd.github+json");
+        req.setHeader(QNetworkRequest::UserAgentHeader,
+                      QStringLiteral(AETHER_FORK_NAME "/%1").arg(AETHER_FORK_BUILD));
+        req.setTransferTimeout(15000);
+        QNetworkReply* reply = net->get(req);
+        connect(reply, &QNetworkReply::finished, this, [this, net, reply] {
+            reply->deleteLater();
+            net->deleteLater();
+            if (reply->error() != QNetworkReply::NoError) {
+                qCInfo(lcGui) << "Fork release check:" << reply->errorString();
+                return;
+            }
+            const QJsonDocument doc = QJsonDocument::fromJson(reply->read(4 * 1024 * 1024));
+            if (!doc.isArray())
+                return;
+            static const QRegularExpression tagRe(QStringLiteral("^build-(\\d{1,6})$"));
+            static const QString pagePrefix =
+                QStringLiteral("https://github.com/Dfinitski/Ater-ugly_fork/releases/");
+            int best = AETHER_FORK_BUILD;
+            QString bestName;
+            QString bestUrl;
+            for (const QJsonValue& v : doc.array()) {
+                const QJsonObject o = v.toObject();
+                if (o.value(QStringLiteral("draft")).toBool())
+                    continue;
+                const auto m = tagRe.match(o.value(QStringLiteral("tag_name")).toString());
+                const QString url = o.value(QStringLiteral("html_url")).toString();
+                if (!m.hasMatch() || !url.startsWith(pagePrefix))
+                    continue;
+                const int build = m.captured(1).toInt();
+                if (build <= best)
+                    continue;
+                best = build;
+                bestUrl = url;
+                bestName = o.value(QStringLiteral("name")).toString().simplified().left(80);
+                if (bestName.isEmpty())
+                    bestName = QStringLiteral("build %1").arg(build);
+            }
+            if (bestUrl.isEmpty()) {
+                qCInfo(lcGui) << "Fork release check: build" << AETHER_FORK_BUILD << "is the newest";
+                return;
+            }
+            qCInfo(lcGui) << "Fork release check: newer release" << bestName << bestUrl;
+            auto* link = new QLabel(statusBar());
+            link->setObjectName(QStringLiteral("forkNewReleaseLink"));
+            link->setTextFormat(Qt::RichText);
+            link->setText(QStringLiteral("<a href=\"%1\" style=\"color:#4fc3f7;\">%2</a>")
+                              .arg(bestUrl.toHtmlEscaped(),
+                                   tr("New release: %1").arg(bestName).toHtmlEscaped()));
+            link->setToolTip(tr("Open the release page in the browser"));
+            link->setCursor(Qt::PointingHandCursor);
+            link->setContentsMargins(6, 0, 6, 0);
+            connect(link, &QLabel::linkActivated, this, [](const QString& href) {
+                const QUrl u(href);
+                if (u.scheme() == QLatin1String("https") && u.host() == QLatin1String("github.com"))
+                    QDesktopServices::openUrl(u);
+            });
+            statusBar()->addPermanentWidget(link);
+        });
+    });
 }
 
 void MainWindow::restoreKnownUpdate()

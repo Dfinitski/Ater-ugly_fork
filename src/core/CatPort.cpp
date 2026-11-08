@@ -13,6 +13,10 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QSocketNotifier>
+#include <QTimer>
+#ifdef HAVE_SERIALPORT
+#include <QSerialPort>
+#endif
 
 #ifndef Q_OS_WIN
 #include <unistd.h>
@@ -65,28 +69,36 @@ CatPort::~CatPort()
 bool CatPort::start(quint16 port)
 {
     if (isRunning()) return true;
+    if (port == 0 && m_serialName.isEmpty()) return false;
 
-    m_tcpServer = new QTcpServer(this);
-    if (!m_tcpServer->listen(QHostAddress::Any, port)) {
-        qCWarning(lcCat) << "CatPort: failed to bind port" << port
-                         << m_tcpServer->errorString();
-        delete m_tcpServer;
-        m_tcpServer = nullptr;
-        return false;
+    if (port != 0) {
+        m_tcpServer = new QTcpServer(this);
+        if (!m_tcpServer->listen(QHostAddress::Any, port)) {
+            qCWarning(lcCat) << "CatPort: failed to bind port" << port
+                             << m_tcpServer->errorString();
+            delete m_tcpServer;
+            m_tcpServer = nullptr;
+            // The serial endpoint does not depend on the TCP port.
+            if (m_serialName.isEmpty())
+                return false;
+        } else {
+            connect(m_tcpServer, &QTcpServer::newConnection,
+                    this, &CatPort::onNewConnection);
+            qCInfo(lcCat) << "CatPort: listening on port" << port
+                          << "dialect" << static_cast<int>(m_dialect);
+        }
     }
 
-    connect(m_tcpServer, &QTcpServer::newConnection,
-            this, &CatPort::onNewConnection);
-
+    m_running = true;
     startPty();
-
-    qCInfo(lcCat) << "CatPort: listening on port" << port
-                  << "dialect" << static_cast<int>(m_dialect);
+    openSerial();
     return true;
 }
 
 void CatPort::stop()
 {
+    m_running = false;
+    closeSerial();
     stopPty();
 
     // Swap out the client list before iterating: abort() emits disconnected
@@ -118,7 +130,7 @@ void CatPort::stop()
 
 bool CatPort::isRunning() const
 {
-    return m_tcpServer && m_tcpServer->isListening();
+    return m_running;
 }
 
 quint16 CatPort::port() const
@@ -129,6 +141,137 @@ quint16 CatPort::port() const
 int CatPort::clientCount() const
 {
     return m_rigctlClients.size() + m_catSessions.size();
+}
+
+// ── Serial endpoint ─────────────────────────────────────────────────────────
+// Windows: a COM port; with a virtual null-modem pair (com0com / VSPE) the
+// logger opens the other end. Linux: a tty device (the PTY above is the
+// virtual one). 8N1, no flow control; the baud matters only on a real port.
+
+bool CatPort::serialSupported()
+{
+#ifdef HAVE_SERIALPORT
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool CatPort::serialOpen() const
+{
+#ifdef HAVE_SERIALPORT
+    return m_serial && m_serial->isOpen();
+#else
+    return false;
+#endif
+}
+
+void CatPort::openSerial()
+{
+#ifdef HAVE_SERIALPORT
+    if (!m_running || m_serialName.isEmpty() || serialOpen())
+        return;
+    if (!m_serial) {
+        m_serial = new QSerialPort(this);
+        connect(m_serial, &QSerialPort::readyRead, this, &CatPort::onSerialData);
+        // A USB serial adapter unplugged, or the virtual pair removed: close and
+        // wait for it to come back. Deferred, not inside the device's signal.
+        connect(m_serial, &QSerialPort::errorOccurred, this,
+                [this](QSerialPort::SerialPortError e) {
+                    if (e != QSerialPort::ResourceError || !serialOpen()) return;
+                    const QString why = m_serial->errorString();
+                    QTimer::singleShot(0, this, [this, why] {
+                        if (!serialOpen()) return;
+                        qCWarning(lcCat) << "CatPort: serial" << m_serialName << "lost:" << why;
+                        closeSerial();
+                        m_serialError = why;
+                        emit serialStateChanged(false, m_serialError);
+                        if (m_running) m_serialRetry->start();
+                    });
+                });
+    }
+    if (!m_serialRetry) {
+        m_serialRetry = new QTimer(this);
+        m_serialRetry->setSingleShot(true);
+        m_serialRetry->setInterval(3000);
+        connect(m_serialRetry, &QTimer::timeout, this, &CatPort::openSerial);
+    }
+
+    m_serial->setPortName(m_serialName);
+    m_serial->setBaudRate(m_serialBaud);
+    m_serial->setDataBits(QSerialPort::Data8);
+    m_serial->setParity(QSerialPort::NoParity);
+    m_serial->setStopBits(QSerialPort::OneStop);
+    m_serial->setFlowControl(QSerialPort::NoFlowControl);
+    if (!m_serial->open(QIODevice::ReadWrite)) {
+        const QString why = m_serial->errorString();
+        if (why != m_serialError) {   // log a change, not every retry
+            qCWarning(lcCat) << "CatPort: cannot open serial" << m_serialName << ":" << why
+                             << "(retrying every 3 s)";
+            m_serialError = why;
+            emit serialStateChanged(false, m_serialError);
+        }
+        m_serialRetry->start();
+        return;
+    }
+    m_serial->clear();
+    m_serialError.clear();
+    m_serialBuffer.clear();
+    if (m_dialect == CatDialect::Rigctld) {
+        m_serialRigctl = new RigctlProtocol(m_model);
+        m_serialRigctl->setSliceIndex(m_vfoA);
+    } else {
+        const bool flex = (m_dialect == CatDialect::FlexCAT || m_dialect == CatDialect::Thetis);
+        m_serialSession = new SmartCatSession(m_serial, m_model, m_vfoA, m_vfoB,
+                                              flex, this, /*ownsDevice=*/false);
+        m_serialSession->setThetisDialect(m_dialect == CatDialect::Thetis);
+    }
+    qCInfo(lcCat) << "CatPort: serial" << m_serialName << "open," << m_serialBaud
+                  << "baud 8N1, dialect" << static_cast<int>(m_dialect);
+    emit serialStateChanged(true, {});
+#endif
+}
+
+void CatPort::closeSerial()
+{
+#ifdef HAVE_SERIALPORT
+    if (m_serialRetry) m_serialRetry->stop();
+    // The session first: its destructor releases a CAT-held PTT.
+    delete m_serialSession;
+    m_serialSession = nullptr;
+    delete m_serialRigctl;
+    m_serialRigctl = nullptr;
+    m_serialBuffer.clear();
+    const bool wasOpen = serialOpen();
+    if (m_serial && m_serial->isOpen())
+        m_serial->close();
+    if (wasOpen)
+        qCInfo(lcCat) << "CatPort: serial" << m_serialName << "closed";
+    if (!m_running) {
+        m_serialError.clear();
+        emit serialStateChanged(false, {});
+    }
+#endif
+}
+
+void CatPort::onSerialData()
+{
+#ifdef HAVE_SERIALPORT
+    // TS-2000 / FlexCAT / Thetis sessions read the port themselves.
+    if (!m_serialRigctl || !m_serial) return;
+    m_serialBuffer.append(m_serial->readAll());
+    while (true) {
+        int nlPos = m_serialBuffer.indexOf('\n');
+        if (nlPos < 0) nlPos = m_serialBuffer.indexOf('\r');
+        if (nlPos < 0) break;
+        const QString line = QString::fromUtf8(m_serialBuffer.left(nlPos)).trimmed();
+        m_serialBuffer.remove(0, nlPos + 1);
+        if (line.isEmpty()) continue;
+        const QString resp = m_serialRigctl->handleLine(line);
+        if (!resp.isEmpty())
+            m_serial->write(resp.toUtf8());
+    }
+#endif
 }
 
 QString CatPort::ptyPath() const
@@ -164,9 +307,10 @@ void CatPort::onNewConnection()
 
         qCInfo(lcCat) << "CatPort: rigctld client connected on port" << port();
     } else {
-        bool flex = (m_dialect == CatDialect::FlexCAT);
+        bool flex = (m_dialect == CatDialect::FlexCAT || m_dialect == CatDialect::Thetis);
         auto* session = new SmartCatSession(socket, m_model,
                                             m_vfoA, m_vfoB, flex, this);
+        session->setThetisDialect(m_dialect == CatDialect::Thetis);
         m_catSessions.append(session);
 
         connect(session, &SmartCatSession::sessionEnded,
@@ -286,8 +430,9 @@ void CatPort::startPty()
         m_ptyRigctlProtocol = new RigctlProtocol(m_model);
         m_ptyRigctlProtocol->setSliceIndex(m_vfoA);
     } else {
-        bool flex = (m_dialect == CatDialect::FlexCAT);
+        bool flex = (m_dialect == CatDialect::FlexCAT || m_dialect == CatDialect::Thetis);
         m_ptyCatProtocol = new SmartCatProtocol(m_model, m_vfoA, m_vfoB, flex);
+        m_ptyCatProtocol->setThetisDialect(m_dialect == CatDialect::Thetis);
     }
 
     m_ptyNotifier = new QSocketNotifier(m_ptyMasterFd, QSocketNotifier::Read, this);

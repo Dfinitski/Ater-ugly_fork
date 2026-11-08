@@ -237,4 +237,60 @@ void FilterPassbandWidget::mouseReleaseEvent(QMouseEvent*)
     m_dragMode = DragNone;
 }
 
+void FilterPassbandWidget::wheelEvent(QWheelEvent* ev)
+{
+    // The same zones as a press: left of the lo line = low edge, right of the
+    // hi line = high edge.
+    constexpr int margin = 16, SKIRT = 16;
+    const int loLineX = margin + SKIRT + 8;
+    const int hiLineX = width() - margin - SKIRT - 8;
+    const int x = static_cast<int>(ev->position().x());
+    const bool low = x <= loLineX;
+    const bool high = x >= hiLineX;
+    if ((!low && !high) || m_dragMode != DragNone) {
+        ev->ignore();
+        return;
+    }
+    m_wheelAccum += ev->angleDelta().y();
+    const int notches = m_wheelAccum / 120;
+    m_wheelAccum -= notches * 120;
+    ev->accept();
+    if (notches == 0)
+        return;
+
+    constexpr int kWheelStepHz = 50;
+    int newLo = m_lo;
+    int newHi = m_hi;
+    if (low)
+        newLo += notches * kWheelStepHz;
+    else
+        newHi += notches * kWheelStepHz;
+    const PassbandEdgePair constrained = constrainPassbandWidth(
+        newLo, newHi, m_minimumWidthHz,
+        m_maximumWidthHz > 0 ? m_maximumWidthHz : std::numeric_limits<int>::max(),
+        low ? PassbandDragEdge::Low : PassbandDragEdge::High);
+    newLo = constrained.lowHz;
+    newHi = constrained.highHz;
+    // The edge nearest the carrier stops at it, as the receive filter ranges
+    // the backend declares require (RxApplet refuses anything past them):
+    // USB / DIGU low >= 0, LSB / DIGL high <= 0, AM / SAM / FM 100 Hz either
+    // side (WdspChannel refuses an AM passband inside +-100 Hz).
+    const QString mode = m_mode.toUpper();
+    if (mode == QLatin1String("USB") || mode == QLatin1String("DIGU")) {
+        newLo = std::max(newLo, 0);
+    } else if (mode == QLatin1String("LSB") || mode == QLatin1String("DIGL")) {
+        newHi = std::min(newHi, 0);
+    } else if (mode == QLatin1String("AM") || mode == QLatin1String("SAM")
+               || mode == QLatin1String("FM") || mode == QLatin1String("NFM")) {
+        newLo = std::min(newLo, -100);
+        newHi = std::max(newHi, 100);
+    }
+    if (newLo >= newHi || (newLo == m_lo && newHi == m_hi))
+        return;
+    m_lo = newLo;
+    m_hi = newHi;
+    update();
+    emit filterChanged(m_lo, m_hi);
+}
+
 } // namespace AetherSDR

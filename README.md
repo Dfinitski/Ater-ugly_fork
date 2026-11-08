@@ -1,13 +1,14 @@
 # AetherSDR — ANAN fork (Ater-ugly_fork)
 
 > **This is an unofficial fork of [AetherSDR](https://github.com/aethersdr/AetherSDR) v26.10.4**
-> for the **Apache Labs ANAN** transceivers over **openHPSDR Protocol 2**. It was developed on
-> an ANAN-100D (Odyssey FPGA firmware). It is not affiliated with or supported by the AetherSDR
+> for the **Apache Labs ANAN** transceivers over **openHPSDR Protocol 2 and Protocol 1** (the
+> protocol is chosen automatically from what the radio answers). It was developed on an
+> ANAN-100D (Odyssey FPGA firmware). It is not affiliated with or supported by the AetherSDR
 > project. Please report problems with this fork here, not upstream.
 
 **What the fork adds**
 
-- openHPSDR Protocol 2 backend for the ANAN radios: RX1/RX2, TX, drive, attenuators, LNA, Alex filters
+- openHPSDR Protocol 2 and Protocol 1 backend for the ANAN radios: RX1/RX2, TX, drive, attenuators, LNA, Alex filters
 - PureSignal (WDSP calcc) with feedback attenuator auto-ranging, drive feed-forward,
   manual per-band TX delay measurement with thermal drift compensation, Thetis-style scheck
 - HW Diag, RGMII tune, PS amplifier view and wideband monitor dialogs
@@ -22,8 +23,9 @@
 
 ## Supported transceivers
 
-All radios that Thetis drives over Protocol 2. The radio reports its board, not its model, so
-for boards shared by several models pick yours in **Setup → Radio → (model page) → Model**.
+All radios that Thetis drives, with Protocol 2 or Protocol 1 firmware. The radio reports its
+board, not its model, so for boards shared by several models pick yours in
+**Setup → Radio → (model page) → Model**.
 
 | Board (Discovery id) | Models | Receivers | ADCs | Filters | PureSignal | Mic / connector options | Status bar | Tested |
 |---|---|---|---|---|---|---|---|---|
@@ -40,34 +42,46 @@ for boards shared by several models pick yours in **Setup → Radio → (model p
 - The number of receivers (slices) comes from the radio's own DDC count, up to 4.
 - PureSignal is not available on the single-ADC boards: their receivers use DDC0/DDC1, which
   PureSignal needs for the feedback and the TX reference.
-- No ANAN reports a PA temperature over Protocol 2. The status bar shows the voltage and, while
+- No ANAN reports a PA temperature over Protocol 2 or 1. The status bar shows the voltage and, while
   transmitting, the PA drain current ("Id") instead.
 - Power meter, voltage, current and S-meter constants follow Thetis for each model. The PA level
   and power meter calibration on the model page let you match your radio.
 
-## Build 190
+### Protocol 1
 
-Full notes: [docs/release-notes-build-190.md](docs/release-notes-build-190.md).
+ANAN-10/100 (Hermes), ANAN-10E/100B (Hermes II), ANAN-100D (Angelia), ANAN-200D (Orion) and
+ANAN-7000DLE/8000DLE (Orion MkII) with Protocol 1 firmware work as well. The radio list shows such
+a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven over Protocol 2.
 
-- **Noise floor:** the panadapter trace is the power in 500 Hz on the S-meter's calibrated scale,
-  as it reaches the ADC. It no longer moves with the sample rate, FFT size, zoom or averaging. A
-  dashed line marks the measured floor.
-- **AUTO ATT:** the **NF+** slider in the ANT panel sets how many dB the band noise is held above
-  the receiver's own noise (default +10 dB, which costs 0.4 dB of sensitivity).
-- **Own noise capture, needed once for AUTO ATT:**
-  1. Connect and receive.
-  2. Disconnect the antenna or terminate the input with 50 Ω.
-  3. Press **Setup → Receive → Receiver Noise Floor → Capture**.
-  4. Reconnect the antenna and switch AUTO on.
-- **ADC overload warning:** a blinking red "ADCn OVERLOAD" across the panadapter.
-- **Transmit:** the computer microphone (PC) and the radio's codec microphone (CDC) go through the
-  same TX audio chain. RF Power and Tune follow watts.
-- **Stability:** fixed the crash on reconnect; stop / start works as in Thetis. A crash leaves
-  `aethersdr-crash-*.txt` and `.dmp` files in the log folder.
-- HW Diag has a 10 MHz Reference group. HW Diag and the overload warning on receive need firmware
-  that sends status packets on receive.
-- Only the ANAN-100D has been tested on the air. If you have one of the other radios, please try
-  receive first, then transmit at low power, and report what you see (see below).
+- Receive: RX1 and RX2 up to 384 kHz (the Protocol 1 limit), attenuators, antennas, Alex
+  filters, open collector outputs, ADC overload warning, speaker audio to the radio, wideband
+  monitor.
+- Transmit: SSB/AM/FM/digital, Tune, host CW, radio or PC microphone, radio PTT, drive and PA
+  calibration as on Protocol 2.
+- Not yet over Protocol 1: PureSignal and the radio's internal CW keyer.
+- Protocol 1 reports the ANAN-10E/100B as Hermes: select the model in Setup → Radio.
+- Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
+  low power, and report what you see.
+
+## Build 211
+
+Full notes: [docs/release-notes-build-211.md](docs/release-notes-build-211.md).
+
+- **Protocol 1** (see above).
+- **Receive filter:** dragging an edge no longer breaks the audio (the filter is computed on its
+  own thread, as in Thetis); edges stop at the carrier; AM/SAM/FM edges move symmetrically; mouse
+  wheel on the RX Controls filter edges (±50 Hz).
+- **Panadapter:** a drag moves the view inside the received band instead of retuning the radio
+  on every step; the waterfall is drawn from the whole band, so it is there at the sides in zoom.
+- **NB Blank** works (impulse rows in the waterfall); the Display panel is simplified (Log Avg;
+  FFT Floor and Black Level always automatic).
+- **CAT:** serial port (COM / tty) per CAT port and a Thetis (TS-2000 + ZZ) dialect.
+- **PA Power Law** setting (Setup → Radio, model page).
+- **Tools → Open Logs**, and a "New release" link at the bottom right when a newer build is out.
+- Only the ANAN-100D over Protocol 2 has been tested on the air. If you have one of the other
+  radios, please try receive first, then transmit at low power, and report what you see.
+
+Earlier notes: [build 190](docs/release-notes-build-190.md).
 
 ## Windows portable build
 
@@ -86,7 +100,7 @@ session where the problem happened.
 
 1. Reproduce the problem, then close AetherSDR (the log is complete once the program exits).
 2. Open the log folder:
-   - from the program: **Help → Support & Diagnostics… → Open Log Folder**, or
+   - from the program: **Tools → Open Logs**, or
    - in Explorer: `%LOCALAPPDATA%\AetherSDR\logs`
      (usually `C:\Users\<you>\AppData\Local\AetherSDR\logs`).
 3. Attach the newest file, `aethersdr-YYYYMMDD-HHMMSS.log`. A new file is started each time the
@@ -94,7 +108,7 @@ session where the problem happened.
    `aethersdr-crash-*.txt` and `aethersdr-crash-*.dmp` files from the same folder.
 
 In the issue, please say:
-- the radio model and the model selected on the Setup → Radio page;
+- the radio model, its protocol (1 or 2) and the model selected on the Setup → Radio page;
 - the build number;
 - what you did and what went wrong.
 
@@ -107,7 +121,7 @@ listed below.
 
 ## Features inherited from AetherSDR
 
-- **GPU-accelerated spectrum & waterfall** — QRhi rendering (OpenGL/Metal/D3D11) with a per-pixel FFT trace at up to **60 fps**, optional FFT Smooth and De-comb trace shaping, an optional **3D stacked-trace** mode, ~71% less CPU than the paint path, GPU-composited slice flags and multi-GPU adapter selection
+- **GPU-accelerated spectrum & waterfall** — QRhi rendering (OpenGL/Metal/D3D11) with a per-pixel FFT trace at up to **60 fps**, an optional **3D stacked-trace** mode, ~71% less CPU than the paint path, GPU-composited slice flags and multi-GPU adapter selection
 - **AetherTX and AetherRX** — the transmit and receive chains, one window each. AetherTX is the channel strip (gate, EQ, compressor, de-esser, tube, AetherVoice exciter, reverb, brickwall limiter) with a preset library and scope; AetherRX puts noise reduction, gate, EQ, compressor, tube, AetherVoice and the output meter on tabs down its left edge
 - **Seven client-side noise-reduction engines**, each denoising left and right independently so pans and diversity survive them — NR2 (spectral), RN2 (RNNoise), NR4 (libspecbleach), NNR (WDSP's Neural Noise Reduction), DFNR (DeepFilterNet3), BNR (the NVIDIA Maxine denoiser, in-process on a local RTX/GeForce GPU, Linux + Windows — `docs/nvidia-bnr.md`) and MNR (macOS)
 - **AetherModem packet radio** — KISS-over-TCP TNC, connected-mode AX.25 BBS, a personal mailbox, a WIDE1-1 fill-in digipeater, and an **APRS client** (station table, GPS beacon, messaging) on a Direwolf-derived VHF demodulator

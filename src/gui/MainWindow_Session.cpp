@@ -2656,10 +2656,8 @@ void MainWindow::wireCatPorts()
         // in applyCatPortCount() just before starting.
         const QString prefix = QString("CatPort_%1_").arg(i);
         auto& s = AppSettings::instance();
-        QString d = s.value(prefix + "Dialect", "Rigctld").toString();
-        CatDialect dial = (d == "FlexCAT") ? CatDialect::FlexCAT
-                        : (d == "TS2000")  ? CatDialect::TS2000
-                        : CatDialect::Rigctld;
+        const CatDialect dial =
+            catDialectFromKey(s.value(prefix + "Dialect", "Rigctld").toString());
         catPort(i)->setDialect(dial);
         catPort(i)->setVfoA(s.value(prefix + "VfoA", "0").toInt());
         catPort(i)->setVfoB(s.value(prefix + "VfoB", "-1").toInt());

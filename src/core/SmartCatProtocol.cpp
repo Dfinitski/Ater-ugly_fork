@@ -174,6 +174,9 @@ QString SmartCatProtocol::processCommandImpl(const QString& cmd)
 
     const QString upper = cmd.toUpper();
 
+    if (m_thetis && upper.startsWith("ZZ") && upper.size() >= 4)
+        return processThetisZZ(upper.left(4), cmd.mid(4));
+
     if (m_flexExtensions && upper.startsWith("ZZ") && upper.size() >= 4) {
         const QString name = upper.left(4);
         const QString arg  = cmd.mid(4);
@@ -569,7 +572,11 @@ void SmartCatProtocol::releasePtt()
     if (m_model) {
         (void)m_model->setProducerTransmit(request, false, TransmitModel::PttSource::Dax);
         m_model->abortProducerCwx(m_cwxRequest);
+        // A tune this client started (Thetis ZZTU1) ends with the client.
+        if (m_weTuned && m_model->transmitModel().isTuning())
+            m_model->transmitModel().stopTune();
     }
+    m_weTuned = false;
     m_cwxRequest = {};
 }
 
@@ -581,8 +588,9 @@ void SmartCatProtocol::releasePtt()
 
 QString SmartCatProtocol::cmdID()
 {
-    // TS-2000 dialect: identify as Kenwood TS-2000 (ID019 per Kenwood CAT spec)
-    if (!m_flexExtensions)
+    // TS-2000 dialect: identify as Kenwood TS-2000 (ID019 per Kenwood CAT spec).
+    // Thetis answers the same with its default rig type (CATCommands.cs ID()).
+    if (!m_flexExtensions || m_thetis)
         return QStringLiteral("ID019;");
 
     const QString m = m_model->model();
@@ -1636,6 +1644,310 @@ QString SmartCatProtocol::cmdZZFJ(const QString& arg)
         return r.replace("ZZFI", "ZZFJ");
     }
     return zzfijSet(b ? b : sliceA(), arg, "ZZFJ");
+}
+
+// ══ Thetis dialect (ANAN port, build 192) ═══════════════════════════════════
+//
+// Thetis' ZZ command set, from its source (Console/CAT/CATCommands.cs and the
+// lengths in CATStructs.xml), for loggers set up for Thetis / PowerSDR. The
+// answer is "ZZxx" + the fixed-width field + ";", a bad or unsupported command
+// "?;", a set no answer. Where the Flex and Thetis sets share a name but not a
+// meaning (ZZRX: Flex PTT off, Thetis RX1 attenuator; ZZFT: Flex split, Thetis
+// TX frequency; ZZMD codes 11/12), the Thetis meaning is used.
+// Not implemented (answer "?;"): the step attenuator / preamp (ZZRX, ZZRY,
+// ZZPA: owned by the panadapter, not reachable from CAT yet), band set (ZZBS
+// with a value), filter presets (ZZFI), the meters ZZRM, and the console /
+// mixer / VAC / display commands that have no counterpart here.
+
+namespace {
+
+// Thetis DSPMode codes (CATCommands.cs Mode2String / String2Mode).
+QString thetisModeCode(const QString& m)
+{
+    if (m == "LSB")  return "00";
+    if (m == "USB")  return "01";
+    if (m == "DSB")  return "02";
+    if (m == "CWL")  return "03";
+    if (m == "CW")   return "04";   // CWU
+    if (m == "FM" || m == "NFM" || m == "DFM") return "05";
+    if (m == "AM")   return "06";
+    if (m == "DIGU" || m == "FDV" || m == "FDVU") return "07";
+    if (m == "SPEC") return "08";
+    if (m == "DIGL" || m == "FDVL" || m == "RTTY") return "09";
+    if (m == "SAM")  return "10";
+    if (m == "DRM")  return "11";
+    return "01";
+}
+
+QString thetisCodeMode(const QString& code)
+{
+    static const char* kModes[] = {"LSB", "USB", "DSB", "CWL", "CW", "FM",
+                                   "AM", "DIGU", "SPEC", "DIGL", "SAM", "DRM"};
+    bool ok = false;
+    const int n = code.toInt(&ok);
+    if (!ok || code.size() != 2 || n < 0 || n > 11) return {};
+    return QString::fromLatin1(kModes[n]);
+}
+
+// Thetis AGCMode: 0 FIXD, 1 LONG, 2 SLOW, 3 MED, 4 FAST, 5 CUSTOM.
+int thetisAgcCode(const QString& mode)
+{
+    const QString m = mode.toLower();
+    if (m == "off")  return 0;
+    if (m == "long") return 1;
+    if (m == "slow") return 2;
+    if (m == "fast") return 4;
+    return 3;
+}
+
+// Thetis Step2String: the step as a 4-bit code. Exact Thetis steps map to its
+// own code; any other step to the code of its decade.
+QString thetisStepCode(int hz)
+{
+    switch (hz) {
+    case 50:     return "1000";
+    case 250:    return "1001";
+    case 500:    return "1010";
+    case 5000:   return "1011";
+    case 9000:   return "1100";
+    case 250000: return "1101";
+    case 500000: return "1110";
+    default:     break;
+    }
+    int decade = 0;
+    for (long long d = 10; d <= hz && decade < 7; d *= 10)
+        ++decade;
+    return QString::number(decade, 2).rightJustified(4, '0');
+}
+
+// Thetis Band2String, from the frequency (IARU region-independent edges).
+QString thetisBandCode(double mhz)
+{
+    struct B { double lo, hi; const char* code; };
+    static const B kBands[] = {
+        {1.8, 2.0, "160"}, {3.5, 4.0, "080"}, {5.25, 5.45, "060"}, {7.0, 7.3, "040"},
+        {10.1, 10.15, "030"}, {14.0, 14.35, "020"}, {18.068, 18.168, "017"},
+        {21.0, 21.45, "015"}, {24.89, 24.99, "012"}, {28.0, 29.7, "010"},
+        {50.0, 54.0, "006"}, {144.0, 148.0, "002"},
+        {2.5, 2.5, "999"}, {5.0, 5.0, "999"}, {10.0, 10.0, "999"}, {15.0, 15.0, "999"},
+        {20.0, 20.0, "999"}, {25.0, 25.0, "999"}};
+    for (const B& b : kBands)
+        if (mhz >= b.lo - 1e-6 && mhz <= b.hi + 1e-6) return QString::fromLatin1(b.code);
+    return QStringLiteral("888");   // GEN
+}
+
+// Thetis signed field: sign + (width-1) digits (ZZRF / ZZXF / ZZFL / ZZFH).
+QString thetisSigned(int v, int width)
+{
+    return (v < 0 ? QStringLiteral("-") : QStringLiteral("+"))
+           + QString::number(qAbs(v)).rightJustified(width - 1, '0');
+}
+
+bool parseThetisInt(const QString& s, int& out)
+{
+    bool ok = false;
+    out = s.toInt(&ok);
+    return ok;
+}
+
+} // namespace
+
+QString SmartCatProtocol::thetisIF()
+{
+    // CATCommands.cs ZZIF: 36 characters.
+    SliceModel* a = sliceA();
+    if (!a) return "?;";
+    QString incr = QStringLiteral("+00000");
+    const QChar rit = a->ritOn() ? '1' : '0';
+    const QChar xit = (!a->ritOn() && a->xitOn()) ? '1' : '0';
+    if (a->ritOn())       incr = ritField(a->ritFreq());
+    else if (a->xitOn())  incr = ritField(a->xitFreq());
+    QString body;
+    body += freqField(a->frequency());               // 11 VFO A
+    body += thetisStepCode(a->stepHz());             //  4 step
+    body += incr;                                    //  6 RIT/XIT value
+    body += rit;                                     //  1
+    body += xit;                                     //  1
+    body += QStringLiteral("000");                   //  3 memory bank
+    body += m_model->isRadioTransmitting() ? '1' : '0'; // 1 TX
+    body += thetisModeCode(a->mode());               //  2 mode
+    body += QStringLiteral("00");                    //  2 FR/FT, scan
+    body += m_splitEnabled ? '1' : '0';              //  1 split
+    body += QStringLiteral("0000");                  //  4 balance
+    return "ZZIF" + body + ";";
+}
+
+QString SmartCatProtocol::thetisTune(const QString& arg)
+{
+    TransmitModel& tx = m_model->transmitModel();
+    if (arg.isEmpty())
+        return QString("ZZTU%1;").arg(tx.isTuning() ? 1 : 0);
+    if (arg == "1") {
+        if (!tx.isTuning()) {
+            tx.startTune(TransmitModel::PttSource::Dax);
+            m_weTuned = tx.isTuning();
+        }
+        return {};
+    }
+    if (arg == "0") {
+        if (tx.isTuning()) tx.stopTune();
+        m_weTuned = false;
+        return {};
+    }
+    return "?;";
+}
+
+QString SmartCatProtocol::processThetisZZ(const QString& name, const QString& arg)
+{
+    if (!m_model) return "?;";
+    // Re-label an answer of a shared handler with the Thetis command name.
+    auto relabel = [&name](const QString& r, int oldPrefixLen) {
+        if (r.isEmpty() || r == QLatin1String("?;")) return r;
+        return name + r.mid(oldPrefixLen);
+    };
+    auto onOff = [&name](bool on) { return QString("%1%2;").arg(name).arg(on ? 1 : 0); };
+    SliceModel* a = sliceA();
+
+    // ── VFOs and mode ───────────────────────────────────────────────────────
+    if (name == "ZZFA") return relabel(cmdFA(arg), 2);
+    if (name == "ZZFB") return relabel(cmdFB(arg), 2);
+    if (name == "ZZFT") {   // TX frequency: VFO B in split, else VFO A
+        SliceModel* t = (m_splitEnabled && sliceB()) ? sliceB() : a;
+        if (!t) return "?;";
+        if (arg.isEmpty()) return "ZZFT" + freqField(t->frequency()) + ";";
+        bool ok = false;
+        const double hz = arg.toDouble(&ok);
+        if (!ok || arg.size() != 11 || !m_model->tuneSliceForCat(t, hz / 1e6)) return "?;";
+        return {};
+    }
+    if (name == "ZZMD" || name == "ZZME") {
+        SliceModel* s = (name == "ZZMD") ? a : sliceB();
+        if (!s) return "?;";
+        if (arg.isEmpty()) return name + thetisModeCode(s->mode()) + ";";
+        const QString mode = thetisCodeMode(arg);
+        if (mode.isEmpty() || !s->modeList().contains(mode)) return "?;";
+        // The code a FreeDV / RTTY slice reports must not switch it away.
+        if (thetisModeCode(s->mode()) != arg) s->setMode(mode);
+        return {};
+    }
+    if (name == "ZZIF") return arg.isEmpty() ? thetisIF() : "?;";
+    if (name == "ZZBS") {
+        if (!a) return "?;";
+        return arg.isEmpty() ? "ZZBS" + thetisBandCode(a->frequency()) + ";" : "?;";
+    }
+    if (name == "ZZST") return (a && arg.isEmpty()) ? "ZZST" + thetisStepCode(a->stepHz()) + ";" : "?;";
+    if (name == "ZZSA") return cmdDN({});   // VFO A down one step
+    if (name == "ZZSB") return cmdUP({});   // VFO A up one step
+
+    // ── Split / TX ──────────────────────────────────────────────────────────
+    if (name == "ZZSP" || name == "ZZSW") return splitCommand(name, arg);
+    if (name == "ZZTX") {
+        if (arg.isEmpty()) return onOff(m_model->isRadioTransmitting());
+        if (arg == "1") return cmdTX(arg);
+        if (arg == "0") return cmdRX();
+        return "?;";
+    }
+    if (name == "ZZTU") return thetisTune(arg);
+    if (name == "ZZPC") return relabel(cmdZZPC(arg), 4);
+    if (name == "ZZTO") {   // tune power 000-100
+        TransmitModel& tx = m_model->transmitModel();
+        if (arg.isEmpty()) return "ZZTO" + fmt3(tx.tunePower()) + ";";
+        int v = 0;
+        if (arg.size() != 3 || !parseThetisInt(arg, v)) return "?;";
+        tx.setTunePower(std::clamp(v, 0, 100));
+        return {};
+    }
+    if (name == "ZZKS") return relabel(cmdKS(arg), 2);
+
+    // ── Receive ─────────────────────────────────────────────────────────────
+    if (name == "ZZAG") return relabel(cmdZZAG(arg), 4);
+    if (name == "ZZMA") return relabel(cmdZZMA(arg), 4);
+    if (name == "ZZMB") return relabel(cmdZZMB(arg), 4);
+    if (name == "ZZGT") {
+        if (!a) return "?;";
+        if (arg.isEmpty()) return QString("ZZGT%1;").arg(thetisAgcCode(a->agcMode()));
+        static const char* kAgc[] = {"off", nullptr, "slow", "med", "fast", nullptr};
+        int v = -1;
+        if (arg.size() != 1 || !parseThetisInt(arg, v) || v < 0 || v > 5 || !kAgc[v])
+            return "?;";   // LONG and CUSTOM have no counterpart here
+        a->setAgcMode(QString::fromLatin1(kAgc[v]));
+        return {};
+    }
+    if (name == "ZZSM") {   // S meter: (dBm + 140) * 2, clamped to -140..-10 dBm
+        SliceModel* s = (arg == "1") ? sliceB() : (arg == "0" ? a : nullptr);
+        if (!s) return "?;";
+        const auto dbm = m_model->meterModel().sLevelForSlice(s->sliceId());
+        const int sm = dbm ? (static_cast<int>(std::clamp(*dbm, -140.0f, -10.0f)) + 140) * 2 : 0;
+        return "ZZSM" + fmt3(sm) + ";";
+    }
+    if (name == "ZZFL" || name == "ZZFH") {   // filter edges, sign + 4 digits Hz
+        if (!a) return "?;";
+        const bool low = (name == "ZZFL");
+        if (arg.isEmpty()) return name + thetisSigned(low ? a->filterLow() : a->filterHigh(), 5) + ";";
+        int v = 0;
+        if (arg.size() != 5 || !parseThetisInt(arg, v)) return "?;";
+        v = std::clamp(v, -10000, 10000);
+        if (low) a->setFilterWidth(v, a->filterHigh());
+        else     a->setFilterWidth(a->filterLow(), v);
+        return {};
+    }
+    if (name == "ZZNA") return relabel(cmdNB(arg), 2);
+    if (name == "ZZNR") return relabel(cmdZZNR(arg), 4);
+    if (name == "ZZNT") return relabel(cmdNT(arg), 2);
+
+    // ── RIT / XIT ───────────────────────────────────────────────────────────
+    if (name == "ZZRT") return relabel(cmdZZRT(arg), 4);
+    if (name == "ZZXS") return relabel(cmdZZXS(arg), 4);
+    if (name == "ZZRF" || name == "ZZXF") {
+        if (!a) return "?;";
+        const bool rit = (name == "ZZRF");
+        if (arg.isEmpty()) return name + thetisSigned(rit ? a->ritFreq() : a->xitFreq(), 5) + ";";
+        int v = 0;
+        if (arg.size() != 5 || !parseThetisInt(arg, v)) return "?;";
+        v = std::clamp(v, -kRitMaxHz, kRitMaxHz);
+        if (rit) a->setRit(a->ritOn(), v);
+        else     a->setXit(a->xitOn(), v);
+        return {};
+    }
+    if (name == "ZZRC") return cmdZZRC();
+    if (name == "ZZXC") return cmdZZXC();
+    if (name == "ZZRU" || name == "ZZRD" || name == "ZZXU" || name == "ZZXD") {
+        // No value: step 10 Hz; a 5-character value sets the offset (Thetis).
+        if (!a) return "?;";
+        const bool rit = (name == "ZZRU" || name == "ZZRD");
+        const int cur = rit ? a->ritFreq() : a->xitFreq();
+        int v = 0;
+        if (arg.isEmpty())
+            v = cur + ((name == "ZZRU" || name == "ZZXU") ? 10 : -10);
+        else if (arg.size() != 5 || !parseThetisInt(arg, v))
+            return "?;";
+        v = std::clamp(v, -kRitMaxHz, kRitMaxHz);
+        if (rit) a->setRit(a->ritOn(), v);
+        else     a->setXit(a->xitOn(), v);
+        return {};
+    }
+
+    // ── Identity / status ───────────────────────────────────────────────────
+    if (name == "ZZAI") {
+        if (arg.isEmpty()) return onOff(m_aiEnabled);
+        return {};   // set handled by the session
+    }
+    if (name == "ZZPS") {   // power: always on; a remote power-off is refused
+        if (arg.isEmpty()) return QStringLiteral("ZZPS1;");
+        return arg == "1" ? QString() : QStringLiteral("?;");
+    }
+    if (name == "ZZID") return {};   // "set rig type PowerSDR": nothing to answer
+    if (name == "ZZFM") return QStringLiteral("ZZFM1;");   // ANAN with Alex
+    if (name == "ZZVN") {
+        return "ZZVN" + QString::fromLatin1(AETHERSDR_VERSION).right(12).rightJustified(12, '0') + ";";
+    }
+    if (name == "ZZZM") {   // HPSDRModel name, e.g. ANAN100D
+        QString m = m_model->model().toUpper();
+        m.remove(QLatin1Char('-'));
+        m.remove(QLatin1Char(' '));
+        return "ZZZM" + (m.isEmpty() ? QStringLiteral("HPSDR") : m) + ";";
+    }
+    return "?;";
 }
 
 } // namespace AetherSDR

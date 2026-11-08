@@ -329,12 +329,16 @@ QByteArray floatBytes(const std::vector<float>& v)
 
 std::span<const int> Hl2Backend::iqRates() const noexcept
 {
+    // Protocol 1 firmware (build 194): the DDCs stop at 384 ksps.
+    if (m_ananP1.load(std::memory_order_relaxed))
+        return std::span<const int>(kAnanIqSampleRatesHz, 4);
     return std::span<const int>(kAnanIqSampleRatesHz);
 }
 
 int Hl2Backend::maxIqRateHz() const noexcept
 {
-    return kAnanIqSampleRatesHz[std::size(kAnanIqSampleRatesHz) - 1];
+    const auto rates = iqRates();
+    return rates[rates.size() - 1];
 }
 
 int Hl2Backend::nearestIqRateHz(double requestedHz) const noexcept
@@ -639,7 +643,8 @@ Hl2Backend::Hl2Backend(QObject* parent)
         // the drive follows at once, from the last level asked for.
         if (m_ananLastDrivePercent >= 0
             && m_ananPaCalApplied != m_currentBandKey + QLatin1Char(':')
-                                         + QString::number(ananPaCalPercent()))
+                                         + QString::number(ananPaCalPercent()) + QLatin1Char(':')
+                                         + QString::number(ananPaMidDrivePercent(), 'f', 1))
             applyDrive(m_ananLastDrivePercent);
         {
             const int txAtt = std::clamp(
@@ -916,6 +921,22 @@ Hl2Backend::Hl2Backend(QObject* parent)
     // Link lifecycle: first EP6 -> connected; stop -> disconnected.
     connect(m_metis, &MetisClient::linkUp, this, [this] {
         m_connected = true;
+        // Build 194: the protocol the radio answered with. Over Protocol 1 the
+        // DDCs stop at 384 ksps; a wider span left from a Protocol 2 session
+        // comes down to it (the radio streams 384 already).
+        {
+            const bool p1 = static_cast<anan::P2Transport*>(m_metis)->isProtocol1();
+            const bool was = m_ananP1.exchange(p1, std::memory_order_relaxed);
+            if (p1 && m_sampleRateHz > 384000) {
+                QTimer::singleShot(0, this, [this] {
+                    qCWarning(lcHl2) << "ANAN: Protocol 1 radio -- span" << m_sampleRateHz / 1000
+                                     << "kHz is not available, 384 kHz";
+                    applyPanBandwidth(384000.0);
+                });
+            }
+            if (p1 != was)
+                QTimer::singleShot(0, this, [this] { emit capabilitiesChanged(); });
+        }
         // #5594 (M1): seed the announcement baseline at the connect edge. The
         // connect itself republishes capabilities through connectionStateChanged,
         // so this value is already described — recording it here is what stops
@@ -1482,7 +1503,16 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
                     static_cast<std::size_t>(std::lround(static_cast<double>(n) * frac)),
                     std::size_t{32}, n);
         }
-        const std::size_t first = n / 2 - std::min(n / 2, keep / 2);
+        // Build 209: the view may sit off the NCO (a pan drag inside the
+        // captured band): crop at its offset. Bin k is (k - n/2) * rate / n
+        // from the NCO -- frequency increases with the index here, as the
+        // pan's axis does.
+        std::size_t first = n / 2 - std::min(n / 2, keep / 2);
+        if (rate > 0.0 && n >= 64) {
+            const double offBins = viewOffsetHz(*receiver) * static_cast<double>(n) / rate;
+            const double f = static_cast<double>(first) + std::round(offBins);
+            first = static_cast<std::size_t>(std::clamp(f, 0.0, static_cast<double>(n - keep)));
+        }
         // ANAN-100D port: always kOutBins points -- a bin count that changes
         // with every zoom step made the panadapter and waterfall restart --
         // peak-held when the view holds more bins, linear when fewer. dBFS ->
@@ -1533,10 +1563,45 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
             }
             return out;
         };
+        // Build 210 (operator: "in zoom the panadapter has margin, the
+        // waterfall has none -- let it take every available bin"): the
+        // waterfall row is the WHOLE captured band (the drag's 96 % of the
+        // rate) with its true RF bounds, not the viewport. The widget draws
+        // the viewport from it and keeps the rest (its supplemental row, as
+        // for a Flex tile), so a pan drag in zoom finds the waterfall already
+        // there. At most kWfMaxBins, mean power per output bin; fewer FFT
+        // bins than that go out as they are.
         SpectrumCoverage wf;
-        if (raw.size() == n) {
-            wf.bins = floatBytes(resample(raw));
-            wf.viewportBounds = true;
+        if (raw.size() == n && rate > 0.0 && n >= 64) {
+            constexpr std::size_t kWfMaxBins = 8192;
+            constexpr double kWfSpanFraction = 0.96;
+            const std::size_t wKeep = std::min<std::size_t>(
+                n, static_cast<std::size_t>(std::lround(static_cast<double>(n) * kWfSpanFraction)) & ~std::size_t{1});
+            const std::size_t wFirst = n / 2 - wKeep / 2;
+            const std::size_t outN = std::min(wKeep, kWfMaxBins);
+            std::vector<float> row(outN);
+            for (std::size_t o = 0; o < outN; ++o) {
+                const std::size_t b0 = wFirst + o * wKeep / outN;
+                const std::size_t b1 = std::max(b0 + 1, wFirst + (o + 1) * wKeep / outN);
+                if (b1 == b0 + 1) {
+                    row[o] = static_cast<float>(raw[b0] + dispOff);
+                    continue;
+                }
+                double sum = 0.0;
+                for (std::size_t b = b0; b < b1; ++b)
+                    sum += std::pow(10.0, 0.1 * static_cast<double>(raw[b]));
+                row[o] = static_cast<float>(10.0 * std::log10(sum / static_cast<double>(b1 - b0) + 1e-30)
+                                            + dispOff);
+            }
+            // Bin k sits (k - n/2) * rate / n from the NCO.
+            const double binHz = rate / static_cast<double>(n);
+            const double lowHz = receiver->ncoHz
+                + (static_cast<double>(wFirst) - static_cast<double>(n / 2)) * binHz;
+            wf.bins = floatBytes(row);
+            wf.lowMhz = lowHz / 1.0e6;
+            wf.highMhz = (lowHz + static_cast<double>(wKeep) * binHz) / 1.0e6;
+            if (!wf.valid())
+                wf = SpectrumCoverage();
         }
         const std::vector<float> dbm = resample(bins);
         if (ids->ddcIndex < 2 && !txOnAir && raw.size() == n)
@@ -3379,6 +3444,9 @@ RadioCapabilities Hl2Backend::capabilities() const
 void Hl2Backend::connectRadio(const RadioConnectRequest& request)
 {
     const QHostAddress host(request.host);
+    // Build 194: a radio the discovery sweep found with Protocol 1 firmware
+    // (its rates stop at 384 ksps; the transport picks the protocol itself).
+    m_ananP1.store(anan::isProtocol1Host(host.toIPv4Address()), std::memory_order_relaxed);
     if (host.isNull()) {
         emit connectionError(QStringLiteral("ANAN: invalid host '%1'").arg(request.host));
         return;
@@ -5068,53 +5136,105 @@ void Hl2Backend::setNotchesEnabled(bool on)
 void Hl2Backend::setPanCenter(const QString& panId, double hz, PanCenterIntent)
 {
     ananUnkeyEvent(QStringLiteral("setPanCenter %1 Hz").arg(hz, 0, 'f', 0));
-    // Moving the window means moving the DDC. The slice does NOT move with it —
-    // that is the point of keeping the two separate — so its offset from the new
-    // centre is recomputed and re-applied as a shift.
+    // The slice does NOT move with the window -- that is the point of keeping
+    // the two separate.
     if (hz <= 0.0)
         return;
     const int ddc = ddcForPan(panId);
     Receiver* r = rx(ddc);
     if (!r)
         return;
-    // A drag delivers a centre command every 33 ms and forwards every one. Skip
-    // the ones that do not actually move the DDC rather than re-sending an
-    // identical NCO bank ~30 times a second.
-    if (hz == r->ncoHz)
+    // A drag delivers a centre command every 33 ms.
+    if (hz == panCenterHz(*r))
         return;
-    const double ncoDeltaHz = hz - r->ncoHz;
-    r->ncoHz = hz;
     // The operator placed the centre: it is theirs now, not RIT's to undo.
     r->ncoMovedForRit = false;
-    if (m_metis)
-        QMetaObject::invokeMethod(m_metis, "setRxFrequencyHz", Qt::QueuedConnection,
-            Q_ARG(int, ddc),
-            Q_ARG(std::uint32_t, ncoCommandHz(hz)));
-    if (r->dsp)
-        QMetaObject::invokeMethod(r->dsp, "setShift", Qt::QueuedConnection,
-            Q_ARG(double, rxShiftHz(*r)));
-    // The NCO moved, so the notch axis has to move with it. See the note at the
-    // matching site in setSliceFrequency.
-    pushNotchTune(*r);
-    // So has the panadapter's frequency axis. ANAN-100D port (operator:
-    // "while dragging, the panorama keeps resetting and redrawing"): the
-    // average used to be dropped -- together with the window being collected
-    // -- on every drag step (~30 a second), so the trace restarted over and
-    // over, and with a large zoom FFT no frame completed at all. Now the
-    // average moves with the NCO; only a jump of more than half the span
-    // starts it afresh.
-    if (std::abs(ncoDeltaHz) > static_cast<double>(m_sampleRateHz) / 2.0) {
-        dropPanAverage(*r);
-    } else if (r->dsp) {
-        QMetaObject::invokeMethod(r->dsp, "shiftSpectrum", Qt::QueuedConnection,
-                                  Q_ARG(double, ncoDeltaHz));
+
+    // ANAN port (build 209; operator: "while dragging the panadapter the bins
+    // go jelly-like and lag, the audio distorts"). Every drag step used to
+    // retune the DDC: the radio's IQ arrives on the new NCO a few ms after
+    // the command, while the WDSP shift and the spectrum's axis moved at
+    // once -- the audio was off-tune for those ms ~30 times a second, and
+    // the trace averaged frames of two axes. Now the view moves inside the
+    // band the DDC already captures (the FFT is cropped elsewhere; nothing
+    // is retuned), as long as it fits; the DDC moves only when the view
+    // would leave it, and then with a lead, so the drag goes on for a while
+    // before the next move. During the drag the view may use the DDC
+    // filter's roll-off edges (kDragReach of the rate); once the drag stops,
+    // settlePanViews() brings it back inside the clean 80 %.
+    constexpr double kDragReach = 0.96;
+    const double rate = static_cast<double>(m_sampleRateHz);
+    const double view = panViewHz(*r);
+    const double reach = std::max(0.0, (rate * kDragReach - view) / 2.0);
+    if (std::abs(hz - r->ncoHz) <= reach) {
+        r->viewOffsetHz = hz - r->ncoHz;
+        r->viewForNcoHz = r->ncoHz;
+    } else {
+        const double dir = hz > panCenterHz(*r) ? 1.0 : -1.0;
+        // The view lands near the trailing side of the new band.
+        moveNcoForView(ddc, *r, hz + dir * reach * 0.8, hz);
     }
+    if (!m_panSettleTimer) {
+        m_panSettleTimer = new QTimer(this);
+        m_panSettleTimer->setSingleShot(true);
+        m_panSettleTimer->setInterval(400);
+        connect(m_panSettleTimer, &QTimer::timeout, this, [this] { settlePanViews(); });
+    }
+    m_panSettleTimer->start();
     // Panning one receiver can move it onto another band, which changes what the
     // SHARED filter board should be doing. Re-evaluate across every receiver.
     applyBandFilter("pan");
     publishWideState();
     emitPanState(ddc);
     notifyOperatingStateChanged();
+}
+
+void Hl2Backend::moveNcoForView(int ddc, Receiver& r, double newNcoHz, double viewCenterHz)
+{
+    newNcoHz = std::round(newNcoHz);
+    if (newNcoHz <= 0.0 || newNcoHz == r.ncoHz)
+        return;
+    const double ncoDeltaHz = newNcoHz - r.ncoHz;
+    r.ncoHz = newNcoHz;
+    r.viewOffsetHz = viewCenterHz - newNcoHz;
+    r.viewForNcoHz = newNcoHz;
+    if (m_metis)
+        QMetaObject::invokeMethod(m_metis, "setRxFrequencyHz", Qt::QueuedConnection,
+            Q_ARG(int, ddc),
+            Q_ARG(std::uint32_t, ncoCommandHz(newNcoHz)));
+    // The NCO moved, so the notch axis has to move with it. See the note at the
+    // matching site in setSliceFrequency.
+    pushNotchTune(r);
+    if (r.dsp) {
+        // The shift and the spectrum axis move with the NCO; ncoMoved() also
+        // covers the IQ still in flight on the old NCO (audio dip, spectrum
+        // skip). A jump of more than half the span starts the average afresh.
+        QMetaObject::invokeMethod(r.dsp, "setShift", Qt::QueuedConnection,
+            Q_ARG(double, rxShiftHz(r)));
+        if (std::abs(ncoDeltaHz) > static_cast<double>(m_sampleRateHz) / 2.0)
+            dropPanAverage(r);
+        QMetaObject::invokeMethod(r.dsp, "ncoMoved", Qt::QueuedConnection,
+                                  Q_ARG(double, ncoDeltaHz));
+    }
+}
+
+void Hl2Backend::settlePanViews()
+{
+    // After a drag: a view left in the DDC filter's roll-off (beyond the
+    // clean 80 %) is brought back in by the smallest NCO move that fits it.
+    const double rate = static_cast<double>(m_sampleRateHz);
+    for (const auto& ids : m_ids.all()) {
+        Receiver* r = rx(ids.ddcIndex);
+        if (!r)
+            continue;
+        const double off = viewOffsetHz(*r);
+        const double slack = std::max(0.0, (rate * anan::kUsableSpanFraction - panViewHz(*r)) / 2.0);
+        if (std::abs(off) <= slack + 1.0)
+            continue;
+        const double center = panCenterHz(*r);
+        moveNcoForView(ids.ddcIndex, *r, center - std::copysign(slack, off), center);
+        emitPanState(ids.ddcIndex);
+    }
 }
 
 void Hl2Backend::setPanBandwidth(const QString& panId, double hz)
@@ -7237,12 +7357,30 @@ void Hl2Backend::applyDrive(int percent)
     // drive = full * (percent / 100)^(1 / gamma): watts proportional to the
     // slider. gamma = 2 would be the ideal PA (the old law); the operator
     // measured 0.91 with a wattmeter (06.11, build 174's two-point method),
-    // and that is a constant -- the sliders need no more accuracy than this.
-    constexpr double gamma = 0.91;
-    m_ananPaCalApplied = m_currentBandKey + QLatin1Char(':') + QString::number(cal);
+    // and that was a constant (build 179).
+    // Operator, 07.11 (build 193): another radio has a quite different PA, so
+    // it is a setting again, given as the MID-SCALE point: the drive, in % of
+    // the calibrated full drive, that the sliders give at 50 % (Setup > Radio >
+    // PA Power Law, key AnanPaMidDrivePct, the same for RF Power and Tune).
+    // drive(p) = full * (p/100)^e with 0.5^e = mid/100, so e = -log2(mid/100);
+    // mid 46.7 % is the operator's measured gamma 0.91 (0.5^(1/0.91)), 70.7 %
+    // the ideal square-law PA.
+    const double mid = ananPaMidDrivePercent();
+    const double e = -std::log2(mid / 100.0);
+    m_ananPaCalApplied = m_currentBandKey + QLatin1Char(':') + QString::number(cal)
+                       + QLatin1Char(':') + QString::number(mid, 'f', 1);
     const int drive = static_cast<int>(std::lround(
-        255.0 * cal / 100.0 * std::pow(static_cast<double>(clamped) / 100.0, 1.0 / gamma)));
+        255.0 * cal / 100.0 * std::pow(static_cast<double>(clamped) / 100.0, e)));
     setTxDriveLevel(std::clamp(drive, 0, 255));
+}
+
+double Hl2Backend::ananPaMidDrivePercent()
+{
+    // RadioSetupDialog's PA Power Law group writes it; 46.7 % = gamma 0.91.
+    return std::clamp(AppSettings::instance()
+                          .value(QStringLiteral("AnanPaMidDrivePct"), kAnanPaMidDriveDefault)
+                          .toDouble(),
+                      kAnanPaMidDriveMin, kAnanPaMidDriveMax);
 }
 
 int Hl2Backend::ananPaCalPercent() const
@@ -10856,7 +10994,8 @@ void Hl2Backend::emitPanState(int ddc)
     // ANAN-100D port: the bandwidth is the zoomed view (panViewHz); the rate
     // itself goes to the rate label through AnanUiState.
     anan::AnanUiState::instance().sampleRateHz = m_sampleRateHz;
-    emit panCenterBandwidthChanged(ids->panId, r->ncoHz / 1.0e6,
+    // Build 209: the VIEW centre, which may sit off the NCO (viewOffsetHz).
+    emit panCenterBandwidthChanged(ids->panId, panCenterHz(*r) / 1.0e6,
                                    panViewHz(*r) / 1.0e6);
 }
 

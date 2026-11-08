@@ -3,6 +3,8 @@
 #include "core/AppSettings.h"
 #include "core/LogManager.h"   // lcDiscovery
 #include "core/backends/anan/P2Protocol.h"
+#include "core/backends/anan/P1Protocol.h"
+#include "core/backends/hl2/MetisProtocol.h"
 
 #include <QJsonObject>
 #include <QNetworkDatagram>
@@ -325,6 +327,9 @@ void AnanDiscovery::sweepNow()
         return;
     }
     const auto pkt = buildDiscovery();
+    // Build 194: the same boards with Protocol 1 firmware answer only the
+    // Protocol 1 request (EF FE 02), sent to the same targets.
+    const auto pkt1 = hl2::discoveryRequest();
     // The kernel routes each directed broadcast from this wildcard socket.
     // This reaches a second NIC on a distinct subnet; two NICs on the same
     // subnet still follow the preferred route rather than each being swept.
@@ -339,6 +344,8 @@ void AnanDiscovery::sweepNow()
         } else {
             m_log.sendFailed(target, m_socket->errorString());
         }
+        m_socket->writeDatagram(reinterpret_cast<const char*>(pkt1.data()),
+                                static_cast<qint64>(pkt1.size()), target, kRadioPort);
     }
 }
 
@@ -366,12 +373,30 @@ void AnanDiscovery::onReadyRead()
     while (m_socket && m_socket->hasPendingDatagrams()) {
         const QNetworkDatagram dg = m_socket->receiveDatagram();
         const QByteArray data = dg.data();
-        const auto reply = parseDiscoveryReply(
-            {reinterpret_cast<const std::uint8_t*>(data.constData()),
-             static_cast<std::size_t>(data.size())});
+        const std::span<const std::uint8_t> bytes{reinterpret_cast<const std::uint8_t*>(data.constData()),
+                                                  static_cast<std::size_t>(data.size())};
+        auto reply = parseDiscoveryReply(bytes);
+        bool protocol1 = false;
+        if (!reply) {
+            // Protocol 1 firmware (build 194): the reply in the Protocol 1
+            // layout, its board type mapped to the Protocol 2 id (so the
+            // model, the serial and the settings are the same radio's).
+            if (const auto r1 = hl2::parseDiscoveryReply(bytes)) {
+                if (const auto id = p2BoardIdForP1(r1->boardId)) {
+                    DiscoveryReply r;
+                    r.streaming = r1->streaming;
+                    r.mac = r1->mac;
+                    r.boardId = *id;
+                    r.firmwareVer = r1->gatewareVersion;
+                    reply = r;
+                    protocol1 = true;
+                }
+            }
+        }
         // ANAN-100D port: ANGELIA (100D), ORION (200D) and SATURN (G2).
         if (!reply || !reply->isSupportedAnan())
             continue;   // not an ANAN this build drives (or not a discovery reply)
+        noteProtocol1Host(dg.senderAddress().toIPv4Address(), protocol1);
         m_log.replyListed();
 
         RadioInfo info;
@@ -379,14 +404,14 @@ void AnanDiscovery::onReadyRead()
         info.address  = dg.senderAddress();
         info.port     = kRadioPort;
         info.model    = modelName(reply->boardId);
-        info.name     = info.model;
+        info.name     = protocol1 ? info.model + QStringLiteral(" (Protocol 1)") : info.model;
         info.serial   = stableSerial(reply->mac, reply->boardId);
         info.nickname = effectiveNickname(QStringLiteral("anan"), info.serial, info.model);
         info.version  = QString::number(reply->firmwareVer);
         // A bare integer is not self-describing in a status bar -- and this
         // one especially: it is a gateware bitstream number, not a software
         // version (discrepancy #1, see P2Protocol.h's DiscoveryReply).
-        info.versionLabel = QStringLiteral("Gateware");
+        info.versionLabel = protocol1 ? QStringLiteral("Protocol 1 gateware") : QStringLiteral("Gateware");
         // A radio already streaming to another client answers with 0x03.
         // Show it as present-but-taken rather than hiding it.
         info.inUse    = reply->streaming;

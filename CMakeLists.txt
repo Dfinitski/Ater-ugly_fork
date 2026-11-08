@@ -937,6 +937,7 @@ set(CORE_SOURCES
     src/core/backends/hl2/Hl2HardwareOptions.cpp # which HL2 variant: codec, dither bit, filter board, CL1, ATU
     src/core/backends/anan/P2Protocol.cpp    # aetherd ANAN P2 Phase 1b (openHPSDR Protocol 2 wire codec)
     src/core/backends/anan/P2Transport.cpp   # ANAN-100D port: Protocol 2 transport under Hl2Backend
+    src/core/backends/anan/P1Protocol.cpp    # ANAN port: Protocol 1 C&C / status (Thetis networkproto1.c)
     src/core/backends/anan/AnanTxEngine.cpp  # ANAN-100D port: transmit thread (mic -> TXA -> DUC, device-clocked)
     src/core/backends/anan/AnanNativeUdp.cpp # ANAN-100D port: sendto() from the TX / speaker threads
     src/core/backends/anan/AnanTxScope.cpp   # ANAN-100D port: spectrum of the IQ sent to the DUC
