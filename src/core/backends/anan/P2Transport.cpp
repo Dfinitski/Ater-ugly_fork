@@ -193,7 +193,8 @@ QList<hl2::MetisClient::Discovered> P2Transport::discover(int timeoutMs,
                 if (seen.contains(key))
                     continue;
                 seen.insert(key);
-                noteProtocol1Host(dg.senderAddress().toIPv4Address(), true);
+                noteProtocol1Host(dg.senderAddress().toIPv4Address(),
+                                  Protocol1HostInfo{*id, r1->gatewareVersion});
                 Discovered d;
                 d.reply.mac = r1->mac;
                 d.reply.gatewareVersion = r1->gatewareVersion;
@@ -359,6 +360,11 @@ void P2Transport::configureSession(const BoardProfile& profile, bool fromReply)
     m_boardWait->stop();
     m_profile = profile;
     m_configured = true;
+    // Build 213: over Protocol 1 every board this backend drives has the
+    // Thetis PureSignal pair (Hermes DDC2/DDC3, Hermes II DDC0/DDC1 while
+    // transmitting, the others DDC3/DDC4), single-ADC boards included.
+    if (m_p1)
+        m_profile.psSupported = true;
     if (!m_profile.psSupported && m_psEnabled) {
         std::lock_guard<std::mutex> lock(m_txMutex);
         m_psEnabled = false;
@@ -366,14 +372,9 @@ void P2Transport::configureSession(const BoardProfile& profile, bool fromReply)
     }
     m_p1Atomic.store(m_p1, std::memory_order_relaxed);
     if (m_p1) {
-        // Protocol 1 (build 194). PureSignal and the Odyssey status are
-        // Protocol 2 features here; the DDC plan is Thetis'.
-        m_profile.psSupported = false;
+        // Protocol 1 (build 194). The Odyssey status is a Protocol 2
+        // feature here; the DDC plan is Thetis'. PureSignal since build 213.
         m_profile.odysseyStatus = false;
-        if (m_psEnabled) {
-            std::lock_guard<std::mutex> lock(m_txMutex);
-            m_psEnabled = false;
-        }
         std::uint8_t planBoard = m_profile.boardId;
         if (planBoard == kBoardIdHermes) {
             // Protocol 1 reports ANAN-10E / 100B as HERMES; the operator's
@@ -438,6 +439,24 @@ void P2Transport::onBoardWaitTimeout()
         m_p1 = true;
         configureSession(*m_p1Pending, true);
         return;
+    }
+    // Build 212: no reply to this socket's own (unicast) requests, but the
+    // discovery sweep found a Protocol 1 radio at this address. Some Protocol 1
+    // firmware answers discovery only when it is broadcast; it still streams
+    // to whoever sends it the start command, so start Protocol 1, as Thetis
+    // does. (Before, this fell through to Protocol 2, which such a radio
+    // ignores: "no IQ ... 0 packets".)
+    if (const auto known = protocol1HostInfo(m_p.host.toIPv4Address())) {
+        if (const auto profile = boardProfileFor(known->boardId)) {
+            qCInfo(lcAnanP2T).nospace()
+                << "ANAN transport: no Discovery reply to this socket within " << kBoardWaitMs
+                << " ms; the discovery sweep found a Protocol 1 " << profile->modelName
+                << " (gateware " << int(known->gateware) << ") at this address -- starting Protocol 1";
+            m_p1 = true;
+            m_p1Gateware = known->gateware;
+            configureSession(*profile, false);
+            return;
+        }
     }
     qCWarning(lcAnanP2T) << "ANAN P2 transport: no Discovery reply within" << kBoardWaitMs
                          << "ms; assuming" << defaultBoardProfile().modelName;
@@ -1128,56 +1147,7 @@ void P2Transport::handleDatagram(std::span<const std::uint8_t> bytes, quint16 se
             m_psTxBuf.clear();
             m_psRxBuf.clear();
             if (decodePsPairs(bytes, m_psTxBuf, m_psRxBuf) && !m_psRxBuf.empty()) {
-                ++m_psPackets;
-                // ANAN-100D port (01.11): used as received. The PS DDC pairs
-                // already have the host TXA IQ's handedness -- on a working
-                // radio the two-tone lies on the same side in both, and
-                // PureSignal reaches -45 dBc; conjugating them (anan114) gave
-                // -32 (AM/PM learnt with the wrong sign).
-                double hwPeak = -1.0;
-                const int pairs = int(m_psRxBuf.size() / 2);
-                for (int i = 0; i < pairs; ++i) {
-                    const double p = m_psTxBuf[std::size_t(2 * i)] * m_psTxBuf[std::size_t(2 * i)]
-                                     + m_psTxBuf[std::size_t(2 * i + 1)] * m_psTxBuf[std::size_t(2 * i + 1)];
-                    m_hwFbPk = std::max(m_hwFbPk, p);
-                    const double pr = m_psRxBuf[std::size_t(2 * i)] * m_psRxBuf[std::size_t(2 * i)]
-                                      + m_psRxBuf[std::size_t(2 * i + 1)] * m_psRxBuf[std::size_t(2 * i + 1)];
-                    m_scopeFbPk = std::max(m_scopeFbPk, pr);
-                    if (++m_hwFbN == kPsFeedbackRateKsps * 500) {   // 0.5 s
-                        // Only on a strong signal (>= -6 dBFS sent), so the
-                        // ratio is not noise over noise.
-                        const double ducLast = m_hwDucLast.load(std::memory_order_relaxed);
-                        if (ducLast >= 0.25) {
-                            hwPeak = std::sqrt(m_hwFbPk / ducLast);
-                            if (m_scopeFbPk > 1e-12)
-                                m_scopeFbGain = std::sqrt(ducLast / m_scopeFbPk);
-                        }
-                        m_hwFbPk = 0.0;
-                        m_scopeFbPk = 0.0;
-                        m_hwFbN = 0;
-                    }
-                }
-                m_psSink(m_psTxBuf.data(), m_psRxBuf.data(), pairs, hwPeak);
-                // ANAN-100D port (operator, 01.11: two tones "with intermods"
-                // on the TX panorama): the DUC IQ carries the PureSignal
-                // predistortion -- by design it holds the products that cancel
-                // the amplifier's. While PureSignal feeds, the TX panorama
-                // shows the coupler instead (DDC0, the RF actually sent), at
-                // the DUC level (the peaks matched every 0.5 s).
-                if (m_scopeFbGain > 0.0) {
-                    m_scopeFbBuf.resize(std::size_t(pairs));
-                    const float g = static_cast<float>(m_scopeFbGain);
-                    for (int i = 0; i < pairs; ++i)
-                        m_scopeFbBuf[std::size_t(i)] = {g * float(m_psRxBuf[std::size_t(2 * i)]),
-                                                        g * float(m_psRxBuf[std::size_t(2 * i + 1)])};
-                    m_scopeFromFb.store(true, std::memory_order_relaxed);
-                    m_scopeFbMs.store(steadyMs(), std::memory_order_relaxed);
-                    std::lock_guard<std::mutex> txLock(m_txMutex);   // m_txScope is TX state
-                    if (m_txScope.push(m_scopeFbBuf.data(), pairs, m_txScopeBins)) {
-                        emit txScopeFrameReady(QList<float>(m_txScopeBins.begin(), m_txScopeBins.end()),
-                                               static_cast<double>(m_txHz ? m_txHz : m_rxHz[0]));
-                    }
-                }
+                deliverPsPairs();
             }
         }
         return;
@@ -2381,6 +2351,14 @@ P1CcState P2Transport::p1State() const
     }
     s.ddcHz[static_cast<std::size_t>(m_p1Plan.rxDdc[0])] = rx0;
     s.ddcHz[static_cast<std::size_t>(m_p1Plan.rxDdc[1])] = rx1;
+    // Hermes II (nddc 2): PureSignal borrows the receivers' DDC0/DDC1 while
+    // transmitting (Thetis UpdateDDCs), both on the TX frequency.
+    const bool psTx = m_psEnabled && m_mox;
+    if (s.nddc == 2 && psTx) {
+        s.ddcHz[0] = tx;
+        s.ddcHz[1] = tx;
+    }
+    s.pureSignal = m_psEnabled;
     s.txHz = tx;
     // The ADC for each receiver's DDC (2 bits per DDC); ANGELIA's DDC1 goes
     // with RX1. Single-ADC boards: all zero.
@@ -2410,7 +2388,17 @@ P1CcState P2Transport::p1State() const
     s.random = m_random;
     s.antenna = m_mox ? m_txAnt : m_rxAnt;
     s.duplex = true;
-    s.txAdc0AttDb = m_txAttDb;
+    // With PureSignal on, ADC0's transmit attenuation is the feedback
+    // attenuator (Thetis SetTxAttenData from the PS auto-attenuate).
+    s.txAdc0AttDb = m_psEnabled ? m_psAttDb : m_txAttDb;
+    // PS feedback input while transmitting, as on Protocol 2: internal
+    // coupler = no RX input bit; EXT1 (old PA board) = EXT1 + RX bypass out;
+    // bypass = RX bypass out. ORION MkII has no EXT1 on TX: bypass.
+    if (psTx && m_psSource != 0) {
+        s.rxInputBits = 0x80;
+        if (m_psSource == 1 && m_profile.alexScheme != AlexScheme::Orion2BandPass)
+            s.rxInputBits |= 0x40;
+    }
     s.driveLevel = cwDemoActive() ? 0 : m_drive;   // CW demo: no RF
     s.micBoost = m_micBoost;
     if (m_profile.alexScheme == AlexScheme::Orion2BandPass) {
@@ -2522,6 +2510,63 @@ void P2Transport::sendP1Ep2()
     sendDatagram(*m_sock, pkt, m_p.host, kRadioPort, m_counters.txBytes, m_counters.txPackets);
 }
 
+// PureSignal: one block of synchronised pairs in m_psTxBuf / m_psRxBuf
+// (interleaved I/Q, 192 ksps) to the PS engine -- Protocol 2's DDC0/DDC1
+// packets, and since build 213 Protocol 1's PS DDC pair resampled to 192 ksps.
+void P2Transport::deliverPsPairs()
+{
+    ++m_psPackets;
+    // ANAN-100D port (01.11): used as received. The PS DDC pairs
+    // already have the host TXA IQ's handedness -- on a working
+    // radio the two-tone lies on the same side in both, and
+    // PureSignal reaches -45 dBc; conjugating them (anan114) gave
+    // -32 (AM/PM learnt with the wrong sign).
+    double hwPeak = -1.0;
+    const int pairs = int(m_psRxBuf.size() / 2);
+    for (int i = 0; i < pairs; ++i) {
+        const double p = m_psTxBuf[std::size_t(2 * i)] * m_psTxBuf[std::size_t(2 * i)]
+                         + m_psTxBuf[std::size_t(2 * i + 1)] * m_psTxBuf[std::size_t(2 * i + 1)];
+        m_hwFbPk = std::max(m_hwFbPk, p);
+        const double pr = m_psRxBuf[std::size_t(2 * i)] * m_psRxBuf[std::size_t(2 * i)]
+                          + m_psRxBuf[std::size_t(2 * i + 1)] * m_psRxBuf[std::size_t(2 * i + 1)];
+        m_scopeFbPk = std::max(m_scopeFbPk, pr);
+        if (++m_hwFbN == kPsFeedbackRateKsps * 500) {   // 0.5 s
+            // Only on a strong signal (>= -6 dBFS sent), so the
+            // ratio is not noise over noise.
+            const double ducLast = m_hwDucLast.load(std::memory_order_relaxed);
+            if (ducLast >= 0.25) {
+                hwPeak = std::sqrt(m_hwFbPk / ducLast);
+                if (m_scopeFbPk > 1e-12)
+                    m_scopeFbGain = std::sqrt(ducLast / m_scopeFbPk);
+            }
+            m_hwFbPk = 0.0;
+            m_scopeFbPk = 0.0;
+            m_hwFbN = 0;
+        }
+    }
+    m_psSink(m_psTxBuf.data(), m_psRxBuf.data(), pairs, hwPeak);
+    // ANAN-100D port (operator, 01.11: two tones "with intermods"
+    // on the TX panorama): the DUC IQ carries the PureSignal
+    // predistortion -- by design it holds the products that cancel
+    // the amplifier's. While PureSignal feeds, the TX panorama
+    // shows the coupler instead (DDC0, the RF actually sent), at
+    // the DUC level (the peaks matched every 0.5 s).
+    if (m_scopeFbGain > 0.0) {
+        m_scopeFbBuf.resize(std::size_t(pairs));
+        const float g = static_cast<float>(m_scopeFbGain);
+        for (int i = 0; i < pairs; ++i)
+            m_scopeFbBuf[std::size_t(i)] = {g * float(m_psRxBuf[std::size_t(2 * i)]),
+                                            g * float(m_psRxBuf[std::size_t(2 * i + 1)])};
+        m_scopeFromFb.store(true, std::memory_order_relaxed);
+        m_scopeFbMs.store(steadyMs(), std::memory_order_relaxed);
+        std::lock_guard<std::mutex> txLock(m_txMutex);   // m_txScope is TX state
+        if (m_txScope.push(m_scopeFbBuf.data(), pairs, m_txScopeBins)) {
+            emit txScopeFrameReady(QList<float>(m_txScopeBins.begin(), m_txScopeBins.end()),
+                                   static_cast<double>(m_txHz ? m_txHz : m_rxHz[0]));
+        }
+    }
+}
+
 void P2Transport::handleP1Ep6(std::span<const std::uint8_t> bytes)
 {
     if (bytes.size() != hl2::kUsbPacketSize || bytes[3] != 0x06)
@@ -2615,6 +2660,37 @@ void P2Transport::handleP1Ep6(std::span<const std::uint8_t> bytes)
         q.push_back(m_p1Ddc[ddc]);
         if (q.size() > kMaxAheadPackets)
             q.pop_front();
+    }
+    // PureSignal (build 213, Thetis twist(): the first stream the feedback,
+    // the second the TX DAC): nddc 5 DDC3 / DDC4, nddc 4 DDC2 / DDC3,
+    // nddc 2 DDC0 / DDC1. Resampled to calcc's 192 ksps.
+    const bool psTx = m_psEnabled && m_mox && m_psSink;
+    if (psTx) {
+        const int fbDdc = m_p1Plan.nddc == 5 ? 3 : m_p1Plan.nddc == 4 ? 2 : 0;
+        const auto fb = static_cast<std::size_t>(fbDdc);
+        if (fb + 1 < m_p1Ddc.size()) {
+            const int rateHz = hl2::sampleRateHz(static_cast<hl2::SampleRate>(p1RateCode()));
+            if (!m_p1PsActive || m_p1PsRx.inRateHz() != rateHz) {
+                m_p1PsRx.configure(rateHz);
+                m_p1PsTx.configure(rateHz);
+                if (!m_p1PsActive)
+                    qCInfo(lcAnanP2T).nospace() << "ANAN P1 transport: PureSignal feedback DDC" << fbDdc
+                                                << ", TX reference DDC" << fbDdc + 1 << ", " << rateHz / 1000
+                                                << " -> 192 ksps";
+            }
+            m_p1PsActive = true;
+            const auto& rxv = m_p1Ddc[fb];
+            const auto& txv = m_p1Ddc[fb + 1];
+            const int n = static_cast<int>(std::min(rxv.size(), txv.size()));
+            m_psTxBuf.clear();
+            m_psRxBuf.clear();
+            m_p1PsRx.process(rxv.data(), n, m_psRxBuf);
+            m_p1PsTx.process(txv.data(), n, m_psTxBuf);
+            if (!m_psRxBuf.empty() && m_psRxBuf.size() == m_psTxBuf.size())
+                deliverPsPairs();
+        }
+    } else {
+        m_p1PsActive = false;
     }
     m_diagSamples += m_p1Ddc[0].size();
     diagTick();

@@ -396,7 +396,12 @@ void AnanDiscovery::onReadyRead()
         // ANAN-100D port: ANGELIA (100D), ORION (200D) and SATURN (G2).
         if (!reply || !reply->isSupportedAnan())
             continue;   // not an ANAN this build drives (or not a discovery reply)
-        noteProtocol1Host(dg.senderAddress().toIPv4Address(), protocol1);
+        if (protocol1)
+            noteProtocol1Host(dg.senderAddress().toIPv4Address(),
+                              Protocol1HostInfo{reply->boardId,
+                                                static_cast<std::uint8_t>(reply->firmwareVer)});
+        else
+            noteProtocol1Host(dg.senderAddress().toIPv4Address(), false);
         m_log.replyListed();
 
         RadioInfo info;

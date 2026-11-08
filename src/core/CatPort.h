@@ -151,6 +151,11 @@ private:
     SmartCatSession*        m_serialSession{nullptr};   // TS-2000 / FlexCAT / Thetis
     RigctlProtocol*         m_serialRigctl{nullptr};    // rigctld framing
     QByteArray              m_serialBuffer;
+    // Build 218: bytes from the logger since the port opened, and the 15 s
+    // "nothing received" check (logged at warning level: on by default).
+    quint64                 m_serialRxBytes = 0;
+    QTimer*                 m_serialSilence = nullptr;
+    quint64                 m_ptyRxBytes = 0;   // Linux PTY: bytes from the logger (build 219)
 
     // PTY (non-Windows only)
 #ifndef Q_OS_WIN

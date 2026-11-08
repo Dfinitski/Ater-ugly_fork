@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <mutex>
+#include <map>
 #include <set>
 
 namespace AetherSDR::anan {
@@ -66,8 +67,9 @@ hl2::Cc p1Cc(int index, const P1CcState& s) noexcept
         c[2] = static_cast<std::uint8_t>((s.openCollector << 1) & 0xFE);   // bit 0 EER off
         // C3: Alex 10/20 dB attenuators off, preamp off (Mercury only),
         // dither bit 3, random bit 4, the RX-only inputs (bits 5-6) and the
-        // RX bypass out (bit 7) not used.
-        c[3] = static_cast<std::uint8_t>((s.dither ? 0x08 : 0) | (s.random ? 0x10 : 0));
+        // RX bypass out (bit 7): only for the PureSignal feedback on TX.
+        c[3] = static_cast<std::uint8_t>((s.dither ? 0x08 : 0) | (s.random ? 0x10 : 0)
+                                         | (s.rxInputBits & 0xE0));
         c[4] = static_cast<std::uint8_t>(s.antenna == 2 ? 0x02 : s.antenna == 1 ? 0x01 : 0x00);
         if (s.duplex)
             c[4] |= 0x04;
@@ -305,18 +307,114 @@ void P1TxDecimator::process(const std::complex<float>* in, int n, std::complex<f
     }
 }
 
+void P1PsResampler::configure(int inRateHz)
+{
+    constexpr double kPi = 3.14159265358979323846;
+    m_inRate = inRateHz;
+    m_up = inRateHz > 0 && inRateHz < kOutRateHz ? kOutRateHz / inRateHz : 1;
+    m_down = inRateHz > kOutRateHz ? inRateHz / kOutRateHz : 1;
+    // Prototype at the higher of the two rates; 32 taps per input sample when
+    // interpolating, 96 taps for the 2:1 decimation.
+    m_taps = m_up > 1 ? 32 * m_up : (m_down > 1 ? 96 : 0);
+    m_h.assign(static_cast<std::size_t>(m_taps), 0.0f);
+    if (m_taps > 0) {
+        const double fs = double(std::max(inRateHz, kOutRateHz));
+        const double fc = 0.45 * double(std::min(inRateHz, kOutRateHz));
+        double sum = 0.0;
+        std::vector<double> h(static_cast<std::size_t>(m_taps));
+        for (int i = 0; i < m_taps; ++i) {
+            const double m = i - (m_taps - 1) / 2.0;
+            const double x = 2.0 * fc / fs * m;
+            const double sinc = std::abs(x) < 1e-12 ? 1.0 : std::sin(kPi * x) / (kPi * x);
+            const double w = 0.42 - 0.5 * std::cos(2.0 * kPi * i / (m_taps - 1))
+                             + 0.08 * std::cos(4.0 * kPi * i / (m_taps - 1));
+            h[static_cast<std::size_t>(i)] = sinc * w;
+            sum += sinc * w;
+        }
+        // Unity gain at DC: each interpolation phase sums to ~1 (x m_up).
+        for (int i = 0; i < m_taps; ++i)
+            m_h[static_cast<std::size_t>(i)] = static_cast<float>(h[static_cast<std::size_t>(i)] * m_up / sum);
+    }
+    m_histLen = m_up > 1 ? m_taps / m_up : m_taps;
+    m_hist.assign(static_cast<std::size_t>(2 * std::max(m_histLen, 1)), {});
+    reset();
+}
+
+void P1PsResampler::reset() noexcept
+{
+    std::fill(m_hist.begin(), m_hist.end(), std::complex<float>{});
+    m_pos = 0;
+    m_phase = 0;
+}
+
+void P1PsResampler::process(const std::complex<float>* in, int n, std::vector<double>& out)
+{
+    if (m_taps == 0) {   // 192 ksps: as received
+        for (int i = 0; i < n; ++i) {
+            out.push_back(in[i].real());
+            out.push_back(in[i].imag());
+        }
+        return;
+    }
+    const int len = m_histLen;
+    for (int i = 0; i < n; ++i) {
+        // Newest sample at m_pos and mirrored len further on: the window
+        // [m_pos, m_pos + len) is contiguous, newest first going backwards.
+        m_pos = (m_pos + len - 1) % len;
+        m_hist[static_cast<std::size_t>(m_pos)] = in[i];
+        m_hist[static_cast<std::size_t>(m_pos + len)] = in[i];
+        const std::complex<float>* x = m_hist.data() + m_pos;   // x[k] = input k samples ago
+        if (m_up > 1) {
+            // Output phase p of this input sample: sum over k of h[k*up + p] x[k].
+            for (int p = 0; p < m_up; ++p) {
+                std::complex<float> acc{};
+                for (int k = 0; k < len; ++k)
+                    acc += x[k] * m_h[static_cast<std::size_t>(k * m_up + p)];
+                out.push_back(acc.real());
+                out.push_back(acc.imag());
+            }
+        } else if (++m_phase == m_down) {
+            m_phase = 0;
+            std::complex<float> acc{};
+            for (int k = 0; k < len; ++k)
+                acc += x[k] * m_h[static_cast<std::size_t>(k)];
+            out.push_back(acc.real());
+            out.push_back(acc.imag());
+        }
+    }
+}
+
 namespace {
 std::mutex g_p1HostsMutex;
 std::set<std::uint32_t> g_p1Hosts;
+std::map<std::uint32_t, Protocol1HostInfo> g_p1HostInfo;   // build 212
 }  // namespace
 
 void noteProtocol1Host(std::uint32_t ipv4, bool protocol1)
 {
     std::lock_guard<std::mutex> lock(g_p1HostsMutex);
-    if (protocol1)
+    if (protocol1) {
         g_p1Hosts.insert(ipv4);
-    else
+    } else {
         g_p1Hosts.erase(ipv4);
+        g_p1HostInfo.erase(ipv4);
+    }
+}
+
+void noteProtocol1Host(std::uint32_t ipv4, const Protocol1HostInfo& info)
+{
+    std::lock_guard<std::mutex> lock(g_p1HostsMutex);
+    g_p1Hosts.insert(ipv4);
+    g_p1HostInfo[ipv4] = info;
+}
+
+std::optional<Protocol1HostInfo> protocol1HostInfo(std::uint32_t ipv4)
+{
+    std::lock_guard<std::mutex> lock(g_p1HostsMutex);
+    const auto it = g_p1HostInfo.find(ipv4);
+    if (it == g_p1HostInfo.end())
+        return std::nullopt;
+    return it->second;
 }
 
 bool isProtocol1Host(std::uint32_t ipv4)

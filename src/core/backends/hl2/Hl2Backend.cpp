@@ -421,7 +421,8 @@ QVariantMap Hl2Backend::ananHwFields() const
         {QStringLiteral("ananOrionMic"), t.orionMic},
         {QStringLiteral("ananXlrMic"), t.xlrMic},
         {QStringLiteral("ananAdc2Bank"), profile.hasAdc1FilterBank},
-        {QStringLiteral("ananPureSignal"), profile.psSupported},
+        // Build 213: over Protocol 1 all five boards have the Thetis PS pair.
+        {QStringLiteral("ananPureSignal"), profile.psSupported || m_ananP1.load(std::memory_order_relaxed)},
         {QStringLiteral("ananMicPttOff"), on("AnanMicPttOff", false)},
         {QStringLiteral("ananMicTipPtt"), on("AnanMicTipPtt", false)},
         {QStringLiteral("ananMicBias"), on("AnanMicBias", false)},

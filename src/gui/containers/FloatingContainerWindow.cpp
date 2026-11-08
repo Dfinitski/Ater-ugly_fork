@@ -1,4 +1,6 @@
 #include "FloatingContainerWindow.h"
+
+#include <QScrollArea>
 #include "ContainerWidget.h"
 #include "core/AppSettings.h"
 #include "gui/FramelessResizer.h"
@@ -163,7 +165,18 @@ void FloatingContainerWindow::restoreAndEnsureVisible(QWidget* anchor)
             }
         }
     }
+    m_fitWidth = true;
     fitHeightToContent();
+    // Content built while the window is shown (the CAT port table) does not
+    // raise a LayoutRequest through its scroll area: fit once more after it,
+    // then leave the width to the operator.
+    QTimer::singleShot(0, this, [this] { fitHeightToContent(); });
+    // Late layout passes of the opening still size the width; after that the
+    // width is the operator's.
+    QTimer::singleShot(300, this, [this] {
+        fitHeightToContent();
+        m_fitWidth = false;
+    });
     m_restoring = false;
 }
 
@@ -237,10 +250,37 @@ void FloatingContainerWindow::fitHeightToContent()
     // FramelessResizer drops the edges of an axis that cannot resize.
     if (!m_container || !m_layout)
         return;
-    const int h = std::max({m_layout->sizeHint().height(),
-                            m_layout->minimumSize().height(), 40});
+    int h = std::max({m_layout->sizeHint().height(),
+                      m_layout->minimumSize().height(), 40});
+    // Build 216 (operator, 08.11: the CAT applet opened squashed to ~120 px
+    // and could not be made taller): a scroll area asks for a small fixed
+    // size, not for its content, so with the height fixed the content was
+    // cut. Count what each visible scroll area's content needs instead,
+    // capped at the screen, so every applet opens at its own size.
+    // Build 219 (operator, 08.11: "open at its own size", the width too):
+    // the width the content asks for, applied when the window opens.
+    int w = std::max(m_layout->sizeHint().width(), m_layout->minimumSize().width());
+    for (QScrollArea* sa : m_container->findChildren<QScrollArea*>()) {
+        if (!sa->isVisibleTo(m_container) || !sa->widget() || !sa->widgetResizable())
+            continue;
+        const int frame = 2 * sa->frameWidth();
+        const QSize content = sa->widget()->sizeHint();
+        const QSize have = sa->sizeHint();
+        if (content.height() + frame > have.height())
+            h += content.height() + frame - have.height();
+        if (content.width() + frame > have.width())
+            w += content.width() + frame - have.width();
+    }
+    if (QScreen* screen = this->screen()) {
+        h = std::min(h, screen->availableGeometry().height() * 9 / 10);
+        w = std::min(w, screen->availableGeometry().width() * 9 / 10);
+    }
     if (minimumHeight() != h || maximumHeight() != h)
         setFixedHeight(h);
+    // Width: the content's at every opening (m_fitWidth, set by
+    // restoreAndEnsureVisible), then free to make wider or narrower by mouse.
+    if (m_fitWidth && width() != w)
+        resize(w, height());
 }
 
 void FloatingContainerWindow::closeEvent(QCloseEvent* ev)

@@ -5,6 +5,7 @@
 #include "SmartCatSession.h"
 #include "models/RadioModel.h"
 
+#include <algorithm>
 #include <utility>
 
 #include <QDir>
@@ -16,6 +17,7 @@
 #include <QTimer>
 #ifdef HAVE_SERIALPORT
 #include <QSerialPort>
+#include <QSerialPortInfo>
 #endif
 
 #ifndef Q_OS_WIN
@@ -69,7 +71,10 @@ CatPort::~CatPort()
 bool CatPort::start(quint16 port)
 {
     if (isRunning()) return true;
+#ifdef Q_OS_WIN
     if (port == 0 && m_serialName.isEmpty()) return false;
+#endif
+    // Elsewhere the PTY alone is an endpoint (build 219).
 
     if (port != 0) {
         m_tcpServer = new QTcpServer(this);
@@ -78,9 +83,12 @@ bool CatPort::start(quint16 port)
                              << m_tcpServer->errorString();
             delete m_tcpServer;
             m_tcpServer = nullptr;
-            // The serial endpoint does not depend on the TCP port.
+            // The serial endpoint (and, off Windows, the PTY) does not depend
+            // on the TCP port.
+#ifdef Q_OS_WIN
             if (m_serialName.isEmpty())
                 return false;
+#endif
         } else {
             connect(m_tcpServer, &QTcpServer::newConnection,
                     this, &CatPort::onNewConnection);
@@ -140,7 +148,9 @@ quint16 CatPort::port() const
 
 int CatPort::clientCount() const
 {
-    return m_rigctlClients.size() + m_catSessions.size();
+    // Build 218: a logger talking on the serial port counts as one client.
+    return m_rigctlClients.size() + m_catSessions.size() + (serialOpen() && m_serialRxBytes > 0 ? 1 : 0)
+           + (m_ptyRxBytes > 0 ? 1 : 0);
 }
 
 // ── Serial endpoint ─────────────────────────────────────────────────────────
@@ -215,8 +225,27 @@ void CatPort::openSerial()
         return;
     }
     m_serial->clear();
+    // Build 218: DTR and RTS on, as a real radio's port shows them. Over a
+    // virtual pair (com0com, VSPE) they are the logger's DSR / CTS; a logger
+    // set for hardware handshake sends nothing while they are low.
+    m_serial->setDataTerminalReady(true);
+    m_serial->setRequestToSend(true);
     m_serialError.clear();
     m_serialBuffer.clear();
+    m_serialRxBytes = 0;
+    if (!m_serialSilence) {
+        m_serialSilence = new QTimer(this);
+        m_serialSilence->setSingleShot(true);
+        m_serialSilence->setInterval(15000);
+        connect(m_serialSilence, &QTimer::timeout, this, [this] {
+            if (serialOpen() && m_serialRxBytes == 0)
+                qCWarning(lcCat).noquote()
+                    << "CatPort: serial" << m_serialName
+                    << "open 15 s, nothing received from the logger -- is the logger on the OTHER"
+                       " end of the virtual pair (not on" << m_serialName << "itself), and is it running?";
+        });
+    }
+    m_serialSilence->start();
     if (m_dialect == CatDialect::Rigctld) {
         m_serialRigctl = new RigctlProtocol(m_model);
         m_serialRigctl->setSliceIndex(m_vfoA);
@@ -226,8 +255,13 @@ void CatPort::openSerial()
                                               flex, this, /*ownsDevice=*/false);
         m_serialSession->setThetisDialect(m_dialect == CatDialect::Thetis);
     }
-    qCInfo(lcCat) << "CatPort: serial" << m_serialName << "open," << m_serialBaud
-                  << "baud 8N1, dialect" << static_cast<int>(m_dialect);
+    {
+        const QSerialPortInfo info(*m_serial);
+        qCWarning(lcCat).noquote().nospace()
+            << "CatPort: serial " << m_serialName << " open, " << m_serialBaud << " baud 8N1, DTR+RTS on, dialect "
+            << static_cast<int>(m_dialect) << " (" << info.description()
+            << (info.manufacturer().isEmpty() ? QString() : QStringLiteral(", ") + info.manufacturer()) << ")";
+    }
     emit serialStateChanged(true, {});
 #endif
 }
@@ -236,6 +270,7 @@ void CatPort::closeSerial()
 {
 #ifdef HAVE_SERIALPORT
     if (m_serialRetry) m_serialRetry->stop();
+    if (m_serialSilence) m_serialSilence->stop();
     // The session first: its destructor releases a CAT-held PTT.
     delete m_serialSession;
     m_serialSession = nullptr;
@@ -245,6 +280,10 @@ void CatPort::closeSerial()
     const bool wasOpen = serialOpen();
     if (m_serial && m_serial->isOpen())
         m_serial->close();
+    if (wasOpen && m_serialRxBytes > 0) {
+        m_serialRxBytes = 0;
+        emit clientCountChanged(clientCount());
+    }
     if (wasOpen)
         qCInfo(lcCat) << "CatPort: serial" << m_serialName << "closed";
     if (!m_running) {
@@ -257,6 +296,19 @@ void CatPort::closeSerial()
 void CatPort::onSerialData()
 {
 #ifdef HAVE_SERIALPORT
+    // Connected before the session's slot: the bytes are still unread here.
+    if (m_serial) {
+        const qint64 n = m_serial->bytesAvailable();
+        if (n > 0 && m_serialRxBytes == 0)
+            qCWarning(lcCat).noquote() << "CatPort: serial" << m_serialName << "first data from the logger:"
+                                       << m_serial->peek(std::min<qint64>(n, 40)).toPercentEncoding(" ;");
+        if (n > 0) {
+            const bool first = m_serialRxBytes == 0;
+            m_serialRxBytes += static_cast<quint64>(n);
+            if (first)
+                emit clientCountChanged(clientCount());
+        }
+    }
     // TS-2000 / FlexCAT / Thetis sessions read the port themselves.
     if (!m_serialRigctl || !m_serial) return;
     m_serialBuffer.append(m_serial->readAll());
@@ -463,6 +515,7 @@ void CatPort::stopPty()
     m_ptyMasterFd = -1;
     m_ptySlaveFd  = -1;
     m_ptyBuffer.clear();
+    m_ptyRxBytes = 0;
 
     if (!m_symlinkPath.isEmpty())
         ::unlink(m_symlinkPath.toLocal8Bit().constData());
@@ -481,6 +534,16 @@ void CatPort::onPtyData()
     if (n <= 0) return;
 
     m_ptyBuffer.append(buf, static_cast<int>(n));
+    // Build 219: as on the serial port -- the first bytes in the log, and a
+    // logger talking on the PTY counts as one client.
+    if (m_ptyRxBytes == 0) {
+        qCWarning(lcCat).noquote() << "CatPort: PTY" << ptyPath() << "first data from the logger:"
+                                   << QByteArray(buf, static_cast<int>(std::min<ssize_t>(n, 40))).toPercentEncoding(" ;");
+        m_ptyRxBytes = static_cast<quint64>(n);
+        emit clientCountChanged(clientCount());
+    } else {
+        m_ptyRxBytes += static_cast<quint64>(n);
+    }
 
     // Rigctld framing: newline-delimited
     if (m_dialect == CatDialect::Rigctld) {

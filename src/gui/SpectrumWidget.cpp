@@ -1,6 +1,7 @@
 #include "SpectrumWidget.h"
 #include "SpectrumChromeGeometry.h"
 #include "SpectrumSquelchLogic.h"
+#include "ForkDisplayDefaults.h"
 #include "ScopedChildWidget.h"
 
 #include "SliceToneCues.h"
@@ -2621,22 +2622,22 @@ void SpectrumWidget::loadSettings()
     DisplaySettings::retireRadioOwnedPanSettings(m_panIndex);
 
     m_spectrumFrac   = std::clamp(s.value(settingsKey("SpectrumSplitRatio"), "0.40").toFloat(), 0.10f, 0.90f);
-    m_fftFillAlpha   = s.value(settingsKey("DisplayFftFillAlpha"), "0.70").toFloat();
-    const QString fillColorStr = s.value(settingsKey("DisplayFftFillColor"), "#00e5ff").toString();
+    m_fftFillAlpha   = s.value(settingsKey("DisplayFftFillAlpha"), ForkDisplayDefaults::kFftFillAlpha).toFloat();
+    const QString fillColorStr = s.value(settingsKey("DisplayFftFillColor"), QString::fromLatin1(ForkDisplayDefaults::kFftFillColor)).toString();
     QColor parsed(fillColorStr);
     if (parsed.isValid())
         m_fftFillColor = parsed;
     // Trace line color is independent of the fill (#4239). Default matches the
     // legacy look where the line was drawn in the fill color (cyan).
-    const QString lineColorStr = s.value(settingsKey("DisplayFftLineColor"), "#00e5ff").toString();
+    const QString lineColorStr = s.value(settingsKey("DisplayFftLineColor"), QString::fromLatin1(ForkDisplayDefaults::kFftLineColor)).toString();
     QColor parsedLine(lineColorStr);
     if (parsedLine.isValid())
         m_fftLineColor = parsedLine;
-    m_wfColorGain    = s.value(settingsKey("DisplayWfColorGain"), "50").toInt();
+    m_wfColorGain    = s.value(settingsKey("DisplayWfColorGain"), ForkDisplayDefaults::kWfColorGain).toInt();
     m_wfBlackLevel   = s.value(settingsKey("DisplayWfBlackLevel"), "15").toInt();
     // ANAN port (build 200): auto-black always SW (client-side), no button.
     m_wfAutoBlack    = true;
-    m_wfAutoBlackOffset = s.value(settingsKey("DisplayWfAutoBlackOffset"), "50").toInt();
+    m_wfAutoBlackOffset = s.value(settingsKey("DisplayWfAutoBlackOffset"), ForkDisplayDefaults::kWfAutoBlackOffset).toInt();
     // Auto-black source defaults to client-side (legacy look); radio-side opt-in.
     m_wfAutoBlackRadioSide = false;
     PerfTelemetry::instance().setWaterfallRate(m_wfLineDuration);
@@ -2659,14 +2660,14 @@ void SpectrumWidget::loadSettings()
     m_freqGridSpacingKhz = s.value(settingsKey("DisplayFreqGridSpacing"), "0").toInt();
     m_freqScaleFontPt = std::clamp(
         s.value(settingsKey("DisplayFreqScaleFontPt"), "8").toInt(), 8, 14);
-    m_fftLineWidth   = s.value(settingsKey("DisplayFftLineWidth"), "1.0").toFloat();
+    m_fftLineWidth   = s.value(settingsKey("DisplayFftLineWidth"), ForkDisplayDefaults::kFftLineWidth).toFloat();
     loadFftTraceShaping();
     // ANAN port (build 199): the noise-floor tracking is always on; the
     // Display panel has no switch for it any more, so a saved "False" from an
     // earlier build is ignored.
     m_noiseFloorEnable = true;
     const int legacyNoiseFloorPosition = std::clamp(
-        s.value(settingsKey("DisplayNoiseFloorPosition"), "75").toInt(), 1, 99);
+        s.value(settingsKey("DisplayNoiseFloorPosition"), ForkDisplayDefaults::kNoiseFloorPosition).toInt(), 1, 99);
     const int legacyDssFloorDepth = std::clamp(
         s.value(settingsKey("Display3DFloorDepth"), "6").toInt(), 0, 24);
     loadDisplaySourceTraceSettings(legacyNoiseFloorPosition,
@@ -2704,9 +2705,9 @@ void SpectrumWidget::loadSettings()
     QString bgPath = s.value(settingsKey("BackgroundImage"), ":/bg-default.jpg").toString();
     if (bgPath != "none" && !bgPath.isEmpty())
         setBackgroundImage(bgPath);
-    m_bgOpacity = s.value(settingsKey("BackgroundOpacity"), "80").toInt();
+    m_bgOpacity = s.value(settingsKey("BackgroundOpacity"), ForkDisplayDefaults::kBackgroundOpacity).toInt();
     {
-        const QString hex = s.value(settingsKey("BackgroundFillColor"), "#0a0a14").toString();
+        const QString hex = s.value(settingsKey("BackgroundFillColor"), QString::fromLatin1(ForkDisplayDefaults::kBackgroundFillColor)).toString();
         QColor c(hex);
         if (c.isValid()) m_bgFillColor = c;
     }

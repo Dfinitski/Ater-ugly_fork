@@ -1794,8 +1794,8 @@ private:
 
     // ── FFT display controls (radio-side via "display pan set") ──────────
     int   m_panIndex{0};             // per-pan settings index (0, 1, 2, 3)
-    int   m_fftAverage{0};           // 0=off, 1-10 frames
-    bool  m_fftWeightedAvg{false};
+    int   m_fftAverage{27};          // 0=off; fork default (build 214): 27, Log Avg
+    bool  m_fftWeightedAvg{true};
     int   m_fftFps{25};
     float m_fftFillAlpha{0.70f};     // client-side fill opacity (0-1)
     QColor m_fftFillColor{0x00, 0xe5, 0xff};  // client-side fill color (default cyan)
@@ -1878,7 +1878,7 @@ private:
     // Radio's per-tile auto-black level (raw uint16). Preferred over the client
     // estimate when non-zero; matches FlexLib's auto-level pipeline.
     float m_radioAutoBlackRaw{0.0f};
-    int   m_wfLineDuration{100};     // 1..100 waterfall RATE (core/WaterfallRate.h)
+    int   m_wfLineDuration{65};      // 1..100 waterfall RATE (core/WaterfallRate.h); fork default 65
     bool  m_wfRateShapedLocally{false};
 
     // Waterfall colour range for FFT-derived fallback (dBm).

@@ -29,8 +29,8 @@ board, not its model, so for boards shared by several models pick yours in
 
 | Board (Discovery id) | Models | Receivers | ADCs | Filters | PureSignal | Mic / connector options | Status bar | Tested |
 |---|---|---|---|---|---|---|---|---|
-| Hermes (1) | ANAN-10, ANAN-100 | from DDC0 | 1 | Alex HPF + LPF | — | — | supply V | no |
-| Hermes II (2) | ANAN-10E, ANAN-100B | from DDC0 | 1 | Alex HPF + LPF | — | — | supply V | no |
+| Hermes (1) | ANAN-10, ANAN-100 | from DDC0 | 1 | Alex HPF + LPF | Protocol 1 only | — | supply V | no |
+| Hermes II (2) | ANAN-10E, ANAN-100B | from DDC0 | 1 | Alex HPF + LPF | Protocol 1 only | — | supply V | no |
 | Angelia (3) | ANAN-100D | from DDC2 | 2 | Alex HPF + LPF | yes | — | supply V | **yes** |
 | Orion (4) | ANAN-200D | from DDC2 | 2 | Alex HPF + LPF | yes | mic PTT, tip/ring, bias | supply V | no |
 | Orion II (5) | ANAN-7000DLE, ANAN-8000DLE, Orion MkII, Anvelina Pro3 | from DDC2 | 2 | band-pass RX1 + RX2 | yes | mic PTT, tip/ring, bias, RX2 ground on TX | PA V, PA current* | no |
@@ -40,8 +40,9 @@ board, not its model, so for boards shared by several models pick yours in
 \* Orion MkII: supply voltage only, as in Thetis.
 
 - The number of receivers (slices) comes from the radio's own DDC count, up to 4.
-- PureSignal is not available on the single-ADC boards: their receivers use DDC0/DDC1, which
-  PureSignal needs for the feedback and the TX reference.
+- PureSignal over Protocol 2 is not available on the single-ADC boards: their receivers use
+  DDC0/DDC1, which PureSignal needs for the feedback and the TX reference. Over Protocol 1 it
+  is (Thetis' DDC plan).
 - No ANAN reports a PA temperature over Protocol 2 or 1. The status bar shows the voltage and, while
   transmitting, the PA drain current ("Id") instead.
 - Power meter, voltage, current and S-meter constants follow Thetis for each model. The PA level
@@ -58,30 +59,24 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
   monitor.
 - Transmit: SSB/AM/FM/digital, Tune, host CW, radio or PC microphone, radio PTT, drive and PA
   calibration as on Protocol 2.
-- Not yet over Protocol 1: PureSignal and the radio's internal CW keyer.
+- PureSignal (since build 220, untested on a radio).
+- Not yet over Protocol 1: the radio's internal CW keyer.
 - Protocol 1 reports the ANAN-10E/100B as Hermes: select the model in Setup → Radio.
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 211
+## Build 220
 
-Full notes: [docs/release-notes-build-211.md](docs/release-notes-build-211.md).
+Full notes: [docs/release-notes-build-220.md](docs/release-notes-build-220.md).
 
-- **Protocol 1** (see above).
-- **Receive filter:** dragging an edge no longer breaks the audio (the filter is computed on its
-  own thread, as in Thetis); edges stop at the carrier; AM/SAM/FM edges move symmetrically; mouse
-  wheel on the RX Controls filter edges (±50 Hz).
-- **Panadapter:** a drag moves the view inside the received band instead of retuning the radio
-  on every step; the waterfall is drawn from the whole band, so it is there at the sides in zoom.
-- **NB Blank** works (impulse rows in the waterfall); the Display panel is simplified (Log Avg;
-  FFT Floor and Black Level always automatic).
-- **CAT:** serial port (COM / tty) per CAT port and a Thetis (TS-2000 + ZZ) dialect.
-- **PA Power Law** setting (Setup → Radio, model page).
-- **Tools → Open Logs**, and a "New release" link at the bottom right when a newer build is out.
-- Only the ANAN-100D over Protocol 2 has been tested on the air. If you have one of the other
-  radios, please try receive first, then transmit at low power, and report what you see.
+- **PureSignal over Protocol 1**, on every Protocol 1 board (untested on a radio).
+- **CAT:** COM-port loggers connect (DTR/RTS raised), the Clients column shows them; on Linux a
+  "PTY only" row starts.
+- **Tools → Log Settings...** (detailed logging per area) and a reminder to capture the
+  receiver's own noise, which AUTO ATT needs.
+- The Display panel and S-meter detector are set once to the fork's defaults.
 
-Earlier notes: [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Windows portable build
 

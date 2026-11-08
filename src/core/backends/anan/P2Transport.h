@@ -298,6 +298,7 @@ private:
     void handleDatagram(std::span<const std::uint8_t> bytes, quint16 senderPort);
     // ---- Protocol 1 (build 194) ----
     void handleP1Ep6(std::span<const std::uint8_t> bytes);
+    void deliverPsPairs();
     // EP4 wide bandscope (Metis "How it works" V1.33: 512 x 16-bit raw ADC
     // samples per packet, a buffer of 16384 starting at a sequence number
     // whose low 5 bits are 0; ADC0 only).
@@ -319,6 +320,8 @@ private:
     quint64 m_p1AudioAcc = 0;                // EP2 pacing: rounds x 48000
     int m_p1StartTries = 0;
     P1TxDecimator m_p1TxDec;                 // 192 -> 48 ksps TX I/Q (m_txMutex)
+    P1PsResampler m_p1PsRx, m_p1PsTx;        // PS feedback / TX reference -> 192 ksps (I/O thread)
+    bool m_p1PsActive = false;               // PS pairs flowing this over (I/O thread)
     std::vector<float> m_p1Mic;              // radio mic, gathered into 64-sample packets
     int m_p1MicPhase = 0;
     bool m_p1RateLogged = false;

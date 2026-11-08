@@ -2702,6 +2702,188 @@ The bursts themselves come from the PC (speaker packets leave as soon as WDSP pr
 - The release itself (tag build-211 on main) is created by the operator in the GitHub web UI; the
   tag push starts the AppImage workflow, which attaches the Linux AppImage.
 
+## 172. Protocol 1 radios that answer only a broadcast discovery (08.11.2026, build 212)
+
+- Two Protocol 1 users (build 211 confirmed later): the radio is listed, connecting fails with
+  "no IQ stream". Logs: every attempt "no Discovery reply within 300 ms; assuming ANAN-100D" and
+  "no I/Q within 2000 ms; from the radio: 0 packets" -- nothing at all reached the transport
+  socket, not even the Protocol 1 Discovery reply (it would log "Protocol 1 Discovery reply"),
+  while the discovery sweep (broadcast, its own socket) did find the radio (no "no ANAN answered"
+  in the clean log). Routing checked (ipconfig / route print of one user): radio 192.168.1.168,
+  PC Ethernet 192.168.1.169/24 on-link, no VPN routes.
+- Cause (inferred): the transport starts with a UNICAST discovery (P2 and P1 request) from its own
+  socket and waits 300 ms; with no reply it assumed a Protocol 2 ANAN-100D and sent P2 start --
+  which a Protocol 1 radio ignores. Protocol 1 firmware that answers discovery only when it is
+  broadcast never replies to the unicast request. Thetis never sends a unicast discovery: it
+  broadcasts, then sends the start command to the radio, which streams to the sender.
+- Fix: the discovery sweep records, per Protocol 1 host, its board (P2 id) and gateware
+  (noteProtocol1Host(ip, Protocol1HostInfo), protocol1HostInfo(ip)); P2Transport::onBoardWaitTimeout,
+  with no reply on its socket, starts Protocol 1 with that board's profile when the sweep found a
+  Protocol 1 radio at the address (log "the discovery sweep found a Protocol 1 ... starting
+  Protocol 1"). Only without such a record does it still assume a Protocol 2 ANAN-100D.
+- Also seen: users ran an old build believing it was 211 (no Tools -> Open Logs); a Windows
+  Firewall block rule (Network Diagnostic -> Windows Firewall -> Fix) on one PC.
+- Files: core/backends/anan/P1Protocol.{h,cpp}, P2Transport.cpp, AnanDiscovery.cpp, ForkBuild.h.
+
+## 173. PureSignal over Protocol 1, untested (08.11.2026, build 213)
+
+- Operator: release 212 is too thin; add PureSignal for Protocol 1 blind, users will report.
+- Thetis P1 (networkproto1.c, console.cs UpdateDDCs, checked in Thetis-master): twist(stream0,
+  stream1) -- stream0 the feedback, stream1 the TX DAC reference (SetPSRxIdx 0, SetPSTxIdx 1):
+  nddc 5 (Angelia / Orion / Orion MkII) DDC3 / DDC4; nddc 4 (Hermes) DDC2 / DDC3; nddc 2
+  (Hermes II) DDC0 / DDC1, the receivers' DDCs, while MOX + PS (psrx 0, pstx 1). PS frequencies =
+  TX frequency. C&C: C0 0x14 C2 bit 6 and C0 0x24 C2 bit 6 = puresignal_run; C0 0x1C C3 = ADC0
+  TX step attenuator (the PS feedback attenuator); C0 0x00 C3 bit 7 RX bypass out, bits 5-6 the
+  RX-only input (SetAntBits: 0x20 Ext2, 0x40 Ext1, 0x60 XVTR). The ADC map (C0 0x1C C1/C2) is
+  not touched by PS in Thetis P1: DDC3 / DDC4 stay ADC0 (the FPGA feeds the DAC side itself).
+- Thetis switches the whole P1 rate to ps_rate (192 k) while MOX + PS. Here the session rate
+  stays (the receivers do not reconfigure on every over); both PS streams are resampled to
+  calcc's 192 ksps by P1PsResampler (x4 / x2 / x1 / /2 for 48 / 96 / 192 / 384, Blackman
+  windowed sinc, cut-off 0.45 x the lower rate, unity gain), one instance per stream: identical
+  filter and delay, so they cancel in calcc's comparison. Bench test of the converter: unity
+  gain and exact frequency at 1 / 15 / -10 kHz from every rate; -1.2 dB at 20 kHz from 48 k
+  (the edge, the same on both streams).
+- Code:
+  - configureSession: m_profile.psSupported = true for every P1 board (no longer forced off,
+    m_psEnabled no longer cleared); Hl2Backend publishes ananPureSignal = psSupported || P1.
+  - p1State(): pureSignal = m_psEnabled; txAdc0AttDb = PS attenuator while PS is on; Hermes II
+    DDC0 / DDC1 on the TX frequency while MOX + PS; feedback source on TX: bypass 0x80, EXT1
+    0x40 | 0x80 (ORION MkII: bypass only), as the Protocol 2 Alex bits.
+  - The Protocol 2 PS block (peaks, hwPeak, m_psSink, TX scope from feedback) is
+    deliverPsPairs(); P2 calls it after decodePsPairs, P1 from handleP1Ep6 with the resampled
+    pairs. Log on the first PS block of an over: "PureSignal feedback DDCn, TX reference DDCm,
+    R -> 192 ksps".
+- What to ask users for: the log of a two-tone with PS on (the PS line above, calcc state,
+  feedback level / attenuator), and whether the PS "Feedback" level moves at all. If the
+  feedback is silent or the correction diverges, suspect the stream order (swap DDC3/DDC4) or
+  the feedback input bits first.
+- Files: core/backends/anan/P1Protocol.{h,cpp}, P2Transport.{h,cpp}, hl2/Hl2Backend.cpp,
+  ForkBuild.h.
+
+## 174. Own-noise Capture reminder (08.11.2026, build 214)
+
+- Operator: users do not find Setup -> Receive -> Receiver Noise Floor -> Capture, so AUTO ATT
+  never starts. Check at start; if not captured, a short window: what it is, why, how.
+- MainWindow::maybeShowOwnNoiseHint() (MainWindow_Session.cpp), 3 s after an ANAN connects,
+  once per run: if AnanOwnNoiseDbmAdc1 (AnanUiState::ownNoiseKey(0)) is not stored and
+  AnanOwnNoiseHintOff is not set, a non-modal box: not captured -> AUTO ATT needs it -> antenna
+  off / 50 Ohm, Capture, antenna back. Buttons Open Setup (opens the Receive page) and Later;
+  "Don't remind me" sets AnanOwnNoiseHintOff.
+- CAT (same day): the user's log had no CAT lines (aether.cat is warning-level by default); the
+  only serial line was Serial & Controllers failing on COM5 with Win32 error 5 (held by another
+  program) at 21:28:31, before the CAT ports start (on connect). Operator sets up CAT locally to
+  look at it.
+- Files: gui/MainWindow.{h,cpp}, gui/MainWindow_Session.cpp, ForkBuild.h.
+
+## 175. The operator's look as the default, and a one-time overwrite (08.11.2026, build 215)
+
+- Operator: new users do not know how to set up the panadapter; this version must put its own
+  settings in once (over earlier settings) and use them as defaults on a first start: Receive
+  Detector Average, FFT AVG 27, FFT Floor 10, everything from the Display panel as his.
+- His values, read from his settings database (AetherSDR.db, app_settings and radio_settings
+  ClientDisplay of his radio 00:04:A3:00:00:03): fill alpha 0.47, fill #cefff1, line #9dff8c,
+  line width 1.5, WF gain 63, auto-black offset 54, floor position 90 (slider 10), background
+  opacity 74, fill #0c0b14; per radio: FFT AVG 27 with Log Avg, waterfall rate 65; Receive:
+  detector Average, noise line off. Heat map, grid, 2D, 3D gain/span, dss depth 6 were the
+  defaults already.
+- gui/ForkDisplayDefaults.h holds them. Used by SpectrumWidget::loadSettings() and its member
+  defaults (FFT AVG 27 / Log Avg / rate 65 for a radio with nothing stored), the Display
+  panel's Reset to Defaults, and:
+  - MainWindow constructor, once (ForkDisplayDefaultsV214): removes the Display keys above for
+    pan 0 and the _1.._7 suffixes so the new defaults apply; AnanUiState detector Average and
+    noise line off.
+  - MainWindow_Wiring pan restore, once per "radioId#pan" (ForkDisplayDefaultsV214Radios):
+    FFT AVG / Log Avg / waterfall rate set to the defaults and saved, instead of the stored ones.
+- Files: gui/ForkDisplayDefaults.h (new), gui/SpectrumWidget.{h,cpp}, gui/MainWindow.cpp,
+  gui/MainWindow_Session.cpp, gui/MainWindow_Wiring.cpp, ForkBuild.h.
+
+## 176. Tools -> Log Settings (08.11.2026, build 216)
+
+- Operator testing CAT (COM3, TS-2000): no CAT lines in the log; Runtime Monitor -> Logs has no
+  category switches (it only filters the view). The switches are in SupportDialog ("Diagnostic
+  Logging"), reachable only from Help -> Support & Diagnostics, and the Help menu went in build
+  198. My instruction (Runtime Monitor) was wrong.
+- Tools -> Log Settings... opens SupportDialog again (next to Open Logs). "TCI / CAT / rigctld"
+  there turns on aether.cat info + debug: "CatPort: serial COMn open" and one "SmartCAT <cmd> ->
+  <answer>" line per logger command.
+- Files: gui/MainWindow_Menus.cpp, ForkBuild.h.
+
+## 177. Floating applets open at their own height, scroll areas included (08.11.2026, build 217)
+
+- Operator: the floating CAT applet shrank to a minimum height and cannot be made taller; applets
+  must always open at their own size. Saved ContainerGeometry_CAT: 399 x 127 px.
+- Cause: FloatingContainerWindow::fitHeightToContent() (build ~30.10: fixed height = content,
+  no vertical mouse resize) takes the layout's sizeHint. The CAT port table is in a QScrollArea,
+  whose sizeHint is not its content's, and rows built later inside the scroll area raise no
+  LayoutRequest up to the window -- so the window stayed at the docked-page size and the
+  table was cut, with no way to enlarge it.
+- Fix: fitHeightToContent adds, for each visible widgetResizable QScrollArea in the container,
+  what its content needs beyond the scroll area's own hint; the height is capped at 90 % of the
+  screen. restoreAndEnsureVisible refits once more on the next event-loop pass, and
+  CatControlApplet::buildTableRows posts a LayoutRequest to its window. Also covers the KAT500,
+  KPA500 and KXPA100 applets (scroll areas too).
+- Files: gui/containers/FloatingContainerWindow.cpp, gui/CatControlApplet.cpp, ForkBuild.h.
+
+## 178. CAT serial: DTR/RTS on, and what the logger sends is logged (08.11.2026, build 218)
+
+- Operator's CAT test (log 20261108-150241, aether.cat on): "CatPort: serial COM3 open, 9600
+  baud 8N1, dialect 1" at 15:02:43, then not one SmartCAT line in 7 minutes -- no byte arrived
+  from the logger. The Clients column stays empty for a serial port by design (it counted
+  only TCP clients).
+- Not an answer problem then: the logger sends nothing to COM3. Either it is not on the other
+  end of the pair, or it waits for the handshake lines: QSerialPort leaves DTR / RTS as they are,
+  and over com0com / VSPE they are the logger's DSR / CTS.
+- Build 218 (core/CatPort.{h,cpp}): after open DTR and RTS on, as a real radio's port; the open
+  line (warning level, in every log) names the port's description / manufacturer (shows a
+  com0com / VSPE port); the first bytes from the logger are logged; 15 s without a byte gives
+  "nothing received from the logger -- is the logger on the OTHER end of the virtual pair";
+  a talking serial logger counts as one client in the Clients column.
+- Files: core/CatPort.{h,cpp}, ForkBuild.h.
+
+## 179. CAT works; floating applets also open at their own width (08.11.2026, build 219)
+
+- Operator: CAT now works (the logger had reported that the other end did not accept the
+  connection -- its handshake lines; DTR/RTS of build 218, or handshake off in the logger).
+- The CAT window opened at the full height but not the full width; applets are small, so they
+  must open at their whole own size.
+- fitHeightToContent() also takes the width: the layout's hint plus what each scroll area's
+  content needs beyond the scroll area's hint, capped at 90 % of the screen; that is the
+  minimum width, and a narrower window (saved geometry) is widened to it. Wider by mouse stays
+  possible; the height stays fixed.
+- Files: gui/containers/FloatingContainerWindow.cpp, ForkBuild.h.
+
+## 180. Applets open at their width but stay resizable; CAT on Linux (08.11.2026, build 220)
+
+- Operator: the width must be free to make wider or narrower; only the opening is at the
+  content's size.
+  - fitHeightToContent(): no minimum width any more. The content width is applied only while
+    the window opens (m_fitWidth, set by restoreAndEnsureVisible, cleared 300 ms later after
+    the late layout passes); the height stays fixed to the content.
+- Operator: check that CAT works the same on Linux.
+  - Found: a "PTY only" row (no TCP port, no serial device) never started on Linux --
+    MainWindow::applyCatPortCount ran a row only with a TCP port or a serial device (build 191
+    condition, made for Windows), and CatPort::start(0) refused without a serial name. Off
+    Windows an enabled row now runs on its PTY alone.
+  - The PTY now logs the logger's first bytes (warning level) and a talking logger counts as one
+    client, as the serial port of build 218. A real tty (/dev/ttyUSB0) goes through the same
+    QSerialPort code as Windows (DTR/RTS on). No "nothing received" warning on the PTY: every
+    running row has one, with or without a logger.
+  - Still different: over the PTY auto-information (AI1) is not pushed (SmartCatProtocol
+    without a session); Hamlib polls, so it does not need it.
+- Files: gui/containers/FloatingContainerWindow.{h,cpp}, core/CatPort.{h,cpp}, gui/MainWindow.cpp,
+  ForkBuild.h.
+
+## 181. Release build 220 prepared (08.11.2026)
+
+- docs/release-notes-build-220.md: short, as the operator asked -- PureSignal over Protocol 1,
+  CAT (DTR/RTS, Clients, Linux PTY-only rows), Tools -> Log Settings, the own-noise reminder;
+  one line each for the one-time display defaults, applet window size and the Protocol 1
+  broadcast-discovery fix.
+- README.md: PureSignal column for Hermes / Hermes II "Protocol 1 only", the Protocol 1 section
+  lists PureSignal, "Build 211" summary replaced by "Build 220".
+- Source of builds 212-220 pushed to main; archive: the build 211 archive with the build 220 exe
+  (Desktop\AetherSDR-Release\AetherSDR.exe built 15:26) and README-build220.md.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -185,6 +185,8 @@
 #include "FramelessResizer.h"
 #include "FramelessWindowTitleBar.h"
 #include "FramelessMessageBox.h"
+#include "ForkDisplayDefaults.h"
+#include "core/backends/anan/AnanUiState.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1094,6 +1096,30 @@ MainWindow::MainWindow(QWidget* parent)
             s.setValue("FramelessWindow", "True");
             s.setValue("FramelessMigratedV0823", "True");
             s.save();
+        }
+        // Fork defaults (build 214, operator 08.11): once, every install takes
+        // the operator's look (ForkDisplayDefaults.h). The Display panel keys
+        // of each pan are removed, so the new defaults apply; the per-radio
+        // FFT AVG / waterfall rate are overwritten when each pan is wired.
+        if (!s.contains(QString::fromLatin1(ForkDisplayDefaults::kMigrationKey))) {
+            static const char* const kKeys[] = {
+                "DisplayFftFillAlpha", "DisplayFftFillColor", "DisplayFftLineColor",
+                "DisplayFftLineWidth", "DisplayWfColorGain", "DisplayWfAutoBlackOffset",
+                "DisplayNoiseFloorPosition", "DisplaySourceTraceSettings",
+                "BackgroundOpacity", "BackgroundFillColor"};
+            for (const char* key : kKeys) {
+                const QString base = QString::fromLatin1(key);
+                s.remove(base);
+                for (int pan = 1; pan < 8; ++pan)
+                    s.remove(QStringLiteral("%1_%2").arg(base).arg(pan));
+            }
+            // Receive: S-meter detector Average, no noise floor line.
+            auto& ui = AetherSDR::anan::AnanUiState::instance();
+            ui.setSMeterDetector(false);
+            ui.setShowNoiseLine(false);
+            s.setValue(QString::fromLatin1(ForkDisplayDefaults::kMigrationKey), QStringLiteral("True"));
+            s.save();
+            qCInfo(lcGui) << "Fork defaults (build 214): display settings set to the fork's defaults";
         }
         WindowChrome::configure(this,
             s.value("FramelessWindow", "True").toString() == "True");
@@ -6519,7 +6545,13 @@ void MainWindow::applyCatPortCount()
                                      ? s.value(prefix + "Serial", "").toString().trimmed()
                                      : QString();
         const bool tcpOk       = portNum >= 1024 && portNum <= 65535;
+#ifdef Q_OS_WIN
         const bool shouldRun   = masterOn && portEnabled && (tcpOk || !serial.isEmpty());
+#else
+        // Build 219: Linux / macOS always have the row's PTY, so an enabled
+        // row runs without a TCP port or a serial device ("PTY only").
+        const bool shouldRun   = masterOn && portEnabled;
+#endif
 
         if (shouldRun && !catPort(i)->isRunning()) {
             // Re-apply config in case dialect/VFO was changed while stopped
@@ -6615,6 +6647,8 @@ void MainWindow::onConnectionStateChanged(bool connected)
     if (connected) {
         m_linkLostClock.invalidate();
         setLinkState(LinkState::Connected, radioLinkLabel(m_radioModel.lastRadioInfo()));
+        if (m_radioModel.family() == QLatin1String("anan") && !m_ownNoiseHintDone)
+            QTimer::singleShot(3000, this, [this] { maybeShowOwnNoiseHint(); });
     } else if (m_userDisconnected) {
         setLinkState(LinkState::UserDisconnected);
     } else if (m_radioModel.family() == QLatin1String("anan")) {

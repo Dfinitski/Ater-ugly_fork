@@ -79,6 +79,7 @@ protected:
 private:
     void saveGeometryToKey() const;
     void fitHeightToContent();
+    bool m_fitWidth = false;   // build 219: size the width to the content while opening
     bool m_fitPending{false};
     void applyPresentation();
 

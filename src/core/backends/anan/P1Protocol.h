@@ -64,6 +64,10 @@ struct P1CcState {
     bool random = false;
     int antenna = 0;                       // 0..2 = ANT1..ANT3 (the TX one while MOX)
     bool duplex = true;
+    // C0 0x00 C3 bits 5-7: the Alex RX-only input (0x20 EXT2, 0x40 EXT1,
+    // 0x60 XVTR) and the RX bypass out (0x80). Build 213: used only for the
+    // PureSignal feedback while transmitting, as on Protocol 2.
+    std::uint8_t rxInputBits = 0;
     // 2 bits per DDC (DDC0 in bits 0-1): the ADC feeding it (Thetis
     // SetADC_cntrl_P1, "66554433221100").
     std::uint16_t adcControl = 0;
@@ -135,6 +139,17 @@ int p1MicSamples(std::span<const std::uint8_t> pkt, int nddc, int decimation, in
 // stop at 384 ksps). Thread-safe.
 void noteProtocol1Host(std::uint32_t ipv4, bool protocol1);
 [[nodiscard]] bool isProtocol1Host(std::uint32_t ipv4);
+// Build 212: what the discovery sweep learned about a Protocol 1 host --
+// its board (the Protocol 2 id) and gateware. Some Protocol 1 firmware
+// answers discovery only when it is broadcast, so the transport's own
+// unicast request can go unanswered; the transport then starts Protocol 1
+// from this, as Thetis does (it never sends a unicast discovery).
+struct Protocol1HostInfo {
+    std::uint8_t boardId = 0;     // Protocol 2 board id (p2BoardIdForP1)
+    std::uint8_t gateware = 0;
+};
+void noteProtocol1Host(std::uint32_t ipv4, const Protocol1HostInfo& info);
+[[nodiscard]] std::optional<Protocol1HostInfo> protocol1HostInfo(std::uint32_t ipv4);
 
 // Transmit I/Q (build 197). The modulator (Hl2TxDsp) and the whole TX path
 // run at the Protocol 2 DUC rate, 192 ksps; Protocol 1 carries TX I/Q at
@@ -154,6 +169,36 @@ private:
     std::array<float, kTaps> m_h{};
     std::array<std::complex<float>, 2 * kTaps> m_hist{};   // doubled ring: contiguous windows
     int m_pos = 0;
+};
+
+// PureSignal feedback (build 213). WDSP's calcc runs at 192 ksps, as the
+// Protocol 2 PS DDC pair does; Protocol 1 streams all DDCs at the session
+// rate. Both PS streams (feedback and TX reference) go through one instance
+// each of this converter to 192 ksps: x4 at 48, x2 at 96, x1 at 192 and /2
+// at 384 ksps. Identical filter and delay on both streams, so whatever it does
+// to the signal cancels in calcc's comparison of the two. Windowed-sinc
+// (Blackman) low-pass, cut-off 0.45 x the lower of the two rates, unity gain.
+class P1PsResampler {
+public:
+    static constexpr int kOutRateHz = 192000;
+    // `inRateHz` one of 48000 / 96000 / 192000 / 384000; resets the state.
+    void configure(int inRateHz);
+    void reset() noexcept;
+    [[nodiscard]] int inRateHz() const noexcept { return m_inRate; }
+    // Appends the 192 ksps output for `n` input samples to `out` as
+    // interleaved I/Q doubles.
+    void process(const std::complex<float>* in, int n, std::vector<double>& out);
+
+private:
+    int m_inRate = 0;
+    int m_up = 1;      // interpolation factor
+    int m_down = 1;    // decimation factor
+    int m_taps = 0;    // prototype length (a multiple of m_up)
+    std::vector<float> m_h;                     // prototype, at m_up x the input rate
+    std::vector<std::complex<float>> m_hist;    // doubled ring of input samples
+    int m_histLen = 0;
+    int m_pos = 0;
+    int m_phase = 0;   // decimation: input samples since the last output
 };
 
 // IQ rounds per EP6 packet (both frames) for `nddc` DDCs.

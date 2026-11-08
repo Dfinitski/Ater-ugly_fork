@@ -1,4 +1,7 @@
 #include "CatControlApplet.h"
+
+#include <QCoreApplication>
+#include <QEvent>
 #include "core/AppSettings.h"
 #include "core/ThemeManager.h"
 #include "gui/Theme.h"
@@ -691,6 +694,10 @@ void CatControlApplet::buildTableRows()
 #endif
     m_grid->setRowStretch(m_portCount + 1, 1);
     m_rowsBuilt = true;
+    // Build 216: the table sits in a scroll area, which does not pass a size
+    // change up; ask the floating window to fit its height to the rows.
+    if (QWidget* w = window(); w && w != this)
+        QCoreApplication::postEvent(w, new QEvent(QEvent::LayoutRequest));
 }
 
 // ── Lock controls while port is running ──────────────────────────────────────

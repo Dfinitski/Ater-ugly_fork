@@ -1760,6 +1760,16 @@ void MainWindow::buildMenuBar()
         const QFileInfo fi(LogManager::instance().logFilePath());
         QDesktopServices::openUrl(QUrl::fromLocalFile(fi.absolutePath()));
     });
+    // Build 216 (operator, 08.11): the log categories (CAT, ...) were only in
+    // Help -> Support & Diagnostics, unreachable since build 198.
+    toolsMenu->addAction("Log Settings...", this, [this] {
+        auto* dlg = new SupportDialog(this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setRadioModel(&m_radioModel);
+        trackPersistentDialog(dlg);
+        dlg->show();
+        dlg->raise();
+    });
 
     m_gpsDashboardAction = gpsDashboardAction;
 

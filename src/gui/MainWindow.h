@@ -1088,6 +1088,9 @@ private:
     // radio glitch heals itself), so discovery waits kLinkLostGraceMs before
     // starting a fresh connect -- the same pause the old reconnect timer had.
     QElapsedTimer m_linkLostClock;
+    // Build 214: once per run, the own-noise Capture reminder (ANAN).
+    bool m_ownNoiseHintDone = false;
+    void maybeShowOwnNoiseHint();
     static constexpr int kLinkLostGraceMs = 3000;
     // A busy ANAN is taken over only when the busy session is plausibly ours:
     // the previous run of this program right after start-up (closed or stopped

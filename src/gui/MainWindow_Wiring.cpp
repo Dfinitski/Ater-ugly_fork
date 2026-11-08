@@ -4,6 +4,7 @@
 // panFollowVfo()/revealFrequencyIfNeeded().
 
 #include "MainWindow.h"
+#include "ForkDisplayDefaults.h"
 #include "WidebandMonitorDialog.h"   // the panadapter WB button (03.11)
 #include "StatusIndicator.h"
 #include "models/CwDecodeSettings.h"
@@ -3283,12 +3284,34 @@ void MainWindow::wirePanDisplayStatus(PanadapterApplet* applet,
         menu->setFftAverageDescriptions(averaging ? averaging->averageDescription : QString{},
                                        averaging ? averaging->weightedDescription : QString{});
     }
+    // Fork defaults (build 214): the FFT AVG / Log Avg / waterfall rate kept
+    // per radio and pan are overwritten once with the operator's look
+    // (ForkDisplayDefaults.h), then left to the user.
+    bool forkDefaultsDue = false;
+    if (m_radioModel.shapesDisplayRatesLocally() && !m_radioModel.settingsScope().radioId().isEmpty()) {
+        auto& fs = AppSettings::instance();
+        const QString tag = m_radioModel.settingsScope().radioId() + QLatin1Char('#')
+                            + QString::number(sw->panIndex());
+        QStringList done = fs.value(QString::fromLatin1(ForkDisplayDefaults::kRadiosKey), QString())
+                               .toString().split(QLatin1Char(','), Qt::SkipEmptyParts);
+        if (!done.contains(tag)) {
+            forkDefaultsDue = true;
+            done << tag;
+            fs.setValue(QString::fromLatin1(ForkDisplayDefaults::kRadiosKey), done.join(QLatin1Char(',')));
+            fs.save();
+        }
+    }
     if (m_radioModel.shapesDisplayRatesLocally()) {
         if (averaging && averaging->clientPersistsAveraging) {
-            if (pan->average() >= 0) {
+            if (pan->average() >= 0 && !forkDefaultsDue) {
                 // A live model wins over disk on applet/layout rebuild.
                 sw->setFftAverage(pan->average());
                 sw->setFftWeightedAvg(pan->weightedAverage());
+            } else if (forkDefaultsDue) {
+                sw->setFftAverage(ForkDisplayDefaults::kFftAverage);
+                sw->setFftWeightedAvg(ForkDisplayDefaults::kFftLogAvg);
+                scheduleClientFftAverageSave(sw->panIndex(), ForkDisplayDefaults::kFftAverage,
+                                             ForkDisplayDefaults::kFftLogAvg);
             } else if (const auto saved = ClientDisplaySettings::fftAverage(
                            m_radioModel.settingsScope(), sw->panIndex(), true)) {
                 sw->setFftAverage(saved->average);
@@ -3297,7 +3320,10 @@ void MainWindow::wirePanDisplayStatus(PanadapterApplet* applet,
         }
         // The waterfall rate where the client is its declared owner.
         if (clientPersistsWaterfallRate()) {
-            if (const auto savedRate = ClientDisplaySettings::waterfallRate(
+            if (forkDefaultsDue) {
+                sw->setWfLineDuration(ForkDisplayDefaults::kWfRate);
+                scheduleClientWaterfallRateSave(sw->panIndex(), ForkDisplayDefaults::kWfRate);
+            } else if (const auto savedRate = ClientDisplaySettings::waterfallRate(
                     m_radioModel.settingsScope(), sw->panIndex(), true)) {
                 sw->setWfLineDuration(*savedRate);
             }
@@ -4697,24 +4723,26 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(menu, &SpectrumOverlayMenu::displaySettingsReset,
             this, [this, applet, sw, menu] {
         // Apply all SpectrumWidget defaults
-        sw->setFftAverage(0);
+        // Fork defaults (build 214, ForkDisplayDefaults.h): the operator's look.
+        namespace FD = ForkDisplayDefaults;
+        sw->setFftAverage(FD::kFftAverage);
         sw->setFftFps(25);
-        sw->setFftFillAlpha(0.70f);
-        sw->setFftFillColor(QColor(0x00, 0xe5, 0xff));
-        sw->setFftLineColor(QColor(0x00, 0xe5, 0xff));
-        sw->setFftLineWidth(1.0f);
+        sw->setFftFillAlpha(FD::kFftFillAlpha);
+        sw->setFftFillColor(QColor(QString::fromLatin1(FD::kFftFillColor)));
+        sw->setFftLineColor(QColor(QString::fromLatin1(FD::kFftLineColor)));
+        sw->setFftLineWidth(FD::kFftLineWidth);
         sw->setFftSmoothing(0);
         sw->setFftDecombHz(0);
-        sw->setFftWeightedAvg(false);
+        sw->setFftWeightedAvg(FD::kFftLogAvg);
         sw->setFftHeatMap(true);
         sw->setWfColorScheme(0);
-        sw->setWfColorGain(50);
+        sw->setWfColorGain(FD::kWfColorGain);
         sw->setWfBlackLevel(15);
         sw->setWfAutoBlack(true);
-        sw->setWfAutoBlackOffset(50);
+        sw->setWfAutoBlackOffset(FD::kWfAutoBlackOffset);
         sw->setWfAutoBlackRadioSide(false);
-        sw->setWfLineDuration(100);
-        scheduleClientWaterfallRateSave(sw->panIndex(), 100);
+        sw->setWfLineDuration(FD::kWfRate);
+        scheduleClientWaterfallRateSave(sw->panIndex(), FD::kWfRate);
         scheduleClientFftFpsSave(sw->panIndex(), 25);
         sw->setWfBlankerEnabled(false);
         sw->setWfBlankerThreshold(1.15f);
@@ -4724,10 +4752,10 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         // told too: setShowGrid() updates the live grid and persists the key.
         sw->setShowGrid(true);
         sw->setBackgroundImage(":/bg-default.jpg");
-        sw->setBackgroundOpacity(80);
-        sw->setBackgroundFillColor(QColor(0x0a, 0x0a, 0x14));
+        sw->setBackgroundOpacity(FD::kBackgroundOpacity);
+        sw->setBackgroundFillColor(QColor(QString::fromLatin1(FD::kBackgroundFillColor)));
         sw->setNoiseFloorEnable(true);   // always on since build 199
-        sw->setNoiseFloorPosition(75);
+        sw->setNoiseFloorPosition(FD::kNoiseFloorPosition);
         sw->setFreqGridSpacing(0);  // Auto (#1390)
         sw->setFreqScaleFontPt(8);  // default scale text size (#3501)
 
@@ -4736,12 +4764,12 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         // so the reset doesn't fight the congestion-aware cap. The SpectrumWidget
         // values above (sw->setFftFps / sw->setWfLineDuration) are already updated,
         // so they become the new restore targets when the throttle lifts.
-        if (m_radioModel.requestPanAverage(applet->panId(), 0)) {
-            scheduleClientFftAverageSave(sw->panIndex(), 0, false);
+        if (m_radioModel.requestPanAverage(applet->panId(), FD::kFftAverage)) {
+            scheduleClientFftAverageSave(sw->panIndex(), FD::kFftAverage, FD::kFftLogAvg);
         }
-        if (!m_radioModel.requestLocalPanWeightedAverage(applet->panId(), false)) {
+        if (!m_radioModel.requestLocalPanWeightedAverage(applet->panId(), FD::kFftLogAvg)) {
             m_radioModel.requestPanDisplay(m_radioModel.panadapter(applet->panId()),
-                {PanDisplayField::WeightedAverage, false});
+                {PanDisplayField::WeightedAverage, FD::kFftLogAvg});
         }
         // fps + line_duration go through the dispatcher rather than as Flex wire
         // text: on a backend that shapes its own display rate the reset updated
@@ -4749,19 +4777,19 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         // duration on the OLD values — so "reset display defaults" visibly did
         // not reset the rate. (#4470)
         if (!m_adaptiveThrottleActive)
-            m_radioModel.requestPanDisplayRates(applet->panId(), 25, 100);
-        m_radioModel.setWaterfallColorGainFor(applet->panId(), 50, sw->wfAutoBlack());
+            m_radioModel.requestPanDisplayRates(applet->panId(), 25, FD::kWfRate);
+        m_radioModel.setWaterfallColorGainFor(applet->panId(), FD::kWfColorGain, sw->wfAutoBlack());
         m_radioModel.setWaterfallBlackLevelFor(applet->panId(), 15);
 
         // Persist all defaults to AppSettings
         auto& s = AppSettings::instance();
-        s.setValue(sw->settingsKey("DisplayFftFillAlpha"),        "0.70");
-        s.setValue(sw->settingsKey("DisplayFftFillColor"),        "#00e5ff");
-        s.setValue(sw->settingsKey("DisplayFftLineColor"),        "#00e5ff");
-        s.setValue(sw->settingsKey("DisplayFftLineWidth"),        "1.0");
+        s.setValue(sw->settingsKey("DisplayFftFillAlpha"),        QString::number(FD::kFftFillAlpha, 'f', 2));
+        s.setValue(sw->settingsKey("DisplayFftFillColor"),        QString::fromLatin1(FD::kFftFillColor));
+        s.setValue(sw->settingsKey("DisplayFftLineColor"),        QString::fromLatin1(FD::kFftLineColor));
+        s.setValue(sw->settingsKey("DisplayFftLineWidth"),        QString::number(FD::kFftLineWidth, 'f', 1));
         s.setValue(sw->settingsKey("DisplayFftHeatMap"),          "True");
         s.setValue(sw->settingsKey("DisplayWfColorScheme"),       "0");
-        s.setValue(sw->settingsKey("DisplayWfColorGain"),         "50");
+        s.setValue(sw->settingsKey("DisplayWfColorGain"),         QString::number(FD::kWfColorGain));
         s.setValue(sw->settingsKey("DisplayWfBlackLevel"),        "15");
         s.setValue(sw->settingsKey("DisplayWfAutoBlack"),         "True");
         s.setValue(sw->settingsKey("DisplayWfAutoBlackRadioSide"), "False");
@@ -4770,15 +4798,15 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         s.setValue(sw->settingsKey("WaterfallBlankingMode"),      "0");
         s.setValue(sw->settingsKey("CursorFreqLabel"),            "False");
         s.setValue(sw->settingsKey("BackgroundImage"),            ":/bg-default.jpg");
-        s.setValue(sw->settingsKey("BackgroundOpacity"),          "80");
-        s.setValue(sw->settingsKey("BackgroundFillColor"),        "#0a0a14");
+        s.setValue(sw->settingsKey("BackgroundOpacity"),          QString::number(FD::kBackgroundOpacity));
+        s.setValue(sw->settingsKey("BackgroundFillColor"),        QString::fromLatin1(FD::kBackgroundFillColor));
         s.setValue(sw->settingsKey("DisplayFreqGridSpacing"),     "0");
         s.setValue(sw->settingsKey("DisplayNoiseFloorEnable"),    "True");
-        s.setValue(sw->settingsKey("DisplayNoiseFloorPosition"),  "75");
+        s.setValue(sw->settingsKey("DisplayNoiseFloorPosition"),  QString::number(FD::kNoiseFloorPosition));
         s.setValue(sw->settingsKey("DisplaySourceTraceSettings"),
                    QStringLiteral(
-                       "{\"flex\":{\"dssFloorDepth\":6,\"noiseFloorPosition\":75},"
-                       "\"kiwi\":{\"dssFloorDepth\":6,\"noiseFloorPosition\":75},"
+                       "{\"flex\":{\"dssFloorDepth\":6,\"noiseFloorPosition\":90},"
+                       "\"kiwi\":{\"dssFloorDepth\":6,\"noiseFloorPosition\":90},"
                        "\"version\":1}"));
         s.setValue(sw->settingsKey("DisplaySpectrumRenderMode"),  "0");
         s.setValue(sw->settingsKey("Display3DFloorDepth"),        "6");
@@ -4797,12 +4825,14 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         // The line width argument is in pixels and must equal the 1.0f applied
         // to the widget above, or the slider and label read a width the trace
         // is not drawn at.
-        menu->syncDisplaySettings(0, 25, 70, false, QColor(0x00, 0xe5, 0xff),
-                                  50, 15, true, 50, 100, 75, false, true, 0,
-                                  true, 1.0f, false, 0, 6, 70,
-                                  QColor(0x00, 0xe5, 0xff), 100);
-        menu->syncExtraDisplaySettings(false, 1.15f, 80, 0,
-                                       QColor(0x0a, 0x0a, 0x14), 8, 0, 0);
+        menu->syncDisplaySettings(FD::kFftAverage, 25, qRound(FD::kFftFillAlpha * 100.0f), FD::kFftLogAvg,
+                                  QColor(QString::fromLatin1(FD::kFftFillColor)),
+                                  FD::kWfColorGain, 15, true, FD::kWfAutoBlackOffset, FD::kWfRate,
+                                  FD::kNoiseFloorPosition, true, true, 0,
+                                  true, FD::kFftLineWidth, false, 0, 6, 70,
+                                  QColor(QString::fromLatin1(FD::kFftLineColor)), 100);
+        menu->syncExtraDisplaySettings(false, 1.15f, FD::kBackgroundOpacity, 0,
+                                       QColor(QString::fromLatin1(FD::kBackgroundFillColor)), 8, 0, 0);
     });
     connect(menu, &SpectrumOverlayMenu::displaySettingsCloneRequested,
             this, [this, applet, sw] {

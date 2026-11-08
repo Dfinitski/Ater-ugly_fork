@@ -15,6 +15,7 @@
 #include "ExperimentalRadioSupport.h"
 #include "FloatingRestorePolicy.h"
 #include "FramelessMessageBox.h"
+#include "ForkDisplayDefaults.h"
 #include "MixerControlAvailability.h"
 #include "PhoneCwApplet.h"
 #include "PersistentDialog.h"
@@ -1137,6 +1138,54 @@ void MainWindow::updateExperimentalRadioSupport(bool connected, bool identityWai
     });
 }
 
+// Build 214 (operator, 08.11): without the receiver's own noise (Setup ->
+// Receive -> Receiver Noise Floor -> Capture) AUTO ATT does nothing, and few
+// users find the button. Once per run after an ANAN connects, a short note
+// while it is missing; "Don't remind me" turns it off for good.
+void MainWindow::maybeShowOwnNoiseHint()
+{
+    auto& settings = AppSettings::instance();
+    if (m_ownNoiseHintDone || !m_radioModel.isConnected()
+        || m_radioModel.family() != QLatin1String("anan"))
+        return;
+    m_ownNoiseHintDone = true;
+    bool ok = false;
+    settings.value(QStringLiteral("AnanOwnNoiseDbmAdc1")).toDouble(&ok);   // AnanUiState::ownNoiseKey(0)
+    if (ok || settings.value(QStringLiteral("AnanOwnNoiseHintOff"), QStringLiteral("False")).toString()
+                  == QLatin1String("True"))
+        return;
+    const QString title = QStringLiteral("Receiver noise floor");
+    auto* box = new FramelessMessageBox(this);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setIcon(QMessageBox::Information);
+    box->setWindowTitle(title);
+    box->setText(QStringLiteral(
+        "<b>The receiver's own noise is not captured yet.</b><br><br>"
+        "It is the reference for AUTO ATT: without it, AUTO ATT does not work.<br><br>"
+        "1. Disconnect the antenna (or fit a 50 Ohm load).<br>"
+        "2. Setup &rarr; Receive &rarr; Receiver Noise Floor &rarr; <b>Capture</b>.<br>"
+        "3. Reconnect the antenna. Done once."));
+    auto* openBtn = box->addButton(QStringLiteral("Open Setup"), QMessageBox::AcceptRole);
+    box->addButton(QStringLiteral("Later"), QMessageBox::RejectRole);
+    box->setDefaultButton(qobject_cast<QPushButton*>(openBtn));
+    auto* suppress = new QCheckBox(QStringLiteral("Don't remind me"), box);
+    box->setCheckBox(suppress);
+    connect(box, &QDialog::finished, this, [this, box, suppress, openBtn](int) {
+        if (suppress->isChecked()) {
+            auto& st = AppSettings::instance();
+            st.setValue(QStringLiteral("AnanOwnNoiseHintOff"), QStringLiteral("True"));
+            st.save();
+        }
+        if (box->clickedButton() == openBtn)
+            openRadioSetupPage(QStringLiteral("Receive"));
+    });
+    box->setFramelessMode(settings.value("FramelessWindow", "True").toString() == QLatin1String("True"));
+    box->setWindowTitle(title);
+    box->show();
+    box->raise();
+    box->activateWindow();
+}
+
 void MainWindow::wireRadioModel()
 {
     // ── Wire up radio model ────────────────────────────────────────────────
@@ -2228,7 +2277,7 @@ void MainWindow::wirePanLifecycle()
             QString bgPath = s.value(sw->settingsKey("BackgroundImage")).toString();
             if (!bgPath.isEmpty() && bgPath != "none")
                 sw->setBackgroundImage(bgPath);
-            int bgOpacity = s.value(sw->settingsKey("BackgroundOpacity"), "80").toInt();
+            int bgOpacity = s.value(sw->settingsKey("BackgroundOpacity"), ForkDisplayDefaults::kBackgroundOpacity).toInt();
             sw->setBackgroundOpacity(bgOpacity);
             QColor bgFill(s.value(sw->settingsKey("BackgroundFillColor"),
                                   "#0a0a14").toString());
