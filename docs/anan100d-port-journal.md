@@ -2686,6 +2686,22 @@ The bursts themselves come from the PC (speaker packets leave as soon as WDSP pr
 - The releases on GitHub now: build-169, 170, 190. Build 197 was packed but not published.
 - Files: gui/MainWindow_Menus.cpp, ForkBuild.h.
 
+## 171. Release build 211 prepared (07.11.2026)
+
+- README.md on GitHub (fork's own README): Protocol 1 stated in the header, "What the fork adds"
+  and "Supported transceivers"; a "Protocol 1" section (models, what works, what does not, untested);
+  "Build 190" replaced by a "Build 211" summary; Tools -> Open Logs for the logs; FFT Smooth /
+  De-comb no longer listed among inherited features.
+- docs/release-notes-build-211.md: the GitHub release text for builds 191-211 (197 was never
+  published).
+- Source pushed to main (src/, CMakeLists.txt, docs): commit e48a43e.
+- Archive AetherSDR-ANAN-build211-win64-portable.zip: the build 197 archive with the build 211 exe
+  (Desktop\AetherSDR-Release\AetherSDR.exe, 21:15, contains the release-check strings) and
+  README-build211.md; top folder AetherSDR-ANAN-build211; 87 entries, 154619558 bytes, SHA-256
+  1f3b97ae6d308d30d8398256b95c3ed45e4a4dc466f314a81408f11ac0760f4a. Saved to Desktop\AetherSDR-Release.
+- The release itself (tag build-211 on main) is created by the operator in the GitHub web UI; the
+  tag push starts the AppImage workflow, which attaches the Linux AppImage.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
