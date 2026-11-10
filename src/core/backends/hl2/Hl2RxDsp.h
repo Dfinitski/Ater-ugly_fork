@@ -364,6 +364,31 @@ public:
         return m_apfOn && isCwMode(m_config.mode);
     }
 
+    // Automatic notch filter (WDSP ANF). Level 0..100 -> the LMS adaptation
+    // gain, 1e-5 * 100^(level/100): the default 50 is RXA.c's own 1e-4, and
+    // each 50 units is ten times faster (WdspChannel's analog recipe uses the
+    // same curve). The stage runs only in the voice modes (LSB/USB/DSB/AM/
+    // SAM), where the slice's ANF button is offered; the request is held
+    // through the others and setMode() re-evaluates it.
+    static constexpr int kDefaultAnfLevel = 50;      // SliceModel::m_anfLevel
+    [[nodiscard]] static double anfGainForLevel(int level) noexcept
+    {
+        return 0.00001 * std::pow(100.0, std::clamp(level, 0, 100) / 100.0);
+    }
+    [[nodiscard]] static constexpr bool isAnfMode(WdspChannel::Mode mode) noexcept
+    {
+        return mode == WdspChannel::Mode::Lsb || mode == WdspChannel::Mode::Usb
+            || mode == WdspChannel::Mode::Dsb || mode == WdspChannel::Mode::Am
+            || mode == WdspChannel::Mode::Sam;
+    }
+    Q_INVOKABLE void setAnf(bool on, int level);
+    [[nodiscard]] bool anfRequested() const noexcept { return m_anfOn; }
+    [[nodiscard]] int anfLevel() const noexcept { return m_anfLevel; }
+    [[nodiscard]] bool anfInCircuit() const noexcept
+    {
+        return m_anfOn && isAnfMode(m_config.mode);
+    }
+
     // Post-DDC half of the ADC pairing (docs/HERMES.md §13 item 16;
     // Hl2AdcPairing.h). WDSP's RXA_ADC_PK in dB re wire full scale, not
     // calibrated to the antenna. adcmeter runs first in xrxa, after the shift
@@ -584,6 +609,7 @@ private:
     // check canPushToChannel() first. Refusals are logged and the request is
     // kept, so the next install re-applies it.
     void applyApf();
+    void applyAnf();
     void applyAgcOffLevel();
     // True when the next panadapter frame may be computed. Stays true until one
     // actually completes, since a frame spans several EP6 blocks.
@@ -662,6 +688,8 @@ private:
     bool m_apfOn = false;
     int m_apfLevel = kDefaultApfLevel;
     double m_apfCenterHz = 600.0;
+    bool m_anfOn = false;
+    int m_anfLevel = kDefaultAnfLevel;
     // Latest RXA_ADC_PK and when it was taken; see adcPeakDbfs() above. NaN and
     // 0 are the "never observed" sentinels, which is why neither is a value the
     // accessors can return. A steady_clock stamp rather than a QElapsedTimer

@@ -190,6 +190,7 @@ Hl2RxDsp::RebuildResult Hl2RxDsp::buildChannel(
     // The IQ rate is what turns the averaging time into a blend weight.
     result.spectrum = std::make_unique<Hl2Spectrum>(
         config.fftSize, static_cast<double>(config.inputSampleRateHz));
+    result.spectrum->setSlidingWindow(true);   // build 225
     result.channel = std::move(channel);
     return result;
 }
@@ -305,6 +306,7 @@ void Hl2RxDsp::installChannel(RebuildResult result)
     // Held outside Config, so re-applied after the mode (the APF depends on it).
     applyAgcOffLevel();
     applyApf();
+    applyAnf();
     // A rebuild (rate change) creates a fresh channel; restore the operator's
     // current slice offset rather than silently snapping the slice to centre.
     if (m_shiftHz != 0.0)
@@ -449,6 +451,8 @@ void Hl2RxDsp::setMode(WdspChannel::Mode mode)
         // Entering or leaving CW switches the APF in or out of circuit; the
         // operator's request itself is untouched.
         applyApf();
+        // Same for the ANF, which runs only in the voice modes.
+        applyAnf();
     }
 }
 
@@ -488,6 +492,24 @@ void Hl2RxDsp::applyApf()
                            kApfGain)) {
         qCWarning(lcHl2RxDsp) << "APF" << (run ? "on" : "off") << "at" << m_apfCenterHz
                               << "Hz level" << m_apfLevel
+                              << "refused by the channel; held and re-applied on"
+                                 " the next configure()";
+    }
+}
+
+void Hl2RxDsp::setAnf(bool on, int level)
+{
+    m_anfOn = on;
+    m_anfLevel = std::clamp(level, 0, 100);
+    if (canPushToChannel())
+        applyAnf();
+}
+
+void Hl2RxDsp::applyAnf()
+{
+    const bool run = anfInCircuit();
+    if (!m_channel->setAnf(run, anfGainForLevel(m_anfLevel))) {
+        qCWarning(lcHl2RxDsp) << "ANF" << (run ? "on" : "off") << "level" << m_anfLevel
                               << "refused by the channel; held and re-applied on"
                                  " the next configure()";
     }
@@ -750,6 +772,7 @@ void Hl2RxDsp::setSpectrumFftSize(int fftSize)
     if (m_spectrum)
         next->seedFrom(*m_spectrum);
     m_spectrum = std::move(next);
+    m_spectrum->setSlidingWindow(true);   // build 225: fine bins at the full frame rate
     m_config.fftSize = fftSize;
 }
 

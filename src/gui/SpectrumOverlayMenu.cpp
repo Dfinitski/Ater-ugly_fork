@@ -2049,10 +2049,27 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         emit fftAverageChanged(v);
     });
 
-    // ANAN port (build 199): no FFT FPS, FFT Smooth or De-comb rows. The FPS
-    // is fixed at 25 (MainWindow_Wiring requests it for a locally shaped pan);
-    // smoothing and de-comb stay off (SpectrumWidget::loadFftTraceShaping).
-    // The members stay null; every sync below checks them.
+    // ANAN port (build 199): no FFT FPS or De-comb rows. The FPS is fixed at
+    // 25 (MainWindow_Wiring requests it for a locally shaped pan); de-comb
+    // stays off (SpectrumWidget::loadFftTraceShaping). The members stay null;
+    // every sync below checks them.
+    //
+    // Build 229 (operator, 09.11: with the finer bins of build 225 the trace
+    // may want coarsening again): FFT Smooth is back, 0 (off) by default,
+    // saved per panadapter like the rest of this panel.
+    makeRow("FFT Smooth:", 0, AetherSDR::kFftSmoothingMaxHalfWidthPx, 0,
+            m_smoothSlider, m_smoothLabel);
+    m_smoothSlider->setObjectName("displayFftSmoothSlider");
+    m_smoothSlider->setAccessibleName(tr("FFT smoothing"));
+    m_smoothSlider->setToolTip(
+        tr("Coarsens the spectrum trace across frequency: each point is the "
+           "average power of its neighbours up to this many pixels either side.\n"
+           "The waterfall and the noise-floor readings are not affected. 0 = off."));
+    m_smoothLabel->setText(offOrValueText(0));
+    connect(m_smoothSlider, &QSlider::valueChanged, this, [this](int v) {
+        m_smoothLabel->setText(offOrValueText(v));
+        emit fftSmoothingChanged(v);
+    });
 
     // Line Width
     {

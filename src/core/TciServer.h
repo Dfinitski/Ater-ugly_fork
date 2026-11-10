@@ -339,6 +339,9 @@ private:
     bool startIqForClient(ClientState& client, int trx);
     void stopIqForClient(ClientState& client, int trx);
     bool ensureIqStream(int trx);
+    // Build 222: the ANAN backend sends receiver I/Q itself (no DAX plane).
+    bool nativeIq() const;
+    void setNativeIq(int channel, int sliceId, bool on);
     void releaseIqStreamIfUnused(int trx);
     void releaseIqChannel(int channel);
     void reconcileIqStreams();
@@ -394,6 +397,7 @@ private:
     QSet<int>          m_iqCreateInFlight;   // create issued, status not yet seen
     QSet<int>          m_pendingIqRemovals;  // awaiting a create status to reap
     QHash<QString,int> m_iqPanChannel;       // panId → TCI-owned DAX IQ channel
+    QHash<int,int>     m_nativeIqSlice;      // build 222: channel → slice id (ANAN I/Q)
     int                m_announcedIqSampleRate{48000};
     int                m_iqSampleRate{48000};// shared requested rate, all TCI receivers
     QHash<QString, long long> m_lastDdsCenterHz; // panId → last broadcast dds center, gates zoom-only re-emits (#3910)

@@ -4,6 +4,7 @@
 #include "core/LogManager.h"   // lcDiscovery
 #include "core/backends/anan/P2Protocol.h"
 #include "core/backends/anan/P1Protocol.h"
+#include "core/backends/anan/AnanRoute.h"
 #include "core/backends/hl2/MetisProtocol.h"
 
 #include <QJsonObject>
@@ -404,10 +405,34 @@ void AnanDiscovery::onReadyRead()
             noteProtocol1Host(dg.senderAddress().toIPv4Address(), false);
         m_log.replyListed();
 
+        // Build 221: the adapter the reply came in on -- the session binds to
+        // it when the wildcard socket gets nothing (AnanRoute.h).
+        const LocalRoute route = localRouteFor(dg);
+        if (route.valid()) {
+            noteHostRoute(dg.senderAddress().toIPv4Address(), route.local.toIPv4Address());
+            const QString key = dg.senderAddress().toString() + QLatin1Char('>') + route.local.toString();
+            if (!m_routesLogged.contains(key)) {
+                m_routesLogged.insert(key);
+                const bool inSubnet = sameSubnet(route.local, dg.senderAddress(), route.prefix);
+                if (inSubnet)
+                    qCInfo(lcDiscovery).noquote().nospace()
+                        << "ANAN discovery: " << dg.senderAddress().toString() << " answered on adapter \""
+                        << route.adapter << "\" (" << route.local.toString() << "/" << route.prefix << ")";
+                else
+                    qCWarning(lcDiscovery).noquote().nospace()
+                        << "ANAN discovery: " << dg.senderAddress().toString() << " answered on adapter \""
+                        << route.adapter << "\" (" << route.local.toString() << "/" << route.prefix
+                        << "), which is NOT the radio's subnet: direct packets to the radio may not reach it."
+                           " Put the adapter and the radio in one subnet.";
+            }
+        }
+
         RadioInfo info;
         info.family   = QStringLiteral("anan");
         info.address  = dg.senderAddress();
         info.port     = kRadioPort;
+        if (route.valid())
+            info.sessionBindAddress = route.local;
         info.model    = modelName(reply->boardId);
         info.name     = protocol1 ? info.model + QStringLiteral(" (Protocol 1)") : info.model;
         info.serial   = stableSerial(reply->mac, reply->boardId);

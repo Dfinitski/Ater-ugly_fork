@@ -68,6 +68,10 @@ std::mutex g_channelMutex;
 std::mutex& g_setupMutex = AetherSDR::fftwPlannerMutex();
 // apfshadow.c's `selection`: 0 double-pole, 1 matched, 2 gaussian, 3 bi-quad.
 constexpr int kApfSelectionDoublePole = 0;
+// WDSP ANF shape, RXA.c create_rxa's own: 64 taps, delay 16, leakage 0.1.
+constexpr int kAnfTaps = 64;
+constexpr int kAnfDelay = 16;
+constexpr double kAnfLeakage = 0.1;
 std::array<bool, kWdspChannelCount> g_channelsInUse {};
 
 // WDSP plans FFTs with FFTW_PATIENT (~220 planner calls over 11 distinct
@@ -1020,6 +1024,30 @@ bool WdspChannel::apfParametersValid(double centerHz, double bandwidthHz,
            && centerHz > 0.0 && bandwidthHz > 0.0 && gain > 0.0;
 }
 
+bool WdspChannel::setAnf(bool enabled, double gain) noexcept
+{
+    if (m_config.direction != Direction::Receive || !std::isfinite(gain) || gain <= 0.0) {
+        return false;
+    }
+    // Unchanged: no handshake, no planner lock (see setApf()).
+    if (enabled == m_config.anfEnabled && gain == m_config.anfGain) {
+        return true;
+    }
+    if (!beginControlOperation()) {
+        return false;
+    }
+    {
+        const std::scoped_lock setupLock(g_setupMutex);
+        // Gain before run, as for the APF.
+        SetRXAANFVals(m_channelId, kAnfTaps, kAnfDelay, gain, kAnfLeakage);
+        SetRXAANFRun(m_channelId, enabled ? 1 : 0);
+    }
+    m_config.anfEnabled = enabled;
+    m_config.anfGain = gain;
+    endControlOperation();
+    return true;
+}
+
 bool WdspChannel::setApf(bool enabled, double centerHz, double bandwidthHz,
                          double gain) noexcept
 {
@@ -1740,6 +1768,8 @@ bool WdspChannel::open() noexcept
         SetRXASPCWBandwidth(m_channelId, m_config.apfBandwidthHz);
         SetRXASPCWGain(m_channelId, m_config.apfGain);
         SetRXASPCWRun(m_channelId, m_config.apfEnabled ? 1 : 0);
+        SetRXAANFVals(m_channelId, kAnfTaps, kAnfDelay, m_config.anfGain, kAnfLeakage);
+        SetRXAANFRun(m_channelId, m_config.anfEnabled ? 1 : 0);
         if (m_config.analogReceiveDsp) {
             const auto& receive = *m_config.analogReceiveDsp;
             // Bounded adaptation strength; the midpoint is RXA.c's default.

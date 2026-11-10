@@ -213,6 +213,11 @@ public:
         double apfCenterHz = 600.0;
         double apfBandwidthHz = 100.0;
         double apfGain = 2.0;   // LINEAR, not dB
+        // Automatic notch filter (setAnf()): WDSP's LMS ANF. In Config for the
+        // same reason as the APF: a reopened channel starts with it off.
+        // Gain default is RXA.c's own (create_rxa: 0.0001).
+        bool anfEnabled = false;
+        double anfGain = 0.0001;
         // Receive squelch — see setSquelch() below. In Config for the same
         // reason as the blanker and the FM deviation: reconfigure() frees all
         // three WDSP squelch stages, so a squelch held only in a runtime setter
@@ -392,6 +397,12 @@ public:
     bool setApf(bool enabled, double centerHz, double bandwidthHz, double gain) noexcept;
     [[nodiscard]] static bool apfParametersValid(double centerHz, double bandwidthHz,
                                                  double gain) noexcept;
+    // Automatic notch filter (WDSP ANF, anf.c): an LMS predictor that
+    // removes steady carriers from the audio. Taps, delay and leakage stay at
+    // RXA.c's defaults (64, 16, 0.1); only the adaptation gain is the
+    // operator's. Receive only; refuses a non-positive or non-finite gain.
+    // Stored in Config so open() re-applies it.
+    bool setAnf(bool enabled, double gain) noexcept;
 
     // Runtime filter length / phase mode without reconfigure() (which would
     // destroy the notch database).

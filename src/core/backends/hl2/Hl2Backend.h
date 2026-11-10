@@ -27,6 +27,9 @@
 #include "core/backends/hl2/MetisProtocol.h"   // Hl2Telemetry
 #include "core/backends/anan/AnanTxMonitor.h"
 #include "core/backends/anan/P2Protocol.h"   // AnanModel / ModelTraits
+#include "core/backends/anan/P1Protocol.h"   // P1PsResampler (TCI IQ, build 222)
+
+#include <QByteArray>
 
 #include <span>
 #include <atomic>
@@ -290,6 +293,10 @@ public:
     }
 
 signals:
+    // Build 222: a receiver's I/Q for TCI (CW Skimmer, SDC, ...): interleaved
+    // float32 I/Q in host order (little-endian), centred on the receiver's
+    // pan centre, at the rate TCI asked for. Emitted on the I/O thread.
+    void tciIqReady(int channel, const QByteArray& iq, int sampleRate);
     // ANAN-100D port: the PTT of the radio's own microphone. The ANAN does not
     // key itself: the host turns this into an ordinary PTT (RadioModel ->
     // MainWindow), which keys MOX through the TX coordinator.
@@ -674,6 +681,10 @@ private:
     int m_ananRxAntPushed = -1;
     int m_ananTxAntPushed = -1;
     QByteArray m_ananOcPushed;
+    // ANAN port: the tuned frequency last sent to the transport per DDC, for
+    // the User Out RX row (pushAnanTunedFrequencies()).
+    std::vector<std::uint32_t> m_ananTunedPushed;
+    void pushAnanTunedFrequencies();
     anan::AnanPureSignal* m_ps = nullptr;   // PureSignal (child QObject)
     // ANAN-100D port: MON demodulates the IQ sent to the DUC (I/O thread);
     // wanted = MON on, level > 0, receivers not already monitoring.
@@ -943,6 +954,10 @@ private:
         // Hl2RxDsp::kDefaultApfLevel / kDefaultAgcOffLevel (the test pins it).
         bool apfOn = false;
         int  apfLevel = 50;
+        // ANF request, held the same way. Defaults match SliceModel's (off,
+        // level 50) and Hl2RxDsp::kDefaultAnfLevel.
+        bool anfOn = false;
+        int  anfLevel = 50;
         int  agcOffLevel = 10;
 
         // The operator's panadapter averaging, held for the same reason: a
@@ -1101,12 +1116,48 @@ private:
     void dropAllPanHistory();
     // Same, for the APF (centred on the current CW pitch) and the AGC-off level.
     void pushApf(const Receiver& r);
+    void pushAnf(const Receiver& r);
+    void setSliceAnf(int sliceId, bool on, int level);
     void pushAgcOffLevel(const Receiver& r);
 
     // I/O THREAD ONLY: the chains the EP6 fan-out feeds, indexed by DDC. Never m_rx,
     // whose push_back/erase can move storage under the fan-out. Rebuilt by
     // publishIoDsps() when the receiver set changes, never per packet.
     std::vector<Hl2RxDsp*> m_ioDsps;
+    // Build 222: TCI I/Q taps, one per receiver (DDC index). I/O THREAD ONLY;
+    // started / stopped through invokeExtension("hl2", "tci.iq", ...).
+    struct TciIqTap {
+        int channel = 0;            // 0 = off; the TCI IQ channel (trx + 1)
+        int outRate = 0;
+        anan::P1PsResampler rs;
+        std::vector<double> out;
+        QByteArray pending;         // float32 I/Q waiting for a full frame
+        double phase = 0.0;         // the view-offset mixer
+    };
+    static constexpr std::size_t kTciIqTaps = 8;
+    std::array<TciIqTap, kTciIqTaps> m_tciTaps;
+    // Written on the GUI thread (emitPanState), read on the I/O thread.
+    std::array<std::atomic<double>, kTciIqTaps> m_tciIqOffsetHz{};
+    std::atomic<int> m_tciIqInRateHz{48000};
+    void tciIqTap(std::size_t ddc, const std::vector<std::complex<float>>& iq);
+    // Build 223 (operator, 09.11): transmit only inside the amateur bands of
+    // the band plan (sent by MainWindow, "tx.bands"); until it arrives, a
+    // built-in table of the amateur bands of all three IARU regions.
+    std::vector<std::pair<double, double>> m_txBandsHz;   // [low, high] Hz, GUI thread
+    QString m_txBandPlanName;
+    double m_txTrueHz = 0.0;            // the TX frequency written last (setTxFrequency)
+    double m_txWantedHz = 0.0;          // build 224: the TX frequency asked for (dial + XIT)
+    double m_txWantedDialHz = 0.0;      // build 224: its dial, written on unkey if held
+    [[nodiscard]] bool hzInAmateurBand(double lo, double hi) const;
+    void updateCwBandInhibit();
+    [[nodiscard]] double ananMinViewHz() const;   // build 226
+    [[nodiscard]] static int spectrumFftSizeFor(double zoomViewHz, int rateHz);   // build 230
+    double m_fwdMeterW = 0.0;   // build 231/232: the power gauge (gliding to the 250 ms peak)
+    std::deque<std::pair<qint64, double>> m_fwdPeakHist;   // build 232: (ms, W) of the last 250 ms
+    qint64 m_txBandWarnMs = 0;          // rate limit of the operator warning
+    [[nodiscard]] std::pair<double, double> txSpanHz(double hz) const;
+    [[nodiscard]] bool txInAmateurBand(double hz) const;
+    void warnTxOutOfBand(double hz);
 
     // The four index spaces, never derived from one another (Hl2Receivers.h). GUI
     // thread only; the signal handlers that use it are queued onto this thread.

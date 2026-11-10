@@ -617,6 +617,10 @@ Hl2Backend::Hl2Backend(QObject* parent)
             QMetaObject::invokeMethod(m_txDsp, "setCicCompensation", Qt::QueuedConnection,
                                       Q_ARG(bool, true));
         }
+        // ANAN-100D port: the receivers' tuned frequencies for the User Out
+        // RX row -- applyBandFilter() sends them on every tune; this catches
+        // a path that sets a frequency without it (connect, restore).
+        pushAnanTunedFrequencies();
         // ANAN-100D port: User Out matrices (Radio Setup -> Receive /
         // Transmit), pushed when anything in them changes.
         {
@@ -904,6 +908,12 @@ Hl2Backend::Hl2Backend(QObject* parent)
         for (std::size_t i = 0; i < n; ++i) {
             if (m_ioDsps[i])
                 m_ioDsps[i]->processIqBlock(blocks[i]);
+        }
+        // Build 222: TCI I/Q (CW Skimmer etc.), only for receivers asked for.
+        const std::size_t taps = std::min(blocks.size(), kTciIqTaps);
+        for (std::size_t i = 0; i < taps; ++i) {
+            if (m_tciTaps[i].channel != 0)
+                tciIqTap(i, blocks[i]);
         }
     }, Qt::DirectConnection);
 
@@ -1520,7 +1530,9 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         // dBm through the shared reference (one AD9866 behind every DDC):
         // derived full scale (+3 dB) minus LNA gain, so the trace holds still
         // across gain changes.
-        constexpr std::size_t kOutBins = 1024;
+        // Build 225: 4096 (was 1024) -- more than the panadapter's pixels;
+        // the widget takes the mean power per pixel column.
+        constexpr std::size_t kOutBins = 4096;
         // ANAN-100D port (operator, 06.11: "the drawn floor must sit on the
         // noise line, at any zoom and any panadapter width"): the trace is
         // the power in 500 Hz -- each bin, whose noise bandwidth is
@@ -1857,7 +1869,7 @@ bool Hl2Backend::addReceiver(const Receiver& requested)
     if (opened) {
         emit panBandwidthLimitsChanged(
             opened->panId,
-            0.0015,   // ANAN-100D port: display zoom goes below the lowest rate
+            ananMinViewHz() / 1.0e6,   // build 226: the zoom's real floor (setPanBandwidth)
             static_cast<double>(m_sampleRateHz) / 1.0e6);
         emit panRfGainInfoChanged(opened->panId, gainMinDb(), gainMaxDb(),
                                   kLnaGainStepDb);
@@ -1888,6 +1900,7 @@ void Hl2Backend::startReceiverDspBuild(int uiNumber)
 
     Hl2RxDsp::Config config;
     config.inputSampleRateHz = m_rateLedger.committed();
+    config.fftSize = spectrumFftSizeFor(r->zoomViewHz, config.inputSampleRateHz);   // build 230
     config.audioSampleRateHz = 24000;   // AudioEngine's native RX rate
     config.mode = modeFromString(r->mode);
     std::tie(config.filterLowHz, config.filterHighHz) = dspFilterHz(*r);
@@ -2069,6 +2082,7 @@ void Hl2Backend::finishReceiverDspBuild(int uiNumber, quint64 generation, bool o
     pushPanAveraging(*r);
     pushSquelch(*r);
     pushApf(*r);
+    pushAnf(*r);
     pushAgcOffLevel(*r);
 
     // AND ONLY NOW does the sample path learn about it. Last, after the chain is
@@ -3275,6 +3289,9 @@ RadioCapabilities Hl2Backend::capabilities() const
     // 3 §B4: the HL2 carries no DSP). NR and ANF are left off because they are
     // not implemented, not because they could not be.
     c.hasHostNoiseBlanker = true;
+    // ANAN port: WDSP's automatic notch (ANF) runs on this host as well, so the
+    // slice's ANF button drives something real (setSliceAnf). NR stays off.
+    c.hasHostAutoNotch = true;
     // Squelch is host-side too, per mode family: FM on WDSP's fmsq, AM/SAM/DSB/
     // LSB/USB on the level squelch amsq (WdspChannel::setSquelch()). CW and the
     // data modes have no stage, so this is false, stated explicitly: the client
@@ -3765,6 +3782,7 @@ void Hl2Backend::connectRadio(const RadioConnectRequest& request)
 
     Hl2RxDsp::Config dc;
     dc.inputSampleRateHz = m_sampleRateHz;
+    dc.fftSize = spectrumFftSizeFor(0.0, m_sampleRateHz);   // build 230
     dc.audioSampleRateHz = 24000;   // AudioEngine's native RX rate
 
     // The transmit chain follows the TX RECEIVER's mode, not "the mode": with
@@ -3849,6 +3867,7 @@ void Hl2Backend::beginDspSetup()
     for (int i = 0; i < actualNumRx; ++i) {
         Receiver& r = m_rx[static_cast<std::size_t>(i)];
         Hl2RxDsp::Config dc = m_pendingConnect->dc;
+        dc.fftSize = spectrumFftSizeFor(r.zoomViewHz, dc.inputSampleRateHz);   // build 230
         dc.mode = modeFromString(r.mode);
         // Passband through dspFilterHz(), which folds in the CW BFO (#4914).
         std::tie(dc.filterLowHz, dc.filterHighHz) = dspFilterHz(r);
@@ -4688,6 +4707,10 @@ ReceiveDispatch Hl2Backend::requestSliceDsp(int sliceId, const SliceDspRequest& 
     case SliceDspRequest::Feature::Apf:
         setSliceApf(sliceId, request.enabled, request.level);
         break;
+    case SliceDspRequest::Feature::Anf:
+        // ANAN port: WDSP's ANF runs on this host, like the APF and the blanker.
+        setSliceAnf(sliceId, request.enabled, request.level);
+        break;
     default:
         return ReceiveDispatch::Unsupported;
     }
@@ -4731,6 +4754,19 @@ void Hl2Backend::setSliceApf(int sliceId, bool on, int level)
     r->apfOn = on;
     r->apfLevel = qBound(0, level, 100);
     pushApf(*r);
+    emitSliceState(ddc);
+    notifyOperatingStateChanged();
+}
+
+void Hl2Backend::setSliceAnf(int sliceId, bool on, int level)
+{
+    const int ddc = ddcForSlice(sliceId);
+    Receiver* r = rx(ddc);
+    if (!r)
+        return;
+    r->anfOn = on;
+    r->anfLevel = qBound(0, level, 100);
+    pushAnf(*r);
     emitSliceState(ddc);
     notifyOperatingStateChanged();
 }
@@ -4974,6 +5010,16 @@ void Hl2Backend::pushApf(const Receiver& r)
     QMetaObject::invokeMethod(r.dsp, "setApf", Qt::QueuedConnection,
         Q_ARG(bool, r.apfOn), Q_ARG(int, r.apfLevel),
         Q_ARG(double, static_cast<double>(m_cwPitchHz)));
+}
+
+void Hl2Backend::pushAnf(const Receiver& r)
+{
+    if (!r.dsp)
+        return;
+    // Sent in any mode: Hl2RxDsp runs the stage only in the voice modes and
+    // holds the request through the others.
+    QMetaObject::invokeMethod(r.dsp, "setAnf", Qt::QueuedConnection,
+        Q_ARG(bool, r.anfOn), Q_ARG(int, r.anfLevel));
 }
 
 void Hl2Backend::pushAgcOffLevel(const Receiver& r)
@@ -5252,7 +5298,7 @@ void Hl2Backend::setPanBandwidth(const QString& panId, double hz)
     if (!r)
         return;
     const double rate = static_cast<double>(m_sampleRateHz);
-    const double minView = std::max(1500.0, rate / 64.0);
+    const double minView = ananMinViewHz();
     const double maxView = rate * anan::kUsableSpanFraction;
     const double view = std::clamp(hz, minView, maxView);
     const double next = view >= maxView * 0.999 ? 0.0 : view;
@@ -5275,6 +5321,14 @@ void Hl2Backend::setPanBandwidth(const QString& panId, double hz)
     emitPanState(ddc);
 }
 
+// Build 226: the narrowest display zoom (1.5 kHz, or rate / 64), reported to
+// the widget as the pan's lower bandwidth limit so it stops there instead of
+// asking for less and being pulled back (the "jerking" at full zoom).
+double Hl2Backend::ananMinViewHz() const
+{
+    return std::max(1500.0, static_cast<double>(m_sampleRateHz) / 64.0);
+}
+
 double Hl2Backend::panViewHz(const Receiver& r) const
 {
     // The widest view is the usable 80 % of the rate (kUsableSpanFraction):
@@ -5286,17 +5340,34 @@ double Hl2Backend::panViewHz(const Receiver& r) const
 
 void Hl2Backend::applyZoomFftSize(Receiver& r)
 {
-    // Enough bins that the zoomed view still gets ~1024 of them, up to a
-    // window of ~0.1 s (time smear) and 16384 points.
+    // Enough bins that the view gets ~4096 of them (build 225, a user: "the
+    // frequency resolution is too coarse"; was 1024 bins, 16384 points and a
+    // 0.1 s window), up to 65536 points and a window of ~0.35 s. The
+    // spectrum's window slides (Hl2Spectrum::setSlidingWindow), so a long
+    // window costs time smear, not frame rate.
     if (!r.dsp)
         return;
-    const double rate = static_cast<double>(m_sampleRateHz);
-    const double want = 1024.0 * rate / panViewHz(r);
-    int n = 1024;
-    while (n < want && n < 16384 && n * 2 <= rate * 0.1)
-        n *= 2;
+    const int n = spectrumFftSizeFor(r.zoomViewHz, m_sampleRateHz);
     QMetaObject::invokeMethod(r.dsp, "setSpectrumFftSize", Qt::QueuedConnection,
                               Q_ARG(int, n));
+}
+
+// Build 230 (operator: "at start I see the old coarse panadapter for a few
+// seconds"): the size every receiver chain is BUILT with, not only what a zoom
+// applies later. Config's default 1024 used to stand at connect and after
+// every rate change until a zoom gesture (or its 400 ms timer) came along.
+int Hl2Backend::spectrumFftSizeFor(double zoomViewHz, int rateHz)
+{
+    const double rate = static_cast<double>(rateHz);
+    if (rate <= 0.0)
+        return 1024;
+    const double full = rate * anan::kUsableSpanFraction;
+    const double view = (zoomViewHz > 0.0 && zoomViewHz < full) ? zoomViewHz : full;
+    const double want = 4096.0 * rate / view;
+    int n = 1024;
+    while (n < want && n < 65536 && n * 2 <= rate * 0.35)
+        n *= 2;
+    return n;
 }
 
 void Hl2Backend::setPanRfGain(const QString& panId, int gainDb)
@@ -5444,6 +5515,7 @@ void Hl2Backend::applyPanBandwidth(double hz)
         st.dsp = r.dsp;
         st.index = i;
         st.next.inputSampleRateHz = m_sampleRateHz;
+        st.next.fftSize = spectrumFftSizeFor(r.zoomViewHz, m_sampleRateHz);   // build 230
         st.next.audioSampleRateHz = 24000;   // AudioEngine's native RX rate
         st.next.mode = modeFromString(r.mode);
         std::tie(st.next.filterLowHz, st.next.filterHighHz) = dspFilterHz(r);
@@ -5699,6 +5771,7 @@ void Hl2Backend::finishRateChange(bool ok, quint64 generation, int targetRate,
 
         Hl2RxDsp::Config dc;
         dc.inputSampleRateHz = targetRate;
+        dc.fftSize = spectrumFftSizeFor(r.zoomViewHz, targetRate);   // build 230
         dc.audioSampleRateHz = 24000;
         dc.mode = modeFromString(r.mode);
         std::tie(dc.filterLowHz, dc.filterHighHz) = dspFilterHz(r);
@@ -5837,6 +5910,15 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
                           "without AETHER_AUTOMATION_ALLOW_TX";
         return;
     }
+    // Build 223: no transmission outside the amateur bands of the band plan.
+    if (key && !m_keyed) {
+        const Receiver* txRx = rx(m_txDdc);
+        const double txHz = m_txWantedHz > 0.0 ? m_txWantedHz : (txRx ? txRx->sliceFreqHz : 0.0);
+        if (!txInAmateurBand(txHz)) {
+            warnTxOutOfBand(txHz);
+            return;
+        }
+    }
     // A manual PTT/MOX asserted while Break-In owns the current key transfers
     // that ownership to the operator. The backend is already keyed, so without
     // this explicit handoff the pending CW hang timer would later unkey a PTT
@@ -5918,6 +6000,8 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
         // can arrive before any no-carrier sample does, and the new over would
         // open displaying the old one's peak.
         m_fwdPeakWatts = 0.0;
+        m_fwdMeterW = 0.0;   // build 231
+        m_fwdPeakHist.clear();
     }
 
     const bool keyChanged = m_keyed != key;
@@ -5974,6 +6058,10 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
     }
     m_keyed = key;
     m_keyedIo.store(key, std::memory_order_relaxed);
+    // Build 224: a TX frequency held during the over (outside the bands) is
+    // written now, so the register follows the dial again.
+    if (!key && m_txWantedHz > 0.0 && m_txWantedHz != m_txTrueHz)
+        QTimer::singleShot(0, this, [this] { setTxFrequency(m_txWantedDialHz); });
     if (m_txEngine)
         m_txEngine->setKeyed(key);
     // ANAN-100D port (operator: "after TX the transmit signals stay on the
@@ -6252,6 +6340,83 @@ void Hl2Backend::setCwKeying(bool down, bool breakIn, int breakInDelayMs, const 
     }
 }
 
+// Build 223: the RF span of the transmission at `hz` in the TX receiver's mode.
+std::pair<double, double> Hl2Backend::txSpanHz(double hz) const
+{
+    const Receiver* txRx = rx(m_txDdc);
+    const QString mode = (txRx ? txRx->mode : QStringLiteral("USB")).toUpper();
+    const auto [lo, hi] = effectiveTxPassband(mode);
+    if (mode.startsWith(QLatin1String("CW")))
+        return {hz, hz};
+    if (mode == QLatin1String("LSB") || mode == QLatin1String("DIGL"))
+        return {hz - hi, hz - lo};
+    if (mode == QLatin1String("AM") || mode == QLatin1String("SAM") || mode == QLatin1String("DSB"))
+        return {hz - hi, hz + hi};
+    if (mode == QLatin1String("FM") || mode == QLatin1String("NFM"))   // Carson: deviation + audio
+        return {hz - hi - hl2::kTxFmDeviationHz, hz + hi + hl2::kTxFmDeviationHz};
+    return {hz + lo, hz + hi};   // USB, DIGU and the rest
+}
+
+bool Hl2Backend::txInAmateurBand(double hz) const
+{
+    if (hz <= 0.0)
+        return false;
+    const auto [lo, hi] = txSpanHz(hz);
+    return hzInAmateurBand(lo, hi);
+}
+
+bool Hl2Backend::hzInAmateurBand(double lo, double hi) const
+{
+    if (lo <= 0.0)
+        return false;
+    // Built-in until the band plan arrives: every amateur allocation of the
+    // three IARU regions (the ANAN tunes to 55 MHz).
+    static const std::vector<std::pair<double, double>> kAllRegions = {
+        {135'700, 137'800},     {472'000, 479'000},     {1'800'000, 2'000'000},
+        {3'500'000, 4'000'000}, {5'250'000, 5'450'000}, {7'000'000, 7'300'000},
+        {10'100'000, 10'150'000}, {14'000'000, 14'350'000}, {18'068'000, 18'168'000},
+        {21'000'000, 21'450'000}, {24'890'000, 24'990'000}, {28'000'000, 29'700'000},
+        {50'000'000, 54'000'000}};
+    const auto& bands = m_txBandsHz.empty() ? kAllRegions : m_txBandsHz;
+    for (const auto& [bLo, bHi] : bands) {
+        if (lo >= bLo - 0.5 && hi <= bHi + 0.5)
+            return true;
+    }
+    return false;
+}
+
+// Build 224: the radio's own CW keyer keys in the FPGA, past applyKeying.
+// Its enable bit is cleared while the TX carrier is outside the amateur
+// bands (P2Transport::setCwBandInhibit).
+void Hl2Backend::updateCwBandInhibit()
+{
+    if (!m_metis)
+        return;
+    const Receiver* txRx = rx(m_txDdc);
+    const double hz = m_txWantedHz > 0.0 ? m_txWantedHz : (txRx ? txRx->sliceFreqHz : 0.0);
+    const bool inhibit = !hzInAmateurBand(hz, hz);
+    auto* t = static_cast<anan::P2Transport*>(m_metis);
+    QMetaObject::invokeMethod(t, [t, inhibit] { t->setCwBandInhibit(inhibit); }, Qt::QueuedConnection);
+}
+
+void Hl2Backend::warnTxOutOfBand(double hz)
+{
+    const auto [lo, hi] = txSpanHz(hz);
+    qCWarning(lcHl2).noquote() << QStringLiteral("ANAN: transmit refused at %1 MHz (signal %2 .. %3 MHz): "
+                                                 "outside the amateur bands of %4")
+                                      .arg(hz / 1e6, 0, 'f', 6).arg(lo / 1e6, 0, 'f', 6).arg(hi / 1e6, 0, 'f', 6)
+                                      .arg(m_txBandsHz.empty() ? QStringLiteral("the IARU regions")
+                                                               : QStringLiteral("the band plan \"%1\"").arg(m_txBandPlanName));
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - m_txBandWarnMs < 3000)
+        return;
+    m_txBandWarnMs = now;
+    emit configurationWarning(QStringLiteral("Transmit refused: %1 MHz is outside the amateur bands%2.")
+                                  .arg(hz / 1e6, 0, 'f', 3)
+                                  .arg(m_txBandsHz.empty() ? QString()
+                                                           : QStringLiteral(" of the band plan \"%1\"").arg(m_txBandPlanName)));
+}
+
 void Hl2Backend::setTxFrequency(double hz)
 {
     ananUnkeyEvent(QStringLiteral("setTxFrequency %1 Hz").arg(hz, 0, 'f', 0));
@@ -6283,6 +6448,17 @@ void Hl2Backend::setTxFrequency(double hz)
                          << "Hz; TX register holds the dial, XIT not applied";
         txHz = hz;
     }
+    m_txWantedHz = txHz;
+    m_txWantedDialHz = hz;
+    updateCwBandInhibit();
+    // Build 223: while transmitting, a move outside the amateur bands is not
+    // followed -- the carrier stays where it was, inside the band. Written on
+    // unkey (applyKeying), so the register never keeps a stale frequency.
+    if (m_keyed && !txInAmateurBand(txHz)) {
+        warnTxOutOfBand(txHz);
+        return;
+    }
+    m_txTrueHz = txHz;
     QMetaObject::invokeMethod(m_metis, "setTxFrequencyHz", Qt::QueuedConnection,
         Q_ARG(std::uint32_t, ncoCommandHz(txHz)));
     if (m_ps)   // PureSignal: the band's amp delay
@@ -7764,6 +7940,61 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
                                  const QVariant& arg)
 {
     if (ns == QLatin1String("hl2")) {
+        // Build 222 (a user: TCI control works, the skimmer gets no I/Q): the
+        // I/Q of one receiver to TCI. arg: {slice, channel, rate, on}. The tap
+        // itself lives on the I/O thread, next to the samples.
+        // Build 223: the amateur bands of the band plan, as [low, high] Hz pairs.
+        if (verb == QLatin1String("tx.bands")) {
+            const QVariantMap m = arg.toMap();
+            std::vector<std::pair<double, double>> bands;
+            for (const QVariant& v : m.value(QStringLiteral("bands")).toList()) {
+                const QVariantList pair = v.toList();
+                if (pair.size() == 2 && pair[1].toDouble() > pair[0].toDouble())
+                    bands.emplace_back(pair[0].toDouble(), pair[1].toDouble());
+            }
+            m_txBandsHz = std::move(bands);
+            m_txBandPlanName = m.value(QStringLiteral("plan")).toString();
+            QStringList text;
+            for (const auto& [lo, hi] : m_txBandsHz)
+                text << QStringLiteral("%1-%2").arg(lo / 1e6, 0, 'f', 4).arg(hi / 1e6, 0, 'f', 4);
+            updateCwBandInhibit();
+            qCInfo(lcHl2).noquote() << "ANAN: transmit allowed in" << m_txBandsHz.size()
+                                    << "amateur band(s) of the band plan" << m_txBandPlanName << "(MHz):" << text.join(QLatin1Char(' '));
+            if (requestId != 0)
+                emit extensionResult(requestId, QVariant(true));
+            return;
+        }
+        if (verb == QLatin1String("tci.iq")) {
+            const QVariantMap m = arg.toMap();
+            const int ddc = ddcForSlice(m.value(QStringLiteral("slice")).toInt());
+            const int channel = m.value(QStringLiteral("on")).toBool() ? m.value(QStringLiteral("channel")).toInt() : 0;
+            const int rate = m.value(QStringLiteral("rate")).toInt();
+            const bool ok = ddc >= 0 && ddc < static_cast<int>(kTciIqTaps) && (channel == 0 || rate > 0);
+            if (ok) {
+                m_tciIqInRateHz.store(m_sampleRateHz, std::memory_order_relaxed);
+                auto apply = [this, ddc, channel, rate] {
+                    TciIqTap& t = m_tciTaps[static_cast<std::size_t>(ddc)];
+                    t.channel = channel;
+                    t.outRate = rate;
+                    t.rs.configure(0, 0);   // reconfigured on the first block
+                    t.pending.clear();
+                    t.phase = 0.0;
+                };
+                if (m_metis && m_ioThread && m_ioThread->isRunning() && QThread::currentThread() != m_ioThread)
+                    QMetaObject::invokeMethod(m_metis, apply, Qt::QueuedConnection);
+                else
+                    apply();
+                qCInfo(lcHl2) << "ANAN: TCI I/Q" << (channel ? "on" : "off") << "for receiver" << ddc + 1
+                              << "channel" << channel << "at" << rate << "Hz, DDC" << m_sampleRateHz << "Hz";
+            }
+            if (requestId != 0) {
+                if (ok)
+                    emit extensionResult(requestId, QVariant(true));
+                else
+                    emit extensionError(requestId, QStringLiteral("no such receiver"));
+            }
+            return;
+        }
         // ANAN-100D port: the DDC rate, from the pan's rate buttons. A pan
         // bandwidth request is a display zoom now (setPanBandwidth), so the
         // rate needs its own verb. The zoom resets to the full new rate.
@@ -7774,6 +8005,9 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
             }
             applyPanBandwidth(arg.toDouble());
             emitAllPanState();
+            for (const auto& ids : m_ids.all())   // build 226: the zoom floor follows the rate
+                emit panBandwidthLimitsChanged(ids.panId, ananMinViewHz() / 1.0e6,
+                                               static_cast<double>(m_sampleRateHz) / 1.0e6);
             if (requestId != 0)
                 emit extensionResult(requestId, QVariant(m_sampleRateHz));
             return;
@@ -8900,6 +9134,8 @@ void Hl2Backend::applyRestoredState(const RestoredRadioState& state)
     m_alcGainDb = std::numeric_limits<double>::quiet_NaN();
     m_alcPeakDbfs = std::numeric_limits<double>::quiet_NaN();
     m_fwdPeakWatts = 0.0;
+    m_fwdMeterW = 0.0;
+    m_fwdPeakHist.clear();
     m_txMicPeakMaxDbfs = -140.0f;
     // The STAGED restore is reset, even though m_micLevel below is not: it
     // names radio A's document and this call may be radio B arriving with no
@@ -9186,6 +9422,8 @@ QJsonObject Hl2Backend::receiverMemoryJson(const Receiver& r)
         {QStringLiteral("nbFill"), static_cast<int>(r.nbFill)},
         {QStringLiteral("apfOn"), r.apfOn},
         {QStringLiteral("apfLevel"), r.apfLevel},
+        {QStringLiteral("anfOn"), r.anfOn},
+        {QStringLiteral("anfLevel"), r.anfLevel},
         {QStringLiteral("squelchOn"), r.squelchOn},
         {QStringLiteral("squelchLevel"), r.squelchLevel},
         {QStringLiteral("ritOn"), r.ritOn},
@@ -9246,6 +9484,8 @@ std::optional<Hl2Backend::Receiver> Hl2Backend::receiverFromMemory(const QJsonOb
     r.nbLevel = percent("nbLevel", r.nbLevel);
     r.apfOn = flag("apfOn", r.apfOn);
     r.apfLevel = percent("apfLevel", r.apfLevel);
+    r.anfOn = flag("anfOn", r.anfOn);
+    r.anfLevel = percent("anfLevel", r.anfLevel);
     r.squelchOn = flag("squelchOn", r.squelchOn);
     r.squelchLevel = percent("squelchLevel", r.squelchLevel);
     r.ritOn = flag("ritOn", false);
@@ -9285,6 +9525,8 @@ void Hl2Backend::seedReceiverExtras(Receiver& r, const Receiver& memory) const
     r.nbFill = memory.nbFill;
     r.apfOn = memory.apfOn;
     r.apfLevel = memory.apfLevel;
+    r.anfOn = memory.anfOn;
+    r.anfLevel = memory.anfLevel;
     r.squelchOn = memory.squelchOn;
     r.squelchLevel = memory.squelchLevel;
     r.ritOn = memory.ritOn;
@@ -10335,6 +10577,7 @@ void Hl2Backend::pushInitialState()
         pushPanAveraging(r);
         pushSquelch(r);
         pushApf(r);
+        pushAnf(r);
         pushAgcOffLevel(r);
     }
     if (m_txDsp) {
@@ -10375,7 +10618,7 @@ void Hl2Backend::pushInitialState()
     for (const auto& ids : m_ids.all()) {
         emit panBandwidthLimitsChanged(
             ids.panId,
-            0.0015,   // ANAN-100D port: display zoom goes below the lowest rate
+            ananMinViewHz() / 1.0e6,   // build 226: the zoom's real floor (setPanBandwidth)
             static_cast<double>(widestHz) / 1.0e6);
     }
 
@@ -10537,7 +10780,31 @@ void Hl2Backend::publishTelemetry(const Hl2Telemetry& t)
         // decays slowly -- show what the radio sends, it already has a peak
         // detector"): no hold here.
         m_fwdPeakWatts = ananFwdDisplayWatts(instantW);
-        emit meterUpdate(QStringLiteral("TX:FWDPWR"), wattsToDbm(m_fwdPeakWatts));
+        // Build 231 (users: "the power meter jumps"): the transport sends the
+        // window's peak 25 times a second (was the last sample, 10 a second).
+        // Build 232 (operator): a 250 ms peak detector -- the highest of the
+        // last 250 ms of those peaks -- and the gauge glides to it (80 ms time
+        // constant, both ways) instead of stepping between readings.
+        if (m_keyed) {
+            constexpr qint64 kFwdPeakWindowMs = 250;
+            constexpr double kFwdGlideTauS = 0.08;
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            m_fwdPeakHist.emplace_back(now, m_fwdPeakWatts);
+            while (!m_fwdPeakHist.empty() && now - m_fwdPeakHist.front().first > kFwdPeakWindowMs)
+                m_fwdPeakHist.pop_front();
+            double target = 0.0;
+            for (const auto& [ms, w] : m_fwdPeakHist)
+                target = std::max(target, w);
+            const double dt = std::max(1, t.adcWindowMs) / 1000.0;
+            if (m_fwdMeterW <= 0.0)
+                m_fwdMeterW = target;
+            else
+                m_fwdMeterW += (target - m_fwdMeterW) * (1.0 - std::exp(-dt / kFwdGlideTauS));
+        } else {
+            m_fwdPeakHist.clear();
+            m_fwdMeterW = m_fwdPeakWatts;
+        }
+        emit meterUpdate(QStringLiteral("TX:FWDPWR"), wattsToDbm(m_fwdMeterW));
     }
     if (t.reversePowerRaw)
         emit meterUpdate(QStringLiteral("TX:REFPWR"),
@@ -10829,6 +11096,28 @@ void Hl2Backend::resetBandscopeMirrors()
     m_bandscopeFrameRequest = 0;
 }
 
+void Hl2Backend::pushAnanTunedFrequencies()
+{
+    if (!m_metis)
+        return;
+    for (const auto& ids : m_ids.all()) {
+        const Receiver* r = rx(ids.ddcIndex);
+        if (!r || ids.ddcIndex < 0)
+            continue;
+        const auto ddc = static_cast<std::size_t>(ids.ddcIndex);
+        if (m_ananTunedPushed.size() <= ddc)
+            m_ananTunedPushed.resize(ddc + 1, 0);
+        // The slice frequency (the filter's carrier), true RF: the band edges
+        // are true RF too, so no frequency calibration here.
+        const auto hz = static_cast<std::uint32_t>(std::max(0.0, std::round(r->sliceFreqHz)));
+        if (hz == m_ananTunedPushed[ddc])
+            continue;
+        m_ananTunedPushed[ddc] = hz;
+        QMetaObject::invokeMethod(m_metis, "setRxTunedHz", Qt::QueuedConnection,
+            Q_ARG(int, ids.ddcIndex), Q_ARG(std::uint32_t, hz));
+    }
+}
+
 void Hl2Backend::applyBandFilter(const char* reason)
 {
     ananUnkeyEvent(QStringLiteral("applyBandFilter %1").arg(QLatin1String(reason)));
@@ -10839,6 +11128,9 @@ void Hl2Backend::applyBandFilter(const char* reason)
     // is unchanged across a move from 7.100 to 7.200 MHz and this function
     // returns early for it, but the IO board still needs the new frequency.
     applyIoBoardFrequency();
+    // ANAN port: and the User Out matrix needs the band the receivers are
+    // tuned to, however they got there (band button, click, wheel, CAT, TCI).
+    pushAnanTunedFrequencies();
 
     // One filter board, N receivers: the J16 open-collector byte is
     // radio-wide. Agree-or-bypass: if every receiver wants the same filter,
@@ -10958,6 +11250,8 @@ void Hl2Backend::emitSliceState(int ddc)
     d.agcOffLevel = r->agcOffLevel;
     d.apf = r->apfOn;
     d.apfLevel = r->apfLevel;
+    d.anf = r->anfOn;
+    d.anfLevel = r->anfLevel;
     // The squelch pair the receiver holds and has pushed to its chain, so the
     // SQL control shows the receiver's state. Safe to echo:
     // SliceModel::applyChanges() does not emit squelchCommandIssued.
@@ -10980,12 +11274,61 @@ void Hl2Backend::emitSliceState(int ddc)
     emit sliceChanged(ids->uiNumber, d);
 }
 
+// Build 222: TCI I/Q of one receiver, on the I/O thread. The DDC stream is
+// centred on the NCO; TCI's dds: is the pan centre (NCO + view offset), so
+// the samples are mixed down by the view offset, then converted to the rate
+// TCI asked for (P1PsResampler, power-of-two ratios) and sent in frames of
+// 1024 I/Q pairs.
+void Hl2Backend::tciIqTap(std::size_t ddc, const std::vector<std::complex<float>>& iq)
+{
+    TciIqTap& t = m_tciTaps[ddc];
+    const int inRate = m_tciIqInRateHz.load(std::memory_order_relaxed);
+    if (inRate <= 0 || t.outRate <= 0 || iq.empty())
+        return;
+    if (t.rs.inRateHz() != inRate || t.rs.outRateHz() != t.outRate) {
+        const int hi = std::max(inRate, t.outRate), lo = std::min(inRate, t.outRate);
+        if (lo <= 0 || hi % lo != 0 || ((hi / lo) & (hi / lo - 1)) != 0)
+            return;   // not a power-of-two ratio: nothing sensible to send
+        t.rs.configure(inRate, t.outRate);
+        t.pending.clear();
+    }
+    const double offset = m_tciIqOffsetHz[ddc].load(std::memory_order_relaxed);
+    const std::vector<std::complex<float>>* src = &iq;
+    std::vector<std::complex<float>> mixed;
+    if (offset != 0.0) {
+        constexpr double kTwoPi = 6.283185307179586;
+        const double step = -kTwoPi * offset / inRate;
+        mixed.resize(iq.size());
+        for (std::size_t k = 0; k < iq.size(); ++k) {
+            mixed[k] = iq[k] * std::complex<float>(static_cast<float>(std::cos(t.phase)),
+                                                   static_cast<float>(std::sin(t.phase)));
+            t.phase += step;
+        }
+        t.phase = std::remainder(t.phase, kTwoPi);
+        src = &mixed;
+    }
+    t.out.clear();
+    t.rs.process(src->data(), static_cast<int>(src->size()), t.out);
+    for (double v : t.out) {
+        const float f = static_cast<float>(v);
+        t.pending.append(reinterpret_cast<const char*>(&f), sizeof f);
+    }
+    constexpr int kFrameBytes = 1024 * 2 * static_cast<int>(sizeof(float));
+    while (t.pending.size() >= kFrameBytes) {
+        emit tciIqReady(t.channel, t.pending.left(kFrameBytes), t.outRate);
+        t.pending.remove(0, kFrameBytes);
+    }
+}
+
 void Hl2Backend::emitPanState(int ddc)
 {
     const Receiver* r = rx(ddc);
     const auto* ids = m_ids.byDdc(ddc);
     if (!r || !ids)
         return;
+    if (ddc >= 0 && ddc < static_cast<int>(kTciIqTaps))
+        m_tciIqOffsetHz[static_cast<std::size_t>(ddc)].store(viewOffsetHz(*r), std::memory_order_relaxed);
+    m_tciIqInRateHz.store(m_sampleRateHz, std::memory_order_relaxed);
     // The pan centre is the NCO, NOT the slice. This is the whole point of the
     // decoupling: the display describes where the receiver's window is, and the
     // slice moves inside it.

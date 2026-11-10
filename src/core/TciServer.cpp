@@ -1502,7 +1502,10 @@ void TciServer::onTextMessage(const QString& msg)
             m_announcedIqSampleRate = announcedRate;
             if (m_model && effectiveRate != 0) {
                 for (int channel : std::as_const(m_tciIqChannels)) {
-                    m_model->daxIqModel().setSampleRate(channel, effectiveRate);
+                    if (m_nativeIqSlice.contains(channel))   // build 222: ANAN tap
+                        setNativeIq(channel, m_nativeIqSlice.value(channel), true);
+                    else
+                        m_model->daxIqModel().setSampleRate(channel, effectiveRate);
                 }
             }
             // Seed later clients with the effective rate, or the deferred
@@ -3776,8 +3779,53 @@ void TciServer::stopIqForClient(ClientState& client, int trx)
     releaseIqStreamIfUnused(trx);
 }
 
+// Build 222 (a user: TCI control works, CW Skimmer gets no I/Q). The ANAN
+// backend has no DAX IQ plane (hasDaxStreams false), so iq_start was always
+// refused. It taps the receiver's I/Q itself (Hl2Backend::tciIqTap) when
+// asked through its "hl2" extension, and emits tciIqReady -> onIqDataReady.
+bool TciServer::nativeIq() const
+{
+    return m_model && !m_model->backendCapabilities().hasDaxStreams
+           && m_model->backendDeclaresExtension(QStringLiteral("hl2"));
+}
+
+void TciServer::setNativeIq(int channel, int sliceId, bool on)
+{
+    if (!m_model)
+        return;
+    if (on) {
+        if (QObject* backend = dynamic_cast<QObject*>(m_model->backend()))
+            connect(backend, SIGNAL(tciIqReady(int,QByteArray,int)),
+                    this, SLOT(onIqDataReady(int,QByteArray,int)), Qt::UniqueConnection);
+    }
+    QVariantMap arg;
+    arg.insert(QStringLiteral("slice"), sliceId);
+    arg.insert(QStringLiteral("channel"), channel);
+    arg.insert(QStringLiteral("rate"), effectiveIqSampleRate());
+    arg.insert(QStringLiteral("on"), on);
+    m_model->invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("tci.iq"), 0, arg);
+}
+
 bool TciServer::ensureIqStream(int trx)
 {
+    if (nativeIq()) {
+        if (trx < 0 || trx >= DaxIqModel::NUM_CHANNELS || !m_trxMap.trxHasLiveSlice(m_model, trx))
+            return false;
+        SliceModel* slice = sliceForTrx(trx);
+        if (!slice || slice->panId().isEmpty())
+            return false;
+        const QString panId = slice->panId();
+        int channel = m_iqPanChannel.value(panId, 0);
+        if (channel == 0) {
+            channel = trx + 1;
+            m_iqPanChannel.insert(panId, channel);
+        }
+        m_tciIqChannels.insert(channel);
+        m_nativeIqSlice.insert(channel, slice->sliceId());
+        announceEffectiveIqSampleRate();
+        setNativeIq(channel, slice->sliceId(), true);
+        return true;
+    }
     if (!m_model || trx < 0 || trx >= DaxIqModel::NUM_CHANNELS
         || !m_model->backendCapabilities().hasDaxStreams
         || !m_trxMap.trxHasLiveSlice(m_model, trx)) {
@@ -3878,6 +3926,14 @@ void TciServer::releaseIqChannel(int channel)
     if (!m_model || !m_tciIqChannels.contains(channel)) {
         return;  // not ours to remove
     }
+    if (m_nativeIqSlice.contains(channel)) {   // build 222: ANAN I/Q tap
+        setNativeIq(0, m_nativeIqSlice.take(channel), false);
+        const QString panId = m_iqPanChannel.key(channel, QString());
+        if (!panId.isEmpty())
+            m_iqPanChannel.remove(panId);
+        m_tciIqChannels.remove(channel);
+        return;
+    }
     // Release the pan binding as well as the stream. Leaving it set ends a
     // session with a panadapter routed at a channel nothing reads, which then
     // blocks the DAX IQ applet from using that pan.
@@ -3964,6 +4020,8 @@ int TciServer::achievedIqSampleRate() const
 
 int TciServer::effectiveIqSampleRate() const
 {
+    if (nativeIq())
+        return m_iqSampleRate;   // build 222: the ANAN tap converts to any TCI rate
     return m_model ? m_model->daxIqModel().sampleRateForPreference(m_iqSampleRate)
                    : m_iqSampleRate;
 }

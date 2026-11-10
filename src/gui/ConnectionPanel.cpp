@@ -3,6 +3,9 @@
 #include "core/backends/ConnectionSharingPolicy.h"  // in-use share gate (#4448), shared with MainWindow_Session
 #include "core/backends/anan/AnanDiscovery.h" // shared nickname + MAC->serial helpers
 #include "core/backends/anan/P2Protocol.h"  // buildDiscovery/parseDiscoveryReply, kRadioPort
+#include "core/backends/anan/P1Protocol.h"  // build 221: Protocol 1 radios by IP
+#include "core/backends/anan/AnanRoute.h"
+#include "core/backends/hl2/MetisProtocol.h"
 #include "core/NetworkPathResolver.h"
 #include "ComboStyle.h"   // shared themed combo look (painted arrow)
 #include "FramelessResizer.h"
@@ -738,7 +741,7 @@ ConnectionPanel::ConnectionPanel(QWidget* parent)
         tr("Which radio family to look for at the address below"));
     AetherSDR::applyComboStyle(m_manualRadioTypeCombo, comboExtraRules);
     m_manualRadioTypeCombo->addItem(tr("FlexRadio"), QString::fromLatin1(kFamilyFlex));
-    m_manualRadioTypeCombo->addItem(tr("ANAN-100D"), QString::fromLatin1(kFamilyAnan));
+    m_manualRadioTypeCombo->addItem(tr("ANAN (openHPSDR)"), QString::fromLatin1(kFamilyAnan));
     addManualRow(QStringLiteral("Radio type:"), m_manualRadioTypeCombo);
 
     m_manualIpCombo = new QComboBox(manualGroup);
@@ -2031,9 +2034,11 @@ void ConnectionPanel::updateManualFamilyHints()
         m_manualHintLabel->setText(
             anan
                 ? QStringLiteral(
-                      "Use this path when discovery broadcasts cannot reach the radio — a VPN, a "
-                      "routed subnet, or a switch that drops broadcasts. AetherSDR sends an "
-                      "openHPSDR Protocol 2 discovery request straight to the address you enter.")
+                      "Use this path when the radio is not found by itself, or is found but does "
+                      "not connect -- a VPN, a routed subnet, a switch that drops broadcasts, or a "
+                      "PC with several network adapters. AetherSDR sends the openHPSDR Protocol 1 "
+                      "and 2 discovery requests straight to the address you enter. Under "
+                      "Advanced, choose the network adapter the radio is connected to.")
                 : QStringLiteral(
                       "Use this path for VPN or other routed networks where discovery broadcasts "
                       "cannot reach the radio. Enter the radio IP address and AetherSDR will take "
@@ -2384,27 +2389,58 @@ ConnectionPanel::AnanProbeResult ConnectionPanel::probeAnan(
             QStringLiteral("Could not send a discovery request to %1.").arg(dest.toString()));
         return AnanProbeResult::NotAttempted;
     }
+    // Build 221: the same boards with Protocol 1 firmware answer only the
+    // Protocol 1 request (EF FE 02) -- Connect by IP found only Protocol 2.
+    {
+        const auto request1 = hl2::discoveryRequest();
+        hpsdr.writeDatagram(reinterpret_cast<const char*>(request1.data()),
+                            qint64(request1.size()), dest, anan::kRadioPort);
+    }
 
     QDeadlineTimer deadline(600);
     while (!deadline.hasExpired()) {
         if (!hpsdr.waitForReadyRead(static_cast<int>(deadline.remainingTime())))
             break;
         while (hpsdr.hasPendingDatagrams()) {
-            const QByteArray d = hpsdr.receiveDatagram().data();
-            const auto reply = anan::parseDiscoveryReply(
-                std::span<const std::uint8_t>(
-                    reinterpret_cast<const std::uint8_t*>(d.constData()), std::size_t(d.size())));
+            const QNetworkDatagram dg = hpsdr.receiveDatagram();
+            const QByteArray d = dg.data();
+            const std::span<const std::uint8_t> bytes(
+                reinterpret_cast<const std::uint8_t*>(d.constData()), std::size_t(d.size()));
+            auto reply = anan::parseDiscoveryReply(bytes);
+            bool protocol1 = false;
+            if (!reply) {
+                // Build 221: a Protocol 1 reply, mapped as AnanDiscovery does.
+                if (const auto r1 = hl2::parseDiscoveryReply(bytes)) {
+                    if (const auto id = anan::p2BoardIdForP1(r1->boardId)) {
+                        anan::DiscoveryReply r;
+                        r.streaming = r1->streaming;
+                        r.mac = r1->mac;
+                        r.boardId = *id;
+                        r.firmwareVer = r1->gatewareVersion;
+                        reply = r;
+                        protocol1 = true;
+                    }
+                }
+            }
             // ANAN-100D port: every Protocol 2 ANAN board -- the same
             // predicate AnanDiscovery applies to broadcast replies.
             if (!reply || !reply->isSupportedAnan())
                 continue;
+            const quint32 senderIp = dg.senderAddress().toIPv4Address();
+            if (protocol1)
+                anan::noteProtocol1Host(senderIp, anan::Protocol1HostInfo{
+                    reply->boardId, static_cast<std::uint8_t>(reply->firmwareVer)});
+            else
+                anan::noteProtocol1Host(senderIp, false);
+            if (const anan::LocalRoute route = anan::localRouteFor(dg); route.valid())
+                anan::noteHostRoute(senderIp, route.local.toIPv4Address());
 
             RadioInfo info;
             info.family   = QString::fromLatin1(kFamilyAnan);
             info.address  = dest;
             info.port     = anan::kRadioPort;
             info.model    = anan::AnanDiscovery::modelName(reply->boardId);
-            info.name     = info.model;
+            info.name     = protocol1 ? info.model + QStringLiteral(" (Protocol 1)") : info.model;
             info.serial   = anan::AnanDiscovery::stableSerial(reply->mac, reply->boardId);
             info.nickname = anan::AnanDiscovery::effectiveNickname(info.family, info.serial,
                                                                     info.model);
@@ -2412,7 +2448,7 @@ ConnectionPanel::AnanProbeResult ConnectionPanel::probeAnan(
             // A bare integer is a gateware bitstream number, not a software
             // version (discrepancy #1, see P2Protocol.h's DiscoveryReply) --
             // same label the broadcast path sets.
-            info.versionLabel = QStringLiteral("Gateware");
+            info.versionLabel = protocol1 ? QStringLiteral("Protocol 1 gateware") : QStringLiteral("Gateware");
             info.inUse    = reply->streaming;
             info.status   = reply->streaming ? QStringLiteral("In_Use")
                                              : QStringLiteral("Available");

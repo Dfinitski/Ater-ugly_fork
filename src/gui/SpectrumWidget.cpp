@@ -2922,14 +2922,23 @@ void SpectrumWidget::loadFftTraceShaping()
 {
     m_fftSmoothing = 0;
     m_fftDecombHz = 0;
-    // ANAN port (build 199): no FFT Smooth / De-comb controls; both stay off
-    // whatever an earlier build saved (the saved object is not read).
+    // ANAN port: no De-comb control (build 199), so it stays off. FFT Smooth
+    // is back in build 229, saved per pan as object version 2; a value saved by
+    // a build before 199 (version 1) is not taken -- the default is off.
+    const QString raw = AppSettings::instance().value(fftTraceShapingKey(), QString()).toString();
+    if (raw.trimmed().isEmpty())
+        return;
+    const QJsonObject obj = QJsonDocument::fromJson(raw.toUtf8()).object();
+    if (obj.value(QStringLiteral("version")).toInt() < 2)
+        return;
+    m_fftSmoothing = std::clamp(obj.value(QStringLiteral("smoothPx")).toInt(0),
+                                0, AetherSDR::kFftSmoothingMaxHalfWidthPx);
 }
 
 void SpectrumWidget::saveFftTraceShaping()
 {
     QJsonObject obj;
-    obj.insert(QStringLiteral("version"), 1);
+    obj.insert(QStringLiteral("version"), 2);   // build 229: see loadFftTraceShaping()
     obj.insert(QStringLiteral("smoothPx"), m_fftSmoothing);
     obj.insert(QStringLiteral("decombHz"), m_fftDecombHz);
 
@@ -9870,6 +9879,23 @@ const QVector<float>& SpectrumWidget::buildFftDisplayTrace(const QVector<float>&
                       spanHz / static_cast<double>(std::max(1, logicalWidthPx)));
     }
 
+    // ANAN fork build 225: more bins than pixel columns are brought down to
+    // one point per column, mean POWER per column -- the noise stays where it
+    // is, a carrier stays one column wide. Before, the extra points went to
+    // the texture and the shader sampled one per pixel, skipping the rest.
+    if (targetPoints >= 2 && srcCount > targetPoints) {
+        QVector<float>& reduced = m_fftDisplayTraceScratch;
+        reduced.resize(targetPoints);
+        for (int o = 0; o < targetPoints; ++o) {
+            const int b0 = static_cast<int>(static_cast<qint64>(o) * srcCount / targetPoints);
+            const int b1 = std::max(b0 + 1, static_cast<int>(static_cast<qint64>(o + 1) * srcCount / targetPoints));
+            double sum = 0.0;
+            for (int b = b0; b < b1 && b < srcCount; ++b)
+                sum += std::pow(10.0, 0.1 * static_cast<double>(displayBins[b]));
+            reduced[o] = static_cast<float>(10.0 * std::log10(sum / static_cast<double>(b1 - b0) + 1e-30));
+        }
+        return reduced;
+    }
     int dstCount = std::max(targetPoints, srcCount);
     dstCount = std::clamp(dstCount, 2, kMaxFftDisplayTracePoints);
     if (dstCount == srcCount) {
@@ -11739,6 +11765,14 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
                 m_bwDragAnchorMhz, m_bwDragAnchorFraction, newBw,
                 panEdgeCropActive()),
             newBw / 2.0);
+        // ANAN fork build 226 (operator: "at the full zoom it keeps trying to
+        // zoom further and the picture jerks"): at a limit nothing changes, so
+        // nothing is reprojected, cleared or requested.
+        if (std::abs(newBw - m_bandwidthMhz) <= 1e-9 * std::max(1.0, newBw)
+            && std::abs(zoomCenter - m_centerMhz) <= 1e-9) {
+            ev->accept();
+            return;
+        }
         if (panGeometryConfirmationRequired()) {
             scheduleFrequencyRangeSettleUpdate(zoomCenter, newBw);
             requestFrequencyRangeChange(zoomCenter, newBw);

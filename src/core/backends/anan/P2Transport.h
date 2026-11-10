@@ -80,6 +80,11 @@ public:
 
     Q_INVOKABLE void setRxFrequencyHz(std::uint32_t hz) override;
     Q_INVOKABLE void setRxFrequencyHz(int rxIndex, std::uint32_t hz) override;
+    // ANAN port: the frequency receiver rxIndex is actually tuned to (the
+    // slice / its filter), as opposed to its DDC NCO, which sits at the
+    // panadapter centre. The User Out RX row follows this band (operator,
+    // 09.11), as Thetis follows the VFO. 0 = not known, the NCO is used.
+    Q_INVOKABLE void setRxTunedHz(int rxIndex, std::uint32_t hz);
     Q_INVOKABLE void setSampleRate(hl2::SampleRate rate) override;
     Q_INVOKABLE void setReceiverCount(int count) override;
     Q_INVOKABLE void setLnaGainDb(int db) override;
@@ -263,6 +268,11 @@ public:
     // holds it for the hang time after the last element, so the host follows
     // the radio's own break-in. CW demo: no PA, no T/R relay, drive 0.
     void setCwKeyer(const CwKeyerOptions& k);
+    // Build 224 (operator, 09.11): the radio's own CW keyer is switched off
+    // (keyer-enable bit 0: P2 Transmitter Specific byte 5 bit 1, P1 C0 0x1E
+    // C1 bit 0) while the TX frequency is outside the amateur bands. Receive
+    // is not affected.
+    void setCwBandInhibit(bool inhibit);
     // ANAN-100D port: called on this object's thread the instant the radio's
     // status reports its PTT pressed -- before the host has heard of it.
     // Set once, before the transport starts.
@@ -299,6 +309,8 @@ private:
     // ---- Protocol 1 (build 194) ----
     void handleP1Ep6(std::span<const std::uint8_t> bytes);
     void deliverPsPairs();
+    void noteBindWorked();
+    QString noteBindSilent();
     // EP4 wide bandscope (Metis "How it works" V1.33: 512 x 16-bit raw ADC
     // samples per packet, a buffer of 16384 starting at a sequence number
     // whose low 5 bits are 0; ADC0 only).
@@ -321,6 +333,16 @@ private:
     int m_p1StartTries = 0;
     P1TxDecimator m_p1TxDec;                 // 192 -> 48 ksps TX I/Q (m_txMutex)
     P1PsResampler m_p1PsRx, m_p1PsTx;        // PS feedback / TX reference -> 192 ksps (I/O thread)
+    bool m_cwBandInhibit = false;            // build 224: keyer off outside the amateur bands
+    [[nodiscard]] CwKeyerOptions effectiveCwKeyer() const
+    {
+        CwKeyerOptions k = m_cwKeyer;
+        if (m_cwBandInhibit)
+            k.enabled = false;
+        return k;
+    }
+    QHostAddress m_bindAddr;                 // build 221: the session socket's local address
+    QHostAddress m_learnedBind;              // build 221: the adapter the radio was found on
     bool m_p1PsActive = false;               // PS pairs flowing this over (I/O thread)
     std::vector<float> m_p1Mic;              // radio mic, gathered into 64-sample packets
     int m_p1MicPhase = 0;
@@ -415,6 +437,11 @@ private:
     bool m_dither = false;
     bool m_random = false;
     std::array<std::uint32_t, kMaxDdcs> m_rxHz{};
+    std::array<std::uint32_t, kMaxDdcs> m_rxTunedHz{};   // setRxTunedHz()
+    [[nodiscard]] double ocRxHz(std::size_t rx) const noexcept
+    {
+        return static_cast<double>(m_rxTunedHz[rx] ? m_rxTunedHz[rx] : m_rxHz[rx]);
+    }
     std::array<int, kMaxDdcs> m_rxAdc{};   // per receiver, 0 = ADC1
     int m_rxAnt = 0;   // 0..2 = ANT1..ANT3
     bool m_tunerStart = false;
@@ -575,6 +602,13 @@ private:
     // Fwd / rev / exciter power from the status packet (raw ADC counts).
     int m_fwdRaw = 0;
     int m_revRaw = 0;
+    // Build 231 (users: the power meter jumps): the highest coupler reading
+    // since the last publish (P2 status / P1 EP6 status, hundreds a second),
+    // and a 40 ms publish while transmitting (was the 100 ms keepalive with
+    // the last sample only).
+    int m_fwdPeakWin = -1;
+    int m_revPeakWin = -1;
+    QTimer* m_meterTimer = nullptr;
     int m_excRaw = 0;
     int m_supplyRaw = 0;     // status bytes 49-50
     int m_userAdc0Raw = 0;   // status bytes 57-58 (PA volts on 7000/8000/G2)

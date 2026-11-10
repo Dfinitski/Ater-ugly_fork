@@ -676,8 +676,23 @@ void VfoWidget::wheelEvent(QWheelEvent* ev)
         return;
     }
 
+    // ANAN port (operator, 09.11): over the expanded frequency display the
+    // wheel tunes the digit under the cursor -- 1 Hz over the last digit, 1 kHz
+    // over the fourth from the right, 1 MHz over the seventh -- instead of by
+    // the slice step, the panadapter moving with it (digitTuneRequested).
+    // Collapsed, the whole widget keeps tuning by the step.
+    long long digitStepHz = 0;
+    if (!m_collapsed && m_freqLabel && m_freqStack->currentIndex() == 0) {
+        const int place = freqDigitPlaceAt(m_freqLabel->mapFrom(this, ev->position().toPoint()));
+        if (place >= 0) {
+            digitStepHz = 1;
+            for (int i = 0; i < place; ++i)
+                digitStepHz *= 10;
+        }
+    }
+
     int stepHz = m_slice->stepHz();
-    if (stepHz <= 0) { ev->accept(); return; }
+    if (digitStepHz == 0 && stepHz <= 0) { ev->accept(); return; }
 
     // Compute steps from scroll delta — same logic as SpectrumWidget.
     int steps = 0;
@@ -710,10 +725,51 @@ void VfoWidget::wheelEvent(QWheelEvent* ev)
 
     if (steps != 0) {
         if (reverseMouseWheel()) steps = -steps;  // #3302
-        double newMhz = m_slice->frequency() + steps * stepHz / 1e6;
-        emit stepTuneRequested(newMhz);
+        if (digitStepHz > 0) {
+            const long long hz = std::llround(m_slice->frequency() * 1e6);
+            const long long newHz = hz + steps * digitStepHz;
+            // The panadapter scrolls under a filter that stays where it is,
+            // so the digit being turned does not run away from the cursor.
+            if (newHz > 0)
+                emit digitTuneRequested(static_cast<double>(newHz) / 1e6);
+        } else {
+            double newMhz = m_slice->frequency() + steps * stepHz / 1e6;
+            emit stepTuneRequested(newMhz);
+        }
     }
     ev->accept();
+}
+
+int VfoWidget::freqDigitPlaceAt(const QPoint& labelPos) const
+{
+    if (!m_freqLabel)
+        return -1;
+    const QString text = m_freqLabel->text();
+    if (text.isEmpty() || !text.front().isDigit())
+        return -1;   // "LOCKED"
+    int digits = 0;
+    for (const QChar c : text)
+        if (c.isDigit())
+            ++digits;
+    // The label is right-aligned in its contents rect, so the text ends at
+    // the rect's right edge.
+    const QFontMetricsF fm(m_freqLabel->font());
+    const QRect cr = m_freqLabel->contentsRect();
+    double x = cr.right() + 1 - fm.horizontalAdvance(text);
+    if (labelPos.x() < x)
+        return digits - 1;   // left of the number: its leading digit
+    int seen = 0;
+    for (const QChar c : text) {
+        const double adv = fm.horizontalAdvance(c);
+        if (c.isDigit())
+            ++seen;
+        if (labelPos.x() < x + adv) {
+            // Over a separator: the digit right after it.
+            return c.isDigit() ? digits - seen : std::max(0, digits - seen - 1);
+        }
+        x += adv;
+    }
+    return 0;   // right of the number: the units
 }
 
 void VfoWidget::mousePressEvent(QMouseEvent* ev)
@@ -3660,7 +3716,12 @@ void VfoWidget::applyRadioSideDspVisibility()
     // Flex the blanker is still the radio's — see
     // RadioCapabilities::hasHostNoiseBlanker.
     m_nbBtn->setVisible(m_nbModeOk && (controls || supplied(Feature::Nb, m_hasRadioSideDsp || m_hasHostNoiseBlanker)));
-    m_anfBtn->setVisible(m_anfModeOk && (controls || supplied(Feature::Anf, m_hasRadioSideDsp)));
+    // ANAN port: like NB, ANF may run on this host (hasHostAutoNotch). Read
+    // straight from the capabilities: every path that changes them (connect,
+    // disconnect) already lands here through setHasHostNoiseBlanker().
+    const bool hostAutoNotch = m_radioModel && m_radioModel->isConnected()
+        && m_radioModel->backendCapabilities().hasHostAutoNotch;
+    m_anfBtn->setVisible(m_anfModeOk && (controls || supplied(Feature::Anf, m_hasRadioSideDsp || hostAutoNotch)));
     // The LMS/FFT three carry a SECOND capability on top of the first. A radio
     // can run its own DSP without running FlexRadio's — see
     // RadioCapabilities::hasLmsNoiseFilters.
@@ -5901,7 +5962,8 @@ void VfoWidget::updateFilterLabel()
 void VfoWidget::relayoutDspGrid()
 {
     // Remove all widgets from the grid (without deleting them)
-    QPushButton* all[] = {m_nrBtn, m_nbBtn, m_anfBtn, m_apfBtn, m_nrlBtn,
+    // ANAN port: ANF sits before NB in the row (operator, 09.11).
+    QPushButton* all[] = {m_nrBtn, m_anfBtn, m_nbBtn, m_apfBtn, m_nrlBtn,
                           m_nrsBtn, m_rnnBtn, m_nrfBtn, m_anflBtn, m_anftBtn,
                           m_mnBtn};
     for (auto* btn : all)

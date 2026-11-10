@@ -71,14 +71,21 @@ Hl2Spectrum::~Hl2Spectrum()
 int Hl2Spectrum::process(std::span<const std::complex<float>> iq, std::vector<float>& binsDbfs)
 {
     int frames = 0;
-    for (const auto& s : iq) {
-        m_acc.push_back(s);
+    for (std::size_t i = 0; i < iq.size(); ++i) {
+        m_acc.push_back(iq[i]);
         ++m_samplesSinceFrame;
         ++m_clockSamples;
         if (static_cast<int>(m_acc.size()) == m_fftSize) {
             computeFrame(binsDbfs);
-            m_acc.clear();
             ++frames;
+            if (m_sliding) {
+                // Build 225: keep the window minus its oldest sample; the rest
+                // of this block only slides it (accumulate()).
+                m_acc.erase(m_acc.begin());
+                accumulate(iq.subspan(i + 1));
+                return frames;
+            }
+            m_acc.clear();
         }
     }
     return frames;

@@ -717,6 +717,11 @@ struct RadioCapabilities {
     // leave this false.
     bool hasHostNoiseBlanker = false;
 
+    // ANAN port: this host runs WDSP's automatic notch filter (ANF) on the
+    // demodulated audio, so the ANF button works without radio-side DSP; OR'd
+    // with hasRadioSideDsp at the ANF button. Same IQ-path condition as above.
+    bool hasHostAutoNotch = false;
+
     // One operator-placed notch in radio DSP: enable plus position in the passband
     // (IC-705: 16 48 enable, 14 0D position 0000..0255, 16 57 one of three widths).
     // Not a TNF (absolute frequency, several, survive tuning) and not the auto notch

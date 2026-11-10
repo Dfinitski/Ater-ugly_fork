@@ -3555,6 +3555,145 @@ int MainWindow::cloneDisplaySettingsToAllPans(PanadapterApplet* source)
     return cloned;
 }
 
+// ── Build 227/228: band memory for radios without a band stack (ANAN) ─────
+// Stored in AppSettings "AnanBandMemory" as {key: {freq, mode, lo, hi, agc,
+// agcT, bw, center, txLo, txHi, rxAnt, txAnt, lna, rfGain}}, key = the band
+// for RX1 ("40m") and "RX2/40m" for RX2 (build 228: each receiver its own
+// memory, as Thetis). Every receiver is sampled every 0.5 s; while it stays
+// on a band its state is kept, and when it leaves the band -- band button,
+// typed frequency, spot click -- that last state is stored for the band and
+// the new band's antennas / LNA / RX2 attenuator are applied.
+
+static QString ananBandMemKey(int sliceId, const QString& band)
+{
+    return sliceId == 0 ? band : QStringLiteral("RX%1/%2").arg(sliceId + 1).arg(band);
+}
+
+QJsonObject MainWindow::ananBandMemSnapshot(SliceModel* s) const
+{
+    QJsonObject o;
+    if (!s || !(s->frequency() > 0.0))
+        return o;
+    auto& rm = const_cast<RadioModel&>(m_radioModel);
+    auto& st = AppSettings::instance();
+    o.insert(QStringLiteral("freq"), s->frequency());
+    o.insert(QStringLiteral("mode"), s->mode());
+    o.insert(QStringLiteral("lo"), s->filterLow());
+    o.insert(QStringLiteral("hi"), s->filterHigh());
+    o.insert(QStringLiteral("agc"), s->agcMode());
+    o.insert(QStringLiteral("agcT"), s->agcThreshold());
+    if (auto* pan = rm.panadapter(s->panId())) {
+        o.insert(QStringLiteral("bw"), pan->bandwidthMhz());
+        o.insert(QStringLiteral("center"), pan->centerMhz());   // build 228: where the view sat
+        if (s->sliceId() != 0)
+            o.insert(QStringLiteral("rfGain"), pan->rfGain());  // build 228: RX2's attenuator
+    }
+    if (s->sliceId() == 0) {
+        // The TX passband (SSB voice; the other modes keep their own).
+        const TransmitModel& tx = rm.transmitModel();
+        o.insert(QStringLiteral("txLo"), tx.txFilterLow());
+        o.insert(QStringLiteral("txHi"), tx.txFilterHigh());
+        // Build 228: the Alex antennas and the LNA (ANT panel), per band as in
+        // Thetis -- they are on the RX1 / transmit path.
+        o.insert(QStringLiteral("rxAnt"), st.value(QStringLiteral("AnanRxAnt"), 0).toInt());
+        o.insert(QStringLiteral("txAnt"), st.value(QStringLiteral("AnanTxAnt"), 0).toInt());
+        o.insert(QStringLiteral("lna"), st.value(QStringLiteral("AnanLna"), false).toBool());
+    }
+    return o;
+}
+
+void MainWindow::ananBandMemStore(int sliceId, const QString& band, const QJsonObject& snap)
+{
+    if (band.isEmpty() || snap.isEmpty())
+        return;
+    auto& st = AppSettings::instance();
+    QJsonObject all = QJsonDocument::fromJson(
+        st.value(QStringLiteral("AnanBandMemory"), QStringLiteral("{}")).toString().toUtf8()).object();
+    const QString key = ananBandMemKey(sliceId, band);
+    if (all.value(key).toObject() == snap)
+        return;
+    all.insert(key, snap);
+    st.setValue(QStringLiteral("AnanBandMemory"),
+                QString::fromUtf8(QJsonDocument(all).toJson(QJsonDocument::Compact)));
+    st.save();
+}
+
+QJsonObject MainWindow::ananBandMemLoad(int sliceId, const QString& band) const
+{
+    const QJsonObject all = QJsonDocument::fromJson(
+        AppSettings::instance().value(QStringLiteral("AnanBandMemory"), QStringLiteral("{}"))
+            .toString().toUtf8()).object();
+    return all.value(ananBandMemKey(sliceId, band)).toObject();
+}
+
+void MainWindow::ananBandMemApplyHardware(SliceModel* s, const QJsonObject& mem)
+{
+    if (!s || mem.isEmpty())
+        return;
+    auto& st = AppSettings::instance();
+    bool changed = false;
+    if (s->sliceId() == 0) {
+        // Read by the backend's settings poll (Hl2Backend, AnanRxAnt / AnanTxAnt
+        // / AnanLna) and by the ANT panel when it opens.
+        auto put = [&](const char* key, const QVariant& v) {
+            if (st.value(QLatin1String(key)) != v) {
+                st.setValue(QLatin1String(key), v);
+                changed = true;
+            }
+        };
+        if (mem.contains(QStringLiteral("rxAnt")))
+            put("AnanRxAnt", std::clamp(mem.value(QStringLiteral("rxAnt")).toInt(), 0, 2));
+        if (mem.contains(QStringLiteral("txAnt")))
+            put("AnanTxAnt", std::clamp(mem.value(QStringLiteral("txAnt")).toInt(), 0, 2));
+        if (mem.contains(QStringLiteral("lna")))
+            put("AnanLna", mem.value(QStringLiteral("lna")).toBool());
+        if (changed)
+            st.save();
+    } else if (mem.contains(QStringLiteral("rfGain"))) {
+        m_radioModel.setPanRfGainFor(s->panId(), mem.value(QStringLiteral("rfGain")).toInt());
+    }
+    if (changed)
+        qCInfo(lcProtocol).noquote() << "MainWindow: band memory: antennas RX"
+                                     << st.value(QStringLiteral("AnanRxAnt")).toInt() + 1 << "TX"
+                                     << st.value(QStringLiteral("AnanTxAnt")).toInt() + 1 << "LNA"
+                                     << st.value(QStringLiteral("AnanLna")).toBool();
+}
+
+void MainWindow::ananBandMemTick()
+{
+    if (!m_radioModel.isConnected() || m_radioModel.usesFlexCommandPlane())
+        return;
+    for (SliceModel* s : m_radioModel.slices()) {
+        const QJsonObject snap = ananBandMemSnapshot(s);
+        if (snap.isEmpty())
+            continue;
+        const QString band = BandSettings::bandForFrequency(s->frequency());
+        AnanBandMemSlot& slot = m_ananBandMem[s->sliceId()];
+        if (band == slot.band) {
+            slot.live = snap;
+            continue;
+        }
+        // Left the band: its last state is what it is remembered as; the new
+        // band's antennas / LNA / RX2 attenuator follow (a band never visited
+        // keeps the current ones). The first sample after connect only learns.
+        const bool firstSample = slot.band.isEmpty();
+        if (!firstSample && !slot.live.isEmpty())
+            ananBandMemStore(s->sliceId(), slot.band, slot.live);
+        slot.band = band;
+        slot.live = snap;
+        if (!firstSample)
+            ananBandMemApplyHardware(s, ananBandMemLoad(s->sliceId(), band));
+    }
+}
+
+void MainWindow::ananBandMemFlush()
+{
+    ananBandMemTick();
+    for (auto it = m_ananBandMem.cbegin(); it != m_ananBandMem.cend(); ++it)
+        if (!it.value().band.isEmpty() && !it.value().live.isEmpty())
+            ananBandMemStore(it.key(), it.value().band, it.value().live);
+}
+
 void MainWindow::selectBand(const QString& panId, const QString& bandName, double freqMhz,
                             const QString& mode, const QString& stackKeyHint)
 {
@@ -3594,6 +3733,51 @@ void MainWindow::selectBand(const QString& panId, const QString& bandName, doubl
             return;
         }
         m_bandSettings.setCurrentBand(bandName);
+        // Build 227 (users: the band buttons do not remember the frequency):
+        // the band being left is stored as it is now, and the band asked for
+        // comes back as it was left -- frequency, mode, RX filter, AGC and the
+        // panadapter's width. The button's own frequency/mode only for a band
+        // never visited.
+        ananBandMemFlush();
+        const int sid = s->sliceId();
+        const QJsonObject mem = ananBandMemLoad(sid, bandName);
+        if (!mem.isEmpty()) {
+            freqMhz = mem.value(QStringLiteral("freq")).toDouble(freqMhz);
+            const QString memMode = mem.value(QStringLiteral("mode")).toString();
+            const QString useMode = memMode.isEmpty() ? mode : memMode;
+            if (!useMode.isEmpty())
+                s->setMode(useMode);
+            s->setFrequency(freqMhz);
+            // Build 228: the view back where it was (Thetis CTUN centre), if
+            // the frequency is inside it; else centred on the frequency.
+            const double memBw = mem.value(QStringLiteral("bw")).toDouble();
+            const double memCenter = mem.value(QStringLiteral("center")).toDouble();
+            const bool centerOk = memBw > 0.0 && memCenter > 0.0
+                                  && std::abs(freqMhz - memCenter) < memBw * 0.45;
+            m_radioModel.requestPanCenter(panId, centerOk ? memCenter : freqMhz);
+            const int lo = mem.value(QStringLiteral("lo")).toInt(), hi = mem.value(QStringLiteral("hi")).toInt();
+            if (hi > lo)
+                s->setFilterWidth(lo, hi);
+            const QString agc = mem.value(QStringLiteral("agc")).toString();
+            if (!agc.isEmpty())
+                s->setAgcMode(agc);
+            if (mem.contains(QStringLiteral("agcT")))
+                s->setAgcThreshold(mem.value(QStringLiteral("agcT")).toInt());
+            const double bw = mem.value(QStringLiteral("bw")).toDouble();
+            if (bw > 0.0)
+                m_radioModel.requestPanBandwidth(panId, bw);
+            const int txLo = mem.value(QStringLiteral("txLo")).toInt(), txHi = mem.value(QStringLiteral("txHi")).toInt();
+            const QString um = useMode.toUpper();
+            if (sid == 0 && txHi > txLo && (um == QLatin1String("USB") || um == QLatin1String("LSB")))
+                m_radioModel.transmitModel().setTxFilter(txLo, txHi);
+            ananBandMemApplyHardware(s, mem);
+            m_ananBandMem[sid] = AnanBandMemSlot{bandName, mem};
+            qCInfo(lcProtocol).noquote().nospace()
+                << "MainWindow: band " << bandName << " restored: " << QString::number(freqMhz, 'f', 6)
+                << " MHz " << useMode << ", filter " << lo << ".." << hi << ", AGC " << agc
+                << ", pan " << QString::number(bw * 1000.0, 'f', 1) << " kHz";
+            return;
+        }
         // MODE FIRST, then frequency. The backend adopts a mode-appropriate
         // passband on a mode CHANGE (Hl2Backend::setSliceMode), and the
         // frequency move is what re-selects the companion filter board — so
@@ -3607,6 +3791,7 @@ void MainWindow::selectBand(const QString& panId, const QString& bandName, doubl
         // the usable passband, so a band change could leave the trace
         // centred a whole band away from the slice that just moved.
         m_radioModel.requestPanCenter(panId, freqMhz);
+        m_ananBandMem[s->sliceId()] = AnanBandMemSlot{bandName, QJsonObject()};
         qCDebug(lcProtocol).noquote().nospace()
             << "MainWindow: band switch (no radio band stack) band=" << bandName
             << " pan=" << panId
@@ -5695,6 +5880,34 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
     connect(w, &VfoWidget::stepTuneRequested, this, [this, sliceId](double mhz) {
         if (auto* sl = m_radioModel.slice(sliceId))
             applyTuneRequest(sl, mhz, TuneIntent::IncrementalTune, "vfo-wheel");
+    });
+    // ANAN port (operator, 09.11): a digit of the VFO frequency turned with
+    // the wheel. The pan centre moves by the same amount first, then the slice,
+    // with no reveal/follow logic in between: the filter keeps its place on
+    // the screen and the flag (with the digit under the cursor) stays put.
+    connect(w, &VfoWidget::digitTuneRequested, this, [this, sliceId](double mhz) {
+        auto* sl = m_radioModel.slice(sliceId);
+        if (!sl)
+            return;
+        if (m_radioModel.confirmsReceiveControls() || centerLockActiveForSlice(sl)) {
+            // Confirmed backends own the view; centre lock keeps the slice
+            // centred anyway. The ordinary incremental tune does the right thing.
+            applyTuneRequest(sl, mhz, TuneIntent::IncrementalTune, "vfo-digit-wheel");
+            return;
+        }
+        if (tuneBlockedByGuards(sl))
+            return;
+        const double deltaMhz = mhz - sl->frequency();
+        if (auto* pan = m_radioModel.panadapter(sl->panId())) {
+            auto* sw = spectrumForSlice(sl);
+            const double centerMhz = sw ? sw->centerMhz() : pan->centerMhz();
+            const double bwMhz = sw ? sw->bandwidthMhz() : pan->bandwidthMhz();
+            const double newCenterMhz = std::max(centerMhz + deltaMhz, bwMhz / 2.0);
+            if (centerMhz > 0.0 && bwMhz > 0.0)
+                applyTuneCenteringWrite(pan, sw, newCenterMhz);
+        }
+        pushSliceFrequencyToOverlays(sl, mhz);
+        sl->setFrequency(mhz);
     });
     connect(w, &VfoWidget::directEntryCommitted, this, [this, sliceId](double mhz, const QString& source) {
         if (auto* sl = m_radioModel.slice(sliceId)) {

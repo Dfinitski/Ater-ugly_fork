@@ -93,6 +93,13 @@ public:
     // holds the most recent frame. Returns the number of frames produced (a
     // partial frame is carried to the next call).
     int process(std::span<const std::complex<float>> iq, std::vector<float>& binsDbfs);
+    // Build 225 (a user: the panadapter's frequency resolution is too coarse):
+    // sliding window. process() then produces at most one frame per call and
+    // keeps the newest fftSize - 1 samples after it, so the next due frame
+    // needs one new sample, not a whole new window: a large FFT (fine bins)
+    // no longer lowers the frame rate to rate / fftSize. Off by default (the
+    // fixtures count frames per window).
+    void setSlidingWindow(bool on) noexcept { m_sliding = on; }
 
     // Append IQ WITHOUT transforming, keeping only the newest samples. Used
     // while the display-rate cap is between frames: the window keeps filling, so
@@ -118,6 +125,7 @@ public:
 
 private:
     void computeFrame(std::vector<float>& binsDbfs);
+    bool m_sliding = false;   // build 225
 
     int m_fftSize;
     std::vector<std::complex<float>> m_acc;   // accumulation buffer (< m_fftSize)

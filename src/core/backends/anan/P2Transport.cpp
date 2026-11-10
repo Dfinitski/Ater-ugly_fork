@@ -1,6 +1,7 @@
 #include "core/backends/anan/P2Transport.h"
 #include "core/backends/anan/AnanNativeUdp.h"
 #include "core/backends/anan/P1Protocol.h"
+#include "core/backends/anan/AnanRoute.h"
 #include "core/AppSettings.h"
 
 #include <QStringList>
@@ -15,6 +16,7 @@
 #include <QVariant>
 
 #include <algorithm>
+#include <map>
 #include <chrono>
 #include <cmath>
 #include <numbers>
@@ -37,6 +39,14 @@ Q_LOGGING_CATEGORY(lcAnanP2T, "aether.anan.p2t")
 namespace AetherSDR::anan {
 
 namespace {
+
+// Build 221: which local address the session socket binds to, per radio.
+// Starts alternate between the wildcard (the routing table picks the adapter)
+// and the adapter the radio's discovery reply came in on (AnanRoute.h), until
+// one gets I/Q back; that one is then kept for the radio.
+std::mutex g_bindMutex;
+std::map<quint32, int> g_silentStarts;      // starts that got nothing at all back
+std::map<quint32, quint32> g_workingBind;   // 0 = wildcard
 
 template <std::size_t N>
 qint64 sendDatagram(QUdpSocket& s, const std::array<std::uint8_t, N>& buf,
@@ -91,7 +101,7 @@ P2Transport::P2Transport(QObject* parent) : hl2::MetisClient(parent)
                 << ", status " << m_statusPackets << ", Discovery reply "
                 << (m_configured ? "yes" : "no");
             emit connectFailed(QStringLiteral("no IQ stream from the radio within %1 ms of start")
-                                   .arg(kConnectTimeoutMs));
+                                   .arg(kConnectTimeoutMs) + noteBindSilent());
         }
     });
 
@@ -106,6 +116,13 @@ P2Transport::P2Transport(QObject* parent) : hl2::MetisClient(parent)
 
     m_txTimer = new QTimer(this);
     m_txTimer->setInterval(2);   // host stand-in only (onTxPacerTick)
+    // Build 231: the power / SWR meters at 25 updates a second while keyed.
+    m_meterTimer = new QTimer(this);
+    m_meterTimer->setInterval(40);
+    connect(m_meterTimer, &QTimer::timeout, this, [this] {
+        if (m_mox && m_up)
+            publishTelemetry();
+    });
     m_txTimer->setTimerType(Qt::PreciseTimer);
     connect(m_txTimer, &QTimer::timeout, this, &P2Transport::onTxPacerTick);
 
@@ -183,6 +200,9 @@ QList<hl2::MetisClient::Discovered> P2Transport::discover(int timeoutMs,
         while (s.hasPendingDatagrams()) {
             const QNetworkDatagram dg = s.receiveDatagram();
             const QByteArray data = dg.data();
+            // Build 221: the adapter this reply came in on (AnanRoute.h).
+            if (const LocalRoute route = localRouteFor(dg); route.valid())
+                noteHostRoute(dg.senderAddress().toIPv4Address(), route.local.toIPv4Address());
             if (const auto r1 = hl2::parseDiscoveryReply(asBytes(data))) {
                 // Protocol 1 firmware (EF FE 02/03 ...): its board type mapped
                 // to the Protocol 2 id the profiles and models are keyed by.
@@ -230,6 +250,54 @@ QList<hl2::MetisClient::Discovered> P2Transport::discover(int timeoutMs,
 }
 
 // ---- session ---------------------------------------------------------------
+
+// Build 221: the session socket's bind got I/Q -- keep it for this radio.
+void P2Transport::noteBindWorked()
+{
+    const quint32 hostIp = m_p.host.toIPv4Address();
+    std::lock_guard<std::mutex> lock(g_bindMutex);
+    g_silentStarts.erase(hostIp);
+    g_workingBind[hostIp] = m_bindAddr == QHostAddress(QHostAddress::AnyIPv4) ? 0u : m_bindAddr.toIPv4Address();
+}
+
+// Build 221: a start without I/Q. When nothing at all came back, the next
+// start tries the other bind, and the operator is told what to look at.
+// Returns the text appended to the connection error.
+QString P2Transport::noteBindSilent()
+{
+    if (m_counters.rxPackets != 0)
+        return {};
+    const quint32 hostIp = m_p.host.toIPv4Address();
+    {
+        std::lock_guard<std::mutex> lock(g_bindMutex);
+        ++g_silentStarts[hostIp];
+        g_workingBind.erase(hostIp);
+    }
+    const LocalRoute found = routeForLocalAddress(m_learnedBind);
+    QString why;
+    if (found.valid() && !sameSubnet(found.local, m_p.host, found.prefix)) {
+        why = QStringLiteral("; the radio %1 was found on adapter \"%2\" (%3/%4), which is not the radio's "
+                             "subnet -- put the adapter and the radio in one subnet")
+                  .arg(m_p.host.toString(), found.adapter, found.local.toString())
+                  .arg(found.prefix);
+    } else if (found.valid()) {
+        const bool onAdapter = m_bindAddr != QHostAddress(QHostAddress::AnyIPv4);
+        why = QStringLiteral("; nothing came back from %1 (sent %2). The radio answers the discovery "
+                             "broadcast, so look for a VPN, a firewall rule or another program "
+                             "holding the radio%3")
+                  .arg(m_p.host.toString(),
+                       onAdapter ? QStringLiteral("from adapter \"%1\"").arg(found.adapter)
+                                 : QStringLiteral("by the routing table"),
+                       onAdapter ? QString()
+                                 : QStringLiteral("; the next attempt sends from adapter \"%1\"")
+                                       .arg(found.adapter));
+    } else {
+        why = QStringLiteral("; nothing came back from %1 -- check the address, a VPN or a firewall rule")
+                  .arg(m_p.host.toString());
+    }
+    qCWarning(lcAnanP2T).noquote() << "ANAN transport:" << why.mid(2);
+    return why;
+}
 
 bool P2Transport::start(const hl2::MetisClient::Params& params)
 {
@@ -295,11 +363,52 @@ bool P2Transport::start(const hl2::MetisClient::Params& params)
     m_statusPackets = 0;
     m_diagStatusSeen = 0;
 
-    // Wildcard bind, exactly as P2Client (verified on the ANAN-100D): binding
-    // to Params::localAddress left the session socket deaf to the radio on a
-    // multi-interface PC (the first field run saw no Discovery reply).
+    // Wildcard bind first, as P2Client (verified on the ANAN-100D): binding to
+    // a stale Params::localAddress once left the session socket deaf on a
+    // multi-interface PC. Build 221 (operator, 09.11: make the routing
+    // reliable): when a wildcard start got nothing back, the next start binds
+    // to the adapter the radio was found on (Thetis binds to it), and so on in
+    // turn; what worked is kept for this radio.
+    {
+        const quint32 hostIp = m_p.host.toIPv4Address();
+        QHostAddress learned;
+        bool chosen = false;   // an adapter picked in Connect by IP -> Advanced
+        const auto swept = hostRoute(hostIp);
+        if (m_p.localAddress.protocol() == QAbstractSocket::IPv4Protocol) {
+            learned = m_p.localAddress;
+            chosen = !swept || *swept != learned.toIPv4Address();
+        } else if (swept) {
+            learned = QHostAddress(*swept);
+        }
+        if (!learned.isNull() && !routeForLocalAddress(learned).valid())
+            learned = QHostAddress();   // no longer an address of this PC
+        m_learnedBind = learned;
+        m_bindAddr = QHostAddress(QHostAddress::AnyIPv4);
+        int silent = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_bindMutex);
+            silent = g_silentStarts.count(hostIp) ? g_silentStarts[hostIp] : 0;
+            const auto w = g_workingBind.find(hostIp);
+            if (w != g_workingBind.end()) {
+                if (w->second != 0)
+                    m_bindAddr = QHostAddress(w->second);
+            } else if (!learned.isNull() && (silent % 2 == 1) != chosen) {
+                m_bindAddr = learned;
+            }
+        }
+        if (m_bindAddr.isNull() || (m_bindAddr != QHostAddress(QHostAddress::AnyIPv4)
+                                    && !routeForLocalAddress(m_bindAddr).valid()))
+            m_bindAddr = QHostAddress(QHostAddress::AnyIPv4);
+        const LocalRoute via = routeForLocalAddress(m_bindAddr);
+        qCInfo(lcAnanP2T).noquote().nospace()
+            << "ANAN transport: session socket on "
+            << (via.valid() ? via.local.toString() + QStringLiteral(" (adapter \"") + via.adapter + QStringLiteral("\")")
+                            : QStringLiteral("any address (routing table)"))
+            << " to " << m_p.host.toString()
+            << (silent > 0 ? QStringLiteral(", after %1 start(s) with nothing back").arg(silent) : QString());
+    }
     m_sock = new QUdpSocket(this);
-    if (!m_sock->bind(QHostAddress::AnyIPv4, 0)) {
+    if (!m_sock->bind(m_bindAddr, 0)) {
         m_sock->deleteLater();
         m_sock = nullptr;
         return false;
@@ -402,6 +511,7 @@ void P2Transport::configureSession(const BoardProfile& profile, bool fromReply)
         m_spkCv.notify_one();   // the speaker thread stands aside (it waits on m_p1Atomic)
         sendP1Start();
         m_keepalive->start();
+        m_meterTimer->start();   // build 231
         m_watchdog->start();
         return;
     }
@@ -419,6 +529,7 @@ void P2Transport::configureSession(const BoardProfile& profile, bool fromReply)
     sendTransmitSpecific();
     sendHighPriority(true);
     m_keepalive->start();
+    m_meterTimer->start();   // build 231
     m_watchdog->start();
     {
         std::lock_guard<std::mutex> lock(m_spkMutex);
@@ -478,6 +589,7 @@ void P2Transport::stopSession(bool toPowerOnState)
 #endif
     if (m_keepalive)
         m_keepalive->stop();
+        m_meterTimer->stop();
     if (m_boardWait)
         m_boardWait->stop();
     if (m_connectTimer)
@@ -598,7 +710,9 @@ void P2Transport::sendHighPriority(bool run)
     // User Out: RX row of the receive band / TX row of the transmit band
     // (Thetis Penny.cs); all off while stopping (the radio does the same in
     // standby).
-    o.openCollector = run ? openCollectorBits(m_oc, static_cast<double>(m_rxHz[filterRx]),
+    // The RX row by the band the receiver is TUNED to, not where its NCO
+    // (the pan centre) happens to sit.
+    o.openCollector = run ? openCollectorBits(m_oc, ocRxHz(filterRx),
                                               o.txFrequencyHz, o.transmitting, m_tunerStart)
                           : std::uint8_t{0};
     if (o.openCollector != m_ocLast) {
@@ -665,7 +779,8 @@ void P2Transport::onKeepaliveTick()
     // while I/Q was missing is gone: Thetis does not watch the radio either.
     // A session is started (configureSession) and stopped (stop) as a whole.
     publishLinkCounters();
-    publishTelemetry();
+    if (!m_mox)   // build 231: while transmitting, m_meterTimer publishes (40 ms)
+        publishTelemetry();
 }
 
 void P2Transport::handleBufferStatus(std::span<const std::uint8_t> b)
@@ -856,6 +971,8 @@ void P2Transport::handleStatus(std::span<const std::uint8_t> b)
     m_fwdAtomic.store(m_fwdRaw, std::memory_order_relaxed);
     m_driveAtomic.store(m_drive, std::memory_order_relaxed);
     m_revRaw = be16(22);
+    m_fwdPeakWin = std::max(m_fwdPeakWin, m_fwdRaw);   // build 231
+    m_revPeakWin = std::max(m_revPeakWin, m_revRaw);
     m_supplyRaw = be16(49);   // supply volts ADC (spec p.40)
     m_userAdc1Raw = be16(55); // User ADC1: PA drain current (Thetis getUserADC1)
     m_userAdc0Raw = be16(57); // User ADC0: PA volts (Thetis getUserADC0)
@@ -863,7 +980,7 @@ void P2Transport::handleStatus(std::span<const std::uint8_t> b)
         handleBufferStatus(b);
     const bool overload = (b[5] & 0x01) != 0;   // ADC0
     const bool ptt = (b[4] & 0x01) != 0;
-    const bool paddle = m_cwKeyer.enabled && (b[4] & 0x06) != 0;   // dot / dash
+    const bool paddle = effectiveCwKeyer().enabled && (b[4] & 0x06) != 0;   // dot / dash
     if (overload)
         m_overloadInWindow = true;
     if (const unsigned ovl = b[5] & 0x03u)   // ADC0 / ADC1 overload (spec p.40)
@@ -949,6 +1066,24 @@ void P2Transport::updateRadioPtt()
     emit radioPttChanged(keyed);
 }
 
+void P2Transport::setCwBandInhibit(bool inhibit)
+{
+    if (inhibit == m_cwBandInhibit)
+        return;
+    m_cwBandInhibit = inhibit;
+    qCInfo(lcAnanP2T) << "ANAN transport: the radio's CW keyer"
+                      << (inhibit ? "disabled: the TX frequency is outside the amateur bands"
+                                  : "enabled again (TX frequency inside an amateur band)");
+    if (inhibit && (m_paddleDown || m_paddleHold)) {
+        m_paddleDown = m_paddleHold = false;
+        m_paddleHangTimer->stop();
+        updateRadioPtt();
+    }
+    // Protocol 1 takes it from p1State() in the C&C rotation; Protocol 2 now.
+    if (m_run && m_configured && !m_p1)
+        sendTransmitSpecific();
+}
+
 void P2Transport::setCwKeyer(const CwKeyerOptions& k)
 {
     if (k == m_cwKeyer)
@@ -998,11 +1133,15 @@ void P2Transport::publishTelemetry()
     // Directional coupler counts (Alex0). The watts/SWR conversion upstream
     // is the HL2's; ANAN calibration is a TODO (see the port journal).
     if (m_mox) {
-        t.forwardPowerRaw = m_fwdRaw;
-        t.reversePowerRaw = m_revRaw;
-        t.forwardPowerPeakRaw = m_fwdRaw;
+        // Build 231: the window's highest readings -- the meter shows the
+        // peaks the radio's detector reported, not whichever sample was last.
+        t.forwardPowerRaw = m_fwdPeakWin >= 0 ? m_fwdPeakWin : m_fwdRaw;
+        t.reversePowerRaw = m_revPeakWin >= 0 ? m_revPeakWin : m_revRaw;
+        t.forwardPowerPeakRaw = t.forwardPowerRaw;
         t.forwardPowerSamples = 1;
     }
+    m_fwdPeakWin = -1;
+    m_revPeakWin = -1;
     if (m_statusPackets > 0) {
         t.supplyVoltsRaw = m_supplyRaw;
         t.paVoltsRaw = m_userAdc0Raw;
@@ -1198,6 +1337,7 @@ void P2Transport::handleDatagram(std::span<const std::uint8_t> bytes, quint16 se
     if (!m_up && slot == 0) {
         m_up = true;
         m_connectTimer->stop();
+        noteBindWorked();
         emit linkUp();
     }
     deliverAlignedBlocks();
@@ -1323,6 +1463,21 @@ void P2Transport::setRxFrequencyHz(int rxIndex, std::uint32_t hz)
         return;
     m_rxHz[static_cast<std::size_t>(rxIndex)] = hz;
     if (m_run && m_configured)
+        sendHighPriority(true);
+}
+
+void P2Transport::setRxTunedHz(int rxIndex, std::uint32_t hz)
+{
+    if (rxIndex < 0 || rxIndex >= kMaxDdcs)
+        return;
+    const auto i = static_cast<std::size_t>(rxIndex);
+    if (m_rxTunedHz[i] == hz)
+        return;
+    const int bandBefore = ocBandIndex(ocRxHz(i));
+    m_rxTunedHz[i] = hz;
+    // Only a band change can move the outputs; the frequency itself is not on
+    // the wire.
+    if (ocBandIndex(ocRxHz(i)) != bandBefore && m_run && m_configured)
         sendHighPriority(true);
 }
 
@@ -1797,7 +1952,7 @@ void P2Transport::sendTransmitSpecific()
 {
     if (!m_sock || m_p1)
         return;
-    const auto pkt = buildTransmitSpecific(m_txSpecSeq++, m_micBoost, m_cwKeyer, m_txAttDb,
+    const auto pkt = buildTransmitSpecific(m_txSpecSeq++, m_micBoost, effectiveCwKeyer(), m_txAttDb,
                                            m_psEnabled ? m_psAttDb : -1, m_psAdc, m_micControl);
     sendDatagram(*m_sock, pkt, m_p.host, kTransmitSpecificPort, m_counters.txBytes, m_counters.txPackets);
 }
@@ -2383,7 +2538,8 @@ P1CcState P2Transport::p1State() const
         }
     }
     const double filterHz = static_cast<double>(m_rxHz[filterRx]);
-    s.openCollector = openCollectorBits(m_oc, filterHz, static_cast<double>(tx), m_mox, m_tunerStart);
+    s.openCollector = openCollectorBits(m_oc, ocRxHz(filterRx), static_cast<double>(tx), m_mox,
+                                        m_tunerStart);
     s.dither = m_dither;
     s.random = m_random;
     s.antenna = m_mox ? m_txAnt : m_rxAnt;
@@ -2430,7 +2586,7 @@ P1CcState P2Transport::p1State() const
                                              | ((m_micControl & kMicBiasOn) ? 0x20 : 0)
                                              | ((m_micControl & kMicPttDisabled) ? 0x40 : 0));
     s.rxAttDb = {m_adcAtt[0], m_adcAtt[1], 0};
-    s.cwKeyer = m_cwKeyer.enabled;
+    s.cwKeyer = effectiveCwKeyer().enabled;   // build 224: off outside the amateur bands
     s.cwPaddleSwap = m_cwKeyer.paddleSwap;
     s.cwMode = m_cwKeyer.mode;
     s.cwSpeedWpm = m_cwKeyer.speedWpm;
@@ -2601,8 +2757,14 @@ void P2Transport::handleP1Ep6(std::span<const std::uint8_t> bytes)
             m_ovlDisplay.fetch_or(st->overloadBits & 3u, std::memory_order_acq_rel);
         }
         if (st->exciterRaw) m_excRaw = *st->exciterRaw;
-        if (st->fwdRaw) m_fwdRaw = *st->fwdRaw;
-        if (st->revRaw) m_revRaw = *st->revRaw;
+        if (st->fwdRaw) {
+            m_fwdRaw = *st->fwdRaw;
+            m_fwdPeakWin = std::max(m_fwdPeakWin, m_fwdRaw);   // build 231
+        }
+        if (st->revRaw) {
+            m_revRaw = *st->revRaw;
+            m_revPeakWin = std::max(m_revPeakWin, m_revRaw);
+        }
         if (st->userAdc0Raw) m_userAdc0Raw = *st->userAdc0Raw;
         if (st->userAdc1Raw) m_userAdc1Raw = *st->userAdc1Raw;
         if (st->supplyRaw) m_supplyRaw = *st->supplyRaw;
@@ -2619,7 +2781,7 @@ void P2Transport::handleP1Ep6(std::span<const std::uint8_t> bytes)
             continue;
         m_sinceStatus.start();
         m_pttLine = st->ptt;
-        const bool paddle = m_cwKeyer.enabled && (st->dot || st->dash);
+        const bool paddle = effectiveCwKeyer().enabled && (st->dot || st->dash);
         if (paddle != m_paddleDown) {
             m_paddleDown = paddle;
             if (paddle) {
@@ -2698,6 +2860,7 @@ void P2Transport::handleP1Ep6(std::span<const std::uint8_t> bytes)
     if (!m_up) {
         m_up = true;
         m_connectTimer->stop();
+        noteBindWorked();
         qCInfo(lcAnanP2T) << "ANAN P1 transport: I/Q streaming," << rounds << "samples per packet per DDC";
         emit linkUp();
     }

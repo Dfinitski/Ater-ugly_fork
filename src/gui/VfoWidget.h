@@ -354,6 +354,9 @@ Q_SIGNALS:
     // tuning/reveal policy.
     void stepTuneRequested(double mhz);
     void directEntryCommitted(double mhz, const QString& source);
+    // ANAN port: a wheel step on one digit of the frequency display. The
+    // panadapter moves with the slice so the filter (and this flag) stays put.
+    void digitTuneRequested(double mhz);
     // Per-slice VFO marker style changed (#1526).  markerWidth: 0 = off
     // (no center line / no top triangle, passband only), 1 = 1 px line,
     // 3 = 3 px line.
@@ -367,6 +370,9 @@ protected:
     void paintEvent(QPaintEvent* event) override;
     bool eventFilter(QObject* obj, QEvent* event) override;
     void wheelEvent(QWheelEvent* ev) override;
+    // ANAN port: the decimal place (0 = Hz units) of the frequency digit under
+    // labelPos (m_freqLabel coordinates), or -1 when the label shows no number.
+    int freqDigitPlaceAt(const QPoint& labelPos) const;
     void mousePressEvent(QMouseEvent* ev) override;
     void mouseReleaseEvent(QMouseEvent* ev) override;
     void resizeEvent(QResizeEvent* event) override;

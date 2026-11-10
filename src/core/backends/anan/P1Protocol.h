@@ -150,6 +150,11 @@ struct Protocol1HostInfo {
 };
 void noteProtocol1Host(std::uint32_t ipv4, const Protocol1HostInfo& info);
 [[nodiscard]] std::optional<Protocol1HostInfo> protocol1HostInfo(std::uint32_t ipv4);
+// Build 221: the local IPv4 address (host order) the radio's discovery reply
+// came in on (AnanRoute.h); the transport binds to it when the wildcard
+// socket gets nothing back. Thread-safe.
+void noteHostRoute(std::uint32_t radioIpv4, std::uint32_t localIpv4);
+[[nodiscard]] std::optional<std::uint32_t> hostRoute(std::uint32_t radioIpv4);
 
 // Transmit I/Q (build 197). The modulator (Hl2TxDsp) and the whole TX path
 // run at the Protocol 2 DUC rate, 192 ksps; Protocol 1 carries TX I/Q at
@@ -182,7 +187,11 @@ class P1PsResampler {
 public:
     static constexpr int kOutRateHz = 192000;
     // `inRateHz` one of 48000 / 96000 / 192000 / 384000; resets the state.
-    void configure(int inRateHz);
+    void configure(int inRateHz) { configure(inRateHz, kOutRateHz); }
+    // Build 222 (TCI IQ): any two rates whose ratio is a power of two, up or
+    // down (48 k .. 1536 k). Resets the state.
+    void configure(int inRateHz, int outRateHz);
+    [[nodiscard]] int outRateHz() const noexcept { return m_outRate; }
     void reset() noexcept;
     [[nodiscard]] int inRateHz() const noexcept { return m_inRate; }
     // Appends the 192 ksps output for `n` input samples to `out` as
@@ -191,6 +200,7 @@ public:
 
 private:
     int m_inRate = 0;
+    int m_outRate = kOutRateHz;
     int m_up = 1;      // interpolation factor
     int m_down = 1;    // decimation factor
     int m_taps = 0;    // prototype length (a multiple of m_up)

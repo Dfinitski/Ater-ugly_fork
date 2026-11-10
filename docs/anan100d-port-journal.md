@@ -2886,6 +2886,304 @@ The bursts themselves come from the PC (speaker packets leave as soon as WDSP pr
   153009474 bytes, SHA-256 14ffd874a83151ffa398be246484e9278078b7e9d1da2568175e68fe8a77a87e; saved to
   Desktop\AetherSDR-Release. Commit 14d2bff on main.
 
+## 182. Reliable routing to the radio; Connect by IP for Protocol 1 (09.11.2026, build 221)
+
+- User log 20261109-221337 (.168, fresh install, ANAN-100D Protocol 1, gateware 59): the sweep
+  finds the radio, the transport's unicast Discovery gets no reply, the Protocol 1 fallback
+  starts, 0 packets in 2 s -- every 3 s. Thetis works on the same PC: no kill-switch VPN. The
+  difference: Thetis binds its socket to the adapter the radio was found on; we sent from the
+  wildcard socket (routing table). The user says the radio has a static IP.
+- Operator: make the routing reliable for any network (radio on a Wi-Fi bridge, PC on a switch,
+  ...), plus manual settings where the automatics cannot tell.
+- What exists upstream: Connection panel -> Connect by IP, radio type ANAN, Advanced: the
+  network adapter (all adapters, RadioBindSettings). Found: its ANAN probe sent only the
+  Protocol 2 request, so a Protocol 1 radio could not be connected by IP.
+- Build 221:
+  - core/backends/anan/AnanRoute.h (new, header-only): localRouteFor(datagram) -- the local
+    address a reply came in on (destination address, else the receiving interface, else the
+    adapter whose subnet holds the radio), adapter name and prefix; sameSubnet().
+  - P1Protocol: noteHostRoute / hostRoute (radio -> local address), thread-safe.
+  - AnanDiscovery records it and sets RadioInfo::sessionBindAddress (-> Params::localAddress);
+    logs once per radio "answered on adapter X (a.b.c.d/n)", a WARNING when the radio is not in
+    that adapter's subnet. P2Transport::discover records it too.
+  - P2Transport::start: the session socket binds to the wildcard first (as before), and after a
+    start with nothing back to the adapter the radio was found on, alternating; the bind that
+    gets I/Q is kept for the radio. An adapter chosen in Connect by IP -> Advanced is tried
+    first. Logged: "session socket on <address> (adapter ...) to <radio>".
+  - A start with nothing back appends the reason to the connection error: the radio not in the
+    adapter's subnet (put both in one subnet), or "answers the broadcast, nothing came back:
+    VPN, firewall rule, another program", naming the adapter of the next attempt.
+  - ConnectionPanel::probeAnan sends the Protocol 1 request too and maps a Protocol 1 reply
+    (noteProtocol1Host, route); the type is "ANAN (openHPSDR)", the hint mentions the adapter.
+- Not possible from the program: reaching a radio whose static address is outside every
+  subnet of the PC through a router that does not route to it -- the message says so.
+- Files: core/backends/anan/AnanRoute.h (new), P1Protocol.{h,cpp}, AnanDiscovery.{h,cpp},
+  P2Transport.{h,cpp}, gui/ConnectionPanel.cpp, ForkBuild.h.
+
+## 183. TCI I/Q for the ANAN: CW Skimmer / SDC get the receiver's I/Q (09.11.2026, build 222)
+
+- A user: TCI control works, the I/Q does not come (a CW skimmer).
+- Cause: TCI I/Q (iq_start) is built on the Flex DAX IQ plane -- TciServer::ensureIqStream
+  refuses unless RadioCapabilities::hasDaxStreams, and the ANAN backend (Hl2Backend) has none.
+  The skimmer was answered "iq_stop" every time.
+- Build 222:
+  - Hl2Backend: an I/Q tap per receiver on the I/O thread (next to processIqBlock): the DDC
+    samples mixed down by the view offset (TCI's dds: is the pan centre = NCO + offset), then
+    converted to the TCI rate (24/48/96/192 k) by P1PsResampler, now any power-of-two ratio
+    either way (configure(in, out); the PS 2:1 case unchanged), in frames of 1024 I/Q pairs,
+    emitted as tciIqReady(channel, float32 LE I/Q, rate). Started / stopped with
+    invokeExtension("hl2", "tci.iq", {slice, channel, rate, on}); logged "ANAN: TCI I/Q on ...".
+  - TciServer: nativeIq() = no DAX plane and the backend declares "hl2"; ensureIqStream then
+    maps trx -> channel trx+1, asks the backend for the tap and connects tciIqReady to
+    onIqDataReady (the same frame builder as the Flex path); iq_samplerate re-arms the tap at the
+    new rate; releaseIqChannel stops it. effectiveIqSampleRate is the requested rate as is.
+  - Bench test of the converter: 384->48, 1536->48, 192->96, 48->192, 96->48, 48->24 k: exact
+    sample counts, unity gain, exact frequency in band, out-of-band rejected.
+- Untested with a skimmer. In the log: "TCI: IQ started for client ..." and "ANAN: TCI I/Q on for
+  receiver N channel N at R Hz, DDC D Hz".
+- Files: core/backends/anan/P1Protocol.{h,cpp}, core/backends/hl2/Hl2Backend.{h,cpp},
+  core/TciServer.{h,cpp}, ForkBuild.h.
+
+## 184. Transmit only inside the amateur bands of the band plan (09.11.2026, build 223)
+
+- Operator: is transmit restricted? It must be allowed on the amateur bands only, taken from the
+  band plan. Found: no restriction at all for the ANAN -- applyKeying gated only on the
+  automation bridge (m_txAllowed).
+- MainWindow::pushTxBandsToBackend(): the active band plan's segments (Display -> band plan,
+  BandPlanManager) merged into bands -- segments closer than 25 kHz join, so the small
+  unassigned gaps inside a band (IARU R1 29.51-29.52 MHz ...) do not block it -- sent with
+  invokeExtension("hl2", "tx.bands", {bands, plan}) on connect and on every plan change.
+  Logged by the backend: "ANAN: transmit allowed in N amateur band(s) of the band plan ...".
+- Hl2Backend: txInAmateurBand(hz) -- the whole signal must be inside one band: the RF span by
+  the TX mode (txSpanHz: USB/DIGU f+lo..f+hi, LSB/DIGL f-hi..f-lo, AM/SAM/DSB f+-hi, FM f+-(hi
+  + 5 kHz deviation), CW the carrier) from effectiveTxPassband. Until the plan arrives, a
+  built-in table of every IARU region's amateur allocations (2200 m .. 6 m).
+  - applyKeying: a key-down outside the bands is refused (like the automation gate), logged,
+    and the operator gets a configurationWarning "Transmit refused: X MHz is outside the
+    amateur bands of the band plan ..." (at most every 3 s).
+  - setTxFrequency: while keyed, a move outside the bands is not followed -- the carrier stays
+    in the band.
+- Not covered: the radio's own CW keyer (keys in the FPGA), and no operator override (MARS,
+  out-of-band tests) yet.
+- Files: core/backends/hl2/Hl2Backend.{h,cpp}, gui/MainWindow.{h,cpp}, ForkBuild.h.
+
+## 185. The radio's CW keyer off outside the amateur bands (09.11.2026, build 224)
+
+- Operator: block the radio's internal keyer too -- clear the CW enable bit in the protocol
+  outside the amateur bands; receive is not affected.
+- The bits: Protocol 2 Transmitter Specific byte 5 bit 1 (cwModeControlByte: the whole byte is
+  0 when the keyer is off, Thetis CmdTx), Protocol 1 C0 0x1E C1 bit 0 (p1Cc bank 13).
+- P2Transport::setCwBandInhibit(bool): effectiveCwKeyer() = the keyer options with enabled
+  false while inhibited; used for the Transmitter Specific packet (sent at once on a change),
+  the Protocol 1 C&C (p1State) and the host's paddle-follow (radio PTT from the paddles).
+  Logged "the radio's CW keyer disabled / enabled again".
+- Hl2Backend::updateCwBandInhibit(): the TX carrier (dial + XIT, as written to the TX register)
+  checked against the bands (hzInAmateurBand), on every setTxFrequency and on a band-plan
+  update.
+- Fixed in passing (build 223): a TX frequency held during an over (outside the bands) left the
+  register on the old in-band frequency after the unkey, and the key-down check looked at that
+  register -- the next over could go out on the old frequency while the dial was elsewhere. Now
+  the check uses the frequency asked for (m_txWantedHz) and the held frequency is written at the
+  unkey.
+- Files: core/backends/hl2/Hl2Backend.{h,cpp}, core/backends/anan/P2Transport.{h,cpp},
+  ForkBuild.h.
+
+## 186. Finer panadapter frequency resolution (09.11.2026, build 225)
+
+- A user: the panadapter's frequency resolution is not enough (Thetis looks the same).
+- What limited it:
+  - the trace was always 1024 points across the view (kOutBins), so at 192 kHz unzoomed one
+    point was ~190 Hz, and the widget stretched 1024 points over 1500-2500 pixels;
+  - the FFT aimed at ~1024 bins in the view, capped at 16384 points and a 0.1 s window -- the
+    cap was there because frames did not overlap: a window of N samples gave rate / N frames
+    per second;
+  - when a frame had more points than pixel columns, the shader sampled one per pixel and
+    skipped the rest (a narrow carrier could vanish or flicker).
+- Build 225:
+  - Hl2Spectrum::setSlidingWindow (on in Hl2RxDsp): after a frame the window keeps its newest
+    fftSize - 1 samples and slides, so the next due frame (25 fps cap) needs one new sample --
+    a long window costs time smear, not frame rate. Off by default (the fixtures).
+  - applyZoomFftSize: ~4096 bins in the view, up to 65536 points and a 0.35 s window (48 k: 4096
+    points, 11.7 Hz bins; 192 k: 16384, 11.7 Hz; zoomed to 10 kHz at 48 k: 16384, 2.9 Hz).
+  - kOutBins 4096.
+  - SpectrumWidget::buildFftDisplayTrace: more points than pixel columns -> one per column, the
+    mean POWER of the column's points (the noise stays on the noise line, a carrier stays one
+    column wide). Applies to every backend.
+- Cost: FFT up to 65536 at 25 fps and up to 65536 dB->power conversions per frame on the GUI
+  thread for the pixel/waterfall reduction; to watch on slow PCs.
+- Files: core/backends/hl2/Hl2Spectrum.{h,cpp}, Hl2RxDsp.cpp, Hl2Backend.cpp,
+  gui/SpectrumWidget.cpp, ForkBuild.h.
+
+## 187. Full zoom stops at its limit (09.11.2026, build 226)
+
+- Operator: at the maximum zoom the panadapter keeps trying to zoom further and jerks; it
+  must stop at the limit.
+- Cause: the backend reported a zoom floor of 1.5 kHz (panBandwidthLimitsChanged) while
+  setPanBandwidth clamps to max(1.5 kHz, rate / 64) -- 3 kHz at 192 k, 6 kHz at 384 k. The
+  widget zoomed below, the backend pulled it back, every drag step. And at a limit the widget
+  still reprojected the spectrum (clearing it when that failed), reset the noise-floor baseline
+  and sent a request for the same range on every mouse move.
+- Build 226: Hl2Backend::ananMinViewHz() is the one floor, used by setPanBandwidth and reported
+  as the pan's lower limit (at connect, in pushInitialState and after a rate change, "anan.rate").
+  SpectrumWidget's bandwidth drag returns at once when the clamped bandwidth and centre are
+  the ones already shown.
+- Files: core/backends/hl2/Hl2Backend.{h,cpp}, gui/SpectrumWidget.cpp, ForkBuild.h.
+
+## 188. Band memory for the ANAN (09.11.2026, build 227)
+
+- Users: the band buttons do not remember the frequency. Operator: check that a band change by
+  the buttons, or a jump to a frequency outside the band, keeps the last frequency, the
+  panadapter width, the mode and the TX passband etc.
+- Found: nothing is kept. MainWindow::selectBand for a radio without a band stack (the ANAN)
+  tuned to the button's fixed frequency and mode (BAND_GRID); BandSettings::saveBandState /
+  loadBandState were never called and its file persistence is a stub ("pending redesign").
+- Build 227 (gui/MainWindow_Wiring.cpp, MainWindow.cpp):
+  - ananBandMemTick, every 0.5 s while connected to a radio without the Flex command plane:
+    the active slice's state (frequency, mode, RX filter, AGC mode / threshold, its pan's
+    width, the TX passband) is kept for the band it is on (BandSettings::bandForFrequency,
+    "GEN" outside the bands). When the slice leaves the band -- button, typed frequency, spot
+    -- the band's last state is stored in AppSettings "AnanBandMemory" (JSON per band). Also
+    stored on a band button press and when the window closes.
+  - selectBand: a visited band comes back as it was left -- mode, frequency, pan centred on it,
+    RX filter, AGC, pan width, and the TX passband in USB/LSB. A band never visited still gets
+    the button's frequency and mode. Logged "band X restored: ...".
+- The LNA / drive per band were already kept by the backend (rememberCurrentBandState).
+- Files: gui/MainWindow.{h,cpp}, gui/MainWindow_Wiring.cpp, ForkBuild.h.
+
+## 189. Band memory as Thetis keeps it (09.11.2026, build 228)
+
+- Compared with Thetis 2.10 (console.cs: SetBand / BandStackEntry {mode, filter, frequency,
+  CTUN, zoom, centre}; the *_by_band arrays: rx1/rx2 AGC mode and threshold, rx1/rx2 preamp,
+  rx1/rx2/tx step attenuator, power, tune power; Alex antennas per band in Setup). Ours (227)
+  lacked: the view's position (CTUN centre), antennas per band, RX2's attenuator, a memory of
+  its own for RX2. The multi-entry band stack (BandStack2) the operator does not want.
+- Build 228 (gui/MainWindow_Wiring.cpp):
+  - one memory per receiver: key "40m" for RX1, "RX2/40m" for RX2; every slice sampled every
+    0.5 s (ananBandMemTick), ananBandMemFlush on a band button and at close;
+  - stored in addition: the pan centre ("center"); for RX1 the Alex RX / TX antennas
+    (AnanRxAnt / AnanTxAnt) and the LNA (AnanLna); for RX2 its pan RF gain (= -attenuator);
+  - ananBandMemApplyHardware: on ENTERING a band by any means (button, typed frequency, spot)
+    the band's antennas / LNA (RX1) or attenuator (RX2) are applied, as Thetis does on a band
+    change; a band never visited keeps the current ones; the first sample after connect only
+    learns;
+  - a band button restores the view centre when the frequency is inside the restored view
+    (45 % of the width), else centres on the frequency.
+- RX1 attenuator, drive and tune power per band were kept by the backend already.
+- Files: gui/MainWindow.{h,cpp}, gui/MainWindow_Wiring.cpp, ForkBuild.h.
+
+## 190. FFT Smooth back on the Display panel (09.11.2026, build 229)
+
+- Operator: bring back the slider that coarsens the panadapter bins (removed in build 199);
+  default 0; saved per pan like the panel's other settings.
+- SpectrumOverlayMenu: the "FFT Smooth" row (0 .. kFftSmoothingMaxHalfWidthPx, the half-width
+  in pixels, power averaging; 0 = Off) after FFT AVG. The wiring (fftSmoothingChanged ->
+  SpectrumWidget::setFftSmoothing, the menu sync, Reset to Defaults -> 0, pan cloning) had
+  stayed in place.
+- SpectrumWidget::loadFftTraceShaping reads smoothPx again from the per-pan
+  DisplayFftTraceShaping object, only from version 2 (written from now on); a value saved by a
+  build before 199 is ignored, so everyone starts at 0. De-comb stays off.
+- Files: gui/SpectrumOverlayMenu.cpp, gui/SpectrumWidget.cpp, ForkBuild.h.
+
+## 191. The fine panadapter from the first frame (09.11.2026, build 230)
+
+- Operator: at start the old coarse panadapter shows for a few seconds, then the fine one.
+- Cause: not the saved settings. The FFT size of build 225 was applied only by
+  applyZoomFftSize -- after a zoom gesture (400 ms timer) or a rate button. Every receiver chain
+  was BUILT with Hl2RxDsp::Config's default fftSize 1024: at connect, when a receiver is
+  added, and on every DDC rate rebuild. So the trace stayed at 1024 points (47 Hz at 48 k,
+  187 Hz at 192 k) until the zoom restore at start fired the timer -- or, after a rate
+  change, until the next zoom.
+- Build 230: Hl2Backend::spectrumFftSizeFor(zoomViewHz, rateHz) (static, the build 225 rule)
+  sets Config.fftSize at all four construction sites (connect template and per receiver,
+  receiver add, rate rebuild) and is what applyZoomFftSize applies.
+- Files: core/backends/hl2/Hl2Backend.{h,cpp}, ForkBuild.h.
+
+## 192. The power meter moves smoothly (09.11.2026, build 231)
+
+- Users: the power meter jumps; operator: fix it, the receive level meter moves smoothly.
+- Cause: P2Transport::publishTelemetry ran on the 100 ms keepalive and took the LAST coupler
+  reading (m_fwdRaw) -- one sample of hundreds a second (P2 high-priority status, P1 EP6
+  status); in SSB a random point of the speech envelope, 10 times a second. Hl2Backend
+  emitted it as is and MeterModel shows FWDPWR unsmoothed (operator, 31.10).
+- Build 231:
+  - P2Transport: m_fwdPeakWin / m_revPeakWin, the highest readings since the last publish
+    (both protocols); published as forward / reverse (and the peak) and reset. While MOX a
+    40 ms timer (m_meterTimer, started / stopped with the keepalive) publishes -- 25 a second;
+    the keepalive publishes only when not transmitting.
+  - Hl2Backend::publishTelemetry: the gauge value m_fwdMeterW rises at once and falls with a
+    0.2 s time constant (dt = the window length) -- S-meter-like movement, not the slow hold
+    removed on 31.10. Reset at key-down and on disconnect.
+- SWR comes from the same window peaks.
+- Files: core/backends/anan/P2Transport.{h,cpp}, core/backends/hl2/Hl2Backend.{h,cpp},
+  ForkBuild.h.
+
+## 193. Power meter: 250 ms peak detector, gliding gauge (09.11.2026, build 232)
+
+- Operator (on learning that FWDPWR had no smoothing since 31.10): a 250 ms peak detector,
+  and the gauge moving smoothly between the readings.
+- Hl2Backend::publishTelemetry (keyed): the 40 ms window peaks of build 231 go into
+  m_fwdPeakHist (time, W); the target is the highest of the last 250 ms; the gauge
+  m_fwdMeterW approaches it with an 80 ms time constant in both directions (replaces the
+  instant-rise / 0.2 s release of build 231). Cleared at key-down, unkeyed and on disconnect.
+- Files: core/backends/hl2/Hl2Backend.{h,cpp}, ForkBuild.h.
+
+## 194. ANF button on the VFO DSP tab (09.11.2026, build 233)
+
+- Operator: an ANF button in the VFO's DSP row, before NB.
+- The button already existed (Flex radio-side ANF) but was hidden on ANAN: no radio-side
+  DSP, and the backend refused Feature::Anf. Now WDSP's own ANF (anf.c, LMS predictor) runs
+  on this host, the same way as the APF:
+  - WdspChannel::setAnf(enabled, gain): SetRXAANFVals(64, 16, gain, 0.1) + SetRXAANFRun;
+    held in Config (anfEnabled, anfGain) and re-applied in open(). Taps/delay/leakage are
+    RXA.c's defaults.
+  - Hl2RxDsp::setAnf(on, level): level 0..100 -> gain 1e-5 * 100^(level/100) (50 = RXA.c's
+    1e-4), runs only in LSB/USB/DSB/AM/SAM (the modes where the button is offered),
+    re-applied on mode change and on channel install.
+  - Hl2Backend: Receiver anfOn/anfLevel, requestSliceDsp(Feature::Anf) -> setSliceAnf,
+    pushAnf on receiver open / reconnect, slice echo (d.anf, d.anfLevel), receiver memory
+    keys anfOn/anfLevel.
+  - RadioCapabilities::hasHostAutoNotch (Hl2Backend sets it); VfoWidget shows ANF on it,
+    and relayoutDspGrid orders NR, ANF, NB, ...
+- The DSP level slider follows ANF like on Flex (LvlAnf). Untested on air.
+- Files: core/dsp/WdspChannel.{h,cpp}, core/backends/hl2/Hl2RxDsp.{h,cpp},
+  core/backends/hl2/Hl2Backend.{h,cpp}, core/backends/RadioCapabilities.h,
+  gui/VfoWidget.cpp, ForkBuild.h.
+
+## 195. Wheel tunes the digit under the cursor; User Out follows the tuned band (09.11.2026, build 234)
+
+- Operator: over the VFO frequency the wheel should tune the digit under the cursor, not by
+  the slice step. And the User Out matrices must switch whenever the receiver is tuned into
+  a band, by any method.
+- VfoWidget::wheelEvent / freqDigitPlaceAt: over the expanded frequency label the step is
+  10^place of the digit under the cursor (right-aligned text measured with the label's
+  font; over a separator -> the digit after it; left of the number -> its leading digit).
+  100 kHz and up go out as directEntryCommitted ("vfo-digit-wheel", the pan re-centres),
+  smaller as stepTuneRequested. Collapsed widget: unchanged (slice step).
+- User Out cause: P2Transport chose the RX row from m_rxHz, the DDC NCO = the panadapter
+  centre, not the slice. A click-tune inside a wide pan (or a pan centred past a band
+  edge) left the outputs on the band of the pan centre, or off.
+  - P2Transport::setRxTunedHz(rx, hz) / ocRxHz(): the RX row (P2 byte 1401 and the P1
+    C&C open-collector bits) uses the tuned frequency, the NCO only while none is known; a
+    band change sends the High Priority packet.
+  - Hl2Backend::pushAnanTunedFrequencies(): each receiver's sliceFreqHz, on change, from
+    applyBandFilter() (every tune, pan, add/close receiver, key/unkey) and from the 300 ms
+    ANAN timer as a net. TX row unchanged (transmit frequency).
+- Untested on a radio.
+- Files: gui/VfoWidget.{h,cpp}, core/backends/anan/P2Transport.{h,cpp},
+  core/backends/hl2/Hl2Backend.{h,cpp}, ForkBuild.h.
+
+## 196. Digit wheel: the panadapter moves, the filter stays (09.11.2026, build 235)
+
+- Operator: with the per-digit wheel of build 234 the filter moved on the pan and the flag
+  with it, so the digit ran away from the cursor. The pan should move, the filter stay.
+- VfoWidget: a digit step emits digitTuneRequested(mhz) (all places; build 234's
+  directEntryCommitted / stepTuneRequested split is gone).
+- MainWindow_Wiring: the pan centre is moved by the same delta first
+  (applyTuneCenteringWrite), then the slice is set (pushSliceFrequencyToOverlays +
+  setFrequency) without the reveal/follow step. Centre lock or a confirmed-control backend:
+  the ordinary IncrementalTune.
+- Files: gui/VfoWidget.{h,cpp}, gui/MainWindow_Wiring.cpp, ForkBuild.h.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

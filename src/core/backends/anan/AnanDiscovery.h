@@ -176,6 +176,7 @@ private:
     QUdpSocket* m_socket = nullptr;
     QTimer* m_timer = nullptr;
     QHash<QString, Seen> m_seen;   // keyed by serial (the MAC string)
+    QSet<QString> m_routesLogged;  // build 221: "radio>local" pairs already logged
     AnanDiscoveryLog m_log;
 };
 

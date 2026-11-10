@@ -65,18 +65,20 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 220
+## Build 235
 
-Full notes: [docs/release-notes-build-220.md](docs/release-notes-build-220.md).
+Full notes: [docs/release-notes-build-235.md](docs/release-notes-build-235.md).
 
-- **PureSignal over Protocol 1**, on every Protocol 1 board (untested on a radio).
-- **CAT:** COM-port loggers connect (DTR/RTS raised), the Clients column shows them; on Linux a
-  "PTY only" row starts.
-- **Tools → Log Settings...** (detailed logging per area) and a reminder to capture the
-  receiver's own noise, which AUTO ATT needs.
-- The Display panel and S-meter detector are set once to the fork's defaults.
+- **Connection:** the program talks to the radio from the adapter it was found on (radios that
+  Thetis reached but this program did not); Connect by IP works for Protocol 1.
+- **Transmit** only inside the amateur bands of the band plan; the radio's CW keyer is off
+  outside them. Smooth forward power meter.
+- **Panadapter:** finer resolution, stops at full zoom, FFT Smooth slider back.
+- **Band memory** per receiver; wheel over the frequency tunes the digit under the cursor;
+  User Out follows the tuned band.
+- **ANF** button; **TCI I/Q** for skimmers.
 
-Earlier notes: [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Windows portable build
 

@@ -1091,6 +1091,26 @@ private:
     // Build 214: once per run, the own-noise Capture reminder (ANAN).
     bool m_ownNoiseHintDone = false;
     void maybeShowOwnNoiseHint();
+    void pushTxBandsToBackend();   // build 223: amateur bands to the ANAN backend
+    // Build 227: band memory for the ANAN (no band stack in the radio): per
+    // band the last frequency, mode, RX filter, AGC and panadapter width,
+    // remembered while on the band and restored by the band buttons.
+    // Build 228: one memory per receiver (RX2 its own, as Thetis), plus the
+    // antennas, the LNA, the panadapter's position and RX2's attenuator.
+    QTimer* m_ananBandMemTimer = nullptr;
+    struct AnanBandMemSlot {
+        QString band;                       // the band this receiver is on
+        QJsonObject live;                   // its state, refreshed every 0.5 s
+    };
+    QHash<int, AnanBandMemSlot> m_ananBandMem;   // by slice id
+    void ananBandMemTick();
+    void ananBandMemFlush();                // store every receiver's current band
+    QJsonObject ananBandMemSnapshot(SliceModel* s) const;
+    void ananBandMemStore(int sliceId, const QString& band, const QJsonObject& snap);
+    [[nodiscard]] QJsonObject ananBandMemLoad(int sliceId, const QString& band) const;
+    // Entering a band (button, typed frequency, spot): its antennas, LNA and
+    // RX2 attenuator, as Thetis applies them on any band change.
+    void ananBandMemApplyHardware(SliceModel* s, const QJsonObject& mem);
     static constexpr int kLinkLostGraceMs = 3000;
     // A busy ANAN is taken over only when the busy session is plausibly ours:
     // the previous run of this program right after start-up (closed or stopped

@@ -307,19 +307,20 @@ void P1TxDecimator::process(const std::complex<float>* in, int n, std::complex<f
     }
 }
 
-void P1PsResampler::configure(int inRateHz)
+void P1PsResampler::configure(int inRateHz, int outRateHz)
 {
     constexpr double kPi = 3.14159265358979323846;
     m_inRate = inRateHz;
-    m_up = inRateHz > 0 && inRateHz < kOutRateHz ? kOutRateHz / inRateHz : 1;
-    m_down = inRateHz > kOutRateHz ? inRateHz / kOutRateHz : 1;
+    m_outRate = outRateHz;
+    m_up = inRateHz > 0 && inRateHz < outRateHz ? outRateHz / inRateHz : 1;
+    m_down = outRateHz > 0 && inRateHz > outRateHz ? inRateHz / outRateHz : 1;
     // Prototype at the higher of the two rates; 32 taps per input sample when
-    // interpolating, 96 taps for the 2:1 decimation.
-    m_taps = m_up > 1 ? 32 * m_up : (m_down > 1 ? 96 : 0);
+    // interpolating, 48 per output sample when decimating (96 for 2:1).
+    m_taps = m_up > 1 ? 32 * m_up : (m_down > 1 ? 48 * m_down : 0);
     m_h.assign(static_cast<std::size_t>(m_taps), 0.0f);
     if (m_taps > 0) {
-        const double fs = double(std::max(inRateHz, kOutRateHz));
-        const double fc = 0.45 * double(std::min(inRateHz, kOutRateHz));
+        const double fs = double(std::max(inRateHz, outRateHz));
+        const double fc = 0.45 * double(std::min(inRateHz, outRateHz));
         double sum = 0.0;
         std::vector<double> h(static_cast<std::size_t>(m_taps));
         for (int i = 0; i < m_taps; ++i) {
@@ -388,6 +389,7 @@ namespace {
 std::mutex g_p1HostsMutex;
 std::set<std::uint32_t> g_p1Hosts;
 std::map<std::uint32_t, Protocol1HostInfo> g_p1HostInfo;   // build 212
+std::map<std::uint32_t, std::uint32_t> g_hostRoutes;        // build 221
 }  // namespace
 
 void noteProtocol1Host(std::uint32_t ipv4, bool protocol1)
@@ -413,6 +415,21 @@ std::optional<Protocol1HostInfo> protocol1HostInfo(std::uint32_t ipv4)
     std::lock_guard<std::mutex> lock(g_p1HostsMutex);
     const auto it = g_p1HostInfo.find(ipv4);
     if (it == g_p1HostInfo.end())
+        return std::nullopt;
+    return it->second;
+}
+
+void noteHostRoute(std::uint32_t radioIpv4, std::uint32_t localIpv4)
+{
+    std::lock_guard<std::mutex> lock(g_p1HostsMutex);
+    g_hostRoutes[radioIpv4] = localIpv4;
+}
+
+std::optional<std::uint32_t> hostRoute(std::uint32_t radioIpv4)
+{
+    std::lock_guard<std::mutex> lock(g_p1HostsMutex);
+    const auto it = g_hostRoutes.find(radioIpv4);
+    if (it == g_hostRoutes.end())
         return std::nullopt;
     return it->second;
 }

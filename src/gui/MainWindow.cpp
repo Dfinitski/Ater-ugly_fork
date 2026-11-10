@@ -1410,6 +1410,8 @@ MainWindow::MainWindow(QWidget* parent)
     // Band plan manager — must be created before buildMenuBar() which references it
     m_bandPlanMgr = new BandPlanManager(this);
     m_bandPlanMgr->loadPlans();
+    // Build 223: the ANAN transmits only inside the plan's amateur bands.
+    connect(m_bandPlanMgr, &BandPlanManager::planChanged, this, &MainWindow::pushTxBandsToBackend);
 
     // Before buildMenuBar(): Help → Check for Updates references the checker.
     wireUpdateChecker();
@@ -4060,6 +4062,8 @@ void MainWindow::changeEvent(QEvent* event)
 void MainWindow::closeEvent(QCloseEvent* event)
 {
     m_pendingDisplayWrites.flush();
+    // Build 227: the band the program closes on is remembered as it is.
+    ananBandMemFlush();
     ShutdownTrace closeEventTrace("main_window.close_event");
 #ifdef Q_OS_MACOS
     // Shared Ulanzi access temporarily remaps only the dial's system key
@@ -6632,6 +6636,39 @@ void MainWindow::applyDarkTheme()
 
 // ─── Radio/model event handlers ───────────────────────────────────────────────
 
+// Build 223 (operator, 09.11: transmit only on the amateur bands, taken from
+// the band plan). The active plan's segments, merged into bands: segments
+// closer than 25 kHz join (a plan leaves small unassigned gaps inside a band,
+// e.g. 29.51-29.52 MHz), so a band is one region from its lowest to its
+// highest segment. Sent to the ANAN backend, which refuses to key and holds
+// the TX frequency outside them.
+void MainWindow::pushTxBandsToBackend()
+{
+    if (!m_bandPlanMgr || !m_radioModel.isConnected()
+        || !m_radioModel.backendDeclaresExtension(QStringLiteral("hl2")))
+        return;
+    std::vector<std::pair<double, double>> segs;
+    for (const auto& s : m_bandPlanMgr->segments())
+        if (s.highMhz > s.lowMhz)
+            segs.emplace_back(s.lowMhz * 1e6, s.highMhz * 1e6);
+    std::sort(segs.begin(), segs.end());
+    constexpr double kJoinHz = 25'000.0;
+    std::vector<std::pair<double, double>> bands;
+    for (const auto& seg : segs) {
+        if (!bands.empty() && seg.first <= bands.back().second + kJoinHz)
+            bands.back().second = std::max(bands.back().second, seg.second);
+        else
+            bands.push_back(seg);
+    }
+    QVariantList list;
+    for (const auto& [lo, hi] : bands)
+        list << QVariant(QVariantList{std::round(lo), std::round(hi)});
+    QVariantMap arg;
+    arg.insert(QStringLiteral("bands"), list);
+    arg.insert(QStringLiteral("plan"), m_bandPlanMgr->activePlanName());
+    m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("tx.bands"), 0, arg);
+}
+
 void MainWindow::onConnectionStateChanged(bool connected)
 {
     if (m_shuttingDown) {
@@ -6647,6 +6684,17 @@ void MainWindow::onConnectionStateChanged(bool connected)
     if (connected) {
         m_linkLostClock.invalidate();
         setLinkState(LinkState::Connected, radioLinkLabel(m_radioModel.lastRadioInfo()));
+        pushTxBandsToBackend();
+        // Build 227: band memory (MainWindow_Wiring.cpp, ananBandMemTick).
+        if (!m_radioModel.usesFlexCommandPlane()) {
+            if (!m_ananBandMemTimer) {
+                m_ananBandMemTimer = new QTimer(this);
+                m_ananBandMemTimer->setInterval(500);
+                connect(m_ananBandMemTimer, &QTimer::timeout, this, &MainWindow::ananBandMemTick);
+            }
+            m_ananBandMem.clear();
+            m_ananBandMemTimer->start();
+        }
         if (m_radioModel.family() == QLatin1String("anan") && !m_ownNoiseHintDone)
             QTimer::singleShot(3000, this, [this] { maybeShowOwnNoiseHint(); });
     } else if (m_userDisconnected) {
