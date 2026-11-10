@@ -3184,6 +3184,19 @@ The bursts themselves come from the PC (speaker packets leave as soon as WDSP pr
   the ordinary IncrementalTune.
 - Files: gui/VfoWidget.{h,cpp}, gui/MainWindow_Wiring.cpp, ForkBuild.h.
 
+## 197. Release build 235 prepared (09.11.2026)
+
+- docs/release-notes-build-235.md: builds 221-235 by topic (connection, transmit band gate and
+  CW keyer, power meter, panadapter, band memory, digit wheel, User Out, ANF, TCI I/Q), with
+  what is untested on a radio. README.md: "Build 220" summary replaced by "Build 235".
+- Source of builds 221-235 pushed to main: commit 49c7335.
+- Archive AetherSDR-ANAN-build235-win64-portable.zip: the build 220 archive with the build 235
+  exe (build\Desktop_Qt_6_12_0_MSVC2022_64bit_Release\AetherSDR.exe, 20:42, contains
+  digitTuneRequested) and README-build235.md; top folder AetherSDR-ANAN-build235; 87 entries,
+  154867207 bytes, SHA-256 206d7ef4da8f1f9a094088cdc3310c3e89ffa808d67b89f13753c55b912e1d4e.
+  Saved to Desktop\AetherSDR-Release. Desktop\AetherSDR-Release\AetherSDR.exe is still the
+  20:30 (build 234) exe.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
