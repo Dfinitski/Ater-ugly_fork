@@ -43,6 +43,7 @@
 #include <QFile>
 #include <QFontDatabase>
 #include <QDateTime>
+#include <QScreen>
 #include <QStandardPaths>
 #include <QTimer>
 #include <atomic>
@@ -375,6 +376,24 @@ int main(int argc, char* argv[])
             qputenv("QT_SCALE_FACTOR", QByteArray::number(pct / 100.0, 'f', 2));
     }
 
+#ifdef Q_OS_WIN
+    // ANAN port, build 246 (operator, 10.11: "at 120 % Windows scaling the
+    // program becomes garishly big -- it must always run at the monitor's
+    // native resolution"): the layout is already sized for normal monitors, so
+    // Windows' display scaling is not applied. QT_ENABLE_HIGHDPI_SCALING=0
+    // drops the per-monitor scale factor (one logical pixel = one screen
+    // pixel, still per-monitor DPI aware, so nothing is bitmap-stretched);
+    // QT_FONT_DPI=96 keeps point-sized fonts at their 100 % size (with the
+    // scaling off Qt takes the logical DPI from QPlatformScreen::overrideDpi,
+    // which reads QT_FONT_DPI, else Windows' 120/144 dpi). The View > UI Scale
+    // setting (QT_SCALE_FACTOR above) still scales the whole program.
+    // A value already in the environment wins, for testing.
+    if (!qEnvironmentVariableIsSet("QT_ENABLE_HIGHDPI_SCALING"))
+        qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
+    if (!qEnvironmentVariableIsSet("QT_FONT_DPI"))
+        qputenv("QT_FONT_DPI", "96");
+#endif
+
 #ifdef Q_OS_MACOS
     // SpectrumWidget and WaveformWidget require native Metal child views, but
     // their surrounding raster-widget trees must not become native siblings.
@@ -498,6 +517,16 @@ int main(int argc, char* argv[])
             }
         });
         heartbeat->start(250);
+    }
+
+    // Build 246: what the screens look like to Qt (native pixels on Windows:
+    // device pixel ratio = the UI Scale factor, logical DPI 96).
+    for (const QScreen* scr : QGuiApplication::screens()) {
+        qInfo().noquote().nospace()
+            << "Screen \"" << scr->name() << "\": " << scr->geometry().width() << "x"
+            << scr->geometry().height() << " logical, device pixel ratio " << scr->devicePixelRatio()
+            << ", logical DPI " << scr->logicalDotsPerInch() << ", physical DPI "
+            << qRound(scr->physicalDotsPerInch());
     }
 
     // ── Bundled DSEG fonts (SIL OFL 1.1) ──────────────────────────────────

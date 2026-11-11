@@ -3320,6 +3320,31 @@ Plumbing: `Hl2Backend::ananHwFields/applyAnanHwFields/pushAnanModelOptions`
 -> `P2Transport::setForce7000Filters` (queued; the rotation reads it on the
 next EP2 packet).
 
+## 208. Build 246: Windows display scaling not applied (10.11)
+
+**Request:** at 120 % Windows scaling the program becomes too big; it must
+always run at the monitor's native resolution (the layout is already sized
+for normal monitors).
+
+**Change (src/main.cpp, Windows, before QApplication):**
+`QT_ENABLE_HIGHDPI_SCALING=0` and `QT_FONT_DPI=96`, unless already set in the
+environment (testing override).
+- With platform scaling off, Qt 6 (`QHighDpiScaling::logicalDpi`) takes the
+  logical DPI from `QPlatformScreen::overrideDpi()`, which returns
+  `QT_FONT_DPI` when set -- without it point-sized fonts would still grow by
+  Windows' 120/144 dpi while px sizes stay native.
+- `QT_SCALE_FACTOR` (View > UI Scale, `UiScalePercent`) is independent of
+  `QT_ENABLE_HIGHDPI_SCALING` (`m_globalScalingActive` depends only on it), so
+  the program's own scale still works.
+- The process stays per-monitor DPI aware: no bitmap stretching, one logical
+  pixel = one screen pixel on every monitor.
+- After QApplication, one log line per screen: logical size, device pixel
+  ratio, logical and physical DPI (expected on Windows: ratio = UI Scale,
+  logical DPI 96).
+
+Sources: doc.qt.io/qt-6.12/highdpi.html; qhighdpiscaling.cpp and
+qplatformscreen.cpp (overrideDpi) in qtbase.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
