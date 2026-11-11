@@ -231,7 +231,7 @@ void BandStackPanel::rebuildLayout()
         }
 
         auto* btn = new QPushButton(m_scrollArea->widget());
-        btn->setFixedSize(72, 32);
+        btn->setFixedSize(72, 26);   // build 252 (operator, 10.11): height -20 % (was 32)
         btn->setText(QString::number(bm.entry.frequencyMhz, 'f', 3));
         btn->setToolTip(QString("%1 MHz  %2  %3")
             .arg(bm.entry.frequencyMhz, 0, 'f', 6)

@@ -3448,6 +3448,12 @@ the tooltip still carries the full description, and the title bar shows the
 state in words when not connected (build 250). The name is centred on the
 dot's line; tab height 36 -> 24, side padding 14 -> 10.
 
+## 214. Build 252: quick-memory buttons 20 % lower (10.11)
+
+The left quick-memory panel (BandStackPanel): the remembered-frequency
+buttons are 72 x 26 (were 72 x 32). The header buttons (x, +, gear) are
+unchanged.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
