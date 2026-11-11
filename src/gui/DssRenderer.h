@@ -284,6 +284,10 @@ public:
     double newestSupplementalBandwidthMhz(double targetBandwidthMhz) const;
 
     RowStats rowStats(int age, float epsilonDb = 0.01f) const;
+    // ANAN fork build 276: median of the newest row's columns as they are
+    // drawn (max-pooled to kCols), or -1000 before any row. The 3D floor
+    // anchors here so the drawn noise sits on the baseline.
+    float latestRowMedianDbm() const { return m_latestRowMedianDbm; }
     quint64 rowGeneration() const { return m_rowGeneration; }
 
     // Increments on every cache rebuild — lets the GPU path upload the texture
@@ -291,6 +295,7 @@ public:
     quint64 generation() const { return m_generation; }
 
 private:
+    float m_latestRowMedianDbm{-1000.0f};
     // Build 275: fill short dips in time on strong signals (see .cpp).
     void repairRecentDips();
     bool historyStorageMatchesCapacity() const;

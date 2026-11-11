@@ -13327,7 +13327,17 @@ float SpectrumWidget::dssFloorDbm()
                 + kAnchorAlpha * targetFloor;
         };
 
-        if (m_noiseFloorEnable && m_noiseFloorBaselineValid) {
+        // ANAN fork build 276 (operator, 11.11: "the noise shelf did not come
+        // down to the frequency scale"). The estimators below average the
+        // lower half of the single FFT bins, but the 3D row draws each column
+        // as the MAX of the bins it covers (DssRenderer::resampledRawRow): the
+        // drawn noise stands several dB above that estimate, more so the more
+        // bins a column holds, so it rose as a shelf. Anchor on the drawn
+        // row itself: its median sits on the baseline.
+        const float drawnMedian = m_dss.latestRowMedianDbm();
+        if (drawnMedian > -500.0f) {
+            updateAnchor(drawnMedian);
+        } else if (m_noiseFloorEnable && m_noiseFloorBaselineValid) {
             updateAnchor(m_noiseFloorBaselineDbm);
         } else if (m_measuredNoiseFloorDbm > -500.0f) {
             updateAnchor(m_measuredNoiseFloorDbm);
@@ -16292,17 +16302,43 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
             // the first and last rows remain fixed old/new crossfades.
             const int skippedRows =
                 DssRenderer::kVisibleRows - drawnRows;
-            cb->setGraphicsPipeline(m_dssMeshFillPipeline);
-            cb->setShaderResources(m_dssMeshSrb);
-            cb->setViewport(vp);
-            {
-                const QRhiCommandBuffer::VertexInput vbuf(m_dssMeshVbo, 0);
-                cb->setVertexInput(0, 1, &vbuf);
-                cb->draw(drawnRows * dssFillVerticesPerRow(), 1,
-                         skippedRows * dssFillVerticesPerRow(), 0);
+            // ANAN fork build 276 (operator, 11.11, screenshots: a steady
+            // carrier on the slanted sides is drawn as separate sticks, and
+            // walls/holds between rows changed nothing). The cause was the
+            // order: every row's surface was drawn first, then EVERY row's
+            // ridge outline on top of all of them. On the slanted sides a
+            // carrier's bar is crossed by the noise outlines of the rows
+            // behind it (1-2 px apart there), which painted it over in
+            // stripes; only each row's own bright outline showed -- the
+            // sticks. Draw row by row instead, back to front: surface, then
+            // that row's outline, so a nearer row covers what is behind it.
+            // Same shaders and blend state on both pipelines, so the
+            // per-row pipeline change is cheap.
+            QRhiGraphicsPipeline* rowOutlinePipeline = dssOutlinePipelineFor(
+                m_dssOutlinePipelineMode, m_dssMeshFillPipeline,
+                m_dssMeshLinePipeline);
+            const QRhiCommandBuffer::VertexInput fillBuf(m_dssMeshVbo, 0);
+            const QRhiCommandBuffer::VertexInput lineBuf(m_dssMeshLineVbo, 0);
+            for (int i = 0; i < drawnRows; ++i) {
+                const int row = skippedRows + i;
+                cb->setGraphicsPipeline(m_dssMeshFillPipeline);
+                cb->setShaderResources(m_dssMeshSrb);
+                cb->setViewport(vp);
+                cb->setVertexInput(0, 1, &fillBuf);
+                cb->draw(dssFillVerticesPerRow(), 1,
+                         row * dssFillVerticesPerRow(), 0);
+                if (rowOutlinePipeline) {
+                    cb->setGraphicsPipeline(rowOutlinePipeline);
+                    cb->setShaderResources(m_dssMeshSrb);
+                    cb->setViewport(vp);
+                    cb->setVertexInput(0, 1, &lineBuf);
+                    cb->draw(dssLineVerticesPerRow(), 1,
+                             row * dssLineVerticesPerRow(), 0);
+                }
             }
-            dssMeshOutlineRows = drawnRows;
-            dssMeshOutlineSkippedRows = skippedRows;
+            // Outlines are drawn above; the pass below is skipped.
+            dssMeshOutlineRows = 0;
+            dssMeshOutlineSkippedRows = 0;
         }
     } else if (is3D && m_ovPipeline && m_dssSrb && m_dssTexW > 0) {
         // Cached-image fallback quad, stretched to the specRect viewport.

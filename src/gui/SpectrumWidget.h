@@ -1878,7 +1878,9 @@ private:
     // Consumed by BOTH the GPU mesh and the CPU fallback surface, so these stay
     // outside the AETHER_GPU_SPECTRUM block below — the CPU paint path needs them
     // even when GPU spectrum rendering is disabled (older Qt / -DAETHER_GPU_SPECTRUM=OFF).
-    float m_dssZCurve{0.70f};               // <1 expands the floor band (more floor)
+    // ANAN fork build 276: linear height (was 0.70, which lifted the noise
+    // band into a shelf above the frequency scale).
+    float m_dssZCurve{1.0f};                // <1 expands the floor band (more floor)
     static constexpr int kDssMaxW = 1024;   // 3DSS surface texture/image caps
     static constexpr int kDssMaxH = 512;
 
