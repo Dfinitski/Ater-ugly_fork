@@ -53,7 +53,10 @@ public:
     // this fraction of the plot width at the back -- the slant the left edge
     // of the old 0.60 perspective had (0.5 x (1 - 0.60)). An oblique view:
     // the columns stay parallel, all leaning right.
-    static constexpr float kDepthSkew         = 0.20f;
+    // Build 291 (operator: "the centre must have zero perspective, not the
+    // right side"): 0 -- the vanishing point is the centre again; the
+    // narrowing alone tilts each frequency line toward it.
+    static constexpr float kDepthSkew         = 0.0f;
     static constexpr float kFrontMaxRidgeFrac = 0.46f;  // front ridge height / plot H
     static constexpr float kHaze              = 0.0f;   // fade toward bg with depth (was 0.16)
     // Colour uses a stable signal aperture independent of the Ref-level height
@@ -73,7 +76,7 @@ public:
     // the surface only overhangs further without revealing more of the plot.
     // Build 284: the leaning rows leave the back-left corner open; a row as
     // wide as 1 + 2 x skew of the view reaches it (the overhang data allowing).
-    static constexpr float kMaxRowSpanFactor = 1.0f + 2.0f * kDepthSkew;
+    static constexpr float kMaxRowSpanFactor = 1.0f + 2.0f * kDepthSkew;   // 1 with no lean
 
     // Mesh columns per row for the GPU path. The mesh spans rowSpanFactor x the
     // viewport, while the height texture holds kCols texels ACROSS THE VIEWPORT
@@ -131,7 +134,9 @@ public:
         }
         // Build 284: the row's left end, 0.5 - 0.5 x span, reaches the plot
         // edge until the skew has moved it past 0.
-        return std::clamp((rowSpanFactor - 1.0f) / (2.0f * kDepthSkew), 0.0f, 1.0f);
+        return kDepthSkew > 0.0f
+            ? std::clamp((rowSpanFactor - 1.0f) / (2.0f * kDepthSkew), 0.0f, 1.0f)
+            : 1.0f;
     }
 
     // Usable span for an overhang of `spanFactor` x the viewport bandwidth.

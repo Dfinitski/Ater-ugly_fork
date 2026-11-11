@@ -214,10 +214,16 @@ void main()
     if (rightOfColumn) {
         encodedEdge -= 100.0;
     }
+    // Build 291: 8 / 9 / 10 / 11 = a side wall's near top / near floor / far
+    // top / far floor, placed on the side of its bar the perspective shows
+    // (the right side left of the centre, the left side right of it).
     bool extrusion = encodedEdge > 3.5;
-    bool extrusionFar = encodedEdge > 5.5;
+    bool sideWall = encodedEdge > 7.5;
+    bool extrusionFar = encodedEdge == 6.0 || encodedEdge == 7.0
+        || encodedEdge == 10.0 || encodedEdge == 11.0;
     if (extrusion) {
-        encodedEdge = (encodedEdge == 5.0 || encodedEdge == 7.0) ? 3.0 : 2.0;
+        encodedEdge = (encodedEdge == 5.0 || encodedEdge == 7.0
+                       || encodedEdge == 9.0 || encodedEdge == 11.0) ? 3.0 : 2.0;
     }
     bool ribbonOutline = encodedEdge <= -10.0;
     float ribbonCode = -encodedEdge;
@@ -328,12 +334,21 @@ void main()
             : plotWidthPx / texelSpan;
         bool linearBar = !supplementalBar && texelPx >= 2.0;
         float t1 = supplementalBar ? t0 + 1.0 : (linearBar ? t0 + 1.0 : t0);
-        float edgeSourceU = linearBar
-            ? (rightOfColumn ? t1 : t0) / texelSpan
-            : (rightOfColumn ? t1 + 0.5 : t0 - 0.5) / texelSpan;
         float centerSourceU = 0.5 * (t0 + t1) / texelSpan;
-        freqUnit = texelViewUnit(edgeSourceU, fr, framed);
         float centerUnit = texelViewUnit(centerSourceU, fr, framed);
+        // Build 291: the side the perspective shows. A line at frequency f
+        // leans by depthSkew - (f - 0.5)(1 - backWidth) toward the back: to
+        // the right left of f = 0.5 + depthSkew / (1 - backWidth), where a
+        // bar's right side faces us, to the left beyond it.
+        bool atRight = rightOfColumn;
+        if (sideWall) {
+            float vanishing = 0.5 + depthSkew / max(1.0 - backWidthFrac, 0.0001);
+            atRight = centerUnit < vanishing;
+        }
+        float edgeSourceU = linearBar
+            ? (atRight ? t1 : t0) / texelSpan
+            : (atRight ? t1 + 0.5 : t0 - 0.5) / texelSpan;
+        freqUnit = texelViewUnit(edgeSourceU, fr, framed);
         // The bar's own value and coverage, from its own row.
         float cov = 0.0;
         float value = floorDbm;
@@ -346,7 +361,7 @@ void main()
                 cov = max(a.a, b.a);
             } else if (linearBar) {
                 // Each end at its own texel; the segment needs both.
-                value = rightOfColumn ? b.r : a.r;
+                value = atRight ? b.r : a.r;
                 cov = min(a.g, b.g);
             } else {
                 value = a.r;

@@ -14840,12 +14840,14 @@ void SpectrumWidget::initialize(QRhiCommandBuffer* cb)
                 if (layer == 1) {
                     for (int cc = 0; cc + 1 < cols; ++cc) {
                         const float u1 = static_cast<float>(cc + 1) / (cols - 1);
-                        appendDssVertex(fill, u1, v, 4.0f + kRight);
-                        appendDssVertex(fill, u1, v, 5.0f + kRight);
-                        appendDssVertex(fill, u1, v, 6.0f + kRight);
-                        appendDssVertex(fill, u1, v, 6.0f + kRight);
-                        appendDssVertex(fill, u1, v, 5.0f + kRight);
-                        appendDssVertex(fill, u1, v, 7.0f + kRight);
+                        // Build 291: side walls 8/9/10/11 -- the shader
+                        // puts each on the side the perspective shows.
+                        appendDssVertex(fill, u1, v, 8.0f + kRight);
+                        appendDssVertex(fill, u1, v, 9.0f + kRight);
+                        appendDssVertex(fill, u1, v, 10.0f + kRight);
+                        appendDssVertex(fill, u1, v, 10.0f + kRight);
+                        appendDssVertex(fill, u1, v, 9.0f + kRight);
+                        appendDssVertex(fill, u1, v, 11.0f + kRight);
                     }
                     for (int cc = 0; cc + 1 < cols; ++cc) {
                         const float u0 = static_cast<float>(cc) / (cols - 1);
