@@ -1801,6 +1801,12 @@ private:
     void openFirmwareUpdate();
     QLabel* m_stationLabel{nullptr};
     QLabel* m_stationNickLabel{nullptr};
+    // Build 259: status-bar messages are shown here, in the left part of the
+    // bar, instead of in QStatusBar's temporary-message area (which hides the
+    // whole bar). See wireStatusBarMessages().
+    QLabel* m_statusMessageLabel{nullptr};
+    QTimer* m_statusMessageTimer{nullptr};
+    bool m_statusMessageClearing{false};
     QLabel* m_automationChip{nullptr};    // shown only under AETHER_AUTOMATION (#3646)
     QLabel* m_gpsLabel{nullptr};
     QLabel* m_gpsStatusLabel{nullptr};

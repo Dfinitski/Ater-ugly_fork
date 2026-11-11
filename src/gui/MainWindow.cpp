@@ -6136,7 +6136,19 @@ void MainWindow::buildUI()
     }
 
     // ── Center stretch → STATION → stretch ───────────────────────────────
-    hbox->addStretch(1);
+    // Build 259 (operator, 10.11: "when a message appears at the bottom left
+    // everything to the right flies away"): the left stretch is a message
+    // label. Its size hint is ignored, so a message neither moves the station
+    // name nor anything right of it; a long one is cut at the station box (the
+    // whole text is in the tooltip).
+    m_statusMessageLabel = new QLabel;
+    m_statusMessageLabel->setObjectName(QStringLiteral("statusMessageLabel"));
+    m_statusMessageLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_statusMessageLabel->setMinimumWidth(0);
+    m_statusMessageLabel->setContentsMargins(10, 0, 10, 0);
+    m_statusMessageLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    applyStatusBarCompactLabelStyle(m_statusMessageLabel, QStringLiteral("{{color.text.primary}}"));
+    hbox->addWidget(m_statusMessageLabel, 1);
 
     m_stationNickLabel = new QLabel("N0CALL");
     AetherSDR::ThemeManager::instance().applyStyleSheet(

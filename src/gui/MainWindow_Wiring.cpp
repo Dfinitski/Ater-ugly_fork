@@ -106,27 +106,52 @@ namespace AetherSDR {
 
 void MainWindow::wireStatusBarMessages()
 {
-    QHBoxLayout* layout = qobject_cast<QHBoxLayout*>(m_statusBarContainer->layout());
-    const int stationIndex = layout->indexOf(m_stationNickLabel);
-    connect(statusBar(), &QStatusBar::messageChanged, this,
-            [this, layout, stationIndex](const QString& message) {
-        if (!message.isEmpty() && m_stationNickLabel->parentWidget() == m_statusBarContainer) {
-            // Only the existing Connect control is permanent while a message
-            // is shown. Making the full-width bar permanent hides Qt's text.
-            layout->removeWidget(m_stationNickLabel);
-            statusBar()->addPermanentWidget(m_stationNickLabel);
-            m_stationNickLabel->show();
-            // addPermanentWidget reformats the bar and can re-show normal
-            // children; explicitly leave Qt's temporary-message area clear.
-            m_statusBarContainer->hide();
-        } else if (message.isEmpty()
-                   && m_stationNickLabel->parentWidget() != m_statusBarContainer) {
-            statusBar()->removeWidget(m_stationNickLabel);
-            layout->insertWidget(stationIndex, m_stationNickLabel, 0, Qt::AlignVCenter);   // build 256: centred
-            m_stationNickLabel->show();
-            m_statusBarContainer->show();
-            updateStatusBarMinimumWidth();
+    // Build 259 (operator, 10.11): QStatusBar shows a temporary message by
+    // HIDING every normal widget -- the whole bar, station name included --
+    // and the old workaround moved the station box into the permanent slot,
+    // so everything right of it jumped. Now the message is taken over: shown
+    // in m_statusMessageLabel (the left part of the bar, layout unchanged) for
+    // the time the caller asked for, and QStatusBar's own message is cleared
+    // at once, so its area never takes over the bar.
+    m_statusMessageTimer = new QTimer(this);
+    m_statusMessageTimer->setSingleShot(true);
+    connect(m_statusMessageTimer, &QTimer::timeout, this, [this] {
+        if (m_statusMessageLabel) {
+            m_statusMessageLabel->clear();
+            m_statusMessageLabel->setToolTip(QString());
         }
+    });
+    connect(statusBar(), &QStatusBar::messageChanged, this, [this](const QString& message) {
+        if (m_statusMessageClearing)
+            return;   // our own clearMessage() below
+        if (!m_statusMessageLabel)
+            return;
+        if (message.isEmpty()) {
+            // A caller cleared its (persistent) message.
+            m_statusMessageTimer->stop();
+            m_statusMessageLabel->clear();
+            m_statusMessageLabel->setToolTip(QString());
+            return;
+        }
+        // The caller's timeout runs on QStatusBar's own timer (a direct child
+        // it creates in showMessage() and deletes in clearMessage()); read
+        // what is left of it before clearing. No running timer = a message
+        // meant to stay until replaced or cleared.
+        int remainingMs = -1;
+        for (QTimer* t : statusBar()->findChildren<QTimer*>(QString(), Qt::FindDirectChildrenOnly)) {
+            if (t->isActive())
+                remainingMs = std::max(remainingMs, t->remainingTime());
+        }
+        m_statusMessageLabel->setText(message);
+        m_statusMessageLabel->setToolTip(message);
+        if (remainingMs > 0)
+            m_statusMessageTimer->start(remainingMs);
+        else
+            m_statusMessageTimer->stop();
+        m_statusMessageClearing = true;
+        statusBar()->clearMessage();
+        m_statusMessageClearing = false;
+        m_statusBarContainer->show();
     });
     connect(&m_radioModel.transmitModel(), &TransmitModel::atuTuneFailed,
             this, [this](ATUStatus, const QString& detail) {

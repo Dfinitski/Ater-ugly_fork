@@ -3550,6 +3550,33 @@ Minimum phase: the 8x longer filter would add 16384/2/192000 = 43 ms as
 linear phase (signal and MON); the magnitude, i.e. the suppression, is the
 same. Not verified on the air / on a spectrum analyser yet.
 
+## 221. Build 259: status messages no longer move the bar (10.11)
+
+**Symptom:** when a status message appeared at the bottom left, everything to
+the right "flew away".
+
+**Cause:** QStatusBar shows a temporary message by hiding every normal
+widget -- the whole status-bar container. The old workaround
+(wireStatusBarMessages) moved the station box into the permanent-widget slot
+for the duration and hid the container, so the station box and everything
+right of it jumped, then jumped back.
+
+**Change:**
+- MainWindow.cpp: the left stretch before the station box is now
+  `m_statusMessageLabel` (stretch 1, size policy Ignored, compact 12 px style,
+  left aligned). Its text never changes the layout, so the station box (still
+  between two equal stretches) and everything right of it stay put; a long
+  message is cut at the station box, full text in the tooltip.
+- MainWindow_Wiring.cpp `wireStatusBarMessages()`: on messageChanged(text),
+  the text goes to the label; the caller's timeout is read from QStatusBar's
+  own running timer (the direct child QTimer it creates in showMessage) and
+  re-armed on `m_statusMessageTimer` (no running timer = until replaced or
+  cleared); then `statusBar()->clearMessage()` (guarded by
+  m_statusMessageClearing), so the temporary-message area never takes over.
+  A caller's own clearMessage() clears the label.
+- Side effect: QStatusBar::currentMessage() is empty right after each
+  message (the automation mirror sees the text first, then "").
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
