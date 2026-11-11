@@ -12389,7 +12389,7 @@ int RadioModel::activeOutputVolumePercent() const
         return m_lineoutGain;
     }
     return AppSettings::instance()
-        .value(QStringLiteral("MasterVolume"), QStringLiteral("100")).toInt();
+        .value(QStringLiteral("MasterVolume"), QStringLiteral("1")).toInt();
 }
 
 void RadioModel::setLineoutGain(int v)

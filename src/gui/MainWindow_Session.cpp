@@ -351,8 +351,11 @@ void MainWindow::wireDiscovery()
                     return;
                 if (m_autoConnectSerial == serial)
                     m_autoConnectSerial.clear();
-                if (!m_radioModel.isConnected() && !m_userDisconnected)
+                if (!m_radioModel.isConnected() && !m_userDisconnected) {
                     setLinkState(LinkState::Searching);
+                    if (m_waitForUserStart)   // build 268: the found radio went away
+                        setPanadapterConnectionAnimation(true, tr("Looking for your radio…"));
+                }
             });
     // Every reply, changed or not: a radio still listed after a lost link
     // sends no radioUpdated, and must be reconnected all the same.
@@ -891,6 +894,12 @@ void MainWindow::setLinkState(LinkState state, const QString& detail)
                                   detail.isEmpty() ? QString()
                                                    : detail + tr(" — retrying automatically."));
         break;
+    case LinkState::Ready:
+        m_titleBar->setLinkStatus(
+            detail.isEmpty() ? tr("Radio found — click to start") : tr("%1 — click to start").arg(detail),
+            Tone::Idle,
+            tr("The radio was found and is not started yet. Click here or its tab to start it."));
+        break;
     case LinkState::UserDisconnected:
         m_titleBar->setLinkStatus(tr("Disconnected — click to connect"), Tone::Idle,
             tr("Disconnected by you. Click here (or File > Connect to Radio) to "
@@ -902,6 +911,7 @@ void MainWindow::setLinkState(LinkState state, const QString& detail)
 void MainWindow::connectRadioNow(const QString& serial)
 {
     m_userDisconnected = false;
+    m_waitForUserStart = false;   // build 268: the operator's start
     m_linkLostClock.invalidate();   // asked for explicitly: no grace
     m_takeoverRequested = true;     // ...and a busy radio may be taken over
     m_autoConnectAttempts.clear();
@@ -934,6 +944,18 @@ void MainWindow::maybeAutoConnectAnan(const RadioInfo& info)
         return;   // pausing after repeated failures; m_autoConnectRetryTimer resumes
     if (m_linkLostClock.isValid() && m_linkLostClock.elapsed() < kLinkLostGraceMs)
         return;   // a dropped link may still heal on its own (see m_linkLostClock)
+    // Build 268 (operator, 11.11): at program start the radio is found and
+    // shown (its tab, the antenna picture on the panadapter), not started --
+    // until the operator starts it.
+    if (m_waitForUserStart) {
+        const QString label = radioLinkLabel(info);
+        setLinkState(LinkState::Ready, label);
+        const QString text = tr("%1 found — click its tab or the status above to start")
+                                 .arg(info.model.isEmpty() ? info.name : info.model);
+        if (m_panadapterConnectionAnimationLabel != text)
+            setPanadapterConnectionAnimation(true, text);
+        return;
+    }
     // A busy ANAN is taken over only when the busy session is plausibly ours
     // (see m_appStartClock): right after start-up for the radio this program
     // used last (it was closed or stopped without the run=0 packet and the

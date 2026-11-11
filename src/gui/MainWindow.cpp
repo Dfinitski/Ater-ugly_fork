@@ -1925,7 +1925,7 @@ MainWindow::MainWindow(QWidget* parent)
     });
     connect(m_titleBar, &TitleBar::codecMuteChanged, this, [this](bool muted) {
         m_radioModel.setCodecVolume(
-            muted ? 0 : std::clamp(AppSettings::instance().value("CodecVolume", 50).toInt(), 0, 100));
+            muted ? 0 : std::clamp(AppSettings::instance().value("CodecVolume", 1).toInt(), 0, 100));
     });
     connect(m_titleBar, &TitleBar::lineoutMuteChanged, this, [this](bool muted) {
         // Both paths where the radio has a line out (#4665); a radio without
@@ -1990,7 +1990,7 @@ MainWindow::MainWindow(QWidget* parent)
     });
 
     // Apply saved master volume
-    int savedMasterVol = AppSettings::instance().value("MasterVolume", "100").toInt();
+    int savedMasterVol = AppSettings::instance().value("MasterVolume", "1").toInt();
     m_audio->setRxVolume(savedMasterVol / 100.0f);
 
     // Restore saved mute state (#1571)
@@ -2410,6 +2410,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_connPanel, &ConnectionPanel::routedRadioFound,
             this, [this](const RadioInfo& info) {
         if (m_userDisconnected || m_radioModel.isConnected()) return;
+        if (m_waitForUserStart) return;   // build 268: started by the operator
         // ANAN-100D port: the discovery path may already be connecting.
         if (m_radioModel.isConnectAttemptInFlight() || !m_autoConnectSerial.isEmpty())
             return;
@@ -6767,6 +6768,7 @@ void MainWindow::onConnectionStateChanged(bool connected)
     // ANAN-100D port: the title bar's connection status.
     if (connected) {
         m_linkLostClock.invalidate();
+        m_waitForUserStart = false;   // build 268: started; reconnects stay automatic
         setLinkState(LinkState::Connected, radioLinkLabel(m_radioModel.lastRadioInfo()));
         pushTxBandsToBackend();
         // Build 227: band memory (MainWindow_Wiring.cpp, ananBandMemTick).

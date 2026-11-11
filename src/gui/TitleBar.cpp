@@ -510,8 +510,8 @@ TitleBar::TitleBar(QWidget* parent)
     m_pcBtn->setAccessibleDescription(
         "Switch the volume control between the computer (PC Audio) and the radio's codec");
     m_codecTarget = s.value("VolumeTarget", "PC").toString() == QLatin1String("Codec");
-    m_pcVolume = s.value("MasterVolume", "100").toInt();
-    m_codecVolume = std::clamp(s.value("CodecVolume", 50).toInt(), 0, 100);
+    m_pcVolume = s.value("MasterVolume", "1").toInt();
+    m_codecVolume = std::clamp(s.value("CodecVolume", 1).toInt(), 0, 100);
     m_codecMuted = s.value("CodecMuted", "False").toString() == QLatin1String("True");
     connect(m_pcBtn, &QPushButton::clicked, this, [this] {
         QSignalBlocker b(m_pcBtn);
@@ -576,7 +576,7 @@ TitleBar::TitleBar(QWidget* parent)
 
     m_masterSlider = new GuardedSlider(Qt::Horizontal);
     m_masterSlider->setRange(0, 100);
-    int savedVol = s.value("MasterVolume", "100").toInt();
+    int savedVol = s.value("MasterVolume", "1").toInt();
     m_masterSlider->setValue(savedVol);
     m_masterSlider->setFixedWidth(64);
     m_masterSlider->setFixedHeight(16);
@@ -627,7 +627,7 @@ TitleBar::TitleBar(QWidget* parent)
 
     m_hpSlider = new GuardedSlider(Qt::Horizontal);
     m_hpSlider->setRange(0, 100);
-    m_hpSlider->setValue(50);
+    m_hpSlider->setValue(1);   // build 268: every volume starts at 1
     m_hpSlider->setFixedWidth(64);
     m_hpSlider->setFixedHeight(16);
     m_hpSlider->setCursor(Qt::ArrowCursor);   // not the cluster's drag hand

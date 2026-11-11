@@ -65,7 +65,7 @@ BandStackEntry entryFromJson(const QJsonObject& o)
     e.txAntenna = o.value(QStringLiteral("txAntenna")).toString();
     e.agcMode = o.value(QStringLiteral("agcMode")).toString();
     e.agcThreshold = o.value(QStringLiteral("agcThreshold")).toInt();
-    e.audioGain = o.value(QStringLiteral("audioGain")).toInt(50);
+    e.audioGain = o.value(QStringLiteral("audioGain")).toInt(1);
     e.nbOn = o.value(QStringLiteral("nbOn")).toBool();
     e.nbLevel = o.value(QStringLiteral("nbLevel")).toInt(50);
     e.nrOn = o.value(QStringLiteral("nrOn")).toBool();

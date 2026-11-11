@@ -3984,6 +3984,46 @@ Files: anan/AnanForcedModel.h (new), anan/AnanDiscovery.{h,cpp},
 anan/P2Transport.{h,cpp}, hl2/Hl2Backend.{h,cpp}, gui/RadioSetupDialog.cpp,
 ForkBuild.h.
 
+## 231. Build 268: every volume defaults to 1; the radio waits for the operator at program start (11.11)
+
+**Request (operator).** Two things:
+- Users are deafened at start. Every volume control (each receiver and the
+  overall ones) should default to 1.
+- At program start, run discovery and show the antenna picture as usual, but
+  do not start the radio until the user presses the button.
+
+**Volumes.** These defaults apply only where nothing is saved; saved levels
+are untouched.
+
+| Control | Was | Now | Where |
+|---|---|---|---|
+| PC master (`MasterVolume`) | 100 | 1 | MainWindow, TitleBar, RadioModel, TciProtocol, DeviceDiagnostics |
+| Radio codec (`CodecVolume`) | 50 | 1 | MainWindow, TitleBar, Hl2Backend |
+| Headphone slider | 50 | 1 | TitleBar |
+| Receiver level without a saved value (Hl2Backend receiver memory `audioGain`) | 100 % | 1 % | `Receiver::audioGain` 1.0 -> 0.01 |
+| `SliceModel::m_audioGain` | 50 | 1 | |
+| Band stack entry `audioGain` | 50 | 1 | |
+
+The automation fixture (`RadioModel::automationApplySliceFixture`) keeps 50.
+
+**Start.**
+- `MainWindow::m_waitForUserStart` (true at start). While it is set,
+  `maybeAutoConnectAnan` does not connect a found radio. Instead it shows the
+  new `LinkState::Ready` in the title bar ("<radio> — click to start") and keeps
+  the panadapter's antenna animation with "<model> found — click its tab or the
+  status above to start".
+- The radio's tab is listed as usual. If the radio leaves discovery, the text
+  goes back to "Looking for your radio…".
+- The saved routed-IP auto-connect also waits.
+- `connectRadioNow()` (the radio tab, the status text) and any completed
+  connection (the connection dialog) clear the flag. After that, reconnects
+  following a dropped link stay automatic, as before.
+
+Files: gui/MainWindow.{h,cpp}, gui/MainWindow_Session.cpp, gui/TitleBar.cpp,
+models/RadioModel.cpp, models/SliceModel.h, core/DeviceDiagnostics.cpp,
+core/TciProtocol.cpp, core/BandStackSettings.{h,cpp},
+hl2/Hl2Backend.{h,cpp}, ForkBuild.h.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

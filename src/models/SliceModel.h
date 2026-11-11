@@ -709,7 +709,7 @@ private:
     bool    m_inCapture{true};
     bool    m_txSlice{false};
     float   m_rfGain{0.0f};
-    float   m_audioGain{50.0f};
+    float   m_audioGain{1.0f};   // build 268: every volume starts at 1
     int     m_audioPan{50};
 
     // Slice control state

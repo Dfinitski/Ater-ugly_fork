@@ -17,7 +17,7 @@ struct BandStackEntry {
     QString txAntenna;
     QString agcMode;
     int agcThreshold{0};
-    int audioGain{50};
+    int audioGain{1};   // build 268
     bool nbOn{false};
     int nbLevel{50};
     bool nrOn{false};

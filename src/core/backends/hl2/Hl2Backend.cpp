@@ -2447,7 +2447,7 @@ void Hl2Backend::ananApplyCodecSettings()
     const bool codecMuted = st.value(QStringLiteral("CodecMuted"), QStringLiteral("False")).toString()
                             == QLatin1String("True");
     m_hw.speakerLevelPercent = codecMuted
-        ? 0 : std::clamp(st.value(QStringLiteral("CodecVolume"), 50).toInt(), 0, 100);
+        ? 0 : std::clamp(st.value(QStringLiteral("CodecVolume"), 1).toInt(), 0, 100);
     // 06.11: PC (0) and CDC (1) both go through the TX voice chain
     // (AudioEngine). The TEST source is gone from the list (the PureSignal
     // widget has its own 2-tone); an old stored 2 reads as PC.
@@ -9641,7 +9641,9 @@ std::optional<Hl2Backend::Receiver> Hl2Backend::receiverFromMemory(const QJsonOb
     r.ritHz = offset("ritHz");
     r.xitOn = flag("xitOn", false);
     r.xitHz = offset("xitHz");
-    r.audioGain = static_cast<float>(percent("audioGain", 100)) / 100.0f;
+    // Build 268 (operator, 11.11: "the user is deafened at start"): a receiver
+    // with no saved level starts at 1 %, as every volume control does.
+    r.audioGain = static_cast<float>(percent("audioGain", 1)) / 100.0f;
     r.audioPanPercent = percent("audioPan", r.audioPanPercent);
     r.nbEchoPending = true;
     return r;

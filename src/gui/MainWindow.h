@@ -1077,7 +1077,8 @@ private:
     // title bar (TitleBar::setLinkStatus). File > Connect, a click on the
     // status or on a radio tab connect now; File > Disconnect stops it until
     // one of those.
-    enum class LinkState { Searching, Connecting, Connected, Lost, Failed, UserDisconnected };
+    enum class LinkState { Searching, Connecting, Connected, Lost, Failed, UserDisconnected,
+                           Ready /* build 268: found, waiting for the operator's start */ };
     void setLinkState(LinkState state, const QString& detail = {});
     void connectRadioNow(const QString& serial = {});
     void maybeAutoConnectAnan(const RadioInfo& info);
@@ -1912,6 +1913,11 @@ private:
     bool m_paCurrentStatusPreferred{false};
     float m_lastPaTempC{0.0f};
     bool m_userDisconnected{false};  // true after explicit disconnect, blocks auto-connect
+    // Build 268 (operator, 11.11): after the program starts, discovery finds
+    // the radio but does not start it; the operator does (its tab, the status
+    // text, File > Connect). Cleared by that and by the first connection, so
+    // reconnects after a dropped link stay automatic.
+    bool m_waitForUserStart{true};
     bool m_commandDroppedNoticeShown{false};  // one status-bar notice per connect session (M0, #5263)
     // Slice lifecycle refusals already shown this connect session, keyed
     // "<operation>\n<reason>": one notice per distinct refusal, so a control

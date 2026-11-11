@@ -1003,7 +1003,7 @@ private:
         // Host-side per-slice audio: the HL2 mixes nothing. gain is a linear multiplier
         // from the operator's 0..100; pan is 0=left .. 50=centre .. 100=right (SliceModel).
         bool audioMuted = false;
-        float audioGain = 1.0f;
+        float audioGain = 0.01f;   // build 268: 1 % until the operator sets it
         int audioPanPercent = 50;
 
         // The IQ rate this chain was built for, or 0. Differs from m_sampleRateHz (the

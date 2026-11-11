@@ -29,7 +29,7 @@ int activeOutputVolumePercent(const RadioModel* model)
 {
     return model ? model->activeOutputVolumePercent()
                  : AppSettings::instance()
-                       .value(QStringLiteral("MasterVolume"), QStringLiteral("100")).toInt();
+                       .value(QStringLiteral("MasterVolume"), QStringLiteral("1")).toInt();
 }
 
 }  // namespace

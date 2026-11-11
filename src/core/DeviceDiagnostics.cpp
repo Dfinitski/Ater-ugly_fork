@@ -322,7 +322,7 @@ QJsonObject buildAudioDevicesSnapshot(const AudioEngine* audio, const QJsonObjec
     QJsonObject volumes;
     volumes["pc_audio_enabled"] = pcAudioEnabled;
     volumes["pc_audio_muted"] = isSavedTrue(QStringLiteral("PcAudioMuted"));
-    volumes["pc_master_volume_pct"] = AppSettings::instance().value("MasterVolume", "100").toInt();
+    volumes["pc_master_volume_pct"] = AppSettings::instance().value("MasterVolume", "1").toInt();
     volumes["pc_mic_gain_pct"] = AppSettings::instance().value("PcMicGain", 100).toInt();
 
     const QJsonObject radioAudio = radio["audio_outputs"].toObject();
@@ -415,7 +415,7 @@ QJsonObject buildAudioStartupSnapshot(const AudioEngine* audio, const QJsonObjec
     QJsonObject volumes;
     volumes["pc_audio_enabled"] = pcAudioEnabled;
     volumes["pc_audio_muted"] = isSavedTrue(QStringLiteral("PcAudioMuted"));
-    volumes["pc_master_volume_pct"] = AppSettings::instance().value("MasterVolume", "100").toInt();
+    volumes["pc_master_volume_pct"] = AppSettings::instance().value("MasterVolume", "1").toInt();
     volumes["pc_mic_gain_pct"] = AppSettings::instance().value("PcMicGain", 100).toInt();
 
     if (audio) {
