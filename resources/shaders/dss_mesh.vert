@@ -309,13 +309,28 @@ void main()
         float supplementalBars = floor(texCols * 0.5);
         bool supplementalBar = bar < supplementalBars;
         float t0 = supplementalBar ? bar * 2.0 : bar - supplementalBars;
-        float t1 = supplementalBar ? t0 + 1.0 : t0;
         int frameAge = int(clamp(floor(rowAge + 0.5), 0.0, float(103)));
         vec4 frame = rowFrames[frameAge];
         bool framed = rowFrequencyFrames > 0.5;
         vec2 fr = supplementalBar ? frame.zw : frame.xy;
         float texelSpan = max(texCols - 1.0, 1.0);
-        float edgeSourceU = (rightOfColumn ? t1 + 0.5 : t0 - 0.5) / texelSpan;
+        // ANAN fork build 289 (operator, 11.11, screenshot: "the waterfall
+        // shows a whole rainbow across the carrier, about eight colours; the
+        // 3D only two"). The 2D waterfall interpolates linearly between bins
+        // for every pixel; a flat bar per texel shows a 3-bin carrier as 2-3
+        // blocks. Where this row's texels are at least 2 px apart on screen,
+        // the bar is the SEGMENT from texel t's centre to texel t+1's, each
+        // end at its own texel's exact level and colour -- the waterfall's
+        // linear interpolation, still anchored to the data (no shimmer).
+        // Narrower texels keep the flat bars (stable under sub-pixel moves).
+        float texelPx = framed && fr.y > 0.0
+            ? fr.y / texelSpan / max(targetBandwidthMhz, 0.000001) * plotWidthPx
+            : plotWidthPx / texelSpan;
+        bool linearBar = !supplementalBar && texelPx >= 2.0;
+        float t1 = supplementalBar ? t0 + 1.0 : (linearBar ? t0 + 1.0 : t0);
+        float edgeSourceU = linearBar
+            ? (rightOfColumn ? t1 : t0) / texelSpan
+            : (rightOfColumn ? t1 + 0.5 : t0 - 0.5) / texelSpan;
         float centerSourceU = 0.5 * (t0 + t1) / texelSpan;
         freqUnit = texelViewUnit(edgeSourceU, fr, framed);
         float centerUnit = texelViewUnit(centerSourceU, fr, framed);
@@ -329,6 +344,10 @@ void main()
             if (supplementalBar) {
                 value = max(a.b, b.b);
                 cov = max(a.a, b.a);
+            } else if (linearBar) {
+                // Each end at its own texel; the segment needs both.
+                value = rightOfColumn ? b.r : a.r;
+                cov = min(a.g, b.g);
             } else {
                 value = a.r;
                 cov = a.g;
@@ -361,7 +380,8 @@ void main()
         dbm = value;
         if (extrusionFar) {
             // The next row back, at this bar's frequency.
-            dbm = effectiveDbmAt(centerUnit, sampleAge, rows).x;
+            dbm = effectiveDbmAt(linearBar ? freqUnit : centerUnit,
+                                 sampleAge, rows).x;
         }
         sampled = vec2(dbm, cov);
     }
