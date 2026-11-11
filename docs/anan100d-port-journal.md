@@ -3577,6 +3577,17 @@ right of it jumped, then jumped back.
 - Side effect: QStatusBar::currentMessage() is empty right after each
   message (the automation mirror sees the text first, then "").
 
+## 222. Build 260: PC Audio border like the radio tab's (10.11)
+
+The operator's screenshots of the PC Audio button and the radio tab: the
+corner pixels of BOTH carry intermediate colours, so both are antialiased.
+PC Audio looked stepped because its 1 px border was full-brightness green on
+a 6 px corner (high contrast on the dark bar), while the tab draws a dim
+border on 8 px corners and keeps the bright colour only for its bottom bar.
+PillButton now does the same: corner radius 8, the border at 55 % alpha of
+the target colour (green PC Audio / blue Codec), the 2 px bottom bar at full
+colour.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

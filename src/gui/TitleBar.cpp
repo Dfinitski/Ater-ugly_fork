@@ -95,7 +95,13 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing, true);
         p.setRenderHint(QPainter::TextAntialiasing, true);
-        constexpr qreal kRadius = 6.0;
+        // Build 260 (operator's screenshots, 10.11): both buttons ARE
+        // antialiased (their corner pixels carry intermediate colours); this one
+        // looked stepped because its 1 px border was full-brightness green on a
+        // tight 6 px corner, while the radio tab draws a dim border on 8 px
+        // corners and keeps the bright colour for its bottom bar. Same recipe
+        // here: radius 8, the border at ~55 % of the accent, the bar at 100 %.
+        constexpr qreal kRadius = 8.0;
         constexpr qreal kBar = 2.0;
         const QColor accent = theme.color(this, m_accent);
         const QRectF body = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
@@ -112,7 +118,9 @@ protected:
         p.setClipPath(shape);
         p.fillRect(QRectF(0, height() - kBar, width(), kBar), accent);
         p.restore();
-        p.setPen(QPen(m_focusVisible ? theme.color(this, QStringLiteral("color.border.accent")) : accent,
+        QColor border = accent;
+        border.setAlphaF(0.55);
+        p.setPen(QPen(m_focusVisible ? theme.color(this, QStringLiteral("color.border.accent")) : border,
                       m_focusVisible ? 2.0 : 1.0));
         p.setBrush(Qt::NoBrush);
         p.drawPath(shape);
