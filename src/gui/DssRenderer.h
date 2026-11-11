@@ -38,10 +38,15 @@ public:
     // GPU mesh UBO (SpectrumWidget::renderGpuFrame). dss_mesh.vert applies the
     // SAME formulas with these values passed as uniforms — single source of
     // truth so the CPU fallback and the GPU mesh can't drift apart.
-    // ANAN fork build 282: the 3D waterfall goes straight back -- every row
-    // the full width (was 0.60, a narrowing perspective) -- and keeps the
-    // waterfall's colours (no haze toward the background with depth).
-    static constexpr float kBackWidthFrac     = 1.00f;  // back row width / front
+    // ANAN fork build 282: the 3D waterfall kept the waterfall's colours (no
+    // haze toward the background with depth) and went straight back.
+    // Build 290 (operator, 11.11: "now a perspective that varies with each
+    // frequency, as it should be"): the rows narrow with depth again (0.60),
+    // and with the lean (kDepthSkew 0.20 = 0.5 x (1 - 0.60)) every frequency
+    // line converges on one vanishing point to the right, at the plot's
+    // right edge: the right edge goes straight back, the centre leans by
+    // 0.20, the left edge by 0.40 of the width at the back row.
+    static constexpr float kBackWidthFrac     = 0.60f;  // back row width / front
     static constexpr float kDepthSpanFrac     = 0.58f;  // baseline rise to the back
     // ANAN fork build 284 (operator, 11.11: "tilt every line to the right by
     // our former perspective angle"): every row moves right with depth by
