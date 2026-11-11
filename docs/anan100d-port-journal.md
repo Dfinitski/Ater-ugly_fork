@@ -3387,6 +3387,23 @@ tick.
   and in `syncAntPanel()` (panel opening), so the panel follows a pick on the
   flag.
 
+## 211. Build 249: a click outside an overlay panel only closes it (10.11)
+
+**Request:** a Band / ANT / Display / Memory panel opened from the pan's
+overlay menu closes on the first click outside it, and that click activates
+nothing else. Not the WB window (it has its own closing).
+
+**Change (SpectrumOverlayMenu):** an application event filter
+(`qApp->installEventFilter(this)`), handled in
+`closeSubPanelsOnOutsidePress()`: on a mouse press (or double click) delivered
+to a QWindow -- Qt delivers to the window before the widget under it -- while
+any of band, XVTR, ANT, DAX, Display or Memory panel is visible, in the same
+top-level window as the pan, and outside every open panel:
+`hideAllSubPanels()` and the event is consumed. Presses inside an open panel,
+and in other top-level windows (combo/menu popups opened from a panel,
+dialogs, the WB window) pass through untouched. A click on another overlay
+button therefore only closes the open panel; the next click opens the other.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

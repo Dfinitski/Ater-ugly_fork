@@ -1,4 +1,8 @@
 #include "SpectrumOverlayMenu.h"
+
+#include <QApplication>
+#include <QMouseEvent>
+#include <QWindow>
 #include "FrontEndOverloadIndicator.h"
 #include "core/AppSettings.h"
 #include "core/backends/anan/AnanUiState.h"
@@ -528,6 +532,12 @@ SpectrumOverlayMenu::SpectrumOverlayMenu(QWidget* parent)
     for (auto* panel : {m_bandPanel, m_antPanel, m_daxPanel, m_displayPanel,
                         static_cast<QWidget*>(m_memoryPanel)})
         if (panel) panel->installEventFilter(this);
+
+    // Build 249 (operator, 10.11): the first click outside an open Band /
+    // ANT / Display / Memory (or DAX, XVTR) panel only closes it -- the click
+    // does not reach whatever lies below. Seen at the application level (see
+    // closeSubPanelsOnOutsidePress). The WB window has its own closing.
+    qApp->installEventFilter(this);
 
     updateLayout();
 
@@ -4124,8 +4134,46 @@ void SpectrumOverlayMenu::updateActiveBandHighlight()
     }
 }
 
+bool SpectrumOverlayMenu::closeSubPanelsOnOutsidePress(QObject* obj, QEvent* event)
+{
+    // Only the window-level press: Qt delivers a mouse press to the QWindow
+    // first and then to the widget under it. Deciding (and consuming) there
+    // keeps the click from reaching any widget, native child window included.
+    auto* win = qobject_cast<QWindow*>(obj);
+    if (!win)
+        return false;
+    QWidget* panels[] = {m_bandPanel, m_xvtrPanel, m_antPanel, m_daxPanel, m_displayPanel,
+                         m_memoryPanel};
+    bool anyOpen = false;
+    for (QWidget* p : panels)
+        anyOpen = anyOpen || (p && p->isVisible());
+    if (!anyOpen || !parentWidget())
+        return false;
+    // Presses in other top-level windows (a combo or menu popup opened from a
+    // panel, dialogs, the WB window) are theirs.
+    QWindow* top = win;
+    while (top->parent())
+        top = top->parent();
+    QWidget* hostTop = parentWidget()->window();
+    if (!hostTop || top != hostTop->windowHandle())
+        return false;
+    const auto* me = static_cast<QMouseEvent*>(event);
+    const QPoint global = me->globalPosition().toPoint();
+    for (QWidget* p : panels) {
+        if (p && p->isVisible() && p->rect().contains(p->mapFromGlobal(global)))
+            return false;   // inside an open panel
+    }
+    hideAllSubPanels();
+    return true;   // consumed: the click only closed the panel
+}
+
 bool SpectrumOverlayMenu::eventFilter(QObject* obj, QEvent* event)
 {
+    if (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonDblClick) {
+        if (closeSubPanelsOnOutsidePress(obj, event))
+            return true;
+    }
+
     if (obj == parentWidget() && event->type() == QEvent::Resize
         && m_displayPanelVisible) {
         layoutDisplayPanel();

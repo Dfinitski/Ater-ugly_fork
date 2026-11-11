@@ -216,6 +216,8 @@ public:
 
 protected:
     bool eventFilter(QObject* obj, QEvent* event) override;
+    // Build 249: an outside press closes the open sub-panel and is consumed.
+    bool closeSubPanelsOnOutsidePress(QObject* obj, QEvent* event);
     void wheelEvent(QWheelEvent* event) override { event->accept(); }
     void mousePressEvent(QMouseEvent* event) override { event->accept(); }
     void mouseReleaseEvent(QMouseEvent* event) override { event->accept(); }
