@@ -233,10 +233,6 @@ void main()
         vLayerAlpha = overlayLayer ? 1.0 : 0.0;
     }
 
-    if (lidFar && sourceAge < depthRows - 1.5) {
-        geometryV += 1.0 / depthRows;
-    }
-
     // Sample texel CENTRES on both axes so Nearest filtering can't pick up the
     // neighbouring row/column. rowOffset already carries the row half-texel; the
     // column maps geometry u in [0,1] onto centre (u*(cols-1)+0.5)/cols.
@@ -252,6 +248,28 @@ void main()
     float sH   = pow(sLin, max(zCurve, 0.05));   // non-linear Z: lift floor band
     float colorStrength = clamp(
         (dbm - floorDbm) / max(colorRangeDb, 1.0), 0.0, 1.0);
+
+    // ANAN fork build 274 (operator, 11.11, with screenshots: "a steady
+    // carrier is drawn as separate sticks; hold the picture until the new
+    // level arrives, seamless"). The wall / lid far edge goes back as many
+    // rows as it takes to reach the next row that carries this column's level
+    // again (within 6 dB), up to 8 rows: a row that missed it is bridged by
+    // the last one that had it. When no later row has it (a passing noise
+    // spike), the hold is one row, so short peaks do not smear into streaks.
+    if (lidFar && sourceAge < depthRows - 1.5) {
+        float hold = 1.0;
+        for (int k = 1; k <= 8; ++k) {
+            float olderAge = sampleAge + float(k);
+            if (olderAge > depthRows - 1.0 || olderAge >= validRows) {
+                break;
+            }
+            if (effectiveDbmAt(freqUnit, olderAge, rows).x >= dbm - 6.0) {
+                hold = float(k);
+                break;
+            }
+        }
+        geometryV += hold / depthRows;
+    }
 
     // Receding perspective trapezoid in plot space [0,1] (0,0 = top-left).
     // Unchanged: rowSpanFactor widened the frequency range the row COVERS, not

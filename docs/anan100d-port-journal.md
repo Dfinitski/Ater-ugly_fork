@@ -4178,6 +4178,41 @@ since build 272 (tags 6/7).
 
 Files: gui/SpectrumWidget.cpp, ForkBuild.h.
 
+## 237. Build 274: 3D hold until the level returns; 3D floor depth 0 (11.11)
+
+**Report (operator, screenshot).** Every steady carrier is still drawn as
+separate sticks in 3D. It is a display defect, not the signal. Also: remove
+the height above the scale where the 3D noise shelf begins.
+
+**Analysis.**
+- A CPU re-enactment of the mesh (curtains, plus build 272's per-column walls,
+  in painter's order) gives a solid band where the plain curtains break up.
+  That holds when a carrier is in every row.
+- The built shader (.qsb in the operator's build tree) does contain the walls.
+- In the screenshot's pixels, sticks are 3 px apart and some are 2 px wide:
+  stick plus one-row wall.
+- So the carrier is missing from rows in between. One-row walls bridge one
+  row; the rest stay dark. Why those rows lack the carrier is not yet found;
+  candidates are the impulse blanker and the row cadence.
+
+**Fix (dss_mesh.vert).** The far edge of a wall or lid now goes back to the
+next older row (up to 8 rows) whose value at this column is within 6 dB of
+this row's. A row that missed the level is drawn with the last one that had
+it, until the level returns. If no row within 8 has it (a passing noise
+spike), the hold stays one row, so short peaks do not become streaks. The
+cost is up to 8 extra height-texture samples per far vertex.
+
+**3D floor depth.** This is the "Display3DFloorDepth" setting: how far below
+the noise-floor anchor the baseline sits. It was 6 dB, so the front noise
+stood 6 dB above the scale.
+- Default is now 0: SpectrumWidget members, the Display reset in
+  MainWindow_Wiring.
+- A one-time migration (`Fork3DFloorDepthZeroed`) sets stored values to 0.
+- The dBm-strip drag can still raise it.
+
+Files: resources/shaders/dss_mesh.vert, gui/SpectrumWidget.{h,cpp},
+gui/MainWindow_Wiring.cpp, ForkBuild.h.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

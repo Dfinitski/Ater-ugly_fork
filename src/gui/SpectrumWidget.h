@@ -1851,8 +1851,8 @@ private:
     // trace baseline. A few dB negative lifts the noisy floor carpet (with its
     // own colour) up off the baseline so you see floor -> peak, not just crests.
     float m_dssFloorOffsetDb{-6.0f};
-    float m_flexDssFloorDepth{6.0f};
-    float m_kiwiDssFloorDepth{6.0f};
+    float m_flexDssFloorDepth{0.0f};   // build 274: was 6
+    float m_kiwiDssFloorDepth{0.0f};
     int   m_dssGain{70};   // 3DSS colour floor 0-100 (gamma of palette lookup)
     // 3DSS wedge close-in 0-100 (see setDssRowSpan). Defaults to 100 -- fully
     // ON -- by deliberate product decision, not by omission: three reviewers

@@ -2676,7 +2676,7 @@ void SpectrumWidget::loadSettings()
     const int legacyNoiseFloorPosition = std::clamp(
         s.value(settingsKey("DisplayNoiseFloorPosition"), ForkDisplayDefaults::kNoiseFloorPosition).toInt(), 1, 99);
     const int legacyDssFloorDepth = std::clamp(
-        s.value(settingsKey("Display3DFloorDepth"), "6").toInt(), 0, 24);
+        s.value(settingsKey("Display3DFloorDepth"), "0").toInt(), 0, 24);
     loadDisplaySourceTraceSettings(legacyNoiseFloorPosition,
                                    legacyDssFloorDepth);
     m_noiseFloorPosition = m_kiwiSdrWaterfallActive
@@ -2699,6 +2699,19 @@ void SpectrumWidget::loadSettings()
     m_spectrumRenderMode = static_cast<SpectrumRenderMode>(
         std::clamp(s.value(settingsKey("DisplaySpectrumRenderMode"), "0").toInt(),
                    0, static_cast<int>(SpectrumRenderMode::Count) - 1));
+    // ANAN fork build 274 (operator, 11.11: "the height above the scale where
+    // the 3D noise shelf starts is not needed at all -- down to the minimum"):
+    // the 3D floor depth (how far below the noise floor the baseline sits,
+    // was 6 dB) is 0 -- the noise rides on the baseline. Applied once to a
+    // stored value; the dBm-strip drag can still raise it.
+    if (s.value(settingsKey("Fork3DFloorDepthZeroed")).toString() != QLatin1String("True")) {
+        m_flexDssFloorDepth = 0.0f;
+        m_kiwiDssFloorDepth = 0.0f;
+        saveDisplaySourceTraceSettings();
+        s.setValue(settingsKey("Display3DFloorDepth"), QStringLiteral("0"));
+        s.setValue(settingsKey("Fork3DFloorDepthZeroed"), QStringLiteral("True"));
+        s.save();
+    }
     m_dssFloorOffsetDb = -static_cast<float>(
         m_kiwiSdrWaterfallActive ? m_kiwiDssFloorDepth : m_flexDssFloorDepth);
     m_singleClickTune = s.value("SingleClickTune", "False").toString() == "True";

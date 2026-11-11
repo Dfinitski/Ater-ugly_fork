@@ -5025,13 +5025,13 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                        "\"kiwi\":{\"dssFloorDepth\":6,\"noiseFloorPosition\":90},"
                        "\"version\":1}"));
         s.setValue(sw->settingsKey("DisplaySpectrumRenderMode"),  "0");
-        s.setValue(sw->settingsKey("Display3DFloorDepth"),        "6");
+        s.setValue(sw->settingsKey("Display3DFloorDepth"),        "0");   // build 274
         s.save();
 
         // Apply the render-mode + 3D-floor reset to the widget too (the keys
         // above only update settings, not the live SpectrumWidget).
         sw->setSpectrumRenderMode(0);
-        sw->setDssFloorDepth(6);
+        sw->setDssFloorDepth(0);   // build 274
         // Writes the whole 3D object once, and unconditionally — the setters
         // early-return when a value already matches, which would otherwise
         // leave a stale object behind on a partial reset.
