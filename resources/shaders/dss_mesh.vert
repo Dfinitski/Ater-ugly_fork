@@ -159,6 +159,20 @@ vec2 effectiveDbmAt(float geometryU, float sampleAge, float rows)
     return vec2(floorDbm, 0.0);
 }
 
+// Build 286: a position across a row's texels (sourceU, 0..1 = first..last
+// texel centre) -> viewport units, through the row's frame (centre offset,
+// bandwidth); the inverse of effectiveDbmAt's mapping. A row without a frame
+// is the viewport itself.
+float texelViewUnit(float sourceU, vec2 fr, bool framed)
+{
+    if (!framed || fr.y <= 0.0) {
+        return sourceU;
+    }
+    float targetBw = max(targetBandwidthMhz, 0.000001);
+    return 0.5 + (sourceU - 0.5 - (targetCenterOffsetMhz - fr.x) / fr.y)
+        * fr.y / targetBw;
+}
+
 vec2 ridgeNdcAt(float freqUnit, float dbm, float geometryV)
 {
     float strengthLinear = clamp(
@@ -248,6 +262,7 @@ void main()
         geometryV = (sourceAge - remainingRows) / depthRows;
         vLayerAlpha = overlayLayer ? 1.0 : 0.0;
     }
+    float rowAge = sampleAge;   // build 286: the bar's own row
     if (extrusion) {
         // No row behind the back row: nothing to carry back to.
         if (sourceAge > depthRows - 1.5) {
@@ -267,15 +282,80 @@ void main()
     // A zoom-created gap is not an amplitude measurement. Pin it to the
     // baseline before both height and colour mapping so later range changes
     // cannot recolour or lift it, while leaving row/layer visibility untouched.
+    // ANAN fork build 286 (operator, 11.11, a steady carrier: "when the
+    // panadapter is moved or zoomed, elements already drawn distort, with
+    // wave-like colour changes in time with the movement; drawn elements
+    // must always stay the same"). The bars were anchored to the SCREEN: each
+    // mesh column picked, every frame, the texel of its row nearest to it, so
+    // a pan or zoom re-chose which texel each column showed -- the waves.
+    // Now each fill bar is anchored to its DATA: bar = one texel of its row
+    // (the primary FFT frame), placed by that texel's own frequency through
+    // the row's frame (rowFrames), so a pan moves it and a zoom stretches it
+    // rigidly. The first texCols/2 bars are the row's supplemental tile (two
+    // texels each, their maximum), shown only outside the primary frame --
+    // what lies off the row's own capture. Lids / walls reach the next row
+    // at the SAME frequency (effectiveDbmAt by frequency). Ribbons (KiwiSDR)
+    // keep the screen-anchored sampling.
     float freqUnit = dssFreqUnit(u);
-    // Build 285: a fill vertex samples its column's centre (flat bars); the
-    // ribbon outlines keep sampling at the vertex.
-    float columnStep = 1.0 / max(meshCols - 1.0, 1.0);
-    float sampleFreqUnit = ribbonOutline
-        ? freqUnit
-        : dssFreqUnit(u + (rightOfColumn ? -0.5 : 0.5) * columnStep);
-    vec2 sampled = effectiveDbmAt(sampleFreqUnit, sampleAge, rows);
-    float dbm = sampled.x;
+    vec2 sampled;
+    float dbm;
+    if (ribbonOutline) {
+        sampled = effectiveDbmAt(freqUnit, sampleAge, rows);
+        dbm = sampled.x;
+    } else {
+        float meshSpan = max(meshCols - 1.0, 1.0);
+        float vertexIndex = floor(u * meshSpan + 0.5);
+        float bar = rightOfColumn ? vertexIndex - 1.0 : vertexIndex;
+        float supplementalBars = floor(texCols * 0.5);
+        bool supplementalBar = bar < supplementalBars;
+        float t0 = supplementalBar ? bar * 2.0 : bar - supplementalBars;
+        float t1 = supplementalBar ? t0 + 1.0 : t0;
+        int frameAge = int(clamp(floor(rowAge + 0.5), 0.0, float(103)));
+        vec4 frame = rowFrames[frameAge];
+        bool framed = rowFrequencyFrames > 0.5;
+        vec2 fr = supplementalBar ? frame.zw : frame.xy;
+        float texelSpan = max(texCols - 1.0, 1.0);
+        float edgeSourceU = (rightOfColumn ? t1 + 0.5 : t0 - 0.5) / texelSpan;
+        float centerSourceU = 0.5 * (t0 + t1) / texelSpan;
+        freqUnit = texelViewUnit(edgeSourceU, fr, framed);
+        float centerUnit = texelViewUnit(centerSourceU, fr, framed);
+        // The bar's own value and coverage, from its own row.
+        float cov = 0.0;
+        float value = floorDbm;
+        if (rowAge < clamp(validRows, 0.0, rows)) {
+            float texY = fract(rowOffset + rowAge / rows);
+            vec4 a = texture(heightTex, vec2((t0 + 0.5) / max(texCols, 1.0), texY));
+            vec4 b = texture(heightTex, vec2((t1 + 0.5) / max(texCols, 1.0), texY));
+            if (supplementalBar) {
+                value = max(a.b, b.b);
+                cov = max(a.a, b.a);
+            } else {
+                value = a.r;
+                cov = a.g;
+            }
+        }
+        if (supplementalBar) {
+            // Only off the primary capture, and only with real frames.
+            if (!framed || fr.y <= 0.0) {
+                cov = 0.0;
+            } else if (frame.y > 0.0) {
+                float primaryLo = texelViewUnit(-0.5 / texelSpan, frame.xy, framed);
+                float primaryHi = texelViewUnit(1.0 + 0.5 / texelSpan, frame.xy, framed);
+                if (centerUnit > primaryLo && centerUnit < primaryHi) {
+                    cov = 0.0;
+                }
+            }
+        }
+        if (cov < 0.5) {
+            vLayerAlpha = 0.0;   // nothing captured here: no bar
+        }
+        dbm = value;
+        if (extrusionFar) {
+            // The next row back, at this bar's frequency.
+            dbm = effectiveDbmAt(centerUnit, sampleAge, rows).x;
+        }
+        sampled = vec2(dbm, cov);
+    }
     // Linear strength drives COLOUR (LUT[sLin] = dbmToRgb(floor+sLin*range),
     // matching the CPU path); the zCurve lift applies to HEIGHT only.
     float sLin = clamp((dbm - floorDbm) / max(rangeDb, 1.0), 0.0, 1.0);
@@ -300,7 +380,9 @@ void main()
     // there; on a widened row those ends sit outside the plot and the fade is
     // clipped away with them, which is why widening shows no fade band inside
     // the viewport.
-    vSideDistance = min(u, 1.0 - u) * rowSpanFactor * w;
+    vSideDistance = ribbonOutline
+        ? min(u, 1.0 - u) * rowSpanFactor * w
+        : 1.0;   // build 286: data-anchored bars have no mesh ends to fade
 
     vec2 ndc = vec2(plotX * 2.0 - 1.0, 1.0 - plotY * 2.0);
     if (ribbonOutline) {

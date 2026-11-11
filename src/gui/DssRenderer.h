@@ -82,8 +82,10 @@ public:
     // Build 282: with no narrowing kMaxRowSpanFactor is 1; keep the mesh at
     // a density above the texture's (5/4 x), so the Nearest sampler never
     // skips a texel when a row's frame is a little wider than the view.
-    static constexpr int kMeshCols =
-        static_cast<int>(kCols * kMaxRowSpanFactor) + 1;   // build 284
+    // Build 286: one bar per texel, anchored to the data (dss_mesh.vert):
+    // kCols / 2 bars for the supplemental tile (two texels each) followed by
+    // kCols bars for the row's primary texels. Columns = bars + 1.
+    static constexpr int kMeshCols = kCols / 2 + kCols + 1;
     // The invariant dss_mesh.vert's Nearest height sampler depends on: at the
     // widest span the on-screen columns (kMeshCols / kMaxRowSpanFactor) must
     // still be at least kCols, or bins fall between samples and vanish.
