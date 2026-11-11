@@ -6448,6 +6448,25 @@ void Hl2Backend::updateCwBandInhibit()
     QMetaObject::invokeMethod(t, [t, inhibit] { t->setCwBandInhibit(inhibit); }, Qt::QueuedConnection);
 }
 
+QString Hl2Backend::transmitRefusalMessage() const
+{
+    // Build 264 (operator, 10.11: "transmit actually starts in refused modes
+    // and outside the bands -- the TX panadapter zoom shows"): the same test
+    // applyKeying() makes, asked by RadioModel BEFORE the optimistic TX state
+    // (TX edge -> pan TX zoom, TX indicator, audio gate) is built. A refused
+    // key then changes nothing but the message at the bottom.
+    if (!m_txAllowed || m_keyed)
+        return {};   // the capability gate covers !m_txAllowed; keyed = already on air
+    const Receiver* txRx = rx(m_txDdc);
+    const double txHz = m_txWantedHz > 0.0 ? m_txWantedHz : (txRx ? txRx->sliceFreqHz : 0.0);
+    if (txHz <= 0.0 || txInAmateurBand(txHz))
+        return {};
+    return QStringLiteral("Transmit refused: %1 MHz is outside the amateur bands%2.")
+        .arg(txHz / 1e6, 0, 'f', 3)
+        .arg(m_txBandsHz.empty() ? QString()
+                                 : QStringLiteral(" of the band plan \"%1\"").arg(m_txBandPlanName));
+}
+
 void Hl2Backend::warnTxOutOfBand(double hz)
 {
     const auto [lo, hi] = txSpanHz(hz);

@@ -713,6 +713,11 @@ public:
     // backend only translates an already-authorized intent to its mechanism
     // (command verb, in-stream bit, hardware line). A backend whose
     // capabilities().canTransmit is false implements this as a no-op.
+    // ANAN port, build 264: why a key-down would be refused right now (for
+    // example, the TX frequency is outside the amateur bands), or empty when
+    // it would go through. RadioModel asks before any optimistic TX state is
+    // built, so a refused key changes nothing but the message.
+    [[nodiscard]] virtual QString transmitRefusalMessage() const { return {}; }
     virtual void setKeying(bool key, const AetherSDR::TxCoordinator::Operation& operation, const AetherSDR::TxCoordinator::Completion& completion = {}) = 0;
     virtual IndependentTxControl independentTxControl() const { return {}; }
     virtual bool independentTxReady() const { return false; }

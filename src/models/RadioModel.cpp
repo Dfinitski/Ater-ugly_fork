@@ -3472,11 +3472,24 @@ QString RadioModel::localPttInterlockMessage(TransmitModel::PttSource source) co
     if (m_backend && !backendCapabilities().canTransmit) {
         return tr("This radio is receive-only and cannot transmit.");
     }
+    // ANAN port, build 264: the backend's own refusal (TX frequency outside
+    // the amateur bands), asked before anything optimistic happens.
+    if (m_backend) {
+        if (const QString refused = m_backend->transmitRefusalMessage(); !refused.isEmpty())
+            return refused;
+    }
 
     auto* s = txSlice();
     if (const QString message = transmitInhibitMessageForSlice(s);
         !message.isEmpty()) {
         return message;
+    }
+    // Build 264: a mode the radio only receives in (DRM, SAM, WFM ...) is
+    // refused here too, for every PTT source (MOX, TUNE, TCI, WSPR, DAX), so
+    // no TX state is built for it.
+    if (s && AetherSDR::modeIsReceiveOnly(backendCapabilities(), s->mode())) {
+        return tr("This radio receives only in %1 and will not transmit. "
+                  "Choose a transmit mode first.").arg(s->mode());
     }
 
     // CAT/DAX PTT callers acknowledge the request before the asynchronous
@@ -4748,6 +4761,11 @@ bool RadioModel::forwardNonFlexCwKeying(bool down, const TxCoordinator::Operatio
             || !refuseKeyInReceiveOnlyMode()
             || transmitStartBlockedByInhibit(QStringLiteral("cw-key")))) {
         return false;
+    }
+    // Build 264: the backend's band gate, before Break-In builds TX state.
+    if (down) {
+        if (const QString refused = m_backend->transmitRefusalMessage(); !refused.isEmpty())
+            return refuseKeyWithInterlock(refused, QStringLiteral("backend-refused:%1").arg(refused));
     }
     emit backendCwKeyingForwarded(down);
     if (!TxCoordinator::Command{operation, down}.permitsDispatch(txMonotonicMs())) {

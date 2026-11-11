@@ -3636,6 +3636,30 @@ state its silhouette is filled with #c8d8e8 (CompositionMode_SourceIn), for
 the On state the emoji as is (red). Icon size 13 px in the 16 px button; hover
 a faint background; the build-262 checked frame is gone.
 
+### 226. Build 264 — refused transmit builds no TX state
+
+**Report (10.11).** Keying in a receive-only mode or outside the amateur
+bands still showed the zoomed TX panadapter, although nothing went on air.
+
+**Cause.** ANAN has no PTT readback, so `RadioModel` publishes the TX edge
+(`publishCommandedBackendTransmitEdge` → `radioTransmittingChanged` →
+`SpectrumWidget::setTransmitting` → TX zoom) as soon as it commands the key.
+The band gate lives in `Hl2Backend::applyKeying()` (build 223) and refused
+the key only after that edge; the receive-only-mode refusal sat in
+`setTransmit` after `TransmitModel` had already gone optimistic.
+
+**Fix.**
+- `IRadioBackend::transmitRefusalMessage()` (default empty); `Hl2Backend`
+  implements it with the same test as `applyKeying()` (TX frequency =
+  dial + XIT, band plan).
+- `RadioModel::localPttInterlockMessage()` (the `TransmitModel` PTT
+  preflight for MOX, TUNE, TCI, WSPR, CAT, DAX) now returns the backend's
+  refusal and the receive-only-mode message, ahead of the DAX bypass.
+- `forwardNonFlexCwKeying()` asks the same before Break-In keys.
+
+A refused key now shows only the message at the bottom: no TX zoom, no TX
+indicator, no Quindar or tune latch. `applyKeying()` keeps its own gate.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

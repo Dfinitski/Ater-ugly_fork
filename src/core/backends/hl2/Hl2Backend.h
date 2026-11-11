@@ -1184,6 +1184,10 @@ private:
     qint64 m_txBandWarnMs = 0;          // rate limit of the operator warning
     [[nodiscard]] std::pair<double, double> txSpanHz(double hz) const;
     [[nodiscard]] bool txInAmateurBand(double hz) const;
+public:
+    // Build 264: the band gate applyKeying() enforces, asked in advance.
+    [[nodiscard]] QString transmitRefusalMessage() const override;
+private:
     void warnTxOutOfBand(double hz);
 
     // The four index spaces, never derived from one another (Hl2Receivers.h). GUI
