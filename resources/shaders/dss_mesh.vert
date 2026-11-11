@@ -312,7 +312,9 @@ void main()
         float meshSpan = max(meshCols - 1.0, 1.0);
         float vertexIndex = floor(u * meshSpan + 0.5);
         float bar = rightOfColumn ? vertexIndex - 1.0 : vertexIndex;
-        float supplementalBars = floor(texCols * 0.5);
+        // Build 293: the mesh holds texCols bars (kMeshCols = kCols + 1), so
+        // none is a supplemental-tile bar any more.
+        float supplementalBars = max(meshSpan - texCols, 0.0);
         bool supplementalBar = bar < supplementalBars;
         float t0 = supplementalBar ? bar * 2.0 : bar - supplementalBars;
         int frameAge = int(clamp(floor(rowAge + 0.5), 0.0, float(103)));

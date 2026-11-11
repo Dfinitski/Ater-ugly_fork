@@ -32,7 +32,9 @@ public:
     // Build 285: 1024 -- each column is now a flat bar of ~1.4 px on a
     // typical plot (stable under sub-pixel motion), and the boxes carried
     // between rows quadruple the vertices per column.
-    static constexpr int kCols = 1024;  // resampled columns per row
+    // Build 293: 2048 -- a captured row now spans what the back row shows
+    // (1 / kBackWidthFrac = 1.67 views), every bin kept up to 2048 of them.
+    static constexpr int kCols = 2048;  // resampled columns per row
 
     // Perspective geometry of the surface, shared by this CPU renderer and the
     // GPU mesh UBO (SpectrumWidget::renderGpuFrame). dss_mesh.vert applies the
@@ -93,7 +95,10 @@ public:
     // Build 286: one bar per texel, anchored to the data (dss_mesh.vert):
     // kCols / 2 bars for the supplemental tile (two texels each) followed by
     // kCols bars for the row's primary texels. Columns = bars + 1.
-    static constexpr int kMeshCols = kCols / 2 + kCols + 1;
+    // Build 293: one bar per texel only -- the captured row itself reaches
+    // past the plot edges as far as the perspective shows, at full
+    // resolution, so the coarse supplemental-tile bars are gone.
+    static constexpr int kMeshCols = kCols + 1;
     // The invariant dss_mesh.vert's Nearest height sampler depends on: at the
     // widest span the on-screen columns (kMeshCols / kMaxRowSpanFactor) must
     // still be at least kCols, or bins fall between samples and vanish.

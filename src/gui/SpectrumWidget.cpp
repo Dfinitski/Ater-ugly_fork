@@ -9612,10 +9612,20 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
         // observation. Keep the close-view bin density and stamp only genuine
         // captured frequencies, including a partially covered viewport.
         int first = 0, end = srcSize;
-        const double viewHigh = m_centerMhz + displayBw / 2;
-        if (std::isfinite(panStartMhz) && std::isfinite(viewHigh) && displayBw > 0
-            && panStartMhz < highFreqMhz && viewHigh > lowFreqMhz) {
-            const double firstPosition = std::clamp((panStartMhz - lowFreqMhz) / tileBw,
+        // ANAN fork build 293 (operator, 11.11: "what is formed outside the
+        // screen -- visible once the perspective narrows the far rows -- is
+        // drawn at a much worse resolution; the FFT is the same across the
+        // whole received width"). The 3D row was cut at the view's edges and
+        // the rest came from the coarse supplemental tile row. Cut it as wide
+        // as the back row shows instead: 1 / kBackWidthFrac views, centred on
+        // the view, every captured bin kept (DssRenderer: up to kCols).
+        const double dssMarginMhz =
+            displayBw * (1.0 / DssRenderer::kBackWidthFrac - 1.0) * 0.5;
+        const double sliceLowMhz = panStartMhz - dssMarginMhz;
+        const double viewHigh = m_centerMhz + displayBw / 2 + dssMarginMhz;
+        if (std::isfinite(sliceLowMhz) && std::isfinite(viewHigh) && displayBw > 0
+            && sliceLowMhz < highFreqMhz && viewHigh > lowFreqMhz) {
+            const double firstPosition = std::clamp((sliceLowMhz - lowFreqMhz) / tileBw,
                                                     0.0, double(srcSize));
             const double endPosition = std::clamp((viewHigh - lowFreqMhz) / tileBw,
                                                   0.0, double(srcSize));
