@@ -309,6 +309,13 @@ void ContainerManager::floatContainer(const QString& id)
 
     prepareRhiChildrenForReparent(c);   // #2495 — before any reparent below
 
+    // Build 261 (operator, 10.11: "torn-off applets shrink to their minimum
+    // width"): the width the applet had in the panel, the floor for its
+    // floating window. Only from a container that is really on screen -- a
+    // never-shown widget reports Qt's 640 x 480 default (the restore path).
+    const int dockedWidth = (c->isVisible() && c->window() && c->window()->isVisible())
+        ? c->width() : 0;
+
     detachFromCurrentSlot(id, c);
 
     // Parent the popped-out window to the main application window so it
@@ -330,6 +337,11 @@ void ContainerManager::floatContainer(const QString& id)
     // detachFromCurrentSlot() recorded the slot we just left; the floating
     // window uses that widget's screen to pick a sensible first position.
     win->restoreAndEnsureVisible(m_meta.value(id).originalParent);
+    // Build 261: never narrower than it was in the panel (a saved or
+    // size-hint geometry can be far narrower). The window has no margins, so
+    // its width is the container's.
+    if (dockedWidth > win->width())
+        win->resize(dockedWidth, win->height());
 
     // Apply the persisted always-on-top preference *after*
     // restoreAndEnsureVisible(): toggling Qt::WindowStaysOnTopHint
@@ -500,6 +512,12 @@ void ContainerManager::onCloseRequested()
 {
     auto* c = qobject_cast<ContainerWidget*>(sender());
     if (!c) return;
+    // Build 261 (operator, 10.11): × on a floating applet closes it without
+    // dragging it back first. It goes back to its panel slot hidden -- the
+    // same state as closing it in the panel -- so showing it again (applet
+    // menu) brings it back in the panel, and its floating window is gone.
+    if (c->isFloating())
+        dockContainer(c->id());
     c->setContainerVisible(false);
     saveState(); // saveState() flushes to disk (#4427)
 }

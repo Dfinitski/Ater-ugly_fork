@@ -3588,6 +3588,29 @@ PillButton now does the same: corner radius 8, the border at 55 % alpha of
 the target colour (green PC Audio / blue Codec), the 2 px bottom bar at full
 colour.
 
+## 223. Build 261: torn-off applets keep their width, a visible pin, and a × (10.11)
+
+**Width.** `ContainerManager::floatContainer` sized the new window from the
+saved geometry or the container's size hint, which for some applets is far
+narrower than their panel width. It now records the width the container had
+in the panel (only when it is really on screen; a never-shown widget reports
+640 x 480) and, after `restoreAndEnsureVisible`, widens the window to at least
+that (the floating window has zero margins).
+
+**Pin.** It is "always on top" (Qt::WindowStaysOnTopHint): the floating
+window already stays above the main window (it is parented to it), the pin
+keeps it above other programs as well. Pressing it seemed to do nothing
+because the glyph is a colour emoji and the checked state only changed the
+text colour. Checked now has a lit amber background and border; hover a light
+background; tooltip "Keep this window above other programs too (always on
+top)".
+
+**Close.** The × was hidden on floating containers. It now stays
+(`setFloatingState`: visible when close is allowed). `onCloseRequested` on a
+floating container docks it back to its slot first, then hides it -- the same
+state as closing it in the panel, so showing it again brings it back in the
+panel and no empty floating window is left.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

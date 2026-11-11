@@ -43,8 +43,12 @@ constexpr const char* kPinBtnStyle =
     "QPushButton { background: transparent; border: none; "
     "color: #c8d8e8; font-size: 11px; font-weight: bold; "
     "padding: 0px 4px; } "
-    "QPushButton:hover { color: #ffffff; } "
-    "QPushButton:checked { color: #ffd166; }";
+    "QPushButton:hover { color: #ffffff; background: rgba(255,255,255,40); border-radius: 3px; } "
+    // Build 261 (operator, 10.11: "I press the pin and nothing happens"):
+    // the glyph is a colour emoji, so the old checked text colour changed
+    // nothing on screen. The engaged pin now has a lit background.
+    "QPushButton:checked { color: #ffd166; background: rgba(255,209,102,120); "
+    "border: 1px solid #ffd166; border-radius: 3px; }";
 
 // Float-toggle button gets a larger font-size than its siblings so
 // the ⧉ glyph reads clearly at small sizes — at 11px the two-square
@@ -97,7 +101,9 @@ ContainerTitleBar::ContainerTitleBar(const QString& title, QWidget* parent)
     // Accessible names so the agent automation bridge can drive the
     // title-bar controls (scoped by the container's objectName). (#3646)
     m_pinBtn->setAccessibleName(QStringLiteral("containerPin"));
-    m_pinBtn->setToolTip("Always on top");
+    // Build 261: what it does. The floating window already stays above the
+    // main window; the pin keeps it above OTHER programs too.
+    m_pinBtn->setToolTip("Keep this window above other programs too (always on top)");
     m_pinBtn->setCursor(Qt::ArrowCursor);
     m_pinBtn->setVisible(false);  // shown only in float mode
     connect(m_pinBtn, &QPushButton::toggled, this,
@@ -154,9 +160,10 @@ void ContainerTitleBar::setFloatingState(bool isFloating)
     m_floatBtn->setToolTip(isFloating
         ? "Return to panel"
         : "Pop out into a floating window");
-    // ↙ already covers "close + dock" while floating, so the redundant
-    // × button hides itself in float mode and reappears when docked.
-    if (m_closeBtn) m_closeBtn->setVisible(m_closeAllowed && !isFloating);
+    // Build 261 (operator, 10.11): the × stays on a floating applet too and
+    // closes it without dragging it back to the panel first
+    // (ContainerManager::onCloseRequested).
+    if (m_closeBtn) m_closeBtn->setVisible(m_closeAllowed);
     // The pin makes no sense for in-panel containers — only show it
     // when this container hosts an actual top-level window.
     if (m_pinBtn) m_pinBtn->setVisible(isFloating);
