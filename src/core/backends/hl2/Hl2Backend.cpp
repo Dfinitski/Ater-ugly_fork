@@ -592,10 +592,14 @@ Hl2Backend::Hl2Backend(QObject* parent)
             QMetaObject::invokeMethod(m_metis, "setReceiverAdc", Qt::QueuedConnection,
                                       Q_ARG(int, rx), Q_ARG(int, adc));
         }
+        // Build 248: the VFO flag's antenna buttons show these too (slice
+        // state), so a change from the ANT panel is published to them.
+        bool antChanged = false;
         const int rxAnt = std::clamp(
             AppSettings::instance().value(QStringLiteral("AnanRxAnt"), 0).toInt(), 0, 2);
         if (rxAnt != m_ananRxAntPushed) {
             m_ananRxAntPushed = rxAnt;
+            antChanged = true;
             QMetaObject::invokeMethod(m_metis, "setRxAntenna", Qt::QueuedConnection,
                                       Q_ARG(int, rxAnt));
         }
@@ -603,9 +607,12 @@ Hl2Backend::Hl2Backend(QObject* parent)
             AppSettings::instance().value(QStringLiteral("AnanTxAnt"), 0).toInt(), 0, 2);
         if (txAnt != m_ananTxAntPushed) {
             m_ananTxAntPushed = txAnt;
+            antChanged = true;
             QMetaObject::invokeMethod(m_metis, "setTxAntenna", Qt::QueuedConnection,
                                       Q_ARG(int, txAnt));
         }
+        if (antChanged && m_connected)
+            emitAllSliceState();
         // ANAN-100D port: LNA button (overlay ANT panel) -> Alex preamp bit.
         const bool lna = AppSettings::instance().value(QStringLiteral("AnanLna"), false).toBool();
         if (int(lna) != m_ananLnaPushed) {
@@ -4643,7 +4650,16 @@ ReceiveDispatch Hl2Backend::requestSliceControl(int sliceId, const SliceControlR
     case Field::TxSlice:
         if (std::get<bool>(request.value)) { setTxSlice(sliceId); }
         break;
-    case Field::TxAntenna: case Field::DaxChannel: case Field::RttyMark:
+    case Field::TxAntenna: {
+        // Build 248: the VFO flag's TX antenna = the ANT panel's (one TX
+        // antenna for the radio, AppSettings "AnanTxAnt").
+        const int a = ananAntennaIndex(std::get<QString>(request.value));
+        if (a < 0)
+            return ReceiveDispatch::Unsupported;
+        setAnanAntennaSetting(QStringLiteral("AnanTxAnt"), a);
+        break;
+    }
+    case Field::DaxChannel: case Field::RttyMark:
     case Field::RttyShift: case Field::DiglOffset: case Field::DiguOffset:
     case Field::Record: case Field::Play: case Field::FmToneMode:
     case Field::FmToneValue: case Field::FmRxToneValue: case Field::FmDtcs:
@@ -11304,7 +11320,57 @@ void Hl2Backend::emitSliceState(int ddc)
     // Exactly one slice is active, so consumers (e.g. the RX Controls applet)
     // resolve the receiver the operator is working on.
     d.active = (ddc == m_activeDdc);
+    // Build 248 (operator, 10.11: the flag's antenna buttons did not follow
+    // the ANT panel): the antennas as the ANT panel holds them. ANT1-3 feed
+    // ADC1 only; a receiver on ADC2 listens to the RX2 input.
+    {
+        const QStringList ants{QStringLiteral("ANT1"), QStringLiteral("ANT2"), QStringLiteral("ANT3")};
+        const auto& st = AppSettings::instance();
+        const int rxAnt = std::clamp(st.value(QStringLiteral("AnanRxAnt"), 0).toInt(), 0, 2);
+        const int txAnt = std::clamp(st.value(QStringLiteral("AnanTxAnt"), 0).toInt(), 0, 2);
+        const bool onAdc2 = ddc >= 0 && ddc < 2 && m_ananAdc[ddc] == 1;
+        d.rxAntennaList = onAdc2 ? QStringList{QStringLiteral("RX2")} : ants;
+        d.rxAntenna = onAdc2 ? QStringLiteral("RX2") : ants[rxAnt];
+        d.txAntennaList = ants;
+        d.txAntenna = ants[txAnt];
+    }
     emit sliceChanged(ids->uiNumber, d);
+}
+
+int Hl2Backend::ananAntennaIndex(const QString& token)
+{
+    // "ANT1".."ANT3" -> 0..2; anything else (RX2, a Flex name) -> -1.
+    const QString t = token.trimmed().toUpper();
+    if (t.size() == 4 && t.startsWith(QLatin1String("ANT")) && t[3] >= QLatin1Char('1')
+        && t[3] <= QLatin1Char('3'))
+        return t[3].unicode() - '1';
+    return -1;
+}
+
+void Hl2Backend::setAnanAntennaSetting(const QString& key, int index)
+{
+    // The ANT panel's setting; the 300 ms tick pushes it to the radio and
+    // republishes the slices (the panel follows its slice's antenna echo).
+    auto& st = AppSettings::instance();
+    if (st.value(key, 0).toInt() == index)
+        return;
+    st.setValue(key, index);
+    st.save();
+}
+
+ReceiveDispatch Hl2Backend::requestSliceRxAntenna(int sliceId, const QString& antenna)
+{
+    // Build 248: the VFO flag's RX antenna = the ANT panel's ADC1 antenna.
+    const int ddc = ddcForSlice(sliceId);
+    if (!rx(ddc))
+        return ReceiveDispatch::Unsupported;
+    const int a = ananAntennaIndex(antenna);
+    if (a < 0 || (ddc < 2 && m_ananAdc[ddc] == 1)) {
+        emitSliceState(ddc);   // RX2 input: nothing to choose; put the label back
+        return ReceiveDispatch::Dispatched;
+    }
+    setAnanAntennaSetting(QStringLiteral("AnanRxAnt"), a);
+    return ReceiveDispatch::Dispatched;
 }
 
 // Build 222: TCI I/Q of one receiver, on the I/O thread. The DDC stream is

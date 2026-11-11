@@ -129,6 +129,8 @@ public:
                               int level, AetherSDR::NoiseBlankerFill fill) override;
     ReceiveDispatch requestSliceDsp(int sliceId, const SliceDspRequest& request) override;
     ReceiveDispatch requestSliceControl(int sliceId, const SliceControlRequest& request) override;
+    // Build 248: the VFO flag's RX antenna (the ANT panel's AnanRxAnt).
+    ReceiveDispatch requestSliceRxAntenna(int sliceId, const QString& antenna) override;
     ReceiveDispatch requestTransmitControl(const TransmitControlRequest& request,
         TunePowerContext context = TunePowerContext::Deferred) override;
     ReceiveDispatch requestSliceAudio(int sliceId, const SliceAudioRequest& request) override;
@@ -686,6 +688,9 @@ private:
     int m_ananAdcPushed[2] = {-1, -1};
     // ANAN-100D port: Alex antennas last pushed (AppSettings "AnanRxAnt" /
     // "AnanTxAnt", 0..2 = ANT1..ANT3).
+    // Build 248: "ANT1".."ANT3" -> 0..2, else -1; write an ANT panel setting.
+    [[nodiscard]] static int ananAntennaIndex(const QString& token);
+    void setAnanAntennaSetting(const QString& key, int index);
     int m_ananRxAntPushed = -1;
     int m_ananTxAntPushed = -1;
     QByteArray m_ananOcPushed;

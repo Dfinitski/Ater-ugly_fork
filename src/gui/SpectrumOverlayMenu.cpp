@@ -1356,6 +1356,10 @@ void SpectrumOverlayMenu::wirePanadapterRxAntenna()
         m_updatingFromModel = false;
         updateLoopButtonVisibility();
     });
+    // Build 248: ANAN -- a choice on the VFO flag comes back as the slice's
+    // antenna; the ANT panel's buttons follow it.
+    connect(m_slice, &SliceModel::rxAntennaChanged, this, [this] { syncAnanAntennas(); });
+    connect(m_slice, &SliceModel::txAntennaChanged, this, [this] { syncAnanAntennas(); });
     m_panLoopConnection =
         connect(m_panadapter, &PanadapterModel::loopChanged,
                 this, &SpectrumOverlayMenu::setLoopState);
@@ -1569,6 +1573,7 @@ void SpectrumOverlayMenu::syncAntPanel()
     m_rfGainLabel->setText(rfGainReadout(gain));
     m_updatingFromModel = false;
     updateLoopButtonVisibility();
+    syncAnanAntennas();   // build 248: the ANAN buttons, current when the panel opens
 }
 
 // ── DAX sub-panel ─────────────────────────────────────────────────────────────

@@ -5903,8 +5903,17 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
             const double centerMhz = sw ? sw->centerMhz() : pan->centerMhz();
             const double bwMhz = sw ? sw->bandwidthMhz() : pan->bandwidthMhz();
             const double newCenterMhz = std::max(centerMhz + deltaMhz, bwMhz / 2.0);
-            if (centerMhz > 0.0 && bwMhz > 0.0)
+            if (centerMhz > 0.0 && bwMhz > 0.0) {
+                // Build 248 (operator, 10.11: "the flag jumps a little with the
+                // filter"): the view takes the new centre at once. Through the
+                // model it arrives as a small nudge, which SpectrumWidget
+                // animates (~glide) while the slice below moves in one step, so
+                // the flag and filter jumped by the step and slid back. Snapped
+                // first, the model's echo of the same centre is a no-op.
+                if (sw)
+                    sw->setFrequencyRangeImmediate(newCenterMhz, bwMhz);
                 applyTuneCenteringWrite(pan, sw, newCenterMhz);
+            }
         }
         pushSliceFrequencyToOverlays(sl, mhz);
         sl->setFrequency(mhz);

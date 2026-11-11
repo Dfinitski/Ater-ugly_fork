@@ -3358,6 +3358,35 @@ the existing status-bar link (`forkNewReleaseLink`) instead of adding a second
 one. 4 requests/hour against GitHub's 60/hour unauthenticated limit; failures
 stay quiet (logged only), as before.
 
+## 210. Build 248: steady flag on digit tuning; flag antennas follow the ANT panel (10.11)
+
+**1. Flag jumps on the per-digit wheel.** The digit-wheel path (build 235)
+moves the pan centre through `applyTuneCenteringWrite` -> RadioModel -> the
+pan model -> `SpectrumWidget::setFrequencyRange()`. A centre change below 25 %
+of half the span is a "small nudge", which SpectrumWidget ANIMATES
+(`m_panCenterAnim`), while the slice frequency moves in one step
+(`pushSliceFrequencyToOverlays` + `setFrequency`). The flag and filter
+therefore jumped by the step and slid back during the animation.
+Fix (MainWindow_Wiring.cpp, digitTuneRequested): `sw->setFrequencyRangeImmediate(newCenter, bw)`
+first; the model's echo of the same centre is then a no-op.
+
+**2. Flag antenna buttons vs the ANT panel.** The flag shows the slice's
+rxAntenna/txAntenna; Hl2Backend never published them, so they stayed at the
+"ANT1" default and a pick there went nowhere (requestSliceRxAntenna
+unsupported, Field::TxAntenna unsupported). The ANT panel keeps the radio's
+antennas in AppSettings `AnanRxAnt` / `AnanTxAnt` (0..2), pushed by the 300 ms
+tick.
+- `emitSliceState`: rxAntennaList/txAntennaList ANT1-3, rxAntenna/txAntenna
+  from the settings; a receiver on ADC2 shows "RX2" (ANT1-3 feed ADC1 only).
+- `requestSliceRxAntenna` / `requestSliceControl(TxAntenna)`: write the
+  setting (`setAnanAntennaSetting`); on ADC2 the RX pick is refused by
+  re-echoing the state.
+- The tick republishes every slice when either setting changed (panel or
+  flag).
+- SpectrumOverlayMenu: `syncAnanAntennas()` on the slice's rx/txAntennaChanged
+  and in `syncAntPanel()` (panel opening), so the panel follows a pick on the
+  flag.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
