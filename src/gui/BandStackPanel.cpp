@@ -250,9 +250,10 @@ void BandStackPanel::rebuildLayout()
         btn->setToolTip(tip);
 
         QColor bg = bm.color.darker(130);
+        // Build 281 (operator, 11.11): text one size larger, 11 -> 12 px.
         btn->setStyleSheet(
             QString("QPushButton { background: %1; border: 1px solid %2; "
-                    "border-radius: 3px; color: #ffffff; font-size: 11px; font-weight: bold; }"
+                    "border-radius: 3px; color: #ffffff; font-size: 12px; font-weight: bold; }"
                     "QPushButton:hover { background: %3; }")
                 .arg(bg.name(), bm.color.name(), bm.color.name()));
 
