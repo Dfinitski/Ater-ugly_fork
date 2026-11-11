@@ -2357,6 +2357,9 @@ private:
     QPushButton* m_rateUpBtn{nullptr};
     QLabel*      m_rateLabel{nullptr};
     [[nodiscard]] int rateGroupWidth() const;
+    // Build 278: WIDE drawn as the rate buttons are (same height, line and
+    // transparency), its right edge at rightX; returns its left edge.
+    int drawWideChip(QPainter& p, int rightX) const;
     void stepReceiverRate(int direction);
     // ANAN-100D port: "Zoom xN.N" (magnification) left of the rate group.
     QLabel*      m_zoomLabel{nullptr};

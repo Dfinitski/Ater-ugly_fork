@@ -13112,6 +13112,35 @@ namespace {
 constexpr int kReceiverRatesKhz[] = {48, 96, 192, 384, 768, 1536};
 }
 
+// ANAN fork build 278 (operator, 11.11): "make WIDE the size and
+// transparency of the panadapter width buttons, on their line, to the
+// left". The rate buttons' look (kRateBtnStyle): 20 px high at y = 4, a
+// rgba(15,15,26,90) face, a rgba(144,160,176,110) 1 px border, radius 2,
+// rgba(200,216,232,150) 12 px bold text. Not a button -- an indicator in that
+// frame, so it reads as one group with them.
+int SpectrumWidget::drawWideChip(QPainter& p, int rightX) const
+{
+    p.save();
+    QFont f = p.font();
+    f.setPixelSize(12);
+    f.setBold(true);
+    p.setFont(f);
+    const QFontMetrics fm(f);
+    const QString text = QStringLiteral("WIDE");
+    constexpr int kTop = 4;
+    constexpr int kH = 20;
+    const int w = fm.horizontalAdvance(text) + 12;
+    const QRect r(rightX - w, kTop, w, kH);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(QPen(QColor(144, 160, 176, 110), 1.0));
+    p.setBrush(QColor(15, 15, 26, 90));
+    p.drawRoundedRect(QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5), 2.0, 2.0);
+    p.setPen(QColor(200, 216, 232, 150));
+    p.drawText(r, Qt::AlignCenter, text);
+    p.restore();
+    return r.left();
+}
+
 int SpectrumWidget::rateGroupWidth() const
 {
     if (!m_rateLabel || !m_rateLabel->isVisible())
@@ -15521,7 +15550,9 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                     };
 
                     if (m_wideActive) {
-                        drawSegment(QStringLiteral("WIDE"), indicatorColor);
+                        // Build 278: a chip on the rate buttons' line.
+                        leftEdge = drawWideChip(p, x);
+                        x = leftEdge - 10;
                     }
                     if (!m_preampIndicator.isEmpty()) {
                         drawSegment(m_preampIndicator, indicatorColor);
@@ -16734,7 +16765,9 @@ void SpectrumWidget::paintEvent(QPaintEvent* ev)
 
             // WIDE (rightmost)
             if (m_wideActive) {
-                drawSegment(QStringLiteral("WIDE"), indicatorColor);
+                // Build 278: a chip on the rate buttons' line.
+                leftEdge = drawWideChip(p, x);
+                x = leftEdge - 10;
             }
 
             if (!m_preampIndicator.isEmpty()) {
