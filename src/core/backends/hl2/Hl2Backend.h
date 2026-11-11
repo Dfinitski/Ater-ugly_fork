@@ -1170,6 +1170,9 @@ private:
     [[nodiscard]] bool hzInAmateurBand(double lo, double hi) const;
     void updateCwBandInhibit();
     [[nodiscard]] double ananMinViewHz() const;   // build 226
+    // Build 243: the widest DDC rate the running receivers can share -- the
+    // pan's upper bandwidth limit (the [+] rate button), not the current rate.
+    [[nodiscard]] int widestRateForReceiversHz() const;
     [[nodiscard]] static int spectrumFftSizeFor(double zoomViewHz, int rateHz);   // build 230
     double m_fwdMeterW = 0.0;   // build 231/232: the power gauge (gliding to the 250 ms peak)
     std::deque<std::pair<qint64, double>> m_fwdPeakHist;   // build 232: (ms, W) of the last 250 ms

@@ -3254,6 +3254,23 @@ behaviour, not captured on the wire.)
 **Fix:** the deadline bounds the inner loop too; the route lookup runs only
 for a parsed discovery reply from a new host.
 
+## 205. Build 243: the pan's [+] rate button works once (10.11)
+
+**Symptom:** the [+] at the top right of the panadapter (next DDC rate) steps
+once, then stays disabled.
+
+**Cause:** `SpectrumWidget::refreshRateLabel()` enables [+] while the current
+rate is below the pan's upper bandwidth limit. Build 226 made two emitters of
+`panBandwidthLimitsChanged` send the CURRENT rate (`m_sampleRateHz`) as that
+limit: the `anan.rate` verb (the [+]/[-] buttons themselves) and
+`addReceiver()`. After the first step the limit equalled the new rate, so [+]
+went grey. Only the connect-time emitter sent the widest rate.
+
+**Fix:** `Hl2Backend::widestRateForReceiversHz()` (the connect-time logic: the
+widest rate the running receivers can share on the link) is the upper limit in
+all three places. The zoom is unaffected: `panViewHz()` and the widget both cap
+the view at the current rate's usable span.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

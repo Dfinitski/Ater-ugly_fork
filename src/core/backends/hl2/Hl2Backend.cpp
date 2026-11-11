@@ -1873,10 +1873,13 @@ bool Hl2Backend::addReceiver(const Receiver& requested)
     emitPanState(ddc);
     emitSliceState(ddc);
     if (opened) {
+        // Build 243 (operator, 10.11: "[+] works once, then stays grey"):
+        // the upper limit is the widest rate, not the current one -- the
+        // widget enables [+] only below it.
         emit panBandwidthLimitsChanged(
             opened->panId,
             ananMinViewHz() / 1.0e6,   // build 226: the zoom's real floor (setPanBandwidth)
-            static_cast<double>(m_sampleRateHz) / 1.0e6);
+            static_cast<double>(widestRateForReceiversHz()) / 1.0e6);
         emit panRfGainInfoChanged(opened->panId, gainMinDb(), gainMaxDb(),
                                   kLnaGainStepDb);
         // EFFECTIVE, not baseline: a pan created while an automatic control is
@@ -5335,6 +5338,21 @@ double Hl2Backend::ananMinViewHz() const
     return std::max(1500.0, static_cast<double>(m_sampleRateHz) / 64.0);
 }
 
+int Hl2Backend::widestRateForReceiversHz() const
+{
+    // Pan zoom limits = the DDC rates this radio can run; nothing above the
+    // seam can derive them (the FlexLib model table would allow 5.4 MHz). The
+    // upper limit falls as receivers are added because span and receiver count
+    // share the 100BASE-T budget, matching what applyPanBandwidth() accepts.
+    const int running = m_ids.empty() ? 1 : m_ids.size();
+    int widestHz = kIqSampleRatesHz[0];
+    for (const int r : iqRates()) {
+        if (r <= maxIqRateHz() && maxReceiversAtRate(r, running) >= running)
+            widestHz = std::max(widestHz, r);
+    }
+    return widestHz;
+}
+
 double Hl2Backend::panViewHz(const Receiver& r) const
 {
     // The widest view is the usable 80 % of the rate (kUsableSpanFraction):
@@ -8018,8 +8036,10 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
             applyPanBandwidth(arg.toDouble());
             emitAllPanState();
             for (const auto& ids : m_ids.all())   // build 226: the zoom floor follows the rate
+                // Build 243: the upper limit stays the widest rate; capping it at
+                // the rate just set disabled [+] after one step.
                 emit panBandwidthLimitsChanged(ids.panId, ananMinViewHz() / 1.0e6,
-                                               static_cast<double>(m_sampleRateHz) / 1.0e6);
+                                               static_cast<double>(widestRateForReceiversHz()) / 1.0e6);
             if (requestId != 0)
                 emit extensionResult(requestId, QVariant(m_sampleRateHz));
             return;
@@ -10617,16 +10637,8 @@ void Hl2Backend::pushInitialState()
         emit transmitChanged(delta);
         qCInfo(lcHl2) << "HL2: restored mic level" << restoredMicLevel;
     }
-    // Pan zoom limits = the DDC rates this radio can run; nothing above the
-    // seam can derive them (the FlexLib model table would allow 5.4 MHz). The
-    // upper limit falls as receivers are added because span and receiver count
-    // share the 100BASE-T budget, matching what applyPanBandwidth() accepts.
-    const int running = m_ids.empty() ? 1 : m_ids.size();
-    int widestHz = kIqSampleRatesHz[0];
-    for (const int r : iqRates()) {
-        if (r <= maxIqRateHz() && maxReceiversAtRate(r, running) >= running)
-            widestHz = std::max(widestHz, r);
-    }
+    // Pan zoom limits: the widest rate the running receivers can share.
+    const int widestHz = widestRateForReceiversHz();
     for (const auto& ids : m_ids.all()) {
         emit panBandwidthLimitsChanged(
             ids.panId,
