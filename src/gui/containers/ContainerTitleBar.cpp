@@ -3,6 +3,9 @@
 
 #include <QCursor>
 #include <QHBoxLayout>
+#include <QIcon>
+#include <QPainter>
+#include <QPixmap>
 #include <QGuiApplication>
 #include <QLabel>
 #include <QMouseEvent>
@@ -37,17 +40,43 @@ constexpr const char* kBtnStyle =
     "padding: 0px 4px; } "
     "QPushButton:hover { color: #ffffff; }";
 
-// Same as kBtnStyle but with an explicit "checked" colour so an
-// engaged pin reads visibly different from an idle one.
+// The pin button: no text, the state is in its icon (pinIcon below).
 constexpr const char* kPinBtnStyle =
-    "QPushButton { background: transparent; border: none; "
-    "color: #c8d8e8; font-size: 11px; font-weight: bold; "
-    "padding: 0px 4px; } "
-    "QPushButton:hover { color: #ffffff; } "
-    // Build 261/262 (operator, 10.11): the glyph is a colour emoji, so a
-    // checked text colour showed nothing. Engaged = a thin amber frame.
-    "QPushButton:checked { color: #ffd166; background: transparent; "
-    "border: 1px solid #ffd166; border-radius: 3px; }";
+    "QPushButton { background: transparent; border: none; padding: 0px; } "
+    "QPushButton:hover { background: rgba(255,255,255,30); border-radius: 3px; }";
+
+// Build 263 (operator, 10.11): the pin as an icon with two states -- idle in
+// the colour of the × beside it (#c8d8e8), engaged in the emoji's own red. A
+// colour emoji cannot be recoloured by a stylesheet, so the idle pixmap is the
+// emoji's silhouette filled with that colour.
+QIcon pinIcon()
+{
+    const QString glyph = QString::fromUtf8("\xf0\x9f\x93\x8c");   // 📌
+    constexpr int kPx = 32;   // drawn large, scaled into the 16 px button
+    auto render = [&glyph](bool tint) {
+        QPixmap pm(kPx, kPx);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setRenderHint(QPainter::TextAntialiasing, true);
+        QFont f = QGuiApplication::font();
+        f.setPixelSize(kPx - 6);
+        p.setFont(f);
+        p.drawText(QRect(0, 0, kPx, kPx), Qt::AlignCenter, glyph);
+        if (tint) {
+            p.setCompositionMode(QPainter::CompositionMode_SourceIn);
+            p.fillRect(pm.rect(), QColor(0xc8, 0xd8, 0xe8));
+        }
+        p.end();
+        return pm;
+    };
+    QIcon icon;
+    icon.addPixmap(render(true), QIcon::Normal, QIcon::Off);
+    icon.addPixmap(render(false), QIcon::Normal, QIcon::On);
+    icon.addPixmap(render(true), QIcon::Active, QIcon::Off);
+    icon.addPixmap(render(false), QIcon::Active, QIcon::On);
+    return icon;
+}
 
 // Float-toggle button gets a larger font-size than its siblings so
 // the ⧉ glyph reads clearly at small sizes — at 11px the two-square
@@ -93,7 +122,9 @@ ContainerTitleBar::ContainerTitleBar(const QString& title, QWidget* parent)
     layout->addWidget(m_titleLabel);
     layout->addStretch();
 
-    m_pinBtn = new QPushButton(QString::fromUtf8("\xf0\x9f\x93\x8c"));  // 📌
+    m_pinBtn = new QPushButton;   // build 263: an icon, idle grey / engaged red
+    m_pinBtn->setIcon(pinIcon());
+    m_pinBtn->setIconSize(QSize(13, 13));
     m_pinBtn->setStyleSheet(kPinBtnStyle);
     m_pinBtn->setFixedSize(16, 16);
     m_pinBtn->setCheckable(true);

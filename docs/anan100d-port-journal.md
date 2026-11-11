@@ -3626,6 +3626,16 @@ panel or, if wider, its panel column's (c->parentWidget()).
 **Pin:** engaged = a 1 px amber frame (border-radius 3), no fill, no hover
 fill.
 
+## 225. Build 263: two-colour pin icon (10.11)
+
+Operator: the idle pin in the colour of the × next to it, the engaged pin red
+as the emoji is; no frame. A colour emoji cannot be recoloured by a
+stylesheet, so the pin button now has no text but a QIcon (`pinIcon()` in
+ContainerTitleBar.cpp): the 📌 emoji drawn into a 32 px pixmap; for the Off
+state its silhouette is filled with #c8d8e8 (CompositionMode_SourceIn), for
+the On state the emoji as is (red). Icon size 13 px in the 16 px button; hover
+a faint background; the build-262 checked frame is gone.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
