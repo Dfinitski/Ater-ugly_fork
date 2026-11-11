@@ -2327,6 +2327,8 @@ bool Hl2Backend::removePanadapter(const QString& panId)
 
 void Hl2Backend::publishWideState()
 {
+    // Build 280: decided by ADC only -- which ADC each receiver listens to
+    // and on which band; the receiver's number plays no part.
     // WIDE: the receive filter bank of this receiver's ADC is BYPASSED,
     // because the receivers on that ADC want different filters -- so that
     // every one of them hears its band (P2Transport::bankFor, the rule the
@@ -2369,6 +2371,9 @@ void Hl2Backend::publishWideState()
         const int bank = bankOf(i);
         if (bank < 0)
             continue;
+        // The slice frequency -- what pushAnanTunedFrequencies() sends and the
+        // transport's banks follow (P2Transport::bankFor, build 280), so the
+        // indicator and the relays agree.
         const int key = filterKey(m_rx[static_cast<std::size_t>(i)].sliceFreqHz);
         if (bankKey[bank] < 0)
             bankKey[bank] = key;

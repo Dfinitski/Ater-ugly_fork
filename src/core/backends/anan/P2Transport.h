@@ -457,13 +457,14 @@ private:
     }
     std::array<int, kMaxDdcs> m_rxAdc{};   // per receiver, 0 = ADC1
     [[nodiscard]] int effectiveAdc(int rx) const;   // build 277
-    // Build 279: one ADC's receive filter bank. The receivers on that ADC
-    // share it; when they want different filters it is bypassed (WIDE) and
-    // the classic-Alex receive low-pass is set for the highest of them, so
-    // every receiver on the ADC hears its band.
+    // Build 279/280: one ADC's receive filter bank, decided only by the
+    // receivers listening to that ADC (any receiver may use any ADC; the
+    // filters are wired to the ADC). When they want different filters it is
+    // bypassed (WIDE), and the classic-Alex receive low-pass is then the
+    // widest, so every receiver on the ADC hears its band.
     struct BankChoice {
         AlexRxFilter filter = AlexRxFilter::Bypass;
-        double lpfHz = 0.0;     // classic Alex: the TX low-pass in the RX path
+        double lpfHz = 0.0;     // classic Alex RX low-pass: the receivers' highest frequency
         bool spanned = false;   // receivers on different filters: bypassed
         bool used = false;      // a receiver listens to this ADC
     };

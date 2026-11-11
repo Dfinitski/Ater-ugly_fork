@@ -16,6 +16,7 @@
 #include <QVariant>
 
 #include <algorithm>
+#include <limits>
 #include <map>
 #include <chrono>
 #include <cmath>
@@ -1513,10 +1514,18 @@ void P2Transport::setRxTunedHz(int rxIndex, std::uint32_t hz)
     if (m_rxTunedHz[i] == hz)
         return;
     const int bandBefore = ocBandIndex(ocRxHz(i));
+    const BankChoice bank0Before = bankFor(0);
+    const BankChoice bank1Before = bankFor(1);
     m_rxTunedHz[i] = hz;
-    // Only a band change can move the outputs; the frequency itself is not on
-    // the wire.
-    if (ocBandIndex(ocRxHz(i)) != bandBefore && m_run && m_configured)
+    // Only a band change can move the outputs or the filter banks (build
+    // 280: the banks follow the tuned frequencies); the frequency itself is
+    // not on the wire.
+    const BankChoice bank0 = bankFor(0);
+    const BankChoice bank1 = bankFor(1);
+    const bool banksMoved = bank0.filter != bank0Before.filter || bank0.spanned != bank0Before.spanned
+        || bank1.filter != bank1Before.filter || bank1.spanned != bank1Before.spanned
+        || p1AlexLpfBitsFor(bank0.lpfHz) != p1AlexLpfBitsFor(bank0Before.lpfHz);
+    if ((ocBandIndex(ocRxHz(i)) != bandBefore || banksMoved) && m_run && m_configured)
         sendHighPriority(true);
 }
 
@@ -1588,6 +1597,14 @@ void P2Transport::setDitherRandomBits(bool dither, bool random)
 //  - Orion2BandPass: ADC0, and ADC1 when the board has the second bank;
 //  - LegacyHighPassLowPass: ADC0 only (ADC1 has no Alex filters);
 //  - SaturnBandPass (as driven here): one selection for both ADCs.
+// Build 280 (operator, 11.11: "any receiver can work with any ADC, the
+// filters are wired to the ADC; look only at which ADC is in use and on
+// which band -- the receiver's number means nothing"). A bank is decided by
+// the receivers whose ADC (effectiveAdc: a one-ADC board has ADC1 only) it
+// sits ahead of, in any order: one ADC -> every receiver shares bank 0; two
+// ADCs with one bank (100D/200D) -> ADC1 by these rules, ADC2 never filtered
+// and never WIDE; two ADCs with two banks (7000DLE/8000DLE/G2: band-pass,
+// their own bits and edges, alexRxFilterFor) -> each ADC by itself.
 P2Transport::BankChoice P2Transport::bankFor(int adc) const
 {
     BankChoice b;
@@ -1610,7 +1627,9 @@ P2Transport::BankChoice P2Transport::bankFor(int adc) const
     for (int i = 0; i < m_numRx; ++i) {
         if (!shared && effectiveAdc(i) != adc)
             continue;
-        const double hz = static_cast<double>(m_rxHz[static_cast<std::size_t>(i)]);
+        // The frequency the receiver is TUNED to (build 280), as the WIDE
+        // indicator reads it -- not the NCO / pan centre.
+        const double hz = ocRxHz(static_cast<std::size_t>(i));
         if (!b.used) {
             b.used = true;
             b.filter = filterOf(hz);
@@ -1646,8 +1665,11 @@ void P2Transport::setReceiverAdc(int rx, int adc)
         return;
     m_rxAdc[static_cast<std::size_t>(rx)] = adc;
     qCInfo(lcAnanP2T).nospace() << "ANAN P2 transport: RX" << (rx + 1) << " <- ADC" << (adc + 1);
-    if (m_run && m_configured)
+    if (m_run && m_configured) {
         sendDdcSpecific();
+        // Build 280: the banks are decided by who listens to which ADC.
+        sendHighPriority(true);
+    }
 }
 
 void P2Transport::setRxAntenna(int antenna)
@@ -2711,10 +2733,11 @@ P1CcState P2Transport::p1State() const
         // receive frequency while receiving (as on Protocol 2).
         s.alexHpf = p1AlexHpfBits(bank0.used ? bank0.filter : legacyAlexHpfFor(filterHz));
         // The PA's harmonic filter on the TX frequency while transmitting;
-        // receiving, the low-pass for the highest receiver on ADC0 (build
-        // 279: it then passes every one of them).
+        // receiving, ADC1's receiver's band, or (build 280) the widest when
+        // the bank is bypassed -- as Protocol 2 sends it (deskHPSDR).
         s.alexLpf = p1AlexLpfBitsFor(m_mox ? static_cast<double>(tx)
-                                           : (bank0.used ? bank0.lpfHz : filterHz));
+                                   : bank0.spanned ? std::numeric_limits<double>::infinity()
+                                   : (bank0.used ? bank0.lpfHz : filterHz));
     }
     if (m_lna && !m_mox)
         s.alexHpf |= 0x40;   // 6 m preamp, the LNA button
