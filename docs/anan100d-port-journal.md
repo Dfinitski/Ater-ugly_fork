@@ -4213,6 +4213,30 @@ stood 6 dB above the scale.
 Files: resources/shaders/dss_mesh.vert, gui/SpectrumWidget.{h,cpp},
 gui/MainWindow_Wiring.cpp, ForkBuild.h.
 
+## 238. Build 275: 3D dips repaired in the 2D data before rendering (11.11)
+
+**Request (operator).** Under the perspective slant the path lengthens and
+there is not enough data to draw it all, so dips appear. Repair the dips by
+averaging between samples while they are still plain 2D amplitude data.
+
+**Change: `DssRenderer::repairRecentDips()`**, run on every pushed row (live
+ring, the rows the 3D mesh samples).
+- Rows checked: the `kRepairRows` (3) rows just behind the head.
+- A column is a dip when it sits more than 3 dB below both its newer and its
+  older neighbours, each taken as the highest of up to 3 rows on that side.
+  It is lifted to the lower of the two. This is a closing in time; it fills a
+  gap of up to 3 rows. Compared against the original values, so one repair
+  does not feed another.
+- Only where that level is a signal (≥ 10 dB above the row's median): the
+  noise floor stays as it is.
+- Rows of another frequency frame are never mixed (the check stops at the
+  first frame change).
+- SpectrumWidget's incremental GPU upload now re-sends `kRepairRows` extra
+  rows behind the head with each push.
+- Build 274's shader hold stays as a second line.
+
+Files: gui/DssRenderer.{h,cpp}, gui/SpectrumWidget.cpp, ForkBuild.h.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

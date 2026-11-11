@@ -26,6 +26,9 @@ public:
     // passed to SpectrumWidget::startWaterfallScrollAnimation(); the current
     // Flex, Kiwi, and fallback producers append at most one row per update.
     static constexpr int kTransitionRows = 8;
+    // ANAN fork build 275: rows behind the head that a new row may still
+    // repair (repairRecentDips); the GPU upload re-sends them with each push.
+    static constexpr int kRepairRows = 3;
     static constexpr int kRows = kVisibleRows + kTransitionRows;
     static constexpr int kCols = 768;  // resampled columns per row
 
@@ -288,6 +291,8 @@ public:
     quint64 generation() const { return m_generation; }
 
 private:
+    // Build 275: fill short dips in time on strong signals (see .cpp).
+    void repairRecentDips();
     bool historyStorageMatchesCapacity() const;
     void restoreHistorySupplemental(int historyRing, int visibleRing);
     void resetHistorySmoothing();

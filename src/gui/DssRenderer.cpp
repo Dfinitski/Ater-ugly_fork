@@ -484,8 +484,62 @@ void DssRenderer::pushRowWithSupplemental(
     }
     m_preserveSupplementalFrame[m_head] = preserveInput && supplementalValid;
     m_count = std::min(m_count + 1, kRows);
+    repairRecentDips();   // build 275
     m_dirty = true;
     ++m_rowGeneration;
+}
+
+// ANAN fork build 275 (operator, 11.11: a steady carrier reaches the 3D
+// surface as separate sticks -- some rows lack it -- "repair the dips by
+// averaging between samples while they are still plain 2D amplitude data").
+// For the few rows just behind the head, a column whose value sits more than
+// 3 dB below BOTH its newer and its older neighbours (the highest of up to
+// kRepairRows rows on each side) is lifted to the lower of those two -- a
+// closing in time that fills a gap of up to kRepairRows rows. Only where that
+// level is a signal (>= 10 dB above the row's median), so the noise floor is
+// left as it is. Rows of another frequency frame are never mixed. The GPU
+// re-sends these rows with each push (SpectrumWidget, kRepairRows).
+void DssRenderer::repairRecentDips()
+{
+    constexpr int W = kRepairRows;
+    constexpr float kDipDb = 3.0f;
+    constexpr float kSignalAboveMedianDb = 10.0f;
+    if (m_count < 3)
+        return;
+    auto ring = [this](int age) { return (m_head + age) % kRows; };
+    const double c0 = m_rowCenterMhz[m_head];
+    const double b0 = m_rowBandwidthMhz[m_head];
+    const int lastAge = std::min(m_count - 1, 2 * W);
+    for (int age = 1; age <= lastAge; ++age) {
+        if (!frequencyFramesMatch(m_rowCenterMhz[ring(age)], m_rowBandwidthMhz[ring(age)], c0, b0))
+            return;   // older rows belong to another frame
+    }
+    // Original values: a repaired row must not feed the next repair.
+    std::array<std::array<float, kCols>, 2 * W + 1> orig;
+    for (int age = 0; age <= lastAge; ++age)
+        orig[static_cast<std::size_t>(age)] = m_rows[ring(age)];
+    for (int age = 1; age <= std::min(W, lastAge - 1); ++age) {
+        std::array<float, kCols> sorted = orig[static_cast<std::size_t>(age)];
+        std::nth_element(sorted.begin(), sorted.begin() + kCols / 2, sorted.end());
+        const float median = sorted[kCols / 2];
+        std::array<float, kCols>& row = m_rows[ring(age)];
+        const std::array<quint8, kCols>& cov = m_rowCoverage[ring(age)];
+        for (int c = 0; c < kCols; ++c) {
+            if (cov[c] == 0)
+                continue;
+            float newer = -1.0e9f;
+            for (int a = std::max(0, age - W); a < age; ++a)
+                newer = std::max(newer, orig[static_cast<std::size_t>(a)][c]);
+            float older = -1.0e9f;
+            for (int a = age + 1; a <= std::min(lastAge, age + W); ++a)
+                older = std::max(older, orig[static_cast<std::size_t>(a)][c]);
+            const float bound = std::min(newer, older);
+            if (bound < median + kSignalAboveMedianDb)
+                continue;
+            if (orig[static_cast<std::size_t>(age)][c] < bound - kDipDb)
+                row[c] = bound;
+        }
+    }
 }
 
 void DssRenderer::setHistoryCapacityRows(int rows)

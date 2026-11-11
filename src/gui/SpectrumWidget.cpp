@@ -15719,6 +15719,10 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                     ? valid
                     : static_cast<int>(rowsSinceUpload);
                 newRows = std::clamp(newRows, 0, valid);
+                // Build 275: the rows just behind the head may have been
+                // repaired by this push (DssRenderer::repairRecentDips).
+                if (newRows < valid)
+                    newRows = std::min(valid, newRows + DssRenderer::kRepairRows);
                 if (newRows > kDssMaxIncrementalUploadRows) {
                     constexpr int kChannels = 4;
                     const int rowBytes =
