@@ -176,7 +176,8 @@ constexpr int dssFillVerticesPerRow()
     // once, never rebuilt while scrolling. The column count is kMeshCols rather
     // than kCols so the on-screen part of a row widened by rowSpanFactor still
     // samples the height texture at least once per texel — see kMeshCols.
-    return (DssRenderer::kMeshCols - 1) * 6 * 2;
+    // Build 285: base front + overlay (right wall, lid, front) = 4 quads.
+    return (DssRenderer::kMeshCols - 1) * 6 * 4;
 }
 
 constexpr int dssLineVerticesPerRow()
@@ -14814,15 +14815,42 @@ void SpectrumWidget::initialize(QRhiCommandBuffer* cb)
                     layer == 0 ? -10.0f : -20.0f;
                 const float ribbonUpperTag =
                     layer == 0 ? -11.0f : -21.0f;
+                // Build 285 (dss_mesh.vert): each column is a flat bar (its
+                // right-hand vertices carry tag + 100) and, on the overlay
+                // layer, a box carried back to the next row: its right wall
+                // and its lid (4/5 near top/floor, 6/7 at the next row),
+                // drawn before the row's fronts so the fronts stay on top.
+                constexpr float kRight = 100.0f;
+                if (layer == 1) {
+                    for (int cc = 0; cc + 1 < cols; ++cc) {
+                        const float u1 = static_cast<float>(cc + 1) / (cols - 1);
+                        appendDssVertex(fill, u1, v, 4.0f + kRight);
+                        appendDssVertex(fill, u1, v, 5.0f + kRight);
+                        appendDssVertex(fill, u1, v, 6.0f + kRight);
+                        appendDssVertex(fill, u1, v, 6.0f + kRight);
+                        appendDssVertex(fill, u1, v, 5.0f + kRight);
+                        appendDssVertex(fill, u1, v, 7.0f + kRight);
+                    }
+                    for (int cc = 0; cc + 1 < cols; ++cc) {
+                        const float u0 = static_cast<float>(cc) / (cols - 1);
+                        const float u1 = static_cast<float>(cc + 1) / (cols - 1);
+                        appendDssVertex(fill, u0, v, 4.0f);
+                        appendDssVertex(fill, u0, v, 6.0f);
+                        appendDssVertex(fill, u1, v, 4.0f + kRight);
+                        appendDssVertex(fill, u1, v, 4.0f + kRight);
+                        appendDssVertex(fill, u0, v, 6.0f);
+                        appendDssVertex(fill, u1, v, 6.0f + kRight);
+                    }
+                }
                 for (int cc = 0; cc + 1 < cols; ++cc) {
                     const float u0 = static_cast<float>(cc) / (cols - 1);
                     const float u1 = static_cast<float>(cc + 1) / (cols - 1);
                     appendDssVertex(fill, u0, v, fillTag);
                     appendDssVertex(fill, u0, v, floorTag);
-                    appendDssVertex(fill, u1, v, fillTag);
-                    appendDssVertex(fill, u1, v, fillTag);
+                    appendDssVertex(fill, u1, v, fillTag + kRight);
+                    appendDssVertex(fill, u1, v, fillTag + kRight);
                     appendDssVertex(fill, u0, v, floorTag);
-                    appendDssVertex(fill, u1, v, floorTag);
+                    appendDssVertex(fill, u1, v, floorTag + kRight);
                     appendDssVertex(line, u0, v, ribbonLowerTag);
                     appendDssVertex(line, u0, v, ribbonUpperTag);
                     appendDssVertex(line, u1, v, ribbonLowerTag);

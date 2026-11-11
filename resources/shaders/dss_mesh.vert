@@ -183,6 +183,28 @@ void main()
     float distanceRows = max(scrollDistanceRows, 1.0);
     float depthRows = max(visibleRows, 1.0);
     float encodedEdge = inVert.z;
+    // ANAN fork build 285 (operator, 11.11: on the leaning 3D waterfall
+    // "gaps, and the sticks already drawn flicker in amplitude as they
+    // move; they must stay the same along the whole path"). A one-bin peak
+    // was a triangle with a sharp tip one mesh column wide: on a row moving
+    // sideways (the lean) through sub-pixels its tip covered a pixel or not
+    // -- the amplitude flickered -- and successive rows, 3-4 px apart
+    // sideways, did not touch -- the gaps. Now each mesh column is a flat
+    // bar: both of its top vertices sample the column's centre (tag + 100 =
+    // the column's right-hand vertex). And each column of a row is carried
+    // back to the next row as a box: a lid (its top, sloping to the next
+    // row's level) and its right wall, the side the oblique view shows.
+    //   4 / 5 = near top / near floor of a lid or wall,
+    //   6 / 7 = the same at the next row back (its level, its depth).
+    bool rightOfColumn = encodedEdge > 50.0;
+    if (rightOfColumn) {
+        encodedEdge -= 100.0;
+    }
+    bool extrusion = encodedEdge > 3.5;
+    bool extrusionFar = encodedEdge > 5.5;
+    if (extrusion) {
+        encodedEdge = (encodedEdge == 5.0 || encodedEdge == 7.0) ? 3.0 : 2.0;
+    }
     bool ribbonOutline = encodedEdge <= -10.0;
     float ribbonCode = -encodedEdge;
     bool overlayLayer = ribbonOutline
@@ -226,6 +248,18 @@ void main()
         geometryV = (sourceAge - remainingRows) / depthRows;
         vLayerAlpha = overlayLayer ? 1.0 : 0.0;
     }
+    if (extrusion) {
+        // No row behind the back row: nothing to carry back to.
+        if (sourceAge > depthRows - 1.5) {
+            vLayerAlpha = 0.0;
+        }
+        if (extrusionFar) {
+            // The next row back, where the interior rows put it.
+            sampleAge += 1.0;
+            geometryV = max(geometryV,
+                            (sampleAge - remainingRows) / depthRows);
+        }
+    }
 
     // Sample texel CENTRES on both axes so Nearest filtering can't pick up the
     // neighbouring row/column. rowOffset already carries the row half-texel; the
@@ -234,7 +268,13 @@ void main()
     // baseline before both height and colour mapping so later range changes
     // cannot recolour or lift it, while leaving row/layer visibility untouched.
     float freqUnit = dssFreqUnit(u);
-    vec2 sampled = effectiveDbmAt(freqUnit, sampleAge, rows);
+    // Build 285: a fill vertex samples its column's centre (flat bars); the
+    // ribbon outlines keep sampling at the vertex.
+    float columnStep = 1.0 / max(meshCols - 1.0, 1.0);
+    float sampleFreqUnit = ribbonOutline
+        ? freqUnit
+        : dssFreqUnit(u + (rightOfColumn ? -0.5 : 0.5) * columnStep);
+    vec2 sampled = effectiveDbmAt(sampleFreqUnit, sampleAge, rows);
     float dbm = sampled.x;
     // Linear strength drives COLOUR (LUT[sLin] = dbmToRgb(floor+sLin*range),
     // matching the CPU path); the zCurve lift applies to HEIGHT only.

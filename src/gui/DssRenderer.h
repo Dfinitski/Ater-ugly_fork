@@ -29,7 +29,10 @@ public:
     static constexpr int kRows = kVisibleRows + kTransitionRows;
     // ANAN fork build 283: 1280 (was 768) -- about a screen pixel per column
     // on a typical panadapter, as the 2D waterfall draws.
-    static constexpr int kCols = 1280;  // resampled columns per row
+    // Build 285: 1024 -- each column is now a flat bar of ~1.4 px on a
+    // typical plot (stable under sub-pixel motion), and the boxes carried
+    // between rows quadruple the vertices per column.
+    static constexpr int kCols = 1024;  // resampled columns per row
 
     // Perspective geometry of the surface, shared by this CPU renderer and the
     // GPU mesh UBO (SpectrumWidget::renderGpuFrame). dss_mesh.vert applies the
