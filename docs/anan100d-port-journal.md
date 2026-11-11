@@ -3481,6 +3481,15 @@ line from radius+4 to width-radius-4, so it stopped short of both edges. Now a
 2 px fill across the full width, clipped to the tab's rounded shape -- the
 same bar as the PC Audio button.
 
+## 217. Build 255: UTC clock in the status bar (10.11)
+
+Status bar, left, after the antenna indicator and a separator: a two-line
+stack (`ananUtcClock`), "UTC Time:" over HH:mm:ss -- the PC clock converted to
+UTC (`QDateTime::currentDateTimeUtc()`). A single-shot timer re-arms just
+after each whole second, so the seconds change on time; the value label has a
+fixed minimum width for "00:00:00" (12 px font) so the bar does not shift;
+tooltip with the full UTC date and time.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -6085,6 +6085,46 @@ void MainWindow::buildUI()
         refresh();
     }
 
+    // Build 255 (operator, 10.11): UTC clock after the antennas -- "UTC Time:"
+    // over the time, the PC clock converted to UTC, once a second.
+    {
+        addSep();
+        auto* utcStack = new QWidget;
+        utcStack->setObjectName(QStringLiteral("ananUtcClock"));
+        utcStack->setAccessibleName(QStringLiteral("UTC time"));
+        auto* utcBox = new QVBoxLayout(utcStack);
+        utcBox->setContentsMargins(0, 0, 0, 0);
+        utcBox->setSpacing(0);
+        utcBox->setAlignment(Qt::AlignVCenter);
+        auto* utcTitle = new QLabel(QStringLiteral("UTC Time:"));
+        applyStatusBarCompactLabelStyle(utcTitle, QStringLiteral("{{color.text.secondary}}"));
+        utcTitle->setAlignment(Qt::AlignCenter);
+        auto* utcValue = new QLabel(QStringLiteral("00:00:00"));
+        applyStatusBarCompactLabelStyle(utcValue, QStringLiteral("{{color.text.primary}}"));
+        utcValue->setAlignment(Qt::AlignCenter);
+        // Fixed width for "00:00:00", so the bar does not shift each second.
+        {
+            // The stylesheet is not applied yet: measure with the bar's 12 px.
+            QFont f = utcValue->font();
+            f.setPixelSize(12);
+            utcValue->setMinimumWidth(QFontMetrics(f).horizontalAdvance(QStringLiteral("00:00:00")) + 6);
+        }
+        utcBox->addWidget(utcTitle);
+        utcBox->addWidget(utcValue);
+        hbox->addWidget(utcStack);
+        auto* utcTimer = new QTimer(utcStack);
+        auto tick = [utcValue, utcStack, utcTimer] {
+            const QDateTime now = QDateTime::currentDateTimeUtc();
+            utcValue->setText(now.toString(QStringLiteral("HH:mm:ss")));
+            utcStack->setToolTip(now.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss 'UTC'")));
+            // Next tick just after the next whole second.
+            utcTimer->start(1000 - now.time().msec() + 5);
+        };
+        utcTimer->setSingleShot(true);
+        connect(utcTimer, &QTimer::timeout, utcStack, tick);
+        tick();
+    }
+
     // ── Center stretch → STATION → stretch ───────────────────────────────
     hbox->addStretch(1);
 
