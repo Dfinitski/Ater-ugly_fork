@@ -3839,6 +3839,94 @@ sets the palette's gamma in `SpectrumWidget::waterfallLevelToRgb`:
 - The release (tag build-265 on main) is created by the operator in the GitHub web UI; the tag
   push starts the AppImage workflow (which now also builds FDK-AAC, build 238).
 
+## 229. Build 266: TCI streams as Thetis serves them; I/Q no longer mirrored (10.11)
+
+**Request:** TCI clients ask for raw I/Q (skimmers) as well as audio; do every
+stream mode the Thetis server has, chosen by the client, with as few settings as
+possible.
+
+**Thetis (ramdor/Thetis, Console/TCIServer.cs, cmaster.cs, ChannelMaster/tci.c,
+pipe.c), read for this:**
+- Stream types are IQ 0, RX audio 1, TX audio 2, TX_CHRONO 3, LINEOUT 4 (the last
+  is declared but never sent). Every frame has the 64-byte header.
+- **I/Q.** The receiver's raw DDC input at its hardware rate (down-sampled to
+  384 kHz at most), always float32. Q is negated by default ("Swap IQ", on).
+  `iq_samplerate:` from a client is only echoed; the published rate is the
+  highest receiver rate. "Always stream IQ" exists for clients that never send
+  iq_start.
+- **RX audio.** `audio_samplerate` is 8/12/24/48 kHz. `audio_stream_sample_type`
+  is int16/int24/int32/float32, answered by name. `audio_stream_channels` is
+  1/2. `audio_stream_samples` is 100..2048 per channel per packet; when unset,
+  the default follows the rate: 256/512/1024/2048. Packets have exactly that
+  many samples per channel, and the header length counts all values.
+- **TX_CHRONO.** The request carries the client's rate, type and channels. Its
+  length is samples x channels once the client has negotiated any
+  audio_stream_* / tx_stream_audio_buffering ("modern"), otherwise samples.
+  `tx_stream_audio_buffering` (50..500 ms) sets how far ahead audio is
+  requested.
+- **TX audio in.** Every sample type is decoded. A header channels field of
+  1 or 2 is trusted; any other value falls back to legacy JTDX layout
+  detection.
+- `line_out_start/stop` switch Thetis' VAC; that is not a stream.
+
+**Ours before:** IQ at 24..192 kHz chosen by the client.
+- int16/float32 only, and the sample type was answered as a number.
+- audio_stream_samples and tx_stream_audio_buffering were acknowledged and
+  ignored.
+- TX_CHRONO was fixed at 48 kHz / float32 / stereo / length 2048 every
+  21.3 ms, whatever the client negotiated. A 24 kHz client was asked at twice
+  its rate; MSHV set to int24/int32 got no RX audio it could read.
+
+**Found while reading: the ANAN I/Q tap (build 222) sent the HPSDR wire as
+is.**
+- The wire puts a signal above the NCO at negative frequency (Hl2RxDsp: the
+  demodulator takes the wire, the spectrum the conjugate; hl2_shift_test).
+  Every skimmer therefore saw the band mirrored about the dds.
+- With a dragged pan view, the view-offset mixer moved the centre the wrong
+  way.
+- This is the same reason Thetis negates Q by default.
+
+**Changes:**
+- **Hl2Backend::tciIqTap:** conjugate the wire, then mix the view centre
+  (NCO + viewOffsetHz = the dds TCI reports) to 0 Hz, then resample.
+- **TciServer:**
+  - `iq_samplerate` also accepts 384000 for the ANAN tap; DAX rate lists do
+    not apply to it.
+  - `audio_stream_sample_type` takes int16/int24/int32/float32 (by name or
+    number) and answers by name.
+  - `audio_stream_samples` takes 100..2048.
+  - `tx_stream_audio_buffering` takes 50..500.
+  - Bare GET forms for audio_samplerate, audio_stream_*,
+    tx_stream_audio_buffering.
+  - A rate change re-announces the default packet size while none was set.
+  - All of these are carried to the worker (TciStreamConfig.streamSamples /
+    txBufferingMs / modern).
+- **TciIoWorker:**
+  - RX audio is encoded as int24 and int32 too. Packets are exactly
+    audio_stream_samples frames when the client set it; without it they go
+    out as converted, as before.
+  - TX_CHRONO uses the client's rate, type and channels, with length = samples
+    (x channels when modern). The period equals what that length lasts at the
+    rate, and tx_stream_audio_buffering sets how many requests go out at the
+    start (1 when unset).
+  - TX audio: int24/int32 decoded; a header with channels = 2 is
+    stereo (WSJT-X duplicate-stereo detection still first).
+- Unchanged for a client that negotiates nothing: 48 kHz float32 stereo,
+  variable RX packets, chrono length 2048 every 21.3 ms.
+
+**Not done, with reasons:**
+- "Always stream IQ": a setting for clients that never send iq_start. The
+  operator prefers no settings, and every current skimmer sends it.
+- The LINEOUT stream: Thetis does not send it either.
+- line_out_start/stop are still acknowledged only.
+- iq_samplerate is per server, not per receiver, as in TCI itself.
+
+**Untested on a radio:** a skimmer on the conjugated I/Q (signals should now
+sit at their true frequencies); MSHV with int24/int32 and 24 kHz.
+
+Files: core/TciServer.{h,cpp}, core/TciIoWorker.{h,cpp},
+core/backends/hl2/Hl2Backend.{h,cpp}, ForkBuild.h.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -39,6 +39,12 @@ struct TciStreamConfig {
     int channels{2};
     int format{3};
     quint64 generation{0};
+    // Build 266 (as Thetis): audio_stream_samples (0 = never set),
+    // tx_stream_audio_buffering ms (0 = never set), and whether the client
+    // negotiated audio_stream_* at all.
+    int streamSamples{0};
+    int txBufferingMs{0};
+    bool modern{false};
 };
 
 // Owns sockets, PCM conversion and chrono. No model, backend, settings or UI
@@ -107,6 +113,9 @@ private:
     struct RxClient {
         TciStreamConfig config;
         QHash<quint64, std::shared_ptr<TciRxConverter>> converters;
+        // Build 266: interleaved stereo waiting for a full packet of
+        // config.streamSamples frames, per route; restarted with its converter.
+        QHash<quint64, QVector<float>> staged;
     };
     struct RxRoute {
         std::optional<PcmFrame> pin;
@@ -155,6 +164,17 @@ private:
     QTimer m_txChronoTimer;
     quint64 m_txClient{0};
     int m_txChronoTrx{0};
+    // Build 266: TX_CHRONO as the client negotiated it (Thetis): rate, sample
+    // type, channels, the length field (samples, or samples x channels for a
+    // client that negotiated audio_stream_*), and the period that length
+    // lasts at that rate.
+    int m_chronoRate{48000};
+    int m_chronoFormat{3};
+    int m_chronoChannels{2};
+    int m_chronoLength{2048};
+    int m_chronoFrames{1024};
+    qint64 m_chronoPeriodNs{qint64(1024) * 1000000000LL / 48000};
+    int m_chronoPreroll{1};
     TxCoordinator::Context m_tciTxContext;
     std::unique_ptr<Resampler> m_txResampler;
     QElapsedTimer m_txChronoClock;

@@ -54,6 +54,27 @@ namespace {
 // quit is just an unconsumed stream + dax flag for a few extra seconds.
 constexpr int    kDaxReleaseGraceMs = 10000;
 
+// Build 266, as Thetis (TCIServer.cs getDefaultAudioStreamSamples): the
+// samples per channel in a packet when the client never set them.
+int defaultAudioStreamSamples(int rate)
+{
+    switch (rate) {
+    case 8000:  return 256;
+    case 12000: return 512;
+    case 24000: return 1024;
+    default:    return 2048;
+    }
+}
+
+QString tciSampleTypeName(int format)
+{
+    switch (format) {
+    case 0:  return QStringLiteral("int16");
+    case 1:  return QStringLiteral("int24");
+    case 2:  return QStringLiteral("int32");
+    default: return QStringLiteral("float32");
+    }
+}
 
 }
 
@@ -1409,11 +1430,20 @@ void TciServer::onTextMessage(const QString& msg)
             continue;
         }
 
-        // Audio format negotiation
+        // Audio format negotiation. Build 266: as Thetis -- every sample
+        // type (int16, int24, int32, float32, answered by name), the packet
+        // size, the TX buffering and the bare GET forms.
+        if (trimmed == QLatin1String("audio_samplerate")) {
+            replyText(ws, QStringLiteral("audio_samplerate:%1;").arg(client.audioSampleRate));
+            continue;
+        }
         if (trimmed.startsWith("audio_samplerate:")) {
             int colonIdx2 = trimmed.indexOf(':');
             int rate = trimmed.mid(colonIdx2 + 1).toInt();
+            bool samplesChanged = false;
             if (rate == 8000 || rate == 12000 || rate == 24000 || rate == 48000) {
+                samplesChanged = client.audioStreamSamples == 0
+                    && defaultAudioStreamSamples(rate) != defaultAudioStreamSamples(client.audioSampleRate);
                 client.audioSampleRate = rate;
                 resetClientRx(client);
                 qCInfo(lcCat) << "TCI: audio sample rate set to" << rate
@@ -1421,24 +1451,39 @@ void TciServer::onTextMessage(const QString& msg)
             }
             replyText(ws,QStringLiteral("audio_samplerate:%1;")
                                     .arg(client.audioSampleRate));
+            // Thetis: a rate change moves the default packet size with it.
+            if (samplesChanged)
+                replyText(ws, QStringLiteral("audio_stream_samples:%1;")
+                                  .arg(defaultAudioStreamSamples(client.audioSampleRate)));
+            continue;
+        }
+        if (trimmed == QLatin1String("audio_stream_sample_type")) {
+            replyText(ws, QStringLiteral("audio_stream_sample_type:%1;").arg(tciSampleTypeName(client.audioFormat)));
             continue;
         }
         if (trimmed.startsWith("audio_stream_sample_type:")) {
             int colonIdx2 = trimmed.indexOf(':');
             QString fmtStr = trimmed.mid(colonIdx2 + 1).trimmed();
-            int fmt;
-            if (fmtStr == "float32")
-                fmt = 3;
-            else if (fmtStr == "int16")
-                fmt = 0;
-            else
-                fmt = fmtStr.toInt();  // numeric value
-            if (fmt == 0 || fmt == 3) { // int16 or float32
-                resetClientRx(client);
-                client.audioFormat = fmt;
+            int fmt = -1;
+            if (fmtStr == "int16")        fmt = 0;
+            else if (fmtStr == "int24")   fmt = 1;
+            else if (fmtStr == "int32")   fmt = 2;
+            else if (fmtStr == "float32") fmt = 3;
+            else {
+                bool ok = false;
+                const int n = fmtStr.toInt(&ok);   // numeric value
+                if (ok) fmt = n;
             }
+            if (fmt >= 0 && fmt <= 3) {
+                if (fmt != client.audioFormat) {
+                    client.audioFormat = fmt;
+                    resetClientRx(client);
+                }
+            }
+            client.modernAudio = true;
+            syncClient(client);
             replyText(ws,QStringLiteral("audio_stream_sample_type:%1;")
-                                    .arg(client.audioFormat));
+                                    .arg(tciSampleTypeName(client.audioFormat)));
             continue;
         }
         // Sensor enable/disable
@@ -1487,10 +1532,15 @@ void TciServer::onTextMessage(const QString& msg)
                 ? m_model->daxIqModel().supportedSampleRates() : QList<int>{};
             // Clients can negotiate once before the radio identifies its model.
             // Retain that preference; stream creation still requires known rates.
+            // Build 266: the ANAN tap (nativeIq) converts the receiver's I/Q to
+            // any of these by a power of two, up to 384 kHz -- the TCI maximum
+            // Thetis and ExpertSDR serve; no DAX rate list applies to it.
+            const bool native = nativeIq();
             const bool supported = ok
                 && (rate == 24000 || rate == 48000
-                    || rate == 96000 || rate == 192000)
-                && (modelRates.isEmpty() || modelRates.contains(rate));
+                    || rate == 96000 || rate == 192000
+                    || (native && rate == 384000))
+                && (native || modelRates.isEmpty() || modelRates.contains(rate));
             if (!supported) {
                 replyText(ws, QStringLiteral("iq_samplerate:%1;")
                                   .arg(achievedIqSampleRate()));
@@ -1595,14 +1645,41 @@ void TciServer::onTextMessage(const QString& msg)
             continue;
         }
 
+        // Build 266: samples per channel in an RX audio packet and in a
+        // TX_CHRONO request (Thetis: 100..2048; outside it, the value in force
+        // is answered).
+        if (trimmed == QLatin1String("audio_stream_samples")) {
+            replyText(ws, QStringLiteral("audio_stream_samples:%1;").arg(effectiveAudioStreamSamples(client)));
+            continue;
+        }
         if (trimmed.startsWith("audio_stream_samples:")) {
-            // Samples per audio packet — acknowledge but we use fixed packet sizes
-            replyText(ws,cmd.trimmed() + ";");
+            bool ok = false;
+            const int samples = trimmed.mid(trimmed.indexOf(':') + 1).trimmed().toInt(&ok);
+            if (ok && samples >= 100 && samples <= 2048 && samples != client.audioStreamSamples) {
+                client.audioStreamSamples = samples;
+                resetClientRx(client);
+            }
+            client.modernAudio = true;
+            syncClient(client);
+            replyText(ws, QStringLiteral("audio_stream_samples:%1;").arg(effectiveAudioStreamSamples(client)));
+            continue;
+        }
+        // Build 266: TX audio buffering, ms (Thetis: 50..500): how much audio
+        // is asked for ahead when a TCI transmit starts.
+        if (trimmed == QLatin1String("tx_stream_audio_buffering")) {
+            replyText(ws, QStringLiteral("tx_stream_audio_buffering:%1;")
+                              .arg(client.txBufferingMs > 0 ? client.txBufferingMs : 50));
             continue;
         }
         if (trimmed.startsWith("tx_stream_audio_buffering:")) {
-            // TX audio buffering in ms — acknowledge
-            replyText(ws,cmd.trimmed() + ";");
+            bool ok = false;
+            const int ms = trimmed.mid(trimmed.indexOf(':') + 1).trimmed().toInt(&ok);
+            if (ok && ms >= 50 && ms <= 500)
+                client.txBufferingMs = ms;
+            client.modernAudio = true;
+            syncClient(client);
+            replyText(ws, QStringLiteral("tx_stream_audio_buffering:%1;")
+                              .arg(client.txBufferingMs > 0 ? client.txBufferingMs : 50));
             continue;
         }
         if (trimmed.startsWith("line_out_start") ||
@@ -1612,13 +1689,19 @@ void TciServer::onTextMessage(const QString& msg)
             replyText(ws,cmd.trimmed() + ";");
             continue;
         }
+        if (trimmed == QLatin1String("audio_stream_channels")) {
+            replyText(ws, QStringLiteral("audio_stream_channels:%1;").arg(client.audioChannels));
+            continue;
+        }
         if (trimmed.startsWith("audio_stream_channels:")) {
             int colonIdx2 = trimmed.indexOf(':');
             int ch = trimmed.mid(colonIdx2 + 1).toInt();
             if (ch == 1 || ch == 2) {
-                resetClientRx(client);
                 client.audioChannels = ch;
+                resetClientRx(client);
             }
+            client.modernAudio = true;
+            syncClient(client);
             replyText(ws,QStringLiteral("audio_stream_channels:%1;")
                                     .arg(client.audioChannels));
             continue;
@@ -2702,11 +2785,18 @@ void TciServer::setAudioEngine(AudioEngine* audio)
     }
 }
 
+int TciServer::effectiveAudioStreamSamples(const ClientState& client)
+{
+    return client.audioStreamSamples > 0 ? client.audioStreamSamples
+                                         : defaultAudioStreamSamples(client.audioSampleRate);
+}
+
 void TciServer::syncClient(const ClientState& client)
 {
     const TciStreamConfig config{client.socket->lifetime, client.audioEnabled,
         client.audioReceiver, client.audioSampleRate, client.audioChannels,
-        client.audioFormat, client.rxGeneration};
+        client.audioFormat, client.rxGeneration, client.audioStreamSamples,
+        client.txBufferingMs, client.modernAudio};
     m_io->post([io = m_io.get(), config] { io->configureClient(config); });
 }
 

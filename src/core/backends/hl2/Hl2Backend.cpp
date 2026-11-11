@@ -11563,23 +11563,32 @@ void Hl2Backend::tciIqTap(std::size_t ddc, const std::vector<std::complex<float>
         t.rs.configure(inRate, t.outRate);
         t.pending.clear();
     }
+    // Build 266: the HPSDR wire puts a signal ABOVE the NCO at NEGATIVE
+    // frequency (Hl2RxDsp::processIqBlock: the demodulator takes the raw wire,
+    // the spectrum its conjugate). A TCI I/Q stream is centred on the reported
+    // dds with the spectrum upright -- what Thetis does with "Swap IQ" (on by
+    // default, it negates Q). Build 222 sent the raw wire: every skimmer saw
+    // the band mirrored about the centre, and with a dragged pan view it also
+    // shifted the wrong way. Conjugate first, then move the view centre
+    // (NCO + viewOffsetHz = the dds TCI reports) to 0 Hz.
     const double offset = m_tciIqOffsetHz[ddc].load(std::memory_order_relaxed);
-    const std::vector<std::complex<float>>* src = &iq;
-    std::vector<std::complex<float>> mixed;
+    std::vector<std::complex<float>>& upright = t.upright;
+    upright.resize(iq.size());
     if (offset != 0.0) {
         constexpr double kTwoPi = 6.283185307179586;
         const double step = -kTwoPi * offset / inRate;
-        mixed.resize(iq.size());
         for (std::size_t k = 0; k < iq.size(); ++k) {
-            mixed[k] = iq[k] * std::complex<float>(static_cast<float>(std::cos(t.phase)),
-                                                   static_cast<float>(std::sin(t.phase)));
+            upright[k] = std::conj(iq[k]) * std::complex<float>(static_cast<float>(std::cos(t.phase)),
+                                                                static_cast<float>(std::sin(t.phase)));
             t.phase += step;
         }
         t.phase = std::remainder(t.phase, kTwoPi);
-        src = &mixed;
+    } else {
+        for (std::size_t k = 0; k < iq.size(); ++k)
+            upright[k] = std::conj(iq[k]);
     }
     t.out.clear();
-    t.rs.process(src->data(), static_cast<int>(src->size()), t.out);
+    t.rs.process(upright.data(), static_cast<int>(upright.size()), t.out);
     for (double v : t.out) {
         const float f = static_cast<float>(v);
         t.pending.append(reinterpret_cast<const char*>(&f), sizeof f);

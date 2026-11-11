@@ -17,10 +17,21 @@
 
 namespace AetherSDR {
 namespace {
-constexpr int kTxChronoSamples = 2048;
-constexpr int kTxChronoStereoFrames = kTxChronoSamples / 2;
-constexpr qint64 kTxChronoPeriodNs = qint64(kTxChronoStereoFrames) * 1000000000LL / 48000;
 constexpr int kTxChronoPollMs = 5;
+// Build 266: as Thetis (TCIServer.cs getDefaultAudioStreamSamples).
+int defaultStreamSamples(int rate)
+{
+    switch (rate) {
+    case 8000:  return 256;
+    case 12000: return 512;
+    case 24000: return 1024;
+    default:    return 2048;
+    }
+}
+int bytesPerSample(int format)
+{
+    return format == 0 ? 2 : format == 1 ? 3 : 4;
+}
 constexpr qint64 kTxSummaryEveryBlocks = 48;
 constexpr qsizetype kMailboxBytes = 4 * 1024 * 1024;
 constexpr qsizetype kMailboxItems = 256;
@@ -48,9 +59,9 @@ TciIoWorker::TciIoWorker(QObject* parent) : QObject(parent), m_txChronoTimer(thi
         m_txChronoClock.restart();
         m_txChronoAccumNs += gap;
         int sent = 0;
-        while (m_txChronoAccumNs >= kTxChronoPeriodNs && m_txClient) {
+        while (m_txChronoAccumNs >= m_chronoPeriodNs && m_txClient) {
             sendTxChronoFrame(m_txClient);
-            m_txChronoAccumNs -= kTxChronoPeriodNs;
+            m_txChronoAccumNs -= m_chronoPeriodNs;
             ++sent;
         }
         noteTxChronoPoll(gap, sent);
@@ -359,8 +370,10 @@ void TciIoWorker::configureClient(const TciStreamConfig& config)
     RxClient& client = m_rxClients[config.lifetime->id];
     const TciStreamConfig& old = client.config;
     if (old.generation != config.generation || old.audio != config.audio || old.receiver != config.receiver
-        || old.rate != config.rate || old.channels != config.channels || old.format != config.format) {
+        || old.rate != config.rate || old.channels != config.channels || old.format != config.format
+        || old.streamSamples != config.streamSamples) {
         client.converters.clear();
+        client.staged.clear();
     }
     client.config = config;
 }
@@ -397,7 +410,7 @@ void TciIoWorker::retireRxRoute(quint64 key)
 
 void TciIoWorker::resetRxRoute(quint64 key)
 {
-    for (RxClient& client : m_rxClients) { client.converters.remove(key); }
+    for (RxClient& client : m_rxClients) { client.converters.remove(key); client.staged.remove(key); }
 }
 
 bool TciIoWorker::rxDeliveryCurrent(quint64 id, quint64 generation, quint64 key,
@@ -467,10 +480,11 @@ void TciIoWorker::receivePcm(quint64 key, const PcmFrame& frame)
             converter = std::make_shared<TciRxConverter>(input.stream().format, config.rate);
             if (!converter->valid()) { continue; }
             client->converters.insert(key, converter);
+            client->staged.remove(key);   // build 266: a new stream starts a new packet
         }
         const auto send = m_rxSend;
         const auto backlog = m_rxBacklog;
-        const bool processed = converter->process(std::span<const float>(input.samples().constData(), input.samples().size()),
+        const auto deliver =
             [self, id, generation, key, input, converter, config, binding, gain, send, backlog](QVector<float> stereo) {
                 if (!self || !self->rxDeliveryCurrent(id, generation, key, input, converter)) { return false; }
                 const QByteArray packet = encodeRxAudio(binding.trx, config.rate, config.channels, config.format, stereo, gain);
@@ -500,11 +514,36 @@ void TciIoWorker::receivePcm(quint64 key, const PcmFrame& frame)
                 }
                 self->m_rxAudioFramesSent += stereo.size()/2;
                 return self->rxDeliveryCurrent(id, generation, key, input, converter);
+            };
+        // Build 266 (as Thetis): a client that set audio_stream_samples gets
+        // packets of exactly that many frames; otherwise each converted block
+        // goes out as it comes (lowest latency, what every client so far takes).
+        const int packetFrames = config.streamSamples;
+        const bool processed = converter->process(std::span<const float>(input.samples().constData(), input.samples().size()),
+            [self, id, key, packetFrames, deliver](QVector<float> stereo) {
+                if (packetFrames <= 0) { return deliver(std::move(stereo)); }
+                if (!self) { return false; }
+                auto client = self->m_rxClients.find(id);
+                if (client == self->m_rxClients.end()) { return false; }
+                client->staged[key] += stereo;
+                const qsizetype packetValues = qsizetype(packetFrames) * 2;
+                while (true) {
+                    client = self->m_rxClients.find(id);
+                    if (client == self->m_rxClients.end()) { return false; }
+                    QVector<float>& staged = client->staged[key];
+                    if (staged.size() < packetValues) { return true; }
+                    QVector<float> packet(staged.constBegin(), staged.constBegin() + packetValues);
+                    staged.remove(0, packetValues);
+                    if (!deliver(std::move(packet)) || !self) { return false; }
+                }
             });
         if (!self) { return; }
         if (!processed) {
             auto current = m_rxClients.find(id);
-            if (current != m_rxClients.end() && current->converters.value(key) == converter) { current->converters.remove(key); }
+            if (current != m_rxClients.end() && current->converters.value(key) == converter) {
+                current->converters.remove(key);
+                current->staged.remove(key);
+            }
         }
     }
 }
@@ -529,12 +568,41 @@ void TciIoWorker::startChrono(quint64 id, int trx, const TxCoordinator::Context&
     if (m_txClient != id) { prepareTx(id, context); }
     if (!m_txClient || !context.permitsDispatch(TxCoordinator::monotonicMs()) || m_txChronoTimer.isActive()) { return; }
     m_txChronoTrx = trx;
+    // Build 266 (as Thetis, TCIServer.cs SendTxChrono): the request carries the
+    // client's own audio rate, sample type and channels; its length is the
+    // packet size (audio_stream_samples, else the rate's default), times the
+    // channels for a client that negotiated audio_stream_* -- a client fills
+    // exactly `length` values. The request period is what those samples last
+    // at that rate, so a 24 kHz client is no longer asked at the 48 kHz pace.
+    // Unchanged for a default client: 48 kHz, float32, stereo, length 2048,
+    // every 21.3 ms.
+    {
+        const TciStreamConfig cfg = m_rxClients.value(id).config;
+        const int rate = (cfg.rate == 8000 || cfg.rate == 12000 || cfg.rate == 24000) ? cfg.rate : 48000;
+        const int channels = cfg.channels == 1 ? 1 : 2;
+        const int samples = cfg.streamSamples > 0 ? cfg.streamSamples : defaultStreamSamples(rate);
+        m_chronoRate = rate;
+        m_chronoFormat = (cfg.format >= 0 && cfg.format <= 3) ? cfg.format : 3;
+        m_chronoChannels = channels;
+        m_chronoLength = cfg.modern ? samples * channels : samples;
+        m_chronoFrames = std::max(1, m_chronoLength / channels);
+        m_chronoPeriodNs = qint64(m_chronoFrames) * 1000000000LL / rate;
+        m_chronoPreroll = 1;
+        // tx_stream_audio_buffering: ask ahead for that much audio at the start.
+        if (cfg.txBufferingMs > 0)
+            m_chronoPreroll = std::clamp(int((qint64(cfg.txBufferingMs) * 1000000LL + m_chronoPeriodNs - 1)
+                                             / m_chronoPeriodNs), 1, 12);
+    }
     m_txChronoAccumNs = 0;
     m_txChronoClock.start();
     m_txChronoSessionClock.start();
     resetTxChronoStallStats();
     m_txChronoTimer.start();
-    sendTxChronoFrame(id);
+    for (int i = 0; i < m_chronoPreroll && m_txClient; ++i)
+        sendTxChronoFrame(id);
+    qCInfo(lcCat) << "TCI: TX_CHRONO" << m_chronoRate << "Hz, format" << m_chronoFormat
+                  << "ch" << m_chronoChannels << "length" << m_chronoLength
+                  << "every" << (double(m_chronoPeriodNs) / 1.0e6) << "ms, ahead" << m_chronoPreroll;
     publishTelemetry();
 }
 
@@ -555,7 +623,7 @@ QByteArray TciIoWorker::encodeRxAudio(int trx, int rate, int channels, int forma
 {
     const int frames = static_cast<int>(stereo.size() / 2);
     const int scalars = frames * channels;
-    const int sampleBytes = format == 3 ? sizeof(float) : sizeof(qint16);
+    const int sampleBytes = bytesPerSample(format);
     QByteArray packet(sizeof(TciAudioHeader) + scalars * sampleBytes, Qt::Uninitialized);
     TciAudioHeader header{};
     header.receiver = static_cast<quint32>(trx);
@@ -574,6 +642,22 @@ QByteArray TciIoWorker::encodeRxAudio(int trx, int rate, int channels, int forma
         if (format == 3) {
             const float sample = static_cast<float>(value);
             std::memcpy(destination, &sample, sizeof(sample));
+        } else if (format == 1 || format == 2) {
+            // Build 266: int24 (3 bytes) and int32, little-endian, as Thetis.
+            const double finite = std::isfinite(value) ? std::clamp(value, -1.0, 1.0) : 0.0;
+            if (format == 1) {
+                const qint32 v = static_cast<qint32>(std::lround(finite * 8388607.0));
+                destination[0] = static_cast<char>(v & 0xff);
+                destination[1] = static_cast<char>((v >> 8) & 0xff);
+                destination[2] = static_cast<char>((v >> 16) & 0xff);
+            } else {
+                const qint32 v = static_cast<qint32>(std::llround(finite * 2147483647.0));
+                const quint32 u = static_cast<quint32>(v);
+                destination[0] = static_cast<char>(u & 0xff);
+                destination[1] = static_cast<char>((u >> 8) & 0xff);
+                destination[2] = static_cast<char>((u >> 16) & 0xff);
+                destination[3] = static_cast<char>((u >> 24) & 0xff);
+            }
         } else {
             // A NaN passes std::clamp and its cast is undefined.
             const double finite = std::isfinite(value) ? value : 0.0;
@@ -601,7 +685,7 @@ void TciIoWorker::noteTxChronoPoll(qint64 gapNs, int framesSent)
         m_txChronoMaxPollGapNs = gapNs;
     }
     // Two chrono periods (~42.7 ms) is a missed TX_CHRONO slot before catch-up.
-    if (gapNs >= 2 * kTxChronoPeriodNs) {
+    if (gapNs >= 2 * m_chronoPeriodNs) {
         ++m_txChronoLatePolls;
     }
     if (framesSent > m_txChronoMaxCatchUp) {
@@ -627,7 +711,7 @@ QJsonObject TciIoWorker::chronoSnapshot() const
             static_cast<qint64>(m_txChronoCatchUpFrames)},
         {QStringLiteral("maxCatchUp"), m_txChronoMaxCatchUp},
         {QStringLiteral("periodMs"),
-            static_cast<double>(kTxChronoPeriodNs) / 1.0e6},
+            static_cast<double>(m_chronoPeriodNs) / 1.0e6},
         {QStringLiteral("pollMs"), kTxChronoPollMs},
     };
 }
@@ -673,7 +757,7 @@ void TciIoWorker::logTxAudioSummary(const char* reason)
         << " catchUpBursts=" << m_txChronoCatchUpBursts
         << " catchUpFrames=" << m_txChronoCatchUpFrames
         << " maxCatchUp=" << m_txChronoMaxCatchUp
-        << " periodMs=" << (static_cast<double>(kTxChronoPeriodNs) / 1.0e6);
+        << " periodMs=" << (static_cast<double>(m_chronoPeriodNs) / 1.0e6);
 }
 
 void TciIoWorker::sendTxChronoFrame(quint64 client)
@@ -684,14 +768,15 @@ void TciIoWorker::sendTxChronoFrame(quint64 client)
     QByteArray frame(sizeof(TciAudioHeader), '\0');
     TciAudioHeader hdr{};
     hdr.receiver   = static_cast<quint32>(m_txChronoTrx);
-    hdr.sampleRate = 48000;
-    hdr.format     = 3;                // float32
-    hdr.length     = kTxChronoSamples; // matches audio_stream_samples
+    hdr.sampleRate = static_cast<quint32>(m_chronoRate);
+    hdr.format     = static_cast<quint32>(m_chronoFormat);
+    hdr.length     = static_cast<quint32>(m_chronoLength);
     hdr.type       = 3;                // TX_CHRONO
-    hdr.channels   = 2;
+    hdr.channels   = static_cast<quint32>(m_chronoChannels);
     std::memcpy(frame.data(), &hdr, sizeof(hdr));
     sendBinary(client, frame);
-    m_txChronoRequestedFrames += kTxChronoStereoFrames;
+    // Telemetry is kept in 48 kHz frames (its field name).
+    m_txChronoRequestedFrames += qint64(m_chronoFrames) * 48000 / m_chronoRate;
 }
 
 void TciIoWorker::receiveBinary(quint64 id, const QByteArray& data)
@@ -736,6 +821,27 @@ void TciIoWorker::receiveBinary(quint64 id, const QByteArray& data)
         auto* dst = reinterpret_cast<float*>(pcm.data());
         for (int i = 0; i < validSamples; ++i)
             dst[i] = src[i] / 32768.0f;
+    } else if (hdr.format == 1 || hdr.format == 2) {
+        // Build 266: int24 (3 bytes) and int32, little-endian, as Thetis and
+        // MSHV send them.
+        const int bytes = hdr.format == 1 ? 3 : 4;
+        int validSamples = static_cast<int>(hdr.length);
+        const int availSamples = payloadBytes / bytes;
+        if (validSamples > availSamples) validSamples = availSamples;
+        if (validSamples <= 0) return;
+        const auto* b = reinterpret_cast<const unsigned char*>(payload);
+        pcm.resize(validSamples * static_cast<int>(sizeof(float)));
+        auto* dst = reinterpret_cast<float*>(pcm.data());
+        for (int i = 0; i < validSamples; ++i, b += bytes) {
+            if (bytes == 3) {
+                qint32 v = qint32(b[0]) | (qint32(b[1]) << 8) | (qint32(b[2]) << 16);
+                if (v & 0x800000) v -= 0x1000000;
+                dst[i] = static_cast<float>(v / 8388608.0);
+            } else {
+                const quint32 u = quint32(b[0]) | (quint32(b[1]) << 8) | (quint32(b[2]) << 16) | (quint32(b[3]) << 24);
+                dst[i] = static_cast<float>(static_cast<qint32>(u) / 2147483648.0);
+            }
+        }
     }
 
     if (pcm.isEmpty()) return;
@@ -787,6 +893,12 @@ void TciIoWorker::receiveBinary(quint64 id, const QByteArray& data)
 
         if (duplicatedStereo) {
             // WSJT-X fills `length` floats as stereo pairs in-place.
+            int stereoFrames = totalFloats / 2;
+            inputFramesSrcRate = stereoFrames;
+            pcm = m_txResampler->processStereoToStereo(fSrc, stereoFrames);
+        } else if (hdr.channels == 2 && (totalFloats % 2) == 0) {
+            // Build 266 (as Thetis): a header that says two channels is
+            // interleaved stereo; `length` counts both channels' samples.
             int stereoFrames = totalFloats / 2;
             inputFramesSrcRate = stereoFrames;
             pcm = m_txResampler->processStereoToStereo(fSrc, stereoFrames);

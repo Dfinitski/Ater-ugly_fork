@@ -1149,6 +1149,7 @@ private:
         int outRate = 0;
         anan::P1PsResampler rs;
         std::vector<double> out;
+        std::vector<std::complex<float>> upright;   // build 266: conjugated, view-centred
         QByteArray pending;         // float32 I/Q waiting for a full frame
         double phase = 0.0;         // the view-offset mixer
     };

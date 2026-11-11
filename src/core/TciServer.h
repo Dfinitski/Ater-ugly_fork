@@ -302,7 +302,16 @@ private:
         int          audioReceiver{-1};     // -1 = all receivers, otherwise TCI TRX
         int          audioSampleRate{48000}; // requested output rate (48kHz for WSJT-X compat)
         int          audioChannels{2};       // 1=mono, 2=stereo
-        int          audioFormat{3};         // 0=int16, 3=float32
+        int          audioFormat{3};         // 0=int16, 1=int24, 2=int32, 3=float32
+        // Build 266 (as Thetis): audio_stream_samples (samples per channel in
+        // an RX audio packet and a TX_CHRONO request; 0 = never sent, then the
+        // RX packets go out as produced and the request uses the default for
+        // the rate), tx_stream_audio_buffering (ms, 0 = never sent), and
+        // whether the client negotiated any audio_stream_* / buffering at all:
+        // then a TX_CHRONO length counts every channel's samples.
+        int          audioStreamSamples{0};
+        int          txBufferingMs{0};
+        bool         modernAudio{false};
         quint64 rxGeneration{0};
         bool         rxSensorsEnabled{false};
         bool         txSensorsEnabled{false};
@@ -324,6 +333,8 @@ private:
         int          lastSocketError{-1};
         QString      lastSocketErrorString;
     };
+
+    static int effectiveAudioStreamSamples(const ClientState& client);   // build 266
 
     // TCI IQ subscription plumbing. A receiver's IQ comes from the DAX IQ
     // channel bound to that receiver's *pan*, not from trx+1 directly: on a
