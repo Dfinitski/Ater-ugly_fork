@@ -3197,6 +3197,144 @@ The bursts themselves come from the PC (speaker packets leave as soon as WDSP pr
   Saved to Desktop\AetherSDR-Release. Desktop\AetherSDR-Release\AetherSDR.exe is still the
   20:30 (build 234) exe.
 
+## 198. DRM, stage 1: the decoder evaluated, the DRM applet (09.11.2026, build 236)
+
+- Operator: a DRM receiver, slowly; a new DRM widget with its settings, large (pictures)
+  when popped out; the codec question is his to settle later.
+- Decoder: Dream (github.com/Drm-tools/dream, GPL v2 "or any later version" -> fits GPL v3,
+  active again since 12.2025). Its receiver core (115 files, about 63k lines) builds without
+  Qt (-DNO_QT) against FFTW3 and zlib; Journaline's three C files must be compiled as C.
+  Two small additions to CDRMReceiver (kept for the integration): SetExternalInput /
+  SetExternalOutput -- with no sound card driver compiled in, LoadSettings binds the input to
+  an RSCI source and the receiver never reads the host's samples.
+- Tested in the container with KiwiSDR's real recordings (DRM.BBC.Journaline.au,
+  DRM.KTWR.slideshow.au: 12 kHz I/Q, resampled to 48 kHz, input CS_IQ_POS_ZERO):
+  - BBC WS (mode C, xHE-AAC + Journaline): sync, SNR ~20 dB, FAC 97 %, SDC 94 %, labels
+    "BBC WS" / "BBC WS JL".
+  - KTWR (mode B, AAC + MOT slideshow): SNR ~27 dB, FAC 99 %, SDC 98 %, "KTWR  Japanese" /
+    "KTWR Slides".
+  - Audio: FAAD2 2.11 (libfaad_drm, loaded at run time) rejects every AAC frame (errors 26/32);
+    FDK-AAC (built from source for the test only) decodes AAC 551/562 frames and the xHE-AAC
+    of the BBC recording. The codec stays open (FDK-AAC licence vs GPL; FFmpeg's xHE-AAC).
+  - Dream's own transmitter -> receiver loopback gets FAC but no SDC/MSC: a transmitter-side
+    issue, not used.
+- Build 236 (UI only, no decoder yet):
+  - core/DrmStatus.h: what a decoder reports (stage lights IO/Time/Freq/FAC/SDC/MSC, SNR,
+    robustness, bandwidth, QAM, interleaver, up to 4 services with label/codec/bitrate/
+    language, text message, time, slideshow image, Journaline text).
+  - gui/DrmApplet: docked -- DRM On/Off, slice, the six lights, SNR and mode line, station
+    label, service buttons 1..4 (audio / data), service details, text message, a hint line;
+    popped out (dockModeChanged, like CAT) -- also the slideshow picture, Journaline, channel
+    details and the receiver settings (frequency / time interpolation, MSC iterations, flip
+    spectrum; AppSettings DrmFreqInt / DrmTimeInt / DrmMlcIter / DrmFlipSpectrum). DRM On is
+    never restored at start. Without a decoder the hint says so.
+  - AppletPanel: applet "DRM" ("DRM Receiver"), category Audio & DSP, in the default order
+    after IQ and in the button bar list.
+- Next: Dream's core into third_party/dream (CMake library, MSVC), fed from the I/Q tap at
+  48 kHz, audio into the slice's audio, the DrmStatus filled from CParameter; then the codec.
+- Files: core/DrmStatus.h (new), gui/DrmApplet.{h,cpp} (new), gui/AppletPanel.{h,cpp},
+  CMakeLists.txt, ForkBuild.h.
+
+## 199. DRM, stage 2: Dream inside, fed from the slice's DRM filter (10.11.2026, build 237)
+
+- Operator: keep FDK-AAC as a DLL next to the binary (drop it later if need be); do not feed
+  raw 48 kHz I/Q -- the station is selected by a filter on the panadapter, tuned by hand.
+- Signal path: the slice is put in DRM mode. WDSP runs no demodulator for DRM (RXA.c: no
+  amd/fmd), its band-pass is the DRM filter (+-5 kHz default, Hl2Backend line ~257, on the
+  panadapter) and the panel keeps I and Q (create_panel: copy 0), so the channel output
+  (L = I, R = Q, 24 kHz -- AudioEngine's native RX rate) is the filtered zero-IF I/Q of the
+  station. Hl2RxDsp::applyDrm() pushes it to the decoder and puts the decoded audio in its
+  place (after ~0.8 s buffered; re-buffers after a gap), before the slice mute, so every
+  consumer (speaker mix, radio codec, DAX/TCI) gets the DRM audio.
+- third_party/dream: Dream's receiver core (commit 7b38ce5, 99 sources + headers), CMake
+  target aether_dream, built without Qt. Interface aether/DrmEngine.h (Qt-free: Dream's
+  headers change meaning with QT_CORE_LIB). DrmEngine: own thread, pushIq / pullAudio at
+  24 or 48 kHz (24 kHz: Dream upsamples x2, "sigupratio"), slow input gain (2 s, -21 dBFS
+  RMS in 16 bits), status snapshot every 200 ms, slideshow pictures, Journaline pages,
+  service selection, settings. First data service decoded automatically.
+- FDK-AAC: aether/fdk_dyn.cpp defines the 11 FDK functions Dream calls and forwards them
+  to fdk-aac.dll / libfdk-aac-2.dll (libfdk-aac.so.2, libfdk-aac.2.dylib) loaded on first
+  use; absent -> no capabilities, no audio, the rest works. Headers for types only in
+  third_party/fdk-aac (NOTICE = FDK licence). CMake copies third_party/fdk-aac/bin/fdk-aac.dll
+  next to the exe when present.
+- Dream fixes (marked AetherSDR, listed in README.aether.md): external input/output;
+  aacinfo() zeroed / DecGetVersion() null title; portable Pacer; without Qt, MOT objects
+  were WRITTEN AS FILES INTO THE WORKING DIRECTORY and never handed out -- now queued
+  (bounded); EPG file output off.
+- Tests (container, Linux, the CMake target, KiwiSDR recordings):
+  - without FDK: KTWR sync, labels, language, country, Japanese text messages, UTC time;
+    audio silent, as designed.
+  - with FDK (libfdk-aac.so built from github.com/mstorsjo/fdk-aac, test only): all six
+    lights green; BBC WS (mode D -- not C as written in 198 -- 64-QAM, xHE-AAC) audio +
+    Journaline pages; KTWR (mode B, 16-QAM, HE-AAC) audio + 4 slideshow pictures
+    (18.PNG, 19-21.JPG); the same at 24 kHz in and out.
+- Backend: extension verb "drm" (slice, action start/stop/service/settings/journaline),
+  Receiver::drm (follows the receiver into a rebuilt chain), signals drmStatusReady
+  (QVariantMap, 4/s) and drmSlideReady (picture bytes).
+- GUI: MainWindow_Drm.cpp. DRM On: the slice chosen in the applet goes to DRM mode
+  (previous mode remembered), decoder starts; Off restores the mode. Leaving DRM mode, closing
+  the slice or disconnecting turns it off. Status -> DrmApplet; pictures decoded with QImage;
+  Journaline: double-click a "[n]" line, "Menu" back to the main page. Hints: no FDK library,
+  no signal, "centre the DRM filter on the station".
+- Not tested: the MSVC build of Dream (no Windows compiler here), the whole chain on air.
+- Files: third_party/dream/** (new), third_party/fdk-aac/** (new), src/gui/MainWindow_Drm.cpp
+  (new), CMakeLists.txt, core/backends/hl2/Hl2Backend.{h,cpp}, Hl2RxDsp.{h,cpp},
+  gui/MainWindow.{h,cpp}, MainWindow_Session.cpp, gui/DrmApplet.{h,cpp}, ForkBuild.h.
+
+## 200. FDK-AAC: DLL in the Windows release only; built into the Linux AppImage (10.11.2026, build 238)
+
+- Operator: Windows -- fdk-aac.dll goes next to the exe in the release archive only (not in
+  git); Linux must be complete out of the box.
+- .github/workflows/appimage.yml (repo, ater-ugly_fork): new step "Build FDK-AAC": upstream
+  mstorsjo/fdk-aac tag v3.0.0 (commit a68a51a checked), shared, target fdk-aac only (the
+  decoder library; fdk-xhe-aac is a separate xHE-AAC ENCODER, not needed), libfdk-aac.so*
+  -> AppDir/usr/lib, NOTICE -> usr/lib/libfdk-aac.NOTICE. continue-on-error like FreeDV.
+  The same commands were run in the container: SONAME libfdk-aac.so.2.
+- fdk_dyn.cpp (Linux): dlopen() of a bare name never looks next to the program, so the
+  executable's ../lib/ and own directory (/proc/self/exe) are tried first, then the system
+  path. Tested with the AppImage layout (usr/bin/test + usr/lib/libfdk-aac.so.2, no
+  LD_LIBRARY_PATH): found; without it: not found, DRM runs silent as designed.
+- MainWindow_Drm.cpp: the "no AAC decoder" hint per OS (Windows: fdk-aac.dll next to
+  AetherSDR.exe; Linux: libfdk-aac.so.2 / package libfdk-aac2; macOS: brew install fdk-aac).
+- Files: third_party/dream/aether/fdk_dyn.cpp, src/gui/MainWindow_Drm.cpp, ForkBuild.h;
+  .github/workflows/appimage.yml in the repo (goes out with the next release push).
+
+## 201. MSVC: Dream's sound factory without the Windows MME driver (10.11.2026, build 239)
+
+- Operator's first Windows build: soundfactory.cpp(33): C1083 '../windows/Sound.h' -- under
+  _WIN32 Dream's sound factory includes its MME driver from src/windows, which is not
+  vendored (and not wanted: the host feeds the receiver).
+- third_party/dream/src/sound/soundfactory.cpp: the three _WIN32 blocks (include, input and
+  output driver) are now `defined(_WIN32) && !defined(AETHER_DREAM)`; CMake defines
+  AETHER_DREAM for aether_dream. README.aether.md lists the change.
+- Checked the other reachable includes: every remaining unresolved one is behind USE_*,
+  HAVE_SPEEX or !NO_QT. clang -Werror=vla-extension/gnu-designator/zero-length-array over
+  all sources: clean.
+- Files: third_party/dream/src/sound/soundfactory.cpp, third_party/dream/CMakeLists.txt,
+  third_party/dream/README.aether.md, ForkBuild.h.
+
+## 202. Radio outside the adapter's subnet: commands as broadcasts from that adapter (10.11.2026, build 240)
+
+- User log 10.11 (P1 ANAN-100D, gateware 59, static 192.168.1.168; PC adapter "Ethernet" at
+  169.254.56.125/16 -- link-local, no DHCP): every start ends "0 packets" from the radio.
+  The discovery broadcast from that adapter IS answered (radio -> PC works), but unicast
+  to 192.168.1.168 cannot leave that adapter (bound socket: "Unable to send a message")
+  and the routing table sends it somewhere else (wildcard socket: sent, nothing back).
+  After switching the radio to P2 firmware it connected -- that firmware evidently came up
+  with an address the PC could reach; the P1 path itself was not the cause.
+- P2Transport: m_txHost = where commands go. When the radio is not in the subnet of the
+  adapter it was found on, the session binds to that adapter FIRST (the wildcard is the
+  second try, alternating as in build 221) and sends everything -- Discovery, P1 start /
+  EP2 frames / stop, P2 General / DDC / High Priority / TX / audio, the native send path --
+  to 255.255.255.255 from it, exactly as the discovery that the radio answers. Replies
+  are still accepted only from the radio's address. Logged as a warning with the advice to
+  give the adapter an address in the radio's subnet.
+- Assumes the radio's gateware takes commands addressed to the broadcast address (it
+  takes the discovery so addressed). Not verifiable here: needs the user's radio.
+- Risk: on a LAN with several radios a broadcast reaches all of them; only used when the
+  radio is outside the adapter's subnet (in practice a direct cable).
+- Files: core/backends/anan/P2Transport.{h,cpp}, ForkBuild.h.
+
 ## 203. Build 241: hang report and PDB for the connect hang (10.11)
 
 **Symptom (operator, 10.11):** the radio is switched off during a session, the
@@ -3636,7 +3774,7 @@ state its silhouette is filled with #c8d8e8 (CompositionMode_SourceIn), for
 the On state the emoji as is (red). Icon size 13 px in the 16 px button; hover
 a faint background; the build-262 checked frame is gone.
 
-### 226. Build 264 — refused transmit builds no TX state
+## 226. Build 264 — refused transmit builds no TX state
 
 **Report (10.11).** Keying in a receive-only mode or outside the amateur
 bands still showed the zoomed TX panadapter, although nothing went on air.
@@ -3660,7 +3798,7 @@ the key only after that edge; the receive-only-mode refusal sat in
 A refused key now shows only the message at the bottom: no TX zoom, no TX
 indicator, no Quindar or tune latch. `applyKeying()` keeps its own gate.
 
-### 227. Build 265 — waterfall brightness
+## 227. Build 265 — waterfall brightness
 
 **Request (10.11).** The waterfall has no brightness control; Black Level
 only shifts the scale.
@@ -3683,6 +3821,23 @@ sets the palette's gamma in `SpectrumWidget::waterfallLevelToRgb`:
   `recolorWaterfallViewport()`, so the visible history is recoloured at once
   (the history holds levels, not colours).
 - Included in Display "clone to other pans" and in "reset to defaults".
+
+## 228. Release build 265 prepared (10.11.2026)
+
+- docs/release-notes-build-265.md: builds 236-265 by topic (DRM, connection, transmit,
+  ANAN-100D P1 filter option, panadapter/waterfall, window and status bar), with what is
+  untested on a radio. README.md: "Build 235" summary replaced by "Build 265".
+- The repo journal lacked sections 198-202 (builds 236-240, DRM and broadcast transport);
+  restored from the project copy before 203.
+- Archive AetherSDR-ANAN-build265-win64-portable.zip: the build 235 archive with the build 265
+  exe (build\Desktop_Qt_6_12_0_MSVC2022_64bit_Release\AetherSDR.exe = Desktop\AetherSDR-Release\
+  AetherSDR.exe, 10.11 23:07 local, contains displayWfBrightnessSlider), fdk-aac.dll (new: DRM
+  audio, loaded at run time, not an import), licenses/fdk-aac/NOTICE, README-build265.md; top
+  folder AetherSDR-ANAN-build265; 90 entries, 154137564 bytes, SHA-256
+  b4ef02eb6ba02dfd8067d989228143e82c81363c31e41cb457a974d285eb34d3. Saved to
+  Desktop\AetherSDR-Release.
+- The release (tag build-265 on main) is created by the operator in the GitHub web UI; the tag
+  push starts the AppImage workflow (which now also builds FDK-AAC, build 238).
 
 ## 5. Где брать удалённый код
 

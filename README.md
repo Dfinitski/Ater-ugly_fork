@@ -65,20 +65,21 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 235
+## Build 265
 
-Full notes: [docs/release-notes-build-235.md](docs/release-notes-build-235.md).
+Full notes: [docs/release-notes-build-265.md](docs/release-notes-build-265.md).
 
-- **Connection:** the program talks to the radio from the adapter it was found on (radios that
-  Thetis reached but this program did not); Connect by IP works for Protocol 1.
-- **Transmit** only inside the amateur bands of the band plan; the radio's CW keyer is off
-  outside them. Smooth forward power meter.
-- **Panadapter:** finer resolution, stops at full zoom, FFT Smooth slider back.
-- **Band memory** per receiver; wheel over the frequency tunes the digit under the cursor;
-  User Out follows the tuned band.
-- **ANF** button; **TCI I/Q** for skimmers.
+- **DRM receiver** (Dream decoder, FDK-AAC audio): applet with sync lights, services, text,
+  slideshow and Journaline.
+- **Connection:** no hang on a radio still streaming to an old session; radios outside the
+  adapter's subnet driven by broadcasts; hang report with a minidump.
+- **Transmit:** a refused key (out of band, receive-only mode) changes nothing but the
+  message; steeper SSB transmit filter.
+- **ANAN-100D P1:** optional 7000-style filter control for modified radios.
+- **Waterfall brightness** slider; [+] rate button fixed; overlay panels close on an outside
+  click; native resolution under Windows scaling; status/title bar cleanup, UTC clock.
 
-Earlier notes: [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Windows portable build
 
