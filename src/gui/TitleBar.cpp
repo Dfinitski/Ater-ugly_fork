@@ -116,13 +116,21 @@ protected:
                       m_focusVisible ? 2.0 : 1.0));
         p.setBrush(Qt::NoBrush);
         p.drawPath(shape);
-        QFont f = font();
-        f.setPixelSize(10);   // build 253 (the text stays)
-        f.setBold(true);
+        // Build 257 (operator, 10.11: "still no antialiasing, the radio tab
+        // has it"): the text as the radio tab draws its name -- the theme's UI
+        // family, a fractional size, weight 600 and an antialiased, unhinted
+        // style -- instead of the button font forced to bold 10 px, which
+        // Windows hints to the pixel grid (hard, stair-stepped glyphs).
+        QFont f = theme.font(this, QStringLiteral("font.family.ui"));
+        const qreal dpi = logicalDpiY() > 0 ? qreal(logicalDpiY()) : 96.0;
+        f.setPointSizeF(10.5 * 72.0 / dpi);
+        f.setWeight(QFont::DemiBold);
+        f.setStyleStrategy(QFont::PreferAntialias);
+        f.setHintingPreference(QFont::PreferNoHinting);
         p.setFont(f);
         p.setPen(theme.color(this, m_text));
-        const QFontMetrics fm(f);
-        p.drawText(QRect(0, 0, width(), height() - int(kBar)), Qt::AlignCenter,
+        const QFontMetricsF fm(f);
+        p.drawText(QRectF(0, 0, width(), height() - kBar), Qt::AlignCenter,
                    fm.elidedText(text(), Qt::ElideRight, width() - 6));
     }
 

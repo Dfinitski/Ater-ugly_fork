@@ -3509,6 +3509,22 @@ the target's colour -- color.accent.success for PC Audio, color.border.accent
 for Codec; a focus ring only for keyboard focus (Tab), focus policy TabFocus.
 Frame 66 x 20 (+10 %), text 10 px unchanged, corners 6 px.
 
+## 219. Build 257: PC Audio text drawn like the radio tab's (10.11)
+
+The operator still saw no antialiasing on the PC Audio button next to the
+radio tab. Shape and border are drawn the same way on both; the difference
+was the text: the button used its own font forced to bold 10 px, which
+Windows hints to the pixel grid, while the tab uses the theme's UI family at
+a fractional size, weight 600. PillButton now does the same: font.family.ui,
+10.5 px as fractional points, DemiBold, PreferAntialias, PreferNoHinting,
+drawn with QFontMetricsF into a QRectF.
+
+Question answered (no change): there is no filter-steepness setting in the
+menus. The RX bandpass length is fixed in Hl2RxDsp (rxFilterTapsFor /
+rxMinimumPhaseFor): SSB/AM/digital 8192 taps, minimum phase; CW 4096 taps
+linear phase (8192 with a notch or a passband under 100 Hz); DSP rate 48 kHz,
+WDSP window type 0.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
