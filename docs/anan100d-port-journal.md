@@ -4122,6 +4122,25 @@ Shader not validated here (no GLSL compiler); the build compiles it.
 
 Files: resources/shaders/dss_mesh.vert, gui/SpectrumWidget.cpp, ForkBuild.h.
 
+## 235. Build 272: depth walls instead of lids, so a carrier's bar is solid (11.11)
+
+**Report.** After build 271 the surface looks better, but the carriers' bars
+still show gaps; they should be solid lines.
+
+**Cause.** Build 271's lid only joins the row's ridge (top line) to the next
+row's depth. It is a thin band near the peak top. Between the two vertical
+curtains of a carrier, below that band, the background still shows.
+
+**Fix.** The lid quads are replaced by a depth wall per column (same vertex
+count). Each wall joins the column's curtain line (top and floor) at this row's
+depth to the same line one row deeper. Tags: 6 = far top, 7 = far floor;
+dss_mesh.vert maps them to the overlay top/floor vertex with
+`geometryV += 1/visibleRows`. Each wall is a parallelogram as wide as the
+sideways perspective step, so a carrier's bar is filled from the floor to its
+peak between rows. Order, layer and memory are as in build 271.
+
+Files: resources/shaders/dss_mesh.vert, gui/SpectrumWidget.cpp, ForkBuild.h.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

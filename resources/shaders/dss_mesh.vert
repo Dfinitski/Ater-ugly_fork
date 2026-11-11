@@ -183,9 +183,11 @@ void main()
     // placed one row deeper. It fills the step a narrow peak makes sideways
     // between rows on the slanted sides of the perspective, holding the row's
     // value until the next row takes over.
+    // Build 272: tag 7 = the same for the wall's floor vertex, so each
+    // column's curtain is carried back as a solid wall.
     bool lidFar = encodedEdge > 5.5;
     if (lidFar) {
-        encodedEdge = 2.0;
+        encodedEdge = encodedEdge > 6.5 ? 3.0 : 2.0;
     }
     bool ribbonOutline = encodedEdge <= -10.0;
     float ribbonCode = -encodedEdge;
