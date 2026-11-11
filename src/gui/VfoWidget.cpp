@@ -588,6 +588,7 @@ VfoWidget::VfoWidget(QWidget* parent)
     setAttribute(Qt::WA_TranslucentBackground);
     setAutoFillBackground(false);
     setStyleSheet(kBgStyle);
+    setMouseTracking(true);   // build 250: hover over the flag is the flag's
 
     m_signalMeterFraction = signalDbmToMeterFraction(m_signalDbm);
     m_targetSignalMeterFraction = m_signalMeterFraction;
@@ -812,6 +813,22 @@ void VfoWidget::mousePressEvent(QMouseEvent* ev)
 }
 
 void VfoWidget::mouseReleaseEvent(QMouseEvent* ev)
+{
+    ev->accept();
+}
+
+// Build 250 (operator, 10.11: "the frequency window is not the top layer: my
+// mouse acts on the filter through it"). QWidget's default move and
+// double-click handlers IGNORE the event, and Qt then hands it to the parent --
+// the SpectrumWidget, which hovers / drags / double-click-tunes the filter
+// under the flag. A move without buttons skips a widget that has no mouse
+// tracking for the same reason, so the flag tracks the mouse too (constructor).
+void VfoWidget::mouseMoveEvent(QMouseEvent* ev)
+{
+    ev->accept();
+}
+
+void VfoWidget::mouseDoubleClickEvent(QMouseEvent* ev)
 {
     ev->accept();
 }

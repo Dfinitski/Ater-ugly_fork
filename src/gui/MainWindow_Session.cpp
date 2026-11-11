@@ -873,7 +873,10 @@ void MainWindow::setLinkState(LinkState state, const QString& detail)
             Tone::Busy);
         break;
     case LinkState::Connected:
-        m_titleBar->setLinkStatus(detail.isEmpty() ? tr("Connected") : detail, Tone::Good,
+        // Build 250 (operator, 10.11): no green "radio  IP" line while
+        // connected; the other states (searching, lost, failed, disconnected)
+        // still show and stay clickable.
+        m_titleBar->setLinkStatus(QString(), Tone::Good,
             detail.isEmpty() ? tr("Connected") : tr("Connected to %1").arg(detail));
         break;
     case LinkState::Lost:

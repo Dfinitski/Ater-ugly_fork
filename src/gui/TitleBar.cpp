@@ -1748,6 +1748,7 @@ void TitleBar::setLinkStatus(const QString& text, LinkTone tone, const QString& 
             "QPushButton:hover { background: {{color.titlebar.tab.hover}};"
             " border-radius: 3px; }").arg(QLatin1String(colour)));
     m_linkStatusBtn->setText(text);
+    m_linkStatusBtn->setVisible(!text.isEmpty());   // build 250: nothing to say, no button
     m_linkStatusBtn->setToolTip(toolTip.isEmpty() ? text : toolTip);
     m_linkStatusBtn->setAccessibleDescription(toolTip.isEmpty() ? text : toolTip);
 }

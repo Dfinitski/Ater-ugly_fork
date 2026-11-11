@@ -375,6 +375,10 @@ protected:
     int freqDigitPlaceAt(const QPoint& labelPos) const;
     void mousePressEvent(QMouseEvent* ev) override;
     void mouseReleaseEvent(QMouseEvent* ev) override;
+    // Build 250: moves and double clicks over the flag stay with the flag
+    // (QWidget's defaults ignore them, so they reached the panadapter below).
+    void mouseMoveEvent(QMouseEvent* ev) override;
+    void mouseDoubleClickEvent(QMouseEvent* ev) override;
     void resizeEvent(QResizeEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;

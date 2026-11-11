@@ -6015,8 +6015,10 @@ void MainWindow::buildUI()
     keyboardOperable(m_radioVersionLabel);
     radioVbox->addWidget(m_radioInfoLabel);
     radioVbox->addWidget(m_radioVersionLabel);
-    addSep();   // ANAN-100D port: between the band-stack dots and the radio name
-    hbox->addWidget(radioStack);
+    // Build 250 (operator, 10.11): no radio type / firmware in the status
+    // bar -- kept, hidden, for the code that updates the labels.
+    radioStack->setParent(m_statusBarContainer);
+    radioStack->hide();
 
     // ANAN-100D port (operator, 31.10): the antenna in use, after the radio
     // name -- port on top, the operator's name for it below (Radio Setup ->
@@ -6030,45 +6032,53 @@ void MainWindow::buildUI()
         antBox->setContentsMargins(0, 0, 0, 0);
         antBox->setSpacing(0);
         antBox->setAlignment(Qt::AlignVCenter);
-        auto* portLbl = new QLabel(QStringLiteral("ANT1"));
-        applyStatusBarCompactLabelStyle(portLbl, QStringLiteral("{{color.text.secondary}}"));
-        portLbl->setAlignment(Qt::AlignCenter);
-        auto* nameLbl = new QLabel;
-        applyStatusBarCompactLabelStyle(nameLbl, QStringLiteral("{{color.text.secondary}}"));
-        nameLbl->setAlignment(Qt::AlignCenter);
-        nameLbl->setVisible(false);
-        antBox->addWidget(portLbl);
-        antBox->addWidget(nameLbl);
+        // Build 250 (operator, 10.11): two lines, "RX: ANT1" over "TX: ANT2";
+        // the TX line turns red while transmitting. The operator's antenna
+        // names are in the tooltip.
+        auto* rxLbl = new QLabel(QStringLiteral("RX: ANT1"));
+        applyStatusBarCompactLabelStyle(rxLbl, QStringLiteral("{{color.text.secondary}}"));
+        rxLbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        auto* txLbl = new QLabel(QStringLiteral("TX: ANT1"));
+        applyStatusBarCompactLabelStyle(txLbl, QStringLiteral("{{color.text.secondary}}"));
+        txLbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        antBox->addWidget(rxLbl);
+        antBox->addWidget(txLbl);
         antStack->setObjectName(QStringLiteral("ananAntennaStatus"));
-        antStack->setAccessibleName(QStringLiteral("Antenna in use"));
+        antStack->setAccessibleName(QStringLiteral("Antennas in use"));
         hbox->addWidget(antStack);
         auto* antTimer = new QTimer(antStack);
         antTimer->setInterval(250);
-        auto refresh = [this, portLbl, nameLbl, antStack] {
+        auto refresh = [this, rxLbl, txLbl, antStack] {
             auto& st = AppSettings::instance();
             const bool tx = m_radioModel.transmitModel().isTransmitting();
-            const int ant = std::clamp(
-                st.value(tx ? QStringLiteral("AnanTxAnt") : QStringLiteral("AnanRxAnt"), 0).toInt(),
-                0, 2);
-            const QString port = QStringLiteral("ANT%1").arg(ant + 1);
-            const QString name = st.value(QStringLiteral("AnanAntName%1").arg(ant + 1), QString())
-                                     .toString().trimmed();
-            if (portLbl->text() != port)
-                portLbl->setText(port);
-            if (nameLbl->text() != name)
-                nameLbl->setText(name);
-            nameLbl->setVisible(!name.isEmpty());
+            auto antOf = [&st](const char* key) {
+                return std::clamp(st.value(QLatin1String(key), 0).toInt(), 0, 2);
+            };
+            auto nameOf = [&st](int ant) {
+                return st.value(QStringLiteral("AnanAntName%1").arg(ant + 1), QString())
+                    .toString().trimmed();
+            };
+            const int rxAnt = antOf("AnanRxAnt");
+            const int txAnt = antOf("AnanTxAnt");
+            const QString rxText = QStringLiteral("RX: ANT%1").arg(rxAnt + 1);
+            const QString txText = QStringLiteral("TX: ANT%1").arg(txAnt + 1);
+            if (rxLbl->text() != rxText)
+                rxLbl->setText(rxText);
+            if (txLbl->text() != txText)
+                txLbl->setText(txText);
             if (antStack->property("ananTx").toBool() != tx) {
                 antStack->setProperty("ananTx", tx);
-                const QString color = tx ? QStringLiteral("#ff5050")
-                                         : QStringLiteral("{{color.text.secondary}}");
-                applyStatusBarCompactLabelStyle(portLbl, color);
-                applyStatusBarCompactLabelStyle(nameLbl, color);
+                applyStatusBarCompactLabelStyle(
+                    txLbl, tx ? QStringLiteral("#ff5050") : QStringLiteral("{{color.text.secondary}}"));
             }
-            antStack->setToolTip(QStringLiteral("%1 antenna: %2%3")
-                                     .arg(tx ? QStringLiteral("Transmit") : QStringLiteral("Receive"),
-                                          port,
-                                          name.isEmpty() ? QString() : QStringLiteral(" - ") + name));
+            auto line = [&nameOf](const QString& what, int ant) {
+                const QString name = nameOf(ant);
+                return QStringLiteral("%1 antenna: ANT%2%3")
+                    .arg(what).arg(ant + 1)
+                    .arg(name.isEmpty() ? QString() : QStringLiteral(" - ") + name);
+            };
+            antStack->setToolTip(line(QStringLiteral("Receive"), rxAnt) + QLatin1Char('\n')
+                                 + line(QStringLiteral("Transmit"), txAnt));
         };
         connect(antTimer, &QTimer::timeout, antStack, refresh);
         antTimer->start();
@@ -6272,7 +6282,8 @@ void MainWindow::buildUI()
         m_cpuTimer->start();
     }
 
-    addSep();
+    // Build 250: this separator went before the Network block, now hidden.
+    QLabel* const netSep = addSep();
 
     // PA temp (top) + supply voltage (bottom) stacked
     auto* paStack = new QWidget;
@@ -6361,6 +6372,11 @@ void MainWindow::buildUI()
     });
     netVbox->addWidget(m_networkLabel);
     hbox->addWidget(netStack);
+    // Build 250 (operator, 10.11): no "Network: quality" in the status bar.
+    // Kept, hidden, for the code that updates it; Network Diagnostics stays
+    // in the menus.
+    netSep->hide();
+    netStack->hide();
 
     m_tgxlSeparator = addSep();
     m_tgxlSeparator->setVisible(false);

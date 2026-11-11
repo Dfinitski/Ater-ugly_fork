@@ -3404,6 +3404,32 @@ and in other top-level windows (combo/menu popups opened from a panel,
 dialogs, the WB window) pass through untouched. A click on another overlay
 button therefore only closes the open panel; the next click opens the other.
 
+## 212. Build 250: VFO flag owns the mouse; status/title bar cleanup (10.11)
+
+**1. Mouse acts on the filter through the VFO flag.** VfoWidget accepted
+press, release and wheel, but not move or double click: QWidget's default
+handlers ignore them and Qt passes them to the parent, the SpectrumWidget,
+which hovered / dragged / double-click-tuned the filter under the flag. Moves
+without a button also skip a widget without mouse tracking and go to the
+parent. Fix: `VfoWidget::mouseMoveEvent` and `mouseDoubleClickEvent` accept,
+and the flag has mouse tracking.
+
+**2. Title bar:** the green link-status line ("ANAN-100D  <IP>") is not shown
+while connected (`setLinkStatus` with empty text hides the button; the
+tooltip keeps "Connected to ..."). Searching / connecting / lost / failed /
+disconnected still show and stay clickable.
+
+**3. Status bar, left:** the radio type / firmware stack is hidden (kept,
+reparented to the status-bar container, for the code that fills it), with
+its separator.
+
+**4. Status bar, right:** "Network: quality" hidden (kept for its updaters;
+Network Diagnostics stays in the menus), with the separator before it.
+
+**5. Antenna indicator:** two lines, "RX: ANTn" over "TX: ANTn" (the ANT
+panel's AnanRxAnt / AnanTxAnt); the TX line red while transmitting; the
+operator's antenna names in the tooltip.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
