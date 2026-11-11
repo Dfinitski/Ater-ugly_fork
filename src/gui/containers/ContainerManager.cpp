@@ -313,8 +313,11 @@ void ContainerManager::floatContainer(const QString& id)
     // width"): the width the applet had in the panel, the floor for its
     // floating window. Only from a container that is really on screen -- a
     // never-shown widget reports Qt's 640 x 480 default (the restore path).
-    const int dockedWidth = (c->isVisible() && c->window() && c->window()->isVisible())
+    int dockedWidth = (c->isVisible() && c->window() && c->window()->isVisible())
         ? c->width() : 0;
+    // Build 262: or the panel column it sits in, if that is wider.
+    if (QWidget* slot = c->parentWidget(); slot && slot->isVisible())
+        dockedWidth = std::max(dockedWidth, slot->width());
 
     detachFromCurrentSlot(id, c);
 
@@ -328,6 +331,9 @@ void ContainerManager::floatContainer(const QString& id)
     if (auto* pw = qobject_cast<QWidget*>(parent())) parentWindow = pw->window();
     auto* win = new FloatingContainerWindow(parentWindow);
     win->setGeometryKey(geometryKeyFor(id));
+    // Build 262: FloatingContainerWindow sizes the width to the content on
+    // opening (several passes); the panel width is its floor.
+    win->setOpeningWidthFloor(dockedWidth);
     win->takeContainer(c);
     connect(win, &FloatingContainerWindow::dockRequested,
             this, &ContainerManager::onFloatingWindowDock);

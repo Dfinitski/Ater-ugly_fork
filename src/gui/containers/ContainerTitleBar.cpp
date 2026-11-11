@@ -43,11 +43,10 @@ constexpr const char* kPinBtnStyle =
     "QPushButton { background: transparent; border: none; "
     "color: #c8d8e8; font-size: 11px; font-weight: bold; "
     "padding: 0px 4px; } "
-    "QPushButton:hover { color: #ffffff; background: rgba(255,255,255,40); border-radius: 3px; } "
-    // Build 261 (operator, 10.11: "I press the pin and nothing happens"):
-    // the glyph is a colour emoji, so the old checked text colour changed
-    // nothing on screen. The engaged pin now has a lit background.
-    "QPushButton:checked { color: #ffd166; background: rgba(255,209,102,120); "
+    "QPushButton:hover { color: #ffffff; } "
+    // Build 261/262 (operator, 10.11): the glyph is a colour emoji, so a
+    // checked text colour showed nothing. Engaged = a thin amber frame.
+    "QPushButton:checked { color: #ffd166; background: transparent; "
     "border: 1px solid #ffd166; border-radius: 3px; }";
 
 // Float-toggle button gets a larger font-size than its siblings so

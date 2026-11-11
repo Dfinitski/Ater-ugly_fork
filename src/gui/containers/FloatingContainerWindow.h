@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include <QString>
 #include <QTimer>
 #include <QWidget>
@@ -40,6 +42,8 @@ public:
     // base64 of QByteArray returned by saveGeometry()).  Empty = no
     // persistence.
     void setGeometryKey(const QString& key);
+    // Build 262: see m_openingWidthFloor. Set before restoreAndEnsureVisible().
+    void setOpeningWidthFloor(int w) { m_openingWidthFloor = std::max(0, w); }
     QString geometryKey() const { return m_geometryKey; }
 
     // Called by ContainerManager before the app exits.  Saves geometry,
@@ -80,6 +84,9 @@ private:
     void saveGeometryToKey() const;
     void fitHeightToContent();
     bool m_fitWidth = false;   // build 219: size the width to the content while opening
+    // Build 262: the opening width never goes below this (the applet's width
+    // in the panel it was torn off from); 0 = no floor.
+    int m_openingWidthFloor = 0;
     bool m_fitPending{false};
     void applyPresentation();
 

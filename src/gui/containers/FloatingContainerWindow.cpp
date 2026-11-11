@@ -279,6 +279,9 @@ void FloatingContainerWindow::fitHeightToContent()
         setFixedHeight(h);
     // Width: the content's at every opening (m_fitWidth, set by
     // restoreAndEnsureVisible), then free to make wider or narrower by mouse.
+    // Build 262 (operator, 10.11: "TX Control shrank when torn off"): the
+    // content's width is not narrower than the applet was in the panel.
+    w = std::max(w, m_openingWidthFloor);
     if (m_fitWidth && width() != w)
         resize(w, height());
 }

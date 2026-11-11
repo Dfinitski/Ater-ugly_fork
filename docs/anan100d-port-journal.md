@@ -3611,6 +3611,21 @@ floating container docks it back to its slot first, then hides it -- the same
 state as closing it in the panel, so showing it again brings it back in the
 panel and no empty floating window is left.
 
+## 224. Build 262: the torn-off width floor survives the opening fits; pin = thin frame (10.11)
+
+**TX Control still shrank (build 261 did not hold).** The resize after
+`restoreAndEnsureVisible` was undone by FloatingContainerWindow itself: since
+build 219 it sizes the width to the content's size hint on opening
+(`m_fitWidth`, in fitHeightToContent, run at once, after one event-loop turn,
+after 300 ms and on every LayoutRequest meanwhile). Now the floor goes into
+those passes: `FloatingContainerWindow::setOpeningWidthFloor()` (set by
+ContainerManager before restoreAndEnsureVisible), and fitHeightToContent
+uses `max(content width, floor)`. The floor is the container's width in the
+panel or, if wider, its panel column's (c->parentWidget()).
+
+**Pin:** engaged = a 1 px amber frame (border-radius 3), no fill, no hover
+fill.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
