@@ -1806,6 +1806,15 @@ bool WdspChannel::open() noexcept
         }
     } else {
         SetTXAMode(m_channelId, wdspMode(m_config.mode));
+        // Build 258 (ANAN port, operator 10.11: "poor opposite-sideband
+        // suppression on SSB transmit"): the TXA bandpass length and phase.
+        // create_txa() builds bp0/bp1/bp2 with max(2048, dsp_size) taps at the
+        // DSP rate -- at 192 kHz that is a skirt several hundred Hz wide around
+        // the low edge, which is where the opposite sideband sits. The channel
+        // is not running yet, so TXASetNC's stop/restart is a no-op here.
+        if (m_config.filterTaps > 0)
+            TXASetNC(m_channelId, m_config.filterTaps);
+        TXASetMP(m_channelId, m_config.minimumPhase ? 1 : 0);
         SetTXABandpassFreqs(m_channelId, m_config.filterLowHz, m_config.filterHighHz);
         // Pushed in every transmit mode: a later setMode() into AM or FM must
         // find them set, and SetTXAMode touches neither.

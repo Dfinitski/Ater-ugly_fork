@@ -290,6 +290,10 @@ void RXANBPSetNotchesRun(int channel, int run);
 // RXASetPassband: RXASetNC also stops and restarts the channel.
 void RXASetNC(int channel, int nc);
 void RXASetMP(int channel, int mp);
+// The transmit side (TXA.c): bp0/bp1/bp2, FM emphasis, FM and CFIR lengths;
+// bandpass, FM emphasis and FM phase mode. Build 258 (ANAN port).
+void TXASetNC(int channel, int nc);
+void TXASetMP(int channel, int mp);
 void SetRXAAGCMode(int channel, int mode);
 void SetRXAAGCTop(int channel, double maximumGainDb);
 // The rest of the AGC surface. SetRXAAGCMode alone leaves slope and the time

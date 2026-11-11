@@ -3525,6 +3525,31 @@ rxMinimumPhaseFor): SSB/AM/digital 8192 taps, minimum phase; CW 4096 taps
 linear phase (8192 with a notch or a passband under 100 Hz); DSP rate 48 kHz,
 WDSP window type 0.
 
+## 220. Build 258: SSB transmit filter 16384 taps, minimum phase (10.11)
+
+**Complaint:** poor opposite-sideband suppression on SSB transmit.
+
+**Cause:** the TXA bandpass (bp0, and bp1/bp2 behind the compressor) was left
+at create_txa()'s `max(2048, dsp_size)` = 2048 taps, Blackman-Harris 7-term
+(wintype 1), at the TX DSP rate of 192 kHz. Its skirt is ~+-0.66 kHz
+(7 bins x 192000 / 2048) around the low edge, which is next to the opposite
+sideband. Computed for a 100..2800 Hz passband (BH7 windowed complex
+bandpass, as fir_bandpass builds it), response relative to 1 kHz at the
+opposite-sideband frequencies -100 / -200 / -300 / -500 Hz:
+2048 taps: -23 / -38 / -59 / -142 dB; 16384 taps: -202 / -214 / -206 / -204 dB.
+
+**Change:**
+- `Hl2TxDsp::buildModulator`: Config::filterTaps = kTxFilterTaps (16384,
+  a multiple of the 1024 DSP block) and minimumPhase = true.
+- `WdspChannel::open` (transmit): `TXASetNC(filterTaps)` and
+  `TXASetMP(minimumPhase)` before SetTXABandpassFreqs (channel not running
+  yet, so TXASetNC's stop/restart is a no-op). TXASetNC also sets the CFIR and
+  FM / FM-emphasis lengths; TXASetMP the FM / FM-emphasis phase.
+- `aether_wdsp.h`: declarations for TXASetNC / TXASetMP (TXA.c, PORT).
+Minimum phase: the 8x longer filter would add 16384/2/192000 = 43 ms as
+linear phase (signal and MON); the magnitude, i.e. the suppression, is the
+same. Not verified on the air / on a spectrum analyser yet.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

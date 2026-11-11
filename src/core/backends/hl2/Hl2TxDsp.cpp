@@ -101,6 +101,16 @@ bool Hl2TxDsp::buildModulator(std::string* error)
         txaPassband(m_config.mode, m_config.filterLowHz, m_config.filterHighHz);
     c.filterLowHz = signedLow;
     c.filterHighHz = signedHigh;
+    // Build 258 (operator, 10.11: poor opposite-sideband suppression on SSB
+    // transmit). TXA's own bandpass was 2048 taps at the 192 kHz DSP rate: a
+    // Blackman-Harris skirt of roughly +-0.6 kHz around the 100-200 Hz low
+    // edge, so the low audio leaked into the other sideband. 16384 taps make
+    // the skirt 8 x narrower (~+-80 Hz). Minimum phase keeps the delay of the
+    // longer filter out of the signal (and the MON): linear phase would add
+    // 16384 / 2 / 192 kHz = 43 ms. The magnitude -- the suppression -- is the
+    // same either way.
+    c.filterTaps = kTxFilterTaps;
+    c.minimumPhase = true;
     // WdspChannel::open() pushes both, and turns TXA's default-on CTCSS off.
     c.txAmCarrierLevel = m_config.amCarrierLevel;
     c.txFmDeviationHz = m_config.fmDeviationHz;

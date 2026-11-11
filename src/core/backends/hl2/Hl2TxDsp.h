@@ -261,6 +261,9 @@ private:
     // faster than the channel drains. Warned once per excursion.
     static constexpr std::size_t kPendingWarnBlocks = 4;
     bool m_pendingWarned = false;
+    // Build 258: the TXA bandpass length at the DSP rate (see buildModulator).
+    // A power of two and a multiple of the DSP block (1024 at 192 kHz).
+    static constexpr int kTxFilterTaps = 16384;
     std::function<bool(bool)> m_outputReadyProbe;
 #else
     // 255 taps at 48 kHz with a Blackman window: enough opposite-sideband
