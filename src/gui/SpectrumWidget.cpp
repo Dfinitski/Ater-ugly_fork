@@ -3013,6 +3013,16 @@ void SpectrumWidget::loadDisplay3DSettings(int legacyGain)
             // a newer version carrying fields this build does not know about.
         }
     }
+    // ANAN fork build 292: the "3D Span" slider is now "3D Height"; once, it
+    // starts at 51 -- the height the 3D view had (0.46 of the plot).
+    {
+        auto& st = AppSettings::instance();
+        if (st.value(settingsKey("Fork3DHeightMigrated")).toString() != QLatin1String("True")) {
+            m_dssRowSpanPct = 51;
+            st.setValue(settingsKey("Fork3DHeightMigrated"), QStringLiteral("True"));
+            saveDisplay3DSettings();
+        }
+    }
 
 #ifdef AETHER_GPU_SPECTRUM
     m_dssLutToken = ~0ull;  // gain feeds the GPU palette LUT
@@ -5726,6 +5736,17 @@ void SpectrumWidget::pushDssLiveRow(DssRenderer& dss,
         supplementalBinsDbm,
         supplementalCenterMhz,
         supplementalBandwidthMhz, preserveInput);
+    // Build 292: the 3D waterfall's noise reference -- the drawn rows' own
+    // median, smoothed (a jump over 18 dB, e.g. another band, is taken at once).
+    if (&dss == &m_dss) {
+        const float median = dss.latestRowMedianDbm();
+        if (median > -500.0f) {
+            if (m_dss3dNoiseDbm <= -500.0f || std::abs(median - m_dss3dNoiseDbm) > 18.0f)
+                m_dss3dNoiseDbm = median;
+            else
+                m_dss3dNoiseDbm += 0.05f * (median - m_dss3dNoiseDbm);
+        }
+    }
     m_panStats.dssLiveUs += static_cast<quint64>(timer.nsecsElapsed() / 1000);
     ++m_panStats.dssLiveRows;
     if (hiddenStream) {
@@ -13292,36 +13313,45 @@ void SpectrumWidget::raisePanadapterMessageOverlay()
 // (intensityToWaterfallLevel), dbmToWaterfallLevel's for FFT rows.
 bool SpectrumWidget::dssWaterfallWindow(float* low, float* width) const
 {
+    // Build 292 (operator, 11.11: "bind the sliders we have for the 3D view
+    // to its parameters and unbind them from the waterfall"). The 3D
+    // waterfall's window no longer follows the waterfall's Black Level / Gain:
+    //   low   = the rows' own noise (the smoothed median of the newest rows,
+    //           in their own unit) minus "3D Floor" dB;
+    //   width = "3D Gain", the waterfall gain's law: 80 dB at 0 down to
+    //           10 dB at 100 (more gain = more contrast).
     if (m_kiwiSdrWaterfallActive)
         return false;
-    float lo = 0.0f;
-    float w = 1.0f;
-    if (m_dssRowsTileUnit) {
-        WaterfallLevelMap::Params params;
-        params.autoBlack = m_wfAutoBlack;
-        params.radioSideAutoBlack = effectiveWfAutoBlackRadioSide();
-        params.radioAutoBlackRaw = m_radioAutoBlackRaw;
-        params.autoBlackThresh = m_autoBlackThresh;
-        params.autoBlackOffset = m_wfAutoBlackOffset;
-        params.blackLevel = m_wfBlackLevel;
-        params.colorGain = m_wfColorGain;
-        params.rowsAreAbsoluteDb = m_panBinsAbsolute;
-        const WaterfallLevelMap::Window win = WaterfallLevelMap::window(params);
-        lo = win.low;
-        w = win.width;
-    } else {
-        // dbmToWaterfallLevel()'s window.
-        const float floorShift = (125 - m_wfBlackLevel) * 0.4f;
-        lo = m_wfMinDbm + floorShift;
-        w = 80.0f - m_wfColorGain * 0.7f;
-    }
+    const float noise = m_dss3dNoiseDbm > -500.0f
+        ? m_dss3dNoiseDbm
+        : m_refLevel - m_dynamicRange;
+    const float lo = noise - m_flexDssFloorDepth;
+    const float w = 80.0f - static_cast<float>(m_dssGain) * 0.7f;
     if (!std::isfinite(lo) || !std::isfinite(w))
         return false;
     if (low)
         *low = lo;
     if (width)
-        *width = std::max(w, 1.0f);
+        *width = std::max(w, 10.0f);
     return true;
+}
+
+// Build 292: the colour scheme alone, linear in the level (no waterfall
+// brightness), and the ridge height from "3D Height" (the slider that was
+// "3D Span"): 0 -> 0.10, 51 -> 0.46 (the former fixed height), 100 -> 0.80
+// of the plot height at the front row.
+QRgb SpectrumWidget::dss3dLevelToRgb(float level) const
+{
+    int n = 0;
+    const auto* stops = wfSchemeStops(m_wfColorScheme, n);
+    return interpolateGradient(std::clamp(level, 0.0f, 1.0f), stops, n);
+}
+
+float SpectrumWidget::dssRidgeFrac() const
+{
+    if (m_kiwiSdrWaterfallActive)
+        return DssRenderer::kFrontMaxRidgeFrac;
+    return 0.10f + 0.70f * static_cast<float>(std::clamp(m_dssRowSpanPct, 0, 100)) / 100.0f;
 }
 
 // Height = the waterfall level itself (linear) on the 3D waterfall.
@@ -13554,7 +13584,7 @@ const QImage& SpectrumWidget::buildDssImage(const QSize& px,
         ? rangeDb : std::min(rangeDb, DssRenderer::kColorSpanDb);
     auto palette = [this, floorDbm, colorRangeDb, waterfall3d](float dbm) {
         const float r = (colorRangeDb > 0.0f) ? colorRangeDb : 1.0f;
-        return waterfall3d ? waterfallLevelToRgb((dbm - floorDbm) / r)
+        return waterfall3d ? dss3dLevelToRgb((dbm - floorDbm) / r)
                            : dssStrengthToRgb((dbm - floorDbm) / r);
     };
     return m_dss.image(px, scaleStripPx, floorDbm, rangeDb, dssHeightCurve(),
@@ -14408,7 +14438,6 @@ void SpectrumWidget::uploadDssPaletteLut(QRhiResourceUpdateBatch* batch,
     const bool waterfall3d = dssWaterfallWindow(nullptr, nullptr);
     const quint64 token = (static_cast<quint64>(m_wfColorScheme) * 131
                            + static_cast<quint64>(m_dssGain)) * 131
-                        + static_cast<quint64>(m_wfBrightness) * 2
                         + (waterfall3d ? 1u : 0u);
     if (token == m_dssLutToken) {
         return;  // unchanged
@@ -14416,7 +14445,7 @@ void SpectrumWidget::uploadDssPaletteLut(QRhiResourceUpdateBatch* batch,
 
     QImage lut(256, 1, QImage::Format_RGBA8888);  // owns its data
     for (int i = 0; i < 256; ++i) {
-        const QRgb c = waterfall3d ? waterfallLevelToRgb(i / 255.0f)
+        const QRgb c = waterfall3d ? dss3dLevelToRgb(i / 255.0f)
                                    : dssStrengthToRgb(i / 255.0f);
         lut.setPixelColor(i, 0, QColor(qRed(c), qGreen(c), qBlue(c)));
     }
@@ -15949,7 +15978,7 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                 rowOffset,
                 floorDbm, rangeDb, dssHeightCurve(),
                 DssRenderer::kBackWidthFrac, DssRenderer::kDepthSpanFrac,
-                DssRenderer::kFrontMaxRidgeFrac, DssRenderer::kHaze,
+                dssRidgeFrac(), DssRenderer::kHaze,   // build 292: "3D Height"
                 static_cast<float>(cols),
                 static_cast<float>(dssTargetBandwidthMhz),
                 0.0f, 1.0f,
@@ -18071,7 +18100,8 @@ SpectrumWidget::buildDssDepthGeometry(const QRect& specRect,
     const auto projectAtDbm = [&](float frequencyUnit, float depth,
                                   float dbm) {
         const QPointF unit = DssRenderer::projectSurface(
-            frequencyUnit, depth, dbm, floorDbm, rangeDb, dssHeightCurve());
+            frequencyUnit, depth, dbm, floorDbm, rangeDb, dssHeightCurve(),
+            dssRidgeFrac());
         return QPointF(specRect.left() + unit.x() * contentW,
                        specRect.top() + unit.y() * specRect.height());
     };

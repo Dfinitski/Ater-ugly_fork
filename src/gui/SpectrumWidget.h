@@ -2362,6 +2362,12 @@ private:
     // own 3D mapping stays).
     bool dssWaterfallWindow(float* low, float* width) const;
     [[nodiscard]] float dssHeightCurve() const;
+    // Build 292: the 3D waterfall's own controls -- 3D Floor (dB below the
+    // rows' noise), 3D Gain (window width), 3D Height (ridge height) -- and
+    // its own palette (the colour scheme, linear; no waterfall brightness).
+    [[nodiscard]] QRgb dss3dLevelToRgb(float level) const;
+    [[nodiscard]] float dssRidgeFrac() const;
+    float m_dss3dNoiseDbm = -1000.0f;   // smoothed median of the newest rows
     bool m_dssRowsTileUnit = false;   // the newest 3D row is native tile dB
     // Build 278: WIDE drawn as the rate buttons are (same height, line and
     // transparency), its right edge at rightX; returns its left edge.

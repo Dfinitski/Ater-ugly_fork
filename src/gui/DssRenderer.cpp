@@ -342,6 +342,7 @@ void DssRenderer::clear()
 {
     m_head  = 0;
     m_count = 0;
+    m_latestRowMedianDbm = -1000.0f;
     m_rowCenterMhz.fill(0.0);
     m_rowBandwidthMhz.fill(0.0);
     m_rowSupplementalCenterMhz.fill(0.0);
@@ -568,6 +569,21 @@ void DssRenderer::pushRowWithSupplemental(
     }
     m_preserveSupplementalFrame[m_head] = preserveInput && supplementalValid;
     m_count = std::min(m_count + 1, kRows);
+    {
+        // Build 292: the newest row's median over its covered texels.
+        std::array<float, kCols> sorted;
+        int n = 0;
+        const auto& cov = m_rowCoverage[m_head];
+        for (int c = 0; c < kCols; ++c) {
+            const float v = m_rows[m_head][static_cast<std::size_t>(c)];
+            if (cov[static_cast<std::size_t>(c)] != 0 && std::isfinite(v) && v > -199.0f)
+                sorted[static_cast<std::size_t>(n++)] = v;
+        }
+        if (n > 0) {
+            std::nth_element(sorted.begin(), sorted.begin() + n / 2, sorted.begin() + n);
+            m_latestRowMedianDbm = sorted[static_cast<std::size_t>(n / 2)];
+        }
+    }
     m_dirty = true;
     ++m_rowGeneration;
 }

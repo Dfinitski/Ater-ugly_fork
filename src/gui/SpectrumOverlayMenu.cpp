@@ -2492,8 +2492,15 @@ void SpectrumOverlayMenu::buildDisplayPanel()
     }
 
     // ── 3D floor depth — how far below the noise floor to surface (dB) ────
-    makeRow("3D Floor:", 0, 24, 6, m_dssFloorSlider, m_dssFloorLabel);
-    if (m_dssFloorSlider) m_dssFloorSlider->setObjectName("dssFloorDepthSlider");
+    makeRow("3D Floor:", 0, 24, 0, m_dssFloorSlider, m_dssFloorLabel);
+    if (m_dssFloorSlider) {
+        m_dssFloorSlider->setObjectName("dssFloorDepthSlider");
+        // Build 292: the 3D waterfall's own black point.
+        m_dssFloorSlider->setToolTip(
+            "3D floor: how many dB below the noise the 3D surface starts.\n"
+            "0 = the noise sits on the baseline; higher = the noise rises\n"
+            "and takes colour. Independent of the waterfall's Black Level.");
+    }
     connect(m_dssFloorSlider, &QSlider::valueChanged, this, [this](int v) {
         if (m_dssFloorLabel) m_dssFloorLabel->setText(QString::number(v));
         emit dssFloorDepthChanged(v);
@@ -2503,10 +2510,11 @@ void SpectrumOverlayMenu::buildDisplayPanel()
     makeRow("3D Gain:", 0, 100, 70, m_dssGainSlider, m_dssGainLabel);
     if (m_dssGainSlider) {
         m_dssGainSlider->setObjectName("dssGainSlider");
+        // Build 292: the 3D waterfall's own contrast.
         m_dssGainSlider->setToolTip(
-            "3D surface colour gain: how far down the signal range the colormap "
-            "reaches.\nHigher = colour down toward the noise floor; lower = "
-            "colour only on the strongest signals.");
+            "3D gain: the level range from the floor to the full height and\n"
+            "the top colour, 80 dB at 0 down to 10 dB at 100.\n"
+            "Higher = more contrast. Independent of the waterfall's Gain.");
     }
     connect(m_dssGainSlider, &QSlider::valueChanged, this, [this](int v) {
         if (m_dssGainLabel) m_dssGainLabel->setText(QString::number(v));
@@ -2517,15 +2525,15 @@ void SpectrumOverlayMenu::buildDisplayPanel()
     // Caps how much of the radio's offscreen spectrum the surface may use to
     // close the empty wedges beside it. 100 spends everything available, so a
     // source that ships no overhang is unaffected at any setting.
-    makeRow("3D Span:", 0, 100, 100, m_dssRowSpanSlider, m_dssRowSpanLabel,
+    // Build 292: this slider is now "3D Height" (the 3D waterfall places its
+    // bars by their own frequencies, so it needs no overhang control).
+    makeRow("3D Height:", 0, 100, 51, m_dssRowSpanSlider, m_dssRowSpanLabel,
             &m_dssRowSpanTitle);
     if (m_dssRowSpanSlider) {
         m_dssRowSpanSlider->setObjectName("dssRowSpanSlider");
-        m_dssRowSpanSlider->setAccessibleName(tr("3D Span"));
+        m_dssRowSpanSlider->setAccessibleName(tr("3D Height"));
         m_dssRowSpanSlider->setAccessibleDescription(
-            tr("How far the nearest 3D traces overhang the plot edges, using "
-               "spectrum from outside the panadapter. 0 keeps the classic "
-               "narrowing trapezoid."));
+            tr("Height of the 3D surface at full level."));
         // Tooltip text lives in setDssRowSpanSupported() so the enabled and
         // unavailable wordings cannot drift apart.
         m_dssRowSpanSupported = false;
@@ -2894,11 +2902,8 @@ void SpectrumOverlayMenu::setDssRowSpanSupported(bool supported)
     }
     m_dssRowSpanSlider->setToolTip(supported
         ? QStringLiteral(
-              "3D surface width: how far the nearest traces overhang the plot "
-              "edges,\nusing spectrum the radio sends from outside the "
-              "panadapter.\nHigher = the empty wedges beside the surface close "
-              "from the front;\n0 = the classic narrowing trapezoid. Limited "
-              "by how much\noffscreen spectrum the source actually provides.")
+              "3D height: how tall a signal at the top of the 3D gain range\n"
+              "stands, from 0.10 to 0.80 of the plot height (51 = 0.46).")
         : QStringLiteral(
               "Unavailable: the 3D view is on the CPU fallback, which always "
               "draws\nthe narrowing trapezoid. The GPU mesh path this control "

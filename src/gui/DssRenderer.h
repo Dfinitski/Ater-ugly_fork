@@ -190,7 +190,8 @@ public:
     // equivalent of dss_mesh.vert's height mapping and is used by overlays
     // that must stay attached to the surface when the 3D floor moves.
     static QPointF projectSurface(float frequencyUnit, float depth, float dbm,
-                                  float floorDbm, float rangeDb, float zCurve)
+                                  float floorDbm, float rangeDb, float zCurve,
+                                  float ridgeFrac = kFrontMaxRidgeFrac)
     {
         const float d = std::clamp(depth, 0.0f, 1.0f);
         const float width = depthScale(d);
@@ -201,7 +202,7 @@ public:
         const float strengthHeight = std::pow(
             strengthLinear, std::max(zCurve, 0.05f));
         QPointF point = projectPerspective(frequencyUnit, d);
-        point.ry() -= static_cast<double>(strengthHeight) * kFrontMaxRidgeFrac * width;
+        point.ry() -= static_cast<double>(strengthHeight) * ridgeFrac * width;   // build 292
         return point;
     }
 
@@ -314,6 +315,9 @@ public:
     double newestSupplementalBandwidthMhz(double targetBandwidthMhz) const;
 
     RowStats rowStats(int age, float epsilonDb = 0.01f) const;
+    // ANAN fork build 292: median of the newest row's covered texels (the
+    // 3D waterfall's noise reference), or -1000 before any row.
+    float latestRowMedianDbm() const { return m_latestRowMedianDbm; }
     quint64 rowGeneration() const { return m_rowGeneration; }
 
     // Increments on every cache rebuild — lets the GPU path upload the texture
@@ -321,6 +325,7 @@ public:
     quint64 generation() const { return m_generation; }
 
 private:
+    float m_latestRowMedianDbm{-1000.0f};   // build 292
     bool historyStorageMatchesCapacity() const;
     void restoreHistorySupplemental(int historyRing, int visibleRing);
     void resetHistorySmoothing();
