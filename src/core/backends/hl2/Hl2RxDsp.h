@@ -23,6 +23,8 @@
 
 #include "core/backends/hl2/Hl2AdcPairing.h"
 #include "core/backends/hl2/Hl2Spectrum.h"
+
+namespace aether_drm { class DrmEngine; }
 #include "core/dsp/WdspChannel.h"
 #include "core/dsp/WdspProcessTally.h"
 
@@ -382,6 +384,13 @@ public:
             || mode == WdspChannel::Mode::Sam;
     }
     Q_INVOKABLE void setAnf(bool on, int level);
+
+    // ANAN port: DRM. With an engine set, the channel's output -- in DRM mode
+    // the band-pass-filtered I/Q around the slice frequency, since WDSP runs
+    // no demodulator for DRM and the panel keeps I and Q -- goes to the DRM
+    // decoder, and the decoder's audio replaces it. I/O thread only (call
+    // through QMetaObject::invokeMethod); nullptr detaches.
+    void setDrmEngine(std::shared_ptr<aether_drm::DrmEngine> engine);
     [[nodiscard]] bool anfRequested() const noexcept { return m_anfOn; }
     [[nodiscard]] int anfLevel() const noexcept { return m_anfLevel; }
     [[nodiscard]] bool anfInCircuit() const noexcept
@@ -767,6 +776,9 @@ private:
     // for why AM/SAM need it, and for what it deliberately does not fix.
     DcBlocker m_dcBlockL, m_dcBlockR;
     std::vector<float> m_stereo;                    // interleaved audio out
+    std::shared_ptr<aether_drm::DrmEngine> m_drm;   // setDrmEngine()
+    bool m_drmPrimed = false;                       // decoded audio buffered enough
+    void applyDrm(std::size_t frames);
     std::vector<float> m_bins;                      // spectrum scratch
 };
 

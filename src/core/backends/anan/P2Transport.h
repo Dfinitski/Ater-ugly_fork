@@ -343,6 +343,11 @@ private:
     }
     QHostAddress m_bindAddr;                 // build 221: the session socket's local address
     QHostAddress m_learnedBind;              // build 221: the adapter the radio was found on
+    // Build 240: where commands are SENT -- the radio's address, or the
+    // limited broadcast (255.255.255.255) out of m_bindAddr when the radio is
+    // in another subnet than that adapter (Windows then refuses unicast from
+    // it: "Unable to send a message"). Replies still come from m_p.host.
+    QHostAddress m_txHost;
     bool m_p1PsActive = false;               // PS pairs flowing this over (I/O thread)
     std::vector<float> m_p1Mic;              // radio mic, gathered into 64-sample packets
     int m_p1MicPhase = 0;

@@ -45,7 +45,10 @@
 #include <QDateTime>
 #include <QStandardPaths>
 #include <QTimer>
+#include <atomic>
+#include <chrono>
 #include <cstdio>
+#include <thread>
 #include <cstdlib>
 
 #ifdef _WIN32
@@ -462,8 +465,30 @@ int main(int argc, char* argv[])
     {
         static QElapsedTimer s_lastBeat;
         s_lastBeat.start();
+        // Build 241: the beat as seen from another thread. A stall that never
+        // ends is reported by nothing above (the warning fires when the loop
+        // unblocks); a watcher thread writes a hang report with every
+        // thread's stack (CrashDump::reportHang) once the loop has been dead
+        // for kHangReportMs.
+        // Armed by the first beat: start-up before the event loop runs is not
+        // a hang.
+        static std::atomic<qint64> s_beatMs{0};
+        std::thread([] {
+            constexpr qint64 kHangReportMs = 8000;
+            for (;;) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                const qint64 beat = s_beatMs.load(std::memory_order_relaxed);
+                const qint64 gap = QDateTime::currentMSecsSinceEpoch() - beat;
+                if (beat != 0 && gap > kHangReportMs) {
+                    std::fprintf(stderr, "MainThreadWatchdog: event loop dead for %lld ms, writing a hang report\n",
+                                 static_cast<long long>(gap));
+                    AetherSDR::CrashDump::reportHang("main thread not responding (event loop stalled > 8 s)");
+                }
+            }
+        }).detach();
         auto* heartbeat = new QTimer(&app);
         QObject::connect(heartbeat, &QTimer::timeout, &app, []() {
+            s_beatMs.store(QDateTime::currentMSecsSinceEpoch(), std::memory_order_relaxed);
             const qint64 gapMs = s_lastBeat.restart();
             if (gapMs > 600) {
                 qWarning().nospace()

@@ -11,6 +11,7 @@
 #include <QString>
 #include <QThread>
 #include <QTimer>
+#include <QVariantMap>
 
 #include "core/backends/hl2/Hl2AdcPairing.h"
 #include "core/backends/hl2/Hl2AutoGainPolicy.h"
@@ -48,6 +49,8 @@ namespace AetherSDR::fdv {
 class FdvEngine;
 class HalfbandResampler;
 }
+
+namespace aether_drm { class DrmEngine; }
 
 namespace AetherSDR { class ClientComp; }
 namespace AetherSDR::anan { class AnanPureSignal; class AnanTxEngine; }
@@ -297,6 +300,11 @@ signals:
     // float32 I/Q in host order (little-endian), centred on the receiver's
     // pan centre, at the rate TCI asked for. Emitted on the I/O thread.
     void tciIqReady(int channel, const QByteArray& iq, int sampleRate);
+    // ANAN port: DRM decoder state for a slice, about four times a second
+    // while it runs (keys: see Hl2Backend::publishDrm), and each new
+    // slideshow picture as sent (JPEG / PNG bytes).
+    void drmStatusReady(int sliceId, const QVariantMap& status);
+    void drmSlideReady(int sliceId, const QByteArray& image, const QString& name);
     // ANAN-100D port: the PTT of the radio's own microphone. The ANAN does not
     // key itself: the host turns this into an ordinary PTT (RadioModel ->
     // MainWindow), which keys MOX through the TX coordinator.
@@ -898,6 +906,11 @@ private:
         // Owns its demod + spectrum chain; created on connect, destroyed on disconnect,
         // lives on the I/O thread.
         Hl2RxDsp* dsp = nullptr;
+        // ANAN port: the DRM decoder on this receiver (DrmApplet), or null.
+        // Shared with the dsp, which feeds it on the I/O thread.
+        std::shared_ptr<aether_drm::DrmEngine> drm;
+        uint64_t drmSlideSeen = 0;
+        int drmJournalinePage = 0;
 
         // Authoritative RX state (nothing on the wire echoes it). The slice frequency
         // and the NCO are independent: the slice is tuned inside the passband by a WDSP
@@ -1136,6 +1149,12 @@ private:
     };
     static constexpr std::size_t kTciIqTaps = 8;
     std::array<TciIqTap, kTciIqTaps> m_tciTaps;
+
+    // ANAN port: DRM ("drm" extension verb; Receiver::drm).
+    QTimer* m_drmTimer = nullptr;
+    void drmCommand(const QVariantMap& m);
+    void attachDrm(Receiver& r);
+    void publishDrm();
     // Written on the GUI thread (emitPanState), read on the I/O thread.
     std::array<std::atomic<double>, kTciIqTaps> m_tciIqOffsetHz{};
     std::atomic<int> m_tciIqInRateHz{48000};

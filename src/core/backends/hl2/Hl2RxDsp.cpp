@@ -1,6 +1,7 @@
 #include "core/backends/hl2/Hl2RxDsp.h"
 
 #include "core/backends/hl2/Hl2AdcPairing.h"
+#include "aether/DrmEngine.h"
 
 #include <QLoggingCategory>
 #include <QMetaType>
@@ -495,6 +496,31 @@ void Hl2RxDsp::applyApf()
                               << "refused by the channel; held and re-applied on"
                                  " the next configure()";
     }
+}
+
+void Hl2RxDsp::setDrmEngine(std::shared_ptr<aether_drm::DrmEngine> engine)
+{
+    m_drm = std::move(engine);
+    m_drmPrimed = false;
+}
+
+void Hl2RxDsp::applyDrm(std::size_t frames)
+{
+    // In: the slice's filtered I/Q (L = I, R = Q). Out: decoded audio, after
+    // ~0.8 s of it is buffered (Dream delivers audio in 400 ms super-frame
+    // blocks); silence while it is not, and re-buffer after a gap.
+    m_drm->pushIq(m_stereo.data(), frames);
+    const auto prime = static_cast<std::size_t>(m_config.audioSampleRateHz) * 8 / 10;
+    if (!m_drmPrimed && m_drm->audioFramesAvailable() >= prime)
+        m_drmPrimed = true;
+    std::size_t got = 0;
+    if (m_drmPrimed) {
+        got = m_drm->pullAudio(m_stereo.data(), frames);
+        if (got < frames)
+            m_drmPrimed = false;
+    }
+    std::fill(m_stereo.begin() + static_cast<std::ptrdiff_t>(2 * got),
+              m_stereo.begin() + static_cast<std::ptrdiff_t>(2 * frames), 0.0f);
 }
 
 void Hl2RxDsp::setAnf(bool on, int level)
@@ -1059,6 +1085,8 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq)
             m_stereo[2 * k] = m_dcBlockL.process(m_left[k]);
             m_stereo[2 * k + 1] = m_dcBlockR.process(m_right[k]);
         }
+        if (m_drm)
+            applyDrm(outN);
         // While the AGC is held the output is never played (it is our own
         // transmitter at the receive gain), with or without the RX mute.
         if (m_pressBlankFrames > 0) {

@@ -327,6 +327,16 @@ unset(_aether_rwd_cmake)
 unset(_aether_rwd_g1)
 unset(_rwd)
 
+# ANAN port, build 241: an MSVC Release build writes AetherSDR.pdb too, so a
+# crash or hang minidump (src/core/CrashDump.h) can be read back to functions
+# and lines. /Z7 keeps the debug info in each object (no shared compiler PDB
+# for parallel jobs to fight over); the linker merges it into the PDB.
+# /OPT:REF and /OPT:ICF keep the exe as small as without /DEBUG.
+if(MSVC)
+    add_compile_options($<$<CONFIG:Release>:/Z7>)
+    add_link_options($<$<CONFIG:Release>:/DEBUG:FULL> $<$<CONFIG:Release>:/OPT:REF> $<$<CONFIG:Release>:/OPT:ICF>)
+endif()
+
 # Qt6 components
 # Qt 6.12 minimum: the same Qt every release artifact and every CI leg builds
 # against (#5487). A source build no longer depends on what a distro happens to
@@ -1275,6 +1285,7 @@ set(GUI_SOURCES
     src/gui/WindowShowState.cpp
     src/gui/MainWindow_Controllers.cpp
     src/gui/MainWindow_DspApplets.cpp
+    src/gui/MainWindow_Drm.cpp
     src/gui/MainWindow_Menus.cpp
     src/gui/MainWindow_Session.cpp
     src/gui/MainWindow_Shortcuts.cpp
@@ -1510,6 +1521,7 @@ set(GUI_SOURCES
     src/gui/ClientCompEditorCanvas.cpp
     src/gui/StripCompPanel.cpp
     src/gui/CatControlApplet.cpp
+    src/gui/DrmApplet.cpp
     src/gui/DaxApplet.cpp
     src/gui/TciApplet.cpp
     src/gui/DaxIqApplet.cpp
@@ -1817,6 +1829,10 @@ qt_add_resources(RESOURCES resources/resources.qrc resources/radar.qrc)
 # WDSP 2.00 is an engine-only dependency for raw-IQ radio backends. Its C API,
 # platform shims, and FFTW dependency remain private to aethercore.
 add_subdirectory(third_party/wdsp EXCLUDE_FROM_ALL)
+# ANAN port: Dream's DRM receiver core (GPL v2+), Qt-free, behind
+# third_party/dream/aether/DrmEngine.h. FDK-AAC is NOT linked: it is loaded at
+# run time from a library next to the executable (aether/fdk_dyn.cpp).
+add_subdirectory(third_party/dream EXCLUDE_FROM_ALL)
 
 # aetherd RFC step 1: engine static library — src/core + src/models
 # plus the vendored C/C++ sources those engine files compile against
@@ -1833,6 +1849,7 @@ add_library(aethercore ${_aether_core_library_type}
     ${SPECBLEACH_SOURCES}
 )
 target_link_libraries(aethercore PRIVATE aether::wdsp)
+target_link_libraries(aethercore PRIVATE aether::dream)   # core: Hl2Backend / Hl2RxDsp DRM
 target_link_libraries(aethercore PRIVATE aether_monocypher)   # core: EspFirmwareCatalog, UpdateStager
 target_link_libraries(aethercore PRIVATE aether_zstd)         # core: UpdateStager
 target_compile_definitions(aethercore PRIVATE
@@ -3170,6 +3187,17 @@ if(FFTW3_FOUND)
             COMMENT "Copying libfftw3-3.dll to build directory"
         )
     endif()
+endif()
+
+# ANAN port: DRM audio. FDK-AAC is loaded at run time (third_party/dream/
+# aether/fdk_dyn.cpp), never linked. If a Windows build of it is placed at
+# third_party/fdk-aac/bin/fdk-aac.dll it is copied next to the executable;
+# without it DRM decodes everything but AAC / xHE-AAC audio.
+if(WIN32 AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/fdk-aac/bin/fdk-aac.dll")
+    add_custom_command(TARGET AetherSDR POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/third_party/fdk-aac/bin/fdk-aac.dll" "$<TARGET_FILE_DIR:AetherSDR>"
+        COMMENT "Copying fdk-aac.dll (DRM audio) to build directory")
 endif()
 
 # ANAN-100D port: FreeDV (FDV) -- libfdv.dll + libcodec2.dll from MicronSDR

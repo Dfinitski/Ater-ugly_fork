@@ -36,6 +36,7 @@
 #include "ClientRxDspApplet.h"
 #include "ClientChainApplet.h"
 #include "CatControlApplet.h"
+#include "DrmApplet.h"
 #include "DaxApplet.h"
 #include "TciApplet.h"
 #include "DaxIqApplet.h"
@@ -166,7 +167,7 @@ constexpr int kStackBottomMargin = 8;
 
 const QStringList AppletPanel::kDefaultOrder = {
     // ANAN-100D port: PHNE, MTR, HLTH and CLOCK removed (operator, 30.10).
-    "PWR", "RX", "WFM", "TUN", "AMP", "TX", "P/CW", "EQ", "WAVE", "TXDSP", "CAT", "DAX", "TCI", "IQ", "PROF", "AG", "SS", "GHE"
+    "PWR", "RX", "WFM", "TUN", "AMP", "TX", "P/CW", "EQ", "WAVE", "TXDSP", "CAT", "DAX", "TCI", "IQ", "DRM", "PROF", "AG", "SS", "GHE"
 };
 
 // ── Drop-aware scroll area ──────────────────────────────────────────────────
@@ -1103,6 +1104,20 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     m_daxIqApplet = new DaxIqApplet;
     m_appletOrder.append(makeEntry("IQ", "DAX IQ", m_daxIqApplet, false, m_drawer, m_drawerLayout));
 
+    // ANAN port (operator, 09.11): the DRM receiver. Docked: state, services
+    // and text; popped out: slideshow, Journaline and the receiver settings.
+    m_drmApplet = new DrmApplet;
+    {
+        auto drmEntry = makeEntry("DRM", "DRM Receiver", m_drmApplet, false, m_drawer, m_drawerLayout);
+        m_appletOrder.append(drmEntry);
+        if (auto* c = qobject_cast<ContainerWidget*>(drmEntry.widget)) {
+            connect(c, &ContainerWidget::dockModeChanged, m_drmApplet,
+                    [this](ContainerWidget::DockMode mode) {
+                        m_drmApplet->setFloating(mode != ContainerWidget::DockMode::PanelDocked);
+                    });
+        }
+    }
+
     m_profApplet = new ProfileSwitcherApplet;
     m_appletOrder.append(makeEntry("PROF", "Profile Switcher", m_profApplet, false, m_drawer, m_drawerLayout));
 
@@ -1473,6 +1488,7 @@ QList<AppletPanel::AppletCatalogEntry> AppletPanel::appletCatalog() const
         {QStringLiteral("SS"),    QStringLiteral("Antennas & Switching")},
         {QStringLiteral("GHE"),   QStringLiteral("Antennas & Switching")},
         {QStringLiteral("CAT"),   QStringLiteral("Integration")},
+        {QStringLiteral("DRM"),   QStringLiteral("Audio & DSP")},
         {QStringLiteral("DAX"),   QStringLiteral("Integration")},
         {QStringLiteral("IQ"),    QStringLiteral("Integration")},
         {QStringLiteral("TCI"),   QStringLiteral("Integration")},
@@ -2270,7 +2286,7 @@ QStringList AppletPanel::defaultButtonOrder() const
     QStringList out = {"VU", "PWR", "RX", "TX", "P/CW"};
     const QStringList rest = {
         "LCK", "EQ", "WAVE", "TXDSP",
-        "CAT", "DAX", "TCI", "IQ", "PROF", "SS", "CW", "PS"
+        "CAT", "DAX", "TCI", "IQ", "DRM", "PROF", "SS", "CW", "PS"
     };
     for (const auto& id : rest)
         if (!out.contains(id)) out.append(id);

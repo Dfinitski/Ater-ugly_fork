@@ -389,6 +389,25 @@ jobs:
           mkdir -p AppDir/usr/lib
           cp -v "$RUNNER_TEMP"/fdv-out/libcodec2.so.* AppDir/usr/lib/
 
+      # Build 238: DRM audio. AetherSDR does not link FDK-AAC; it loads
+      # libfdk-aac.so.2 at run time (third_party/dream/aether/fdk_dyn.cpp:
+      # system library path, then the executable's ../lib and own directory).
+      # Built here from the upstream source at a pinned tag (decoder library
+      # only, not the separate fdk-xhe-aac encoder) and shipped in usr/lib.
+      # Licence: third_party/fdk-aac/NOTICE. Not fatal: without it DRM still
+      # syncs and shows labels, text and data, only AAC / xHE-AAC audio is silent.
+      - name: Build FDK-AAC (libfdk-aac.so.2, DRM audio)
+        continue-on-error: true
+        run: |
+          git clone --depth 1 --branch v3.0.0 https://github.com/mstorsjo/fdk-aac.git "$RUNNER_TEMP/fdk-aac"
+          test "$(git -C "$RUNNER_TEMP/fdk-aac" rev-parse HEAD)" = a68a51aa45d86a43c7b228e3d45624af09dcdd8d
+          cmake -S "$RUNNER_TEMP/fdk-aac" -B "$RUNNER_TEMP/fdk-aac/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DBUILD_PROGRAMS=OFF
+          cmake --build "$RUNNER_TEMP/fdk-aac/build" --target fdk-aac -j$(nproc)
+          mkdir -p AppDir/usr/lib
+          cp -av "$RUNNER_TEMP"/fdk-aac/build/libfdk-aac.so* AppDir/usr/lib/
+          cp -v "$RUNNER_TEMP/fdk-aac/NOTICE" AppDir/usr/lib/libfdk-aac.NOTICE
+
       - name: Download linuxdeploy + Qt plugin
         run: |
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.arch }}.AppImage

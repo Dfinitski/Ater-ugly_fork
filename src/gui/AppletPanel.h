@@ -58,6 +58,7 @@ class ClientReverbApplet;
 class ClientRxDspApplet;
 class ClientChainApplet;
 class CatControlApplet;
+class DrmApplet;
 class DaxApplet;
 class TciApplet;
 class DaxIqApplet;
@@ -153,6 +154,7 @@ public:
     ClientRxDspApplet*  clientRxDspApplet() { return m_clientRxDspApplet; }
     ClientChainApplet* clientChainApplet() { return m_clientChainApplet; }
     CatControlApplet* catControlApplet() { return m_catControlApplet; }
+    DrmApplet* drmApplet() { return m_drmApplet; }
     DaxApplet*      daxApplet()      { return m_daxApplet; }
     TciApplet*      tciApplet()      { return m_tciApplet; }
     DaxIqApplet*    daxIqApplet()    { return m_daxIqApplet; }
@@ -464,6 +466,7 @@ private:
     ClientChainApplet* m_clientChainApplet{nullptr};
     bool m_txAudioPathBlocked{false};
     CatControlApplet* m_catControlApplet{nullptr};
+    DrmApplet* m_drmApplet{nullptr};   // ANAN port: DRM receiver
     DaxApplet*     m_daxApplet{nullptr};
     TciApplet*     m_tciApplet{nullptr};
     DaxIqApplet*   m_daxIqApplet{nullptr};

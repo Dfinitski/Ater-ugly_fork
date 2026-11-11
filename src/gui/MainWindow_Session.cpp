@@ -2726,6 +2726,7 @@ void MainWindow::wireCatPorts()
 
     // Auto-start based on saved master enable
     applyCatPortCount();
+    setupDrmApplet();   // build 237
     m_appletPanel->daxApplet()->setRadioModel(&m_radioModel);
     m_appletPanel->daxIqApplet()->setRadioModel(&m_radioModel);
     // DAX RX row count follows the radio's slice capacity (#4854 review),

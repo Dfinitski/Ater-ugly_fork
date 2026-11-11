@@ -1,4 +1,6 @@
 #include "core/backends/hl2/Hl2Backend.h"
+
+#include "aether/DrmEngine.h"
 #include "core/AppActivity.h"
 #include "core/backends/WdspNoiseBlanker.h"
 #include "core/backends/hl2/Hl2Bands.h"
@@ -1759,6 +1761,10 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
     // Recorded, not published. m_rx is this thread's, so this is a plain store;
     // the sample path sees nothing until the caller calls publishIoDsps().
     r->dsp = dsp;
+    // ANAN port: a DRM decoder running on this receiver follows it to the new
+    // chain (rate change, rebuild).
+    if (r->drm)
+        attachDrm(*r);
     return true;
 }
 
@@ -7964,6 +7970,12 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
                 emit extensionResult(requestId, QVariant(true));
             return;
         }
+        if (verb == QLatin1String("drm")) {
+            drmCommand(arg.toMap());
+            if (requestId != 0)
+                emit extensionResult(requestId, QVariant(true));
+            return;
+        }
         if (verb == QLatin1String("tci.iq")) {
             const QVariantMap m = arg.toMap();
             const int ddc = ddcForSlice(m.value(QStringLiteral("slice")).toInt());
@@ -11279,6 +11291,159 @@ void Hl2Backend::emitSliceState(int ddc)
 // the samples are mixed down by the view offset, then converted to the rate
 // TCI asked for (P1PsResampler, power-of-two ratios) and sent in frames of
 // 1024 I/Q pairs.
+void Hl2Backend::attachDrm(Receiver& r)
+{
+    if (!r.dsp)
+        return;
+    QMetaObject::invokeMethod(r.dsp, [dsp = r.dsp, eng = r.drm] {
+        dsp->setDrmEngine(eng);
+    }, Qt::QueuedConnection);
+}
+
+void Hl2Backend::drmCommand(const QVariantMap& m)
+{
+    // ANAN port (DrmApplet): the DRM decoder on one slice's receiver. The slice
+    // is put in DRM mode by the GUI first: WDSP then runs no demodulator, the
+    // DRM filter (+-5 kHz by default, on the panadapter) selects the station,
+    // and the chain's output is that filtered I/Q at the audio rate.
+    const int sliceId = m.value(QStringLiteral("slice")).toInt();
+    const QString action = m.value(QStringLiteral("action")).toString();
+    const int ddc = ddcForSlice(sliceId);
+    Receiver* r = rx(ddc);
+    if (!r) {
+        qCWarning(lcHl2) << "ANAN: DRM" << action << "for slice" << sliceId << "-- no such receiver";
+        return;
+    }
+    if (action == QLatin1String("start")) {
+        if (!r->drm) {
+            r->drm = std::make_shared<aether_drm::DrmEngine>();
+            r->drmSlideSeen = 0;
+            r->drmJournalinePage = 0;
+        }
+        aether_drm::Settings st;
+        const QVariantMap sm = m.value(QStringLiteral("settings")).toMap();
+        st.freqInterpolation = sm.value(QStringLiteral("freqInt"), 1).toInt();
+        st.timeInterpolation = sm.value(QStringLiteral("timeInt"), 1).toInt();
+        st.mlcIterations = sm.value(QStringLiteral("mlcIter"), 1).toInt();
+        st.flipSpectrum = sm.value(QStringLiteral("flip"), false).toBool();
+        r->drm->setSettings(st);
+        r->drm->start(24000);   // the chain's audio rate (AudioEngine's native RX rate)
+        attachDrm(*r);
+        if (!m_drmTimer) {
+            m_drmTimer = new QTimer(this);
+            m_drmTimer->setInterval(250);
+            connect(m_drmTimer, &QTimer::timeout, this, &Hl2Backend::publishDrm);
+        }
+        m_drmTimer->start();
+        qCInfo(lcHl2) << "ANAN: DRM decoder on for receiver" << ddc + 1 << "(slice" << sliceId << ")"
+                      << (aether_drm::DrmEngine::fdkAacAvailable() ? "-- FDK-AAC found"
+                                                                    : "-- no FDK-AAC library: no audio");
+        return;
+    }
+    if (!r->drm)
+        return;
+    if (action == QLatin1String("stop")) {
+        // Detach on the I/O thread, then stop there: the dsp may be inside
+        // pushIq() right now.
+        auto eng = std::move(r->drm);
+        r->drm.reset();
+        if (r->dsp) {
+            QMetaObject::invokeMethod(r->dsp, [dsp = r->dsp, eng] {
+                dsp->setDrmEngine(nullptr);
+                eng->stop();
+            }, Qt::QueuedConnection);
+        } else {
+            eng->stop();
+        }
+        QVariantMap off;
+        off.insert(QStringLiteral("running"), false);
+        emit drmStatusReady(sliceId, off);
+        qCInfo(lcHl2) << "ANAN: DRM decoder off for receiver" << ddc + 1;
+        return;
+    }
+    if (action == QLatin1String("service")) {
+        r->drm->selectService(m.value(QStringLiteral("index")).toInt());
+        return;
+    }
+    if (action == QLatin1String("journaline")) {
+        r->drmJournalinePage = std::max(0, m.value(QStringLiteral("page")).toInt());
+        r->drm->requestJournalinePage(r->drmJournalinePage);
+        return;
+    }
+    if (action == QLatin1String("settings")) {
+        aether_drm::Settings st;
+        st.freqInterpolation = m.value(QStringLiteral("freqInt"), 1).toInt();
+        st.timeInterpolation = m.value(QStringLiteral("timeInt"), 1).toInt();
+        st.mlcIterations = m.value(QStringLiteral("mlcIter"), 1).toInt();
+        st.flipSpectrum = m.value(QStringLiteral("flip"), false).toBool();
+        r->drm->setSettings(st);
+        return;
+    }
+}
+
+void Hl2Backend::publishDrm()
+{
+    bool any = false;
+    for (const auto& ids : m_ids.all()) {
+        Receiver* r = rx(ids.ddcIndex);
+        if (!r || !r->drm)
+            continue;
+        any = true;
+        const aether_drm::Status st = r->drm->status();
+        const auto light = [](aether_drm::Light l) { return static_cast<int>(l); };
+        QVariantMap m;
+        m.insert(QStringLiteral("running"), st.running);
+        m.insert(QStringLiteral("fdk"), st.fdkAvailable);
+        m.insert(QStringLiteral("lights"), QVariantList{light(st.io), light(st.timeSync),
+            light(st.freqSync), light(st.fac), light(st.sdc), light(st.msc)});
+        m.insert(QStringLiteral("synced"), st.synced);
+        m.insert(QStringLiteral("snr"), st.snrDb);
+        m.insert(QStringLiteral("offsetHz"), st.freqOffsetHz);
+        m.insert(QStringLiteral("robustness"), st.robustness ? QString(QChar(st.robustness)) : QString());
+        m.insert(QStringLiteral("bandwidthKHz"), st.bandwidthKHz);
+        m.insert(QStringLiteral("interleaver"), QString::fromStdString(st.interleaver));
+        m.insert(QStringLiteral("mscQam"), QString::fromStdString(st.mscQam));
+        m.insert(QStringLiteral("sdcQam"), QString::fromStdString(st.sdcQam));
+        QVariantList services;
+        for (const auto& sv : st.services) {
+            QVariantMap o;
+            o.insert(QStringLiteral("present"), sv.present);
+            o.insert(QStringLiteral("audio"), sv.audio);
+            o.insert(QStringLiteral("id"), static_cast<quint32>(sv.id));
+            o.insert(QStringLiteral("label"), QString::fromStdString(sv.label).trimmed());
+            o.insert(QStringLiteral("codec"), QString::fromStdString(sv.codec));
+            o.insert(QStringLiteral("kbps"), sv.bitrateKbps);
+            o.insert(QStringLiteral("language"), QString::fromStdString(sv.language));
+            o.insert(QStringLiteral("country"), QString::fromStdString(sv.country).toUpper());
+            o.insert(QStringLiteral("decodable"), sv.decodable);
+            services << o;
+        }
+        m.insert(QStringLiteral("services"), services);
+        m.insert(QStringLiteral("audioService"), st.audioService);
+        m.insert(QStringLiteral("dataService"), st.dataService);
+        m.insert(QStringLiteral("text"), QString::fromStdString(st.textMessage).trimmed());
+        m.insert(QStringLiteral("time"), QString::fromStdString(st.utcTime));
+        QStringList jl;
+        for (const auto& l : st.journaline)
+            jl << QString::fromStdString(l);
+        m.insert(QStringLiteral("journaline"), jl);
+        m.insert(QStringLiteral("journalinePage"), st.journalinePage);
+        m.insert(QStringLiteral("inputDbfs"), st.inputLevelDbfs);
+        emit drmStatusReady(ids.uiNumber, m);
+
+        aether_drm::Slide slide;
+        if (r->drm->latestSlide(r->drmSlideSeen, slide)) {
+            r->drmSlideSeen = slide.serial;
+            emit drmSlideReady(ids.uiNumber,
+                QByteArray(reinterpret_cast<const char*>(slide.data.data()),
+                           static_cast<qsizetype>(slide.data.size())),
+                QString::fromStdString(slide.name));
+        }
+    }
+    if (!any && m_drmTimer)
+        m_drmTimer->stop();
+}
+
 void Hl2Backend::tciIqTap(std::size_t ddc, const std::vector<std::complex<float>>& iq)
 {
     TciIqTap& t = m_tciTaps[ddc];

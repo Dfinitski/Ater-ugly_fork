@@ -1092,6 +1092,17 @@ private:
     bool m_ownNoiseHintDone = false;
     void maybeShowOwnNoiseHint();
     void pushTxBandsToBackend();   // build 223: amateur bands to the ANAN backend
+    // Build 237: the DRM applet (MainWindow_Drm.cpp). The decoder runs in the
+    // ANAN backend ("drm" extension verb) on one slice, put in DRM mode.
+    void setupDrmApplet();
+    void wireDrmBackend(QObject* hl2Backend);
+    void drmStart();
+    void drmStop(bool restoreMode);
+    void onDrmStatus(int sliceId, const QVariantMap& status);
+    void onDrmSlide(int sliceId, const QByteArray& image, const QString& name);
+    int m_drmSliceId = -1;
+    QString m_drmPrevMode;
+    QMetaObject::Connection m_drmModeConn;
     // Build 227: band memory for the ANAN (no band stack in the radio): per
     // band the last frequency, mode, RX filter, AGC and panadapter width,
     // remembered while on the band and restored by the band buttons.

@@ -7562,6 +7562,7 @@ void MainWindow::wireBackendSeam(IRadioBackend* backend)
                 [this](const QString&, int, int) { armWdspSetupDialog(); });
         connect(hl2Backend, &hl2::Hl2Backend::dspSetupFinished, this,
                 [this] { dismissWdspSetupDialog(); });
+        wireDrmBackend(hl2Backend);   // build 237: DRM decoder state -> DRM applet
     }
 
     // Spectrum seam is not rendered here:

@@ -392,19 +392,47 @@ bool P2Transport::start(const hl2::MetisClient::Params& params)
             if (w != g_workingBind.end()) {
                 if (w->second != 0)
                     m_bindAddr = QHostAddress(w->second);
-            } else if (!learned.isNull() && (silent % 2 == 1) != chosen) {
-                m_bindAddr = learned;
+            } else if (!learned.isNull()) {
+                // Build 240: when the radio is outside the adapter's subnet the
+                // routing table cannot reach it, so the adapter (broadcast)
+                // goes first there.
+                const LocalRoute lr = routeForLocalAddress(learned);
+                const bool offSubnet = lr.valid() && !sameSubnet(lr.local, m_p.host, lr.prefix);
+                if ((silent % 2 == 1) != (chosen || offSubnet))
+                    m_bindAddr = learned;
             }
         }
         if (m_bindAddr.isNull() || (m_bindAddr != QHostAddress(QHostAddress::AnyIPv4)
                                     && !routeForLocalAddress(m_bindAddr).valid()))
             m_bindAddr = QHostAddress(QHostAddress::AnyIPv4);
+        // Build 240 (log 10.11, radio 192.168.1.168 static, PC adapter
+        // 169.254.56.125/16): the radio answers the discovery BROADCAST on that
+        // adapter, but unicast to it cannot leave there (Windows: "Unable to
+        // send a message") and the routing table sends it elsewhere -- 0 packets
+        // back on every start. On such an adapter the commands go out as
+        // broadcasts from it, as the discovery does; the radio replies to our
+        // address, which it can reach.
+        m_txHost = m_p.host;
+        {
+            const LocalRoute lr = routeForLocalAddress(learned);
+            const bool offSubnet = !learned.isNull() && lr.valid()
+                                   && !sameSubnet(lr.local, m_p.host, lr.prefix);
+            if (offSubnet && m_bindAddr == learned) {
+                m_txHost = QHostAddress(QHostAddress::Broadcast);
+                qCWarning(lcAnanP2T).noquote()
+                    << "ANAN transport: the radio" << m_p.host.toString() << "is not in the subnet of adapter"
+                    << QStringLiteral("\"%1\" (%2/%3)").arg(lr.adapter, lr.local.toString()).arg(lr.prefix)
+                    << "-- sending to it as broadcasts from that adapter. Better: give the adapter an "
+                       "address in the radio's subnet.";
+            }
+        }
         const LocalRoute via = routeForLocalAddress(m_bindAddr);
         qCInfo(lcAnanP2T).noquote().nospace()
             << "ANAN transport: session socket on "
             << (via.valid() ? via.local.toString() + QStringLiteral(" (adapter \"") + via.adapter + QStringLiteral("\")")
                             : QStringLiteral("any address (routing table)"))
             << " to " << m_p.host.toString()
+            << (m_txHost == QHostAddress(QHostAddress::Broadcast) ? QStringLiteral(" (as broadcasts)") : QString())
             << (silent > 0 ? QStringLiteral(", after %1 start(s) with nothing back").arg(silent) : QString());
     }
     m_sock = new QUdpSocket(this);
@@ -437,21 +465,21 @@ bool P2Transport::start(const hl2::MetisClient::Params& params)
     {
         std::unique_lock<std::shared_mutex> guard(m_sendGuard);
         m_nativeFd = m_sock->socketDescriptor();
-        m_nativeIp = m_p.host.toIPv4Address();
+        m_nativeIp = m_txHost.toIPv4Address();
     }
     m_run = true;
 
     // Discovery first, from this socket: the radio streams to the port it
     // came from. General / DDC-Specific / High Priority follow once the reply
     // names the board (configureSession), or after kBoardWaitMs.
-    const qint64 sent = sendDatagram(*m_sock, buildDiscovery(), m_p.host, kRadioPort,
+    const qint64 sent = sendDatagram(*m_sock, buildDiscovery(), m_txHost, kRadioPort,
                                      m_counters.txBytes, m_counters.txPackets);
-    qCInfo(lcAnanP2T).nospace() << "ANAN P2 transport: Discovery to " << m_p.host.toString()
+    qCInfo(lcAnanP2T).nospace() << "ANAN P2 transport: Discovery to " << m_txHost.toString()
                                 << ":" << kRadioPort << " from local port " << m_sock->localPort()
                                 << (sent > 0 ? "" : " -- SEND FAILED: ") << (sent > 0 ? QString() : m_sock->errorString());
     // Build 194: and the Protocol 1 one. A radio answers one of them; a
     // Protocol 2 reply wins (onBoardWaitTimeout / handleDatagram).
-    sendDatagram(*m_sock, hl2::discoveryRequest(), m_p.host, kRadioPort,
+    sendDatagram(*m_sock, hl2::discoveryRequest(), m_txHost, kRadioPort,
                  m_counters.txBytes, m_counters.txPackets);
     m_boardWait->start(kBoardWaitMs);
     m_connectTimer->start(kConnectTimeoutMs);
@@ -615,7 +643,7 @@ void P2Transport::stopSession(bool toPowerOnState)
         if (m_configured && m_p1) {
             // Thetis SendStopToMetis: EF FE 04 00 (sent twice, it is UDP).
             for (int i = 0; i < 2; ++i)
-                sendDatagram(*m_sock, hl2::metisCommand(0x00), m_p.host, kRadioPort,
+                sendDatagram(*m_sock, hl2::metisCommand(0x00), m_txHost, kRadioPort,
                              m_counters.txBytes, m_counters.txPackets);
         } else if (m_configured) {
             // Thetis' SendStop(): High Priority with run = 0, nothing else.
@@ -651,7 +679,7 @@ void P2Transport::sendGeneral()
     if (m_p1)
         return;   // Protocol 1: the C&C rotation carries the state
     const auto pkt = buildGeneral(m_profile.alexEnableMask, paEffective(), m_wb);
-    sendDatagram(*m_sock, pkt, m_p.host, kRadioPort, m_counters.txBytes, m_counters.txPackets);
+    sendDatagram(*m_sock, pkt, m_txHost, kRadioPort, m_counters.txBytes, m_counters.txPackets);
 }
 
 void P2Transport::sendDdcSpecific()
@@ -666,7 +694,7 @@ void P2Transport::sendDdcSpecific()
     const auto pkt = buildDdcSpecific(ddcs, m_profile.numAdcs, m_dither, m_random, m_profile.rxDdcBase,
                                       PsDdcOptions{m_psEnabled && m_mox,
                                                    m_psLoopback ? m_profile.numAdcs : m_psAdc});
-    sendDatagram(*m_sock, pkt, m_p.host, kDdcSpecificPort, m_counters.txBytes, m_counters.txPackets);
+    sendDatagram(*m_sock, pkt, m_txHost, kDdcSpecificPort, m_counters.txBytes, m_counters.txPackets);
 }
 
 void P2Transport::sendHighPriority(bool run)
@@ -749,7 +777,7 @@ void P2Transport::sendHighPriority(bool run)
                                    /*bypassAdc0Filters=*/!run, /*bypassAdc1Filters=*/!run,
                                    run ? ((m_mox && m_psEnabled && m_psAdc == 0) ? m_psAttDb : m_adcAtt[0]) : 0,
                                    run ? ((m_mox && m_psEnabled && m_psAdc == 1) ? m_psAttDb : m_adcAtt[1]) : 0, o);
-    sendDatagram(*m_sock, pkt, m_p.host, kHighPriorityPort, m_counters.txBytes, m_counters.txPackets);
+    sendDatagram(*m_sock, pkt, m_txHost, kHighPriorityPort, m_counters.txBytes, m_counters.txPackets);
 }
 
 void P2Transport::onKeepaliveTick()
@@ -1692,7 +1720,7 @@ void P2Transport::setWideband(int adcMask, int updateMs)
         m_wbBuf[0].clear();
         m_p1WbClock.invalidate();
         if (m_run && m_configured && m_sock)
-            sendDatagram(*m_sock, hl2::metisCommand((wb.enableMask & 0x01) ? 0x03 : 0x01), m_p.host,
+            sendDatagram(*m_sock, hl2::metisCommand((wb.enableMask & 0x01) ? 0x03 : 0x01), m_txHost,
                          kRadioPort, m_counters.txBytes, m_counters.txPackets);
         return;
     }
@@ -1954,7 +1982,7 @@ void P2Transport::sendTransmitSpecific()
         return;
     const auto pkt = buildTransmitSpecific(m_txSpecSeq++, m_micBoost, effectiveCwKeyer(), m_txAttDb,
                                            m_psEnabled ? m_psAttDb : -1, m_psAdc, m_micControl);
-    sendDatagram(*m_sock, pkt, m_p.host, kTransmitSpecificPort, m_counters.txBytes, m_counters.txPackets);
+    sendDatagram(*m_sock, pkt, m_txHost, kTransmitSpecificPort, m_counters.txBytes, m_counters.txPackets);
 }
 
 void P2Transport::setMox(bool keyed, const TxCoordinator::Operation& operation)
@@ -2609,11 +2637,11 @@ void P2Transport::sendP1Start()
     for (int i = 0; i < 2; ++i) {
         const hl2::Cc a = p1Cc(0, st);
         const hl2::Cc b = p1Cc(i == 0 ? 1 : 2, st);
-        sendDatagram(*m_sock, hl2::ep2Packet(m_p1Seq++, a, b), m_p.host, kRadioPort,
+        sendDatagram(*m_sock, hl2::ep2Packet(m_p1Seq++, a, b), m_txHost, kRadioPort,
                      m_counters.txBytes, m_counters.txPackets);
     }
     // Bit 0: I/Q + mic; bit 1: the wide bandscope (Metis "How it works").
-    sendDatagram(*m_sock, hl2::metisCommand((m_wb.enableMask & 0x01) ? 0x03 : 0x01), m_p.host,
+    sendDatagram(*m_sock, hl2::metisCommand((m_wb.enableMask & 0x01) ? 0x03 : 0x01), m_txHost,
                  kRadioPort, m_counters.txBytes, m_counters.txPackets);
 }
 
@@ -2663,7 +2691,7 @@ void P2Transport::sendP1Ep2()
             m_ducSentTotal.fetch_add(1, std::memory_order_relaxed);
         }
     }
-    sendDatagram(*m_sock, pkt, m_p.host, kRadioPort, m_counters.txBytes, m_counters.txPackets);
+    sendDatagram(*m_sock, pkt, m_txHost, kRadioPort, m_counters.txBytes, m_counters.txPackets);
 }
 
 // PureSignal: one block of synchronised pairs in m_psTxBuf / m_psRxBuf

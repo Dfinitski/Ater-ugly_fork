@@ -3197,6 +3197,40 @@ The bursts themselves come from the PC (speaker packets leave as soon as WDSP pr
   Saved to Desktop\AetherSDR-Release. Desktop\AetherSDR-Release\AetherSDR.exe is still the
   20:30 (build 234) exe.
 
+## 203. Build 241: hang report and PDB for the connect hang (10.11)
+
+**Symptom (operator, 10.11):** the radio is switched off during a session, the
+program searches, the radio is switched on, the program finds it and starts the
+connect, then hangs (Windows "not responding"; under Qt Creator "terminated
+abnormally"). A launch while the radio was still streaming to the dead process
+hung the same way. Logs 20261110-183542 (18:45:15), -185057/-185138/-185257 and
+-185812 (18:58:45) all end at `HL2 hardware options` right after
+`Auto-connect ... (busy: taking over our previous session)`; every connect to a
+radio that was NOT busy (18:36:23, 18:58:23) went through. No crash report: a
+hang raises no exception, and the asynchronous log has nothing after the line.
+
+**Not fixed yet** -- the cause is not identified. What follows
+`HL2 hardware options` in `Hl2Backend::connectRadio` is the unicast discovery
+run on the I/O thread with `BlockingQueuedConnection`; if that thread never
+returns to its event loop (for a radio busy with our old session it still owns
+the old P2 session socket after a link loss), the GUI waits forever. That is a
+hypothesis, not a finding.
+
+**Instrumentation in this build:**
+- `src/main.cpp`: a watcher thread reads the main-loop heartbeat (250 ms timer);
+  armed by the first beat; when the loop has not run for 8 s it calls
+  `CrashDump::reportHang()` once.
+- `src/core/CrashDump.h`: `writeReport()` split out of `write()`;
+  `reportHang()` writes `aethersdr-crash-<time>.txt/.dmp` with its own once-flag
+  (a later real crash still reports); the .txt names the main thread id. The
+  minidump holds every thread's stack.
+- `CMakeLists.txt`: MSVC Release builds with `/Z7` and links with
+  `/DEBUG:FULL /OPT:REF /OPT:ICF`, so `AetherSDR.pdb` lies next to the exe and
+  the dump can be symbolized (llvm-pdbutil / llvm-symbolizer here).
+
+**Next:** reproduce (radio off -> on during a session), send the
+`aethersdr-crash-*.txt/.dmp` and `AetherSDR.pdb` from the build folder.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

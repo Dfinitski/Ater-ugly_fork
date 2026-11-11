@@ -41,6 +41,8 @@ namespace detail {
 inline wchar_t g_dir[MAX_PATH] = {};
 inline wchar_t g_logPath[MAX_PATH] = {};
 inline volatile LONG g_once = 0;
+inline volatile LONG g_hangOnce = 0;
+inline DWORD g_mainThreadId = 0;
 
 inline DWORD WINAPI flushThread(LPVOID)
 {
@@ -48,11 +50,8 @@ inline DWORD WINAPI flushThread(LPVOID)
     return 0;
 }
 
-inline void write(EXCEPTION_POINTERS* ep, const char* what)
+inline void writeReport(EXCEPTION_POINTERS* ep, const char* what)
 {
-    // One report per process, whichever trap fires first.
-    if (InterlockedExchange(&g_once, 1) != 0)
-        return;
     SYSTEMTIME t;
     GetLocalTime(&t);
     wchar_t base[MAX_PATH];
@@ -88,7 +87,8 @@ inline void write(EXCEPTION_POINTERS* ep, const char* what)
                              static_cast<unsigned long long>(ep->ExceptionRecord->ExceptionInformation[1]));
             std::fprintf(f, "module %ls + 0x%llX\n", module, offset);
         }
-        std::fprintf(f, "thread %lu\n", static_cast<unsigned long>(GetCurrentThreadId()));
+        std::fprintf(f, "thread %lu (main thread %lu)\n", static_cast<unsigned long>(GetCurrentThreadId()),
+                     static_cast<unsigned long>(g_mainThreadId));
         std::fprintf(f, "log %ls\n", g_logPath);
         std::fprintf(f, "dump %ls.dmp\n", base);
         std::fclose(f);
@@ -126,6 +126,14 @@ inline void write(EXCEPTION_POINTERS* ep, const char* what)
     }
 }
 
+inline void write(EXCEPTION_POINTERS* ep, const char* what)
+{
+    // One report per process, whichever trap fires first.
+    if (InterlockedExchange(&g_once, 1) != 0)
+        return;
+    writeReport(ep, what);
+}
+
 inline LONG WINAPI unhandledFilter(EXCEPTION_POINTERS* ep)
 {
     write(ep, "unhandled exception");
@@ -161,13 +169,28 @@ inline void onPureCall()
 
 }  // namespace detail
 
-// Call once, as early as the log directory is known.
+// Build 241 (operator, 10.11: "hangs when the radio is switched on again",
+// Windows' "not responding" box, nothing in the log after the connect line):
+// a hang leaves no exception, so nothing above fires. Called by the main-thread
+// watchdog when the event loop has not run for seconds: the minidump holds
+// every thread's stack (the main thread's id is in the .txt), which shows what
+// the GUI thread waits for and what the thread it waits on is doing. Once per
+// process; the process keeps running.
+inline void reportHang(const char* what)
+{
+    if (InterlockedExchange(&detail::g_hangOnce, 1) != 0)
+        return;
+    detail::writeReport(nullptr, what);
+}
+
+// Call once, as early as the log directory is known, on the main thread.
 inline void install(const QString& logDir, const QString& logPath)
 {
     wcsncpy_s(detail::g_dir, QString(logDir).replace(QLatin1Char('/'), QLatin1Char('\\')).toStdWString().c_str(),
               _TRUNCATE);
     wcsncpy_s(detail::g_logPath,
               QString(logPath).replace(QLatin1Char('/'), QLatin1Char('\\')).toStdWString().c_str(), _TRUNCATE);
+    detail::g_mainThreadId = GetCurrentThreadId();
     SetUnhandledExceptionFilter(&detail::unhandledFilter);
     std::signal(SIGABRT, &detail::onAbort);
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
@@ -184,6 +207,7 @@ inline void install(const QString& logDir, const QString& logPath)
 
 namespace AetherSDR::CrashDump {
 inline void install(const QString&, const QString&) {}
+inline void reportHang(const char*) {}
 }  // namespace AetherSDR::CrashDump
 
 #endif
