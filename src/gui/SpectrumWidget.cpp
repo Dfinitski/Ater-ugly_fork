@@ -6683,7 +6683,23 @@ void SpectrumWidget::handleWaterfallFrequencyFrameChange(double oldCenterMhz,
         const float dssFallback = kiwiStream
             ? kKiwiSdrWaterfallMinDbm
             : m_refLevel - m_dynamicRange;
-        if (m_wfLive || m_dss.historyRowCount() <= 0) {
+        // ANAN fork build 287 (operator, 11.11: "rows already drawn distort
+        // with every pan and zoom"). This rewrote every visible 3D row on
+        // each pan / zoom step: its values re-interpolated onto the new
+        // frequency grid and the row re-stamped with the new frame. The GPU
+        // 3D waterfall needs none of it -- each row keeps its own frame
+        // (rowFrames) and dss_mesh.vert places every texel by its frequency
+        // (build 286) -- so its rows are left exactly as captured. The CPU
+        // fallback (no mesh) and KiwiSDR keep the reprojection.
+#ifdef AETHER_GPU_SPECTRUM
+        const bool rowsKeepTheirFrames = !kiwiStream && m_dssMeshReady
+            && dssWaterfallWindow(nullptr, nullptr);
+#else
+        constexpr bool rowsKeepTheirFrames = false;
+#endif
+        if (rowsKeepTheirFrames) {
+            // nothing: the rows and their frames stay as captured
+        } else if (m_wfLive || m_dss.historyRowCount() <= 0) {
             m_dss.reprojectFrequencyFrame(oldCenterMhz, effOldDssBw,
                                           newCenterMhz, effNewDssBw,
                                           dssFallback,
