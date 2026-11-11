@@ -170,6 +170,10 @@ public:
     Q_INVOKABLE void setMicControl(int bits);
     // Orion2BandPass boards: ADC1's input grounded while transmitting.
     Q_INVOKABLE void setAdc1GroundOnTx(bool on);
+    // Build 245: Protocol 1, ANGELIA (ANAN-100D) only -- drive the Alex
+    // filters as on the 7000DLE (band-pass bank per ADC, C0 0x12 / 0x24; the
+    // LPF on the TX frequency), for boards with modified firmware.
+    Q_INVOKABLE void setForce7000Filters(bool on);
     // ANAN-100D port: Transmitter Specific bytes 57..59 -- the ADC step
     // attenuators while transmitting (default 31 dB, as Thetis).
     Q_INVOKABLE void setTxAttenuation(int db);
@@ -658,6 +662,7 @@ private:
     bool m_micBoost = false;
     std::uint8_t m_micControl = 0;
     bool m_adc1GndOnTx = true;
+    bool m_force7000Filters = false;
     int m_txAttDb = 31;
     // Radio PTT release: the radio sends status only while PTT/TX is active,
     // and its last packet can still say "PTT"; silence means released.

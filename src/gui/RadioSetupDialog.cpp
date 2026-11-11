@@ -4187,6 +4187,20 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     modelCombo->setMinimumWidth(160);
     modelRow->addWidget(modelLbl);
     modelRow->addWidget(modelCombo);
+    // Build 245 (operator, 10.11): ANAN-100D boards with firmware modified to
+    // drive 7000DLE-style band-pass filters ahead of both ADCs. Shown on the
+    // ANAN-100D over Protocol 1 only.
+    auto* force7000Chk = new QCheckBox(QStringLiteral("Forced RXx Filter control like 7000"));
+    force7000Chk->setObjectName(QStringLiteral("ananHwForce7000Filters"));
+    force7000Chk->setToolTip(QStringLiteral(
+        "For an ANAN-100D whose firmware was modified to drive band-pass filters\n"
+        "ahead of both ADCs, as on the ANAN-7000DLE (in Thetis: model 7000DLE).\n"
+        "Each ADC's filter follows the receiver on that ADC; the low-pass filter\n"
+        "follows the transmit frequency. Leave off on a standard ANAN-100D."));
+    force7000Chk->setVisible(false);
+    modelRow->addSpacing(12);
+    modelRow->addWidget(force7000Chk);
+    controls->append(force7000Chk);
     modelRow->addStretch(1);
     mvb->addLayout(modelRow);
     auto* psNote = new QLabel(
@@ -4235,7 +4249,7 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     const QPointer<QCheckBox> ditherGuard(ditherChk);
     m_hl2HardwareReseed = [this, ditherGuard, ditherChk, randomChk, noRadioLbl, controls,
                            modelCombo, psNote, micPttChk, micTipChk, micBiasChk, micXlrChk,
-                           gndChk, connNone, connGroup] {
+                           gndChk, connNone, connGroup, force7000Chk] {
         if (!ditherGuard)
             return;
         IRadioBackend* backend = m_model->backend();
@@ -4278,7 +4292,16 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
                                && !m.value(QStringLiteral("ananPureSignal")).toBool());
             const bool orion = m.value(QStringLiteral("ananOrionMic")).toBool();
             const bool xlr = m.value(QStringLiteral("ananXlrMic")).toBool();
-            const bool adc2 = m.value(QStringLiteral("ananAdc2Bank")).toBool();
+            const bool force7000Avail = m.value(QStringLiteral("ananForce7000FiltersAvail")).toBool();
+            const bool force7000 = force7000Avail
+                && m.value(QStringLiteral("ananForce7000Filters")).toBool();
+            {
+                const QSignalBlocker bf(force7000Chk);
+                force7000Chk->setChecked(m.value(QStringLiteral("ananForce7000Filters")).toBool());
+            }
+            force7000Chk->setVisible(force7000Avail);
+            // A forced 7000-style board has the RX2 bank, and its ground-on-TX.
+            const bool adc2 = m.value(QStringLiteral("ananAdc2Bank")).toBool() || force7000;
             for (QCheckBox* c : {micPttChk, micTipChk, micBiasChk, micXlrChk, gndChk})
                 c->blockSignals(true);
             micPttChk->setChecked(!m.value(QStringLiteral("ananMicPttOff")).toBool());
@@ -4352,6 +4375,14 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     });
     connect(gndChk, &QCheckBox::toggled, this, [apply](bool on) {
         apply(QVariantMap{{QStringLiteral("ananAdc2GndOnTx"), on}});
+    });
+    connect(force7000Chk, &QCheckBox::toggled, this, [this, apply](bool on) {
+        apply(QVariantMap{{QStringLiteral("ananForce7000Filters"), on}});
+        // The RX2 ground option shows with it.
+        QTimer::singleShot(0, this, [this] {
+            if (m_hl2HardwareReseed)
+                m_hl2HardwareReseed();
+        });
     });
 
     // ANAN-100D port (operator, 31.10): per-band calibration groups, three

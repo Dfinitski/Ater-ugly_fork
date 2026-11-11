@@ -3295,6 +3295,31 @@ Single-ADC boards keep 0. Stock ANGELIA/ORION: one more value in a register
 they already receive every rotation; the stock gateware's handling of 0x24
 was not read (inferred safe from Thetis' behaviour). Protocol 2 unchanged.
 
+## 207. Build 245: "Forced RXx Filter control like 7000" (ANAN-100D, Protocol 1); build 244 reverted (10.11)
+
+**Correction of 206:** the user runs Thetis as "7000DLE", so his modified
+ANAN-100D has 7000-style band-pass banks ahead of BOTH ADCs, not a standard
+RX1 path plus a second bank. Build 244 (ADC1 bank bits on every two-ADC legacy
+board) is reverted: stock 100D/200D send C0 0x24 C1 = 0 again.
+
+**Option:** ANAN Hardware page, right of the Model combo: checkbox
+"Forced RXx Filter control like 7000" (`ananHwForce7000Filters`, AppSettings
+`AnanForce7000Filters`, default off). Shown only when the session runs
+Protocol 1 and the model's board is ANGELIA (ANAN-100D)
+(`ananForce7000FiltersAvail`). While on, the "RX2 input grounded on transmit"
+option is shown too.
+
+**Effect (P2Transport, Protocol 1 C&C state only):** with the option on and
+`m_profile.boardId == kBoardIdAngelia`, the ORION MkII filter branch is used:
+C0 0x12 C3 = band-pass bank for the first receiver on ADC0
+(`alexRxFilterFor`), C0 0x24 C1 = bank for the first receiver on ADC1 (else
+the ADC0 one), LPF on the TX frequency, C0 0x24 bit 7 = the RX2-ground-on-TX
+setting -- per ADC, whichever receiver uses it. PureSignal input bits, PA and
+everything else stay the 100D's. Protocol 2 and other boards unaffected.
+Plumbing: `Hl2Backend::ananHwFields/applyAnanHwFields/pushAnanModelOptions`
+-> `P2Transport::setForce7000Filters` (queued; the rotation reads it on the
+next EP2 packet).
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

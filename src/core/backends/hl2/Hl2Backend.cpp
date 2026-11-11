@@ -430,6 +430,11 @@ QVariantMap Hl2Backend::ananHwFields() const
         {QStringLiteral("ananMicBias"), on("AnanMicBias", false)},
         {QStringLiteral("ananMicXlr"), on("AnanMicXlr", false)},
         {QStringLiteral("ananAdc2GndOnTx"), on("AnanAdc2GndOnTx", true)},
+        // Build 245: "Forced RXx filter control like 7000" -- offered on the
+        // ANAN-100D (ANGELIA) over Protocol 1 only.
+        {QStringLiteral("ananForce7000FiltersAvail"),
+         m_ananP1.load(std::memory_order_relaxed) && t.boardId == anan::kBoardIdAngelia},
+        {QStringLiteral("ananForce7000Filters"), on("AnanForce7000Filters", false)},
     };
 }
 
@@ -437,7 +442,8 @@ void Hl2Backend::applyAnanHwFields(const QVariantMap& in)
 {
     auto& st = AppSettings::instance();
     bool any = false;
-    for (const char* k : {"AnanMicPttOff", "AnanMicTipPtt", "AnanMicBias", "AnanMicXlr", "AnanAdc2GndOnTx"}) {
+    for (const char* k : {"AnanMicPttOff", "AnanMicTipPtt", "AnanMicBias", "AnanMicXlr", "AnanAdc2GndOnTx",
+                          "AnanForce7000Filters"}) {
         // "AnanMicPttOff" <-> field "ananMicPttOff"
         QString field = QString::fromLatin1(k);
         field[0] = field[0].toLower();
@@ -486,6 +492,9 @@ void Hl2Backend::pushAnanModelOptions()
     QMetaObject::invokeMethod(m_metis, "setMicControl", Qt::QueuedConnection, Q_ARG(int, bits));
     QMetaObject::invokeMethod(m_metis, "setAdc1GroundOnTx", Qt::QueuedConnection,
                               Q_ARG(bool, on("AnanAdc2GndOnTx", true)));
+    // Build 245: the transport applies it on Protocol 1 to an ANGELIA board only.
+    QMetaObject::invokeMethod(m_metis, "setForce7000Filters", Qt::QueuedConnection,
+                              Q_ARG(bool, on("AnanForce7000Filters", false)));
 }
 
 double Hl2Backend::ananFwdDisplayWatts(double watts) const

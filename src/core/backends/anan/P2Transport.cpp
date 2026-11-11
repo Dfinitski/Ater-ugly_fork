@@ -1956,6 +1956,16 @@ void P2Transport::setAdc1GroundOnTx(bool on)
         sendHighPriority(true);
 }
 
+void P2Transport::setForce7000Filters(bool on)
+{
+    if (on == m_force7000Filters)
+        return;
+    m_force7000Filters = on;
+    // Protocol 1 only: the C&C rotation reads it on the next EP2 packet.
+    qCInfo(lcAnanP2T) << "ANAN transport: 7000-style filter control (Protocol 1, ANAN-100D)"
+                      << (on ? "on" : "off");
+}
+
 void P2Transport::setCl1RefClock(bool) {}
 void P2Transport::setAtuTuneRequest(bool) {}
 void P2Transport::setIoBoardTxFrequencyHz(quint64) {}
@@ -2612,7 +2622,14 @@ P1CcState P2Transport::p1State() const
         }
     }
     const double adc1Hz = static_cast<double>(m_rxHz[adc1Rx]);
-    if (m_profile.alexScheme == AlexScheme::Orion2BandPass) {
+    // Build 245 (operator, 10.11): an ANAN-100D with firmware modified to
+    // drive 7000DLE-style band-pass banks ahead of both ADCs (with Thetis it
+    // runs as "7000DLE"). The operator's "Forced RXx filter control like
+    // 7000" (ANAN Hardware page, Protocol 1 + ANGELIA only) selects the ORION
+    // MkII filter logic below for that board.
+    const bool orion2Filters = m_profile.alexScheme == AlexScheme::Orion2BandPass
+        || (m_force7000Filters && m_profile.boardId == kBoardIdAngelia);
+    if (orion2Filters) {
         // ORION MkII: band-pass banks per ADC, the LPF on the TX frequency.
         s.alexHpf = p1AlexHpfBits(alexRxFilterFor(filterHz));
         s.alex2Hpf = p1AlexHpfBits(alexRxFilterFor(adc1Hz));
@@ -2625,19 +2642,6 @@ P1CcState P2Transport::p1State() const
         s.alexHpf = p1AlexHpfBits(legacyAlexHpfFor(filterHz));
         // The PA's harmonic filter on the TX frequency while transmitting.
         s.alexLpf = p1AlexLpfBitsFor(m_mox ? static_cast<double>(tx) : filterHz);
-        // Build 244 (operator, 10.11: an ANAN-100D whose firmware was
-        // modified to drive a band-pass bank ahead of the second ADC, "as on
-        // the 7000DLE"; RX2's filters did not follow -- with Thetis set to
-        // 7000DLE they did): on a two-ADC board the ADC1 bank selection goes
-        // out as Thetis' setAlex2HPF() sends it for the 7000DLE (the same
-        // table as ORION MkII above). Stock ANGELIA/ORION boards have no such
-        // bank: C0 0x24 is in every Protocol 1 rotation anyway (Thetis sends
-        // it to every board, and Thetis' Alex2 bypass settings put non-zero
-        // bits there whatever the model), so they get one more value in a
-        // register they already receive. The ground-RX2-on-TX bit (C1 bit 7)
-        // stays 0 here: not something to switch on a board nobody described.
-        if (m_profile.numAdcs >= 2)
-            s.alex2Hpf = p1AlexHpfBits(alexRxFilterFor(adc1Hz));
     }
     if (m_lna && !m_mox)
         s.alexHpf |= 0x40;   // 6 m preamp, the LNA button
