@@ -4141,6 +4141,43 @@ peak between rows. Order, layer and memory are as in build 271.
 
 Files: resources/shaders/dss_mesh.vert, gui/SpectrumWidget.cpp, ForkBuild.h.
 
+## 236. Build 273: 3D closed step surface; the waterfall black point no longer moves with zoom (11.11)
+
+**Reports (operator, screenshot).**
+- 3D: still no real change after build 272. The picture should be held until
+  the next level arrives, seamlessly.
+- The waterfall's black level changes with zoom. The floor should be taken
+  over the whole width of the pan, not only the part on screen.
+
+**3D.** Each row is now a closed step:
+- the curtain at its depth;
+- a depth wall per column (build 272);
+- the lid from build 271 again, between the columns.
+
+Walls and lids carry the row's own values back to the next row's depth, so the
+row is held until the next one takes over, with no seam in depth or across
+columns. Per row and column there are 24 fill vertices (overlay layer: wall,
+lid, curtain; base: curtain). The fill VBO is about 35 MiB. Shader unchanged
+since build 272 (tags 6/7).
+
+**Black point (SpectrumWidget::updateWaterfallRow, SW auto black).**
+- The ANAN waterfall row is already the whole captured band (Hl2Backend,
+  96 % of the rate).
+- Each of its ≤ 8192 bins is the mean of n·0.96/outN FFT bins, and the FFT
+  size n grows as the view narrows (spectrumFftSizeFor). One bin at zoom-out,
+  ~8 at zoom-in.
+- The estimator is a trimmed mean in dB (bins at or below the row's mean). It
+  depends on the spread of the values: single noise bins scatter ~5.6 dB and
+  their lower half sits several dB below the floor of averaged bins. So the
+  black point moved with each zoom step.
+- For absolute-dB rows (`m_panBinsAbsolute`, the ANAN), the row is first
+  averaged in power into 256 equal groups across the whole band. Each group
+  then holds ≥ ~15 FFT bins at any zoom, a spread of ≤ ~1 dB. The same trimmed
+  mean is then taken over the groups.
+- Flex tile rows keep the original estimator.
+
+Files: gui/SpectrumWidget.cpp, ForkBuild.h.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

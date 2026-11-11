@@ -180,7 +180,8 @@ constexpr int dssFillVerticesPerRow()
     // layer -- the row's ridge carried back to the next row's depth -- so a
     // narrow peak whose rows step sideways with the perspective slant reads as
     // a continuous ridge instead of a dotted one (dss_mesh.vert, lidFar).
-    return (DssRenderer::kMeshCols - 1) * 6 * 3;
+    // Build 273: walls AND lids (a closed step surface), so * 4.
+    return (DssRenderer::kMeshCols - 1) * 6 * 4;
 }
 
 constexpr int dssLineVerticesPerRow()
@@ -9265,7 +9266,56 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
     // Client-side auto-black: track the noise floor from tile data and adjust
     // the black threshold to sit just above it. This replaces the radio's
     // auto_black which targets SmartSDR's different rendering engine.
-    if (m_wfAutoBlack && !m_transmitting) {
+    if (m_wfAutoBlack && !m_transmitting && m_panBinsAbsolute && binsIntensity.size() >= 64) {
+        // ANAN fork build 273 (operator, 11.11: "the waterfall's black level
+        // changes with zoom; the floor must be taken over the whole pan, not
+        // only what is shown"). The row already is the whole captured band
+        // (Hl2Backend: 96 % of the rate), but each of its bins averages a
+        // number of FFT bins that changes with the zoom (the FFT grows as the
+        // view narrows). A trimmed mean in dB depends on that spread: single
+        // noise bins scatter ~5.6 dB and their lower half sits several dB
+        // below the floor of averaged ones, so the estimate -- the black
+        // point -- moved with every zoom step. Average the row into 256 equal
+        // groups in POWER first (each then holds >= ~15 FFT bins at any zoom,
+        // a spread of ~1 dB or less), then take the same trimmed mean over
+        // the groups.
+        constexpr int kGroups = 256;
+        const int n = binsIntensity.size();
+        std::array<float, kGroups> groupDb{};
+        int groups = 0;
+        for (int g = 0; g < kGroups; ++g) {
+            const int b0 = static_cast<int>(static_cast<qint64>(g) * n / kGroups);
+            const int b1 = std::max(b0 + 1, static_cast<int>(static_cast<qint64>(g + 1) * n / kGroups));
+            double p = 0.0;
+            int k = 0;
+            for (int b = b0; b < b1 && b < n; ++b) {
+                const float v = binsIntensity[b];
+                if (!std::isfinite(v))
+                    continue;
+                p += std::pow(10.0, 0.1 * static_cast<double>(v));
+                ++k;
+            }
+            if (k > 0)
+                groupDb[static_cast<std::size_t>(groups++)] =
+                    static_cast<float>(10.0 * std::log10(p / k + 1e-30));
+        }
+        if (groups > 0) {
+            float sum = 0.0f;
+            for (int g = 0; g < groups; ++g)
+                sum += groupDb[static_cast<std::size_t>(g)];
+            const float mean = sum / groups;
+            float noiseSum = 0.0f;
+            int noiseCount = 0;
+            for (int g = 0; g < groups; ++g) {
+                if (groupDb[static_cast<std::size_t>(g)] <= mean) {
+                    noiseSum += groupDb[static_cast<std::size_t>(g)];
+                    ++noiseCount;
+                }
+            }
+            const float target = noiseCount > 0 ? noiseSum / noiseCount : mean;
+            m_autoBlackThresh = 0.95f * m_autoBlackThresh + 0.05f * target;
+        }
+    } else if (m_wfAutoBlack && !m_transmitting) {
         // Estimate noise floor from incoming tiles using a two-pass trimmed mean.
         // Freeze during TX; threshold is restored to pre-TX value on TX→RX transition.
         // Pass 1: compute overall mean (sampled every 8th bin for speed).
@@ -14668,6 +14718,21 @@ void SpectrumWidget::initialize(QRhiCommandBuffer* cb)
                         appendDssVertex(fill, u0, v, 6.0f);
                         appendDssVertex(fill, u0, v, 3.0f);
                         appendDssVertex(fill, u0, v, 7.0f);
+                    }
+                    // Build 273: and the lid -- the row's ridge held flat
+                    // back to the next row's depth between the columns -- so
+                    // walls, lids and curtains close into one step surface
+                    // with no seam (the operator: "hold the picture until the
+                    // new level arrives").
+                    for (int cc = 0; cc + 1 < cols; ++cc) {
+                        const float u0 = static_cast<float>(cc) / (cols - 1);
+                        const float u1 = static_cast<float>(cc + 1) / (cols - 1);
+                        appendDssVertex(fill, u0, v, 2.0f);
+                        appendDssVertex(fill, u0, v, 6.0f);
+                        appendDssVertex(fill, u1, v, 2.0f);
+                        appendDssVertex(fill, u1, v, 2.0f);
+                        appendDssVertex(fill, u0, v, 6.0f);
+                        appendDssVertex(fill, u1, v, 6.0f);
                     }
                 }
                 for (int cc = 0; cc + 1 < cols; ++cc) {
