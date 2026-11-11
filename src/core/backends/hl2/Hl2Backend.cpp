@@ -637,18 +637,30 @@ Hl2Backend::Hl2Backend(QObject* parent)
                 if (ovl & (1u << adc))
                     ui.adcOverloadAtMs[adc] = now;
         }
+        // Build 277: a board with one ADC has no ADC2 -- a stored "ADC2"
+        // (from another radio, or chosen before) is ADC1 there, for the
+        // transport, the attenuators, the antennas and the WIDE indicator
+        // alike. The count is the profile's of the radio as driven, so a
+        // forcedly assigned type brings its own.
+        const int numAdcs = std::clamp(ananProfile().numAdcs, 1, 2);
+        anan::AnanUiState::instance().numAdcs = numAdcs;
+        bool adcChanged = false;
         for (int rx = 0; rx < 2; ++rx) {
             const QString key = rx == 0 ? QStringLiteral("AnanRx1Adc")
                                         : QStringLiteral("AnanRx2Adc");
-            const int adc = AppSettings::instance().value(key, 0).toInt() == 1 ? 1 : 0;
+            const int adc = numAdcs >= 2
+                && AppSettings::instance().value(key, 0).toInt() == 1 ? 1 : 0;
             m_ananAdc[rx] = adc;
             anan::AnanUiState::instance().rxAdc[rx] = adc;
             if (adc == m_ananAdcPushed[rx])
                 continue;
             m_ananAdcPushed[rx] = adc;
+            adcChanged = true;
             QMetaObject::invokeMethod(m_metis, "setReceiverAdc", Qt::QueuedConnection,
                                       Q_ARG(int, rx), Q_ARG(int, adc));
         }
+        if (adcChanged && m_connected)
+            publishWideState();
         // Build 248: the VFO flag's antenna buttons show these too (slice
         // state), so a change from the ANT panel is published to them.
         bool antChanged = false;
@@ -2315,26 +2327,73 @@ bool Hl2Backend::removePanadapter(const QString& panId)
 
 void Hl2Backend::publishWideState()
 {
-    // WIDE means the shared band filter could not serve every active receiver,
-    // so it was bypassed. Computed from the same rule applyBandFilter() applies,
-    // rather than from a flag it sets, so the indicator cannot drift out of step
-    // with the relays.
+    // WIDE means a receiver's band filter could not serve it, because another
+    // receiver on the SAME ADC wants a different one and the bank follows
+    // that receiver. Computed from the rule the transport applies to the
+    // relays (P2Transport: sendHighPriority / p1State), per ADC, so the
+    // indicator cannot drift out of step with them.
     //
-    // THE RECEIVE BYTE, because "wide" is a statement about what the RECEIVERS
-    // can hear. Asking the transmit rule here would report every receiver as
-    // narrow on a transmit-only filter board, where receive is in fact wide
-    // open — the exact opposite of what this indicator exists to say.
-    int want = -1;
-    bool spanned = false;
-    for (const Receiver& r : m_rx) {
-        const int w = static_cast<int>(m_hw.ocReceiveByteForHz(r.sliceFreqHz));
-        if (want < 0)
-            want = w;
-        else if (w != want)
-            spanned = true;
+    // ANAN fork build 277 (operator, 11.11: a radio forcedly assigned as a
+    // 7000DLE showed WIDE with its receivers on two bands). The rule here
+    // was the HL2's -- one front end, every receiver behind the same
+    // open-collector filter byte -- and never looked at the ADCs: on a board
+    // with a filter bank per ADC (7000DLE, 8000DLE, G2) two receivers on
+    // different ADCs were reported WIDE although each bank followed its own
+    // receiver. Now, by the profile of the radio as driven:
+    //  - band-pass banks (Orion2BandPass): one bank per ADC that has one; the
+    //    first receiver on that ADC picks it;
+    //  - classic Alex (LegacyHighPassLowPass, 100/100D/200D): a high-pass
+    //    and the TX low-pass ahead of ADC1 only; ADC2 has no filters, so a
+    //    receiver there is never "WIDE" -- nothing is shared with it;
+    //  - SaturnBandPass (as the transport drives it): one selection for
+    //    both ADCs, following receiver 1.
+    const anan::BoardProfile profile = ananProfile();
+    const int numAdcs = std::clamp(profile.numAdcs, 1, 2);
+    const auto adcOf = [&](int ddc) {
+        return (numAdcs >= 2 && ddc >= 0 && ddc < 2) ? m_ananAdc[ddc] : 0;
+    };
+    const auto filterKey = [&](double hz) -> int {
+        switch (profile.alexScheme) {
+        case anan::AlexScheme::LegacyHighPassLowPass:
+            return static_cast<int>(anan::legacyAlexHpfFor(hz)) * 256
+                + static_cast<int>(anan::p1AlexLpfBitsFor(hz));
+        default:
+            return static_cast<int>(anan::alexRxFilterFor(hz));
+        }
+    };
+    // The ADC whose bank serves this receiver, or -1 when it has none.
+    const auto bankOf = [&](int ddc) -> int {
+        const int adc = adcOf(ddc);
+        switch (profile.alexScheme) {
+        case anan::AlexScheme::Orion2BandPass:
+            return (adc == 0 || profile.hasAdc1FilterBank) ? adc : -1;
+        case anan::AlexScheme::LegacyHighPassLowPass:
+            return adc == 0 ? 0 : -1;
+        default:
+            return 0;   // one selection for every receiver
+        }
+    };
+    // Each bank's owner: the first receiver that uses it.
+    int ownerDdc[2] = {-1, -1};
+    double bankHz[2] = {0.0, 0.0};
+    for (int i = 0; i < static_cast<int>(m_rx.size()); ++i) {
+        const int bank = bankOf(i);
+        if (bank >= 0 && ownerDdc[bank] < 0) {
+            ownerDdc[bank] = i;
+            bankHz[bank] = m_rx[static_cast<std::size_t>(i)].sliceFreqHz;
+        }
     }
-    for (const auto& ids : m_ids.all())
-        emit panWideChanged(ids.panId, spanned);
+    for (const auto& ids : m_ids.all()) {
+        const int ddc = ids.ddcIndex;
+        bool wide = false;
+        if (ddc >= 0 && ddc < static_cast<int>(m_rx.size())) {
+            const int bank = bankOf(ddc);
+            if (bank >= 0 && ownerDdc[bank] != ddc)
+                wide = filterKey(m_rx[static_cast<std::size_t>(ddc)].sliceFreqHz)
+                    != filterKey(bankHz[bank]);
+        }
+        emit panWideChanged(ids.panId, wide);
+    }
 }
 
 // Thread-affinity check for the RX audio mute helpers below: m_rxAudioMuted

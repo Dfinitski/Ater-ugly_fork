@@ -511,6 +511,13 @@ private:
     {
         return anan::modelTraits(m_ananModel);
     }
+    // Build 277: the board profile of the radio as driven (the forcedly
+    // assigned type's, else the reported board's) -- its ADC count and
+    // band-filter scheme, the same profile the transport runs the session on.
+    [[nodiscard]] anan::BoardProfile ananProfile() const
+    {
+        return anan::boardProfileFor(ananTraits().boardId).value_or(anan::defaultBoardProfile());
+    }
     // Mic connector / ADC2 options of this model to the transport.
     void pushAnanModelOptions();
     // hw.get / hw.set: the model and its connector options.

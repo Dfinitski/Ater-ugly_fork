@@ -740,7 +740,7 @@ void P2Transport::sendHighPriority(bool run)
     // handed back bypassed.
     std::size_t filterRx = 0;
     for (int i = 0; i < m_numRx; ++i) {
-        if (m_rxAdc[static_cast<std::size_t>(i)] == 0) {
+        if (effectiveAdc(i) == 0) {
             filterRx = static_cast<std::size_t>(i);
             break;
         }
@@ -769,7 +769,7 @@ void P2Transport::sendHighPriority(bool run)
             // (deskHPSDR); ADC1 with no receiver of its own takes RX1's band.
             std::size_t adc1Rx = filterRx;
             for (int i = 0; i < m_numRx; ++i) {
-                if (m_rxAdc[static_cast<std::size_t>(i)] == 1) {
+                if (effectiveAdc(i) == 1) {
                     adc1Rx = static_cast<std::size_t>(i);
                     break;
                 }
@@ -1575,6 +1575,16 @@ void P2Transport::setDitherRandomBits(bool dither, bool random)
     m_random = random;
     if (m_run && m_configured)
         sendDdcSpecific();
+}
+
+// Build 277: the ADC a receiver actually listens to -- a board with one ADC
+// has no ADC2, whatever was asked for. Every filter and DDC rule reads this,
+// so a stored "ADC2" cannot hand the ADC1 filters to another receiver there.
+int P2Transport::effectiveAdc(int rx) const
+{
+    if (rx < 0 || rx >= kMaxDdcs)
+        return 0;
+    return std::min(m_rxAdc[static_cast<std::size_t>(rx)], std::max(0, m_profile.numAdcs - 1));
 }
 
 void P2Transport::setReceiverAdc(int rx, int adc)
@@ -2603,7 +2613,7 @@ P1CcState P2Transport::p1State() const
     // The filters follow the first receiver on ADC0, as on Protocol 2.
     std::size_t filterRx = 0;
     for (int i = 0; i < m_numRx; ++i) {
-        if (m_rxAdc[static_cast<std::size_t>(i)] == 0) {
+        if (effectiveAdc(i) == 0) {
             filterRx = static_cast<std::size_t>(i);
             break;
         }
@@ -2632,7 +2642,7 @@ P1CcState P2Transport::p1State() const
     // band-pass bank (C0 0x24 C1).
     std::size_t adc1Rx = filterRx;
     for (int i = 0; i < m_numRx; ++i) {
-        if (m_rxAdc[static_cast<std::size_t>(i)] == 1) {
+        if (effectiveAdc(i) == 1) {
             adc1Rx = static_cast<std::size_t>(i);
             break;
         }

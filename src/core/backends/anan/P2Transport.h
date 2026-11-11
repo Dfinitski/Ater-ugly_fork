@@ -456,6 +456,7 @@ private:
         return static_cast<double>(m_rxTunedHz[rx] ? m_rxTunedHz[rx] : m_rxHz[rx]);
     }
     std::array<int, kMaxDdcs> m_rxAdc{};   // per receiver, 0 = ADC1
+    [[nodiscard]] int effectiveAdc(int rx) const;   // build 277
     int m_rxAnt = 0;   // 0..2 = ANT1..ANT3
     bool m_tunerStart = false;
     bool m_lna = false;

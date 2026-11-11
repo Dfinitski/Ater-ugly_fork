@@ -3396,8 +3396,8 @@ void SpectrumOverlayMenu::syncAnanAntennas()
     // the same rule as the attenuator).
     const auto& ui = AetherSDR::anan::AnanUiState::instance();
     const int rx = ui.rxForPan(m_panId);
-    const QString adcKey = rx == 1 ? QStringLiteral("AnanRx2Adc") : QStringLiteral("AnanRx1Adc");
-    const bool onAdc1 = AppSettings::instance().value(adcKey, 0).toInt() == 0;
+    // Build 277: the ADC the backend actually uses (one-ADC boards: ADC1).
+    const bool onAdc1 = ui.rxAdc[rx == 1 ? 1 : 0] == 0;
     const bool rxEditable = onAdc1 && ui.ownsAtt(m_panId);
     const QString rxTip = !onAdc1
         ? tr("This receiver uses ADC2 (RX2 input); ANT1-3 feed ADC1")
@@ -3447,6 +3447,13 @@ void SpectrumOverlayMenu::syncAttOwnership()
 {
     if (m_rfGainIsAttenuator)
         syncAnanAntennas();
+    // Build 277: the ADC count is known once the backend has the board.
+    if (m_adcRow) {
+        const bool show = m_rfGainIsAttenuator
+            && AetherSDR::anan::AnanUiState::instance().numAdcs >= 2;
+        if (m_adcRow->isVisibleTo(m_antPanel) != show)
+            m_adcRow->setVisible(show);
+    }
     if (!m_rfGainIsAttenuator || !m_rfGainSlider || !m_autoRfGainCheck)
         return;
     const auto& ui = AetherSDR::anan::AnanUiState::instance();
@@ -3520,8 +3527,11 @@ void SpectrumOverlayMenu::setRfGainRange(int low, int high, int step,
     m_rfGainSlider->setInvertedAppearance(m_rfGainIsAttenuator);
     if (m_attTargetRow)
         m_attTargetRow->setVisible(m_rfGainIsAttenuator);
+    // Build 277: only on a radio with two ADCs (as driven); a single-ADC
+    // board has no ADC2 to choose.
     if (m_adcRow)
-        m_adcRow->setVisible(m_rfGainIsAttenuator);
+        m_adcRow->setVisible(m_rfGainIsAttenuator
+                             && AetherSDR::anan::AnanUiState::instance().numAdcs >= 2);
     if (m_ananAntRows)
         m_ananAntRows->setVisible(m_rfGainIsAttenuator);
     if (m_rxAntLabel)
