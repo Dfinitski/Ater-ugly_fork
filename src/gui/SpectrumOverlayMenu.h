@@ -76,6 +76,7 @@ public:
 
     void syncPanProcessingSettings(int avg, int fps, bool weightedAvg);
     void syncWfLineDuration(int rate);
+    void syncWfBrightness(int brightness);   // build 265
     void syncKiwiWaterfallSettings(int minDbm, int maxDbm, bool autoScale,
                                    int rate);
     // Sync blanker/cursor/opacity controls not covered by syncDisplaySettings.
@@ -253,6 +254,7 @@ signals:
     void fftDecombHzChanged(int hz);
     void wfColorGainChanged(int gain);
     void wfBlackLevelChanged(int level);
+    void wfBrightnessChanged(int brightness);   // build 265
     void wfAutoBlackChanged(bool on);
     // Auto-black target offset (0-100, 50 = at noise floor).  Emitted when
     // the Black slider moves while AUTO is engaged.
@@ -506,6 +508,8 @@ private:
     QLabel*      m_lineWidthLabel{nullptr};
     QPushButton* m_weightedAvgBtn{nullptr};
     QSlider*     m_gainSlider{nullptr};
+    QSlider*     m_wfBrightSlider{nullptr};   // build 265
+    QLabel*      m_wfBrightLabel{nullptr};
     QLabel*      m_gainTitleLabel{nullptr};
     QLabel*      m_gainLabel{nullptr};
     QSlider*     m_blackSlider{nullptr};

@@ -2264,6 +2264,19 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         emit wfColorGainChanged(v);
     });
 
+    // Brightness (build 265): the palette's gamma, 50 = linear. Black Level
+    // moves the black point, Gain the range; this brightens or darkens the
+    // levels between them without moving either end.
+    makeRow("WtrFall Bright:", 0, 100, 50, m_wfBrightSlider, m_wfBrightLabel);
+    m_wfBrightSlider->setObjectName("displayWfBrightnessSlider");
+    m_wfBrightSlider->setToolTip("Waterfall brightness. Higher values brighten weak and medium "
+                                 "signals; the black noise floor and the strongest signals stay. "
+                                 "50 = unchanged.");
+    connect(m_wfBrightSlider, &QSlider::valueChanged, this, [this](int v) {
+        m_wfBrightLabel->setText(QString::number(v));
+        emit wfBrightnessChanged(v);
+    });
+
     // Rate
     {
         auto* lbl = new QLabel("WtrFall Rate:");
@@ -3075,6 +3088,15 @@ void SpectrumOverlayMenu::syncDssFloorDepth(int dB)
     if (m_dssFloorLabel) {
         m_dssFloorLabel->setText(QString::number(clamped));
     }
+}
+
+void SpectrumOverlayMenu::syncWfBrightness(int brightness)
+{
+    if (!m_wfBrightSlider)
+        return;
+    QSignalBlocker b(m_wfBrightSlider);
+    m_wfBrightSlider->setValue(brightness);
+    m_wfBrightLabel->setText(QString::number(m_wfBrightSlider->value()));
 }
 
 void SpectrumOverlayMenu::syncWfLineDuration(int rate)

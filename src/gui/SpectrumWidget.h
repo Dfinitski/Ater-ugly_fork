@@ -742,6 +742,8 @@ public:
     // which is radio-owned and is updated from live status.
     void setWfColorGain(int gain);
     void setWfBlackLevel(int level);
+    // ANAN port, build 265: palette gamma, 0..100, 50 = linear.
+    void setWfBrightness(int brightness);
     void setWfAutoBlack(bool on);
     // Auto-black offset (0-100, 50 = noise floor, <50 darker, >50 lighter).
     // Only consulted while m_wfAutoBlack is on; lets users bias the noise-
@@ -791,6 +793,7 @@ public:
     void resetWfTimeScale();
     int   wfColorGain() const          { return m_wfColorGain; }
     int   wfBlackLevel() const         { return m_wfBlackLevel; }
+    int   wfBrightness() const         { return m_wfBrightness; }
     bool  wfAutoBlack() const          { return m_wfAutoBlack; }
     int   wfAutoBlackOffset() const    { return m_wfAutoBlackOffset; }
     // The operator's stored INTENT — what they chose, on whatever radio they
@@ -1810,6 +1813,7 @@ private:
 
     // ── Waterfall display controls (radio-side via "display panafall set") ─
     int   m_wfColorGain{50};         // 0-100, maps intensity to color range
+    int   m_wfBrightness{50};        // 0-100, palette gamma (build 265), 50 = linear
     int   m_wfBlackLevel{15};        // 0-125, intensity floor (below = black)
     bool  m_wfAutoBlack{true};
     // Auto-black offset (0-100). 50 → no offset (today's behaviour); <50

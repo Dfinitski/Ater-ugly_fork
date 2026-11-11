@@ -2635,6 +2635,7 @@ void SpectrumWidget::loadSettings()
         m_fftLineColor = parsedLine;
     m_wfColorGain    = s.value(settingsKey("DisplayWfColorGain"), ForkDisplayDefaults::kWfColorGain).toInt();
     m_wfBlackLevel   = s.value(settingsKey("DisplayWfBlackLevel"), "15").toInt();
+    m_wfBrightness   = std::clamp(s.value(settingsKey("DisplayWfBrightness"), "50").toInt(), 0, 100);
     // ANAN port (build 200): auto-black always SW (client-side), no button.
     m_wfAutoBlack    = true;
     m_wfAutoBlackOffset = s.value(settingsKey("DisplayWfAutoBlackOffset"), ForkDisplayDefaults::kWfAutoBlackOffset).toInt();
@@ -2723,6 +2724,7 @@ void SpectrumWidget::loadSettings()
             m_fftLineWidth, m_wfAutoBlackRadioSide,
             static_cast<int>(m_spectrumRenderMode), dssFloorDepth(),
             m_dssGain, m_fftLineColor, m_dssRowSpanPct);
+        m_overlayMenu->syncWfBrightness(m_wfBrightness);
         m_overlayMenu->syncExtraDisplaySettings(m_wfBlankerEnabled,
             m_wfBlankerThreshold, m_bgOpacity, m_freqGridSpacingKhz, m_bgFillColor,
             m_freqScaleFontPt, m_fftSmoothing, m_fftDecombHz);
@@ -4579,6 +4581,23 @@ void SpectrumWidget::setWfBlackLevel(int level) {
     }
     update();
 }
+// ANAN port, build 265 (operator: "the waterfall has no brightness control;
+// Black Level only shifts the scale"). Black Level moves the black point and
+// WtrFall Gain the width of the range; neither brightens the middle of it.
+// This is the palette's gamma (waterfallLevelToRgb): black and full scale stay
+// where they are, the weak and middle levels move. The history keeps levels,
+// not colours, so the visible waterfall is recoloured at once.
+void SpectrumWidget::setWfBrightness(int brightness) {
+    const int clamped = std::clamp(brightness, 0, 100);
+    if (clamped != m_wfBrightness) {
+        m_wfBrightness = clamped;
+        auto& s = AppSettings::instance();
+        s.setValue(settingsKey("DisplayWfBrightness"), QString::number(m_wfBrightness));
+        s.save();
+        recolorWaterfallViewport();
+    }
+    update();
+}
 void SpectrumWidget::setWfAutoBlack(bool on) {
     m_wfAutoBlack = on;
     auto& s = AppSettings::instance();
@@ -6288,8 +6307,10 @@ quint64 SpectrumWidget::waterfallPaletteToken() const
     // taken before the first paint is not the pre-init generation.
     int stopCount = 0;
     (void)wfSchemeStops(m_wfColorScheme, stopCount);
-    return (wfStopsCacheGeneration() << 8)
-        | static_cast<quint64>(static_cast<int>(m_wfColorScheme));
+    // Build 265: the brightness (palette gamma) is part of the LUT too.
+    return (((wfStopsCacheGeneration() << 8)
+             | static_cast<quint64>(static_cast<int>(m_wfColorScheme))) << 7)
+        | static_cast<quint64>(m_wfBrightness);
 }
 
 void SpectrumWidget::paintWaterfallRowsFromHistory(
@@ -13471,7 +13492,12 @@ QRgb SpectrumWidget::waterfallLevelToRgb(float level) const
 {
     int n = 0;
     const auto* stops = wfSchemeStops(m_wfColorScheme, n);
-    return interpolateGradient(std::clamp(level, 0.0f, 1.0f), stops, n);
+    float t = std::clamp(level, 0.0f, 1.0f);
+    // Build 265: brightness as gamma, 3^((50 - b)/50): 0 -> 3 (darker),
+    // 50 -> 1 (unchanged), 100 -> 1/3 (brighter). 0 and 1 are fixed points.
+    if (m_wfBrightness != 50 && t > 0.0f && t < 1.0f)
+        t = std::pow(t, std::pow(3.0f, (50.0f - static_cast<float>(m_wfBrightness)) / 50.0f));
+    return interpolateGradient(t, stops, n);
 }
 
 // The colour a cleared / not-yet-painted waterfall pixel takes.  Every preset

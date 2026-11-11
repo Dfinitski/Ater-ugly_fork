@@ -3660,6 +3660,30 @@ the key only after that edge; the receive-only-mode refusal sat in
 A refused key now shows only the message at the bottom: no TX zoom, no TX
 indicator, no Quindar or tune latch. `applyKeying()` keeps its own gate.
 
+### 227. Build 265 — waterfall brightness
+
+**Request (10.11).** The waterfall has no brightness control; Black Level
+only shifts the scale.
+
+**Existing controls.**
+- Black Level: the black point, offset from the noise floor, 0.5 dB per step
+  (50 = at the floor).
+- WtrFall Gain: the width of the black-to-full range,
+  120 - 0.91 x Gain dB.
+
+Neither changes how bright the levels in between are.
+
+**Change.** A new "WtrFall Bright:" slider under Gain (0..100, default 50)
+sets the palette's gamma in `SpectrumWidget::waterfallLevelToRgb`:
+`t' = t^(3^((50 - b)/50))`.
+- 0 gives gamma 3 (darker); 50 is linear; 100 gives gamma 1/3 (brighter).
+- Black (t = 0) and full scale (t = 1) do not move.
+- Stored per pan as `DisplayWfBrightness`.
+- The value is folded into `waterfallPaletteToken()`, and the setter calls
+  `recolorWaterfallViewport()`, so the visible history is recoloured at once
+  (the history holds levels, not colours).
+- Included in Display "clone to other pans" and in "reset to defaults".
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

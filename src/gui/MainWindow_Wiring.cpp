@@ -3520,6 +3520,7 @@ int MainWindow::cloneDisplaySettingsToAllPans(PanadapterApplet* source)
             // Re-sending them once per target would be the same write N times.
             dst->setWfColorGain(src->wfColorGain());
             dst->setWfBlackLevel(src->wfBlackLevel());
+            dst->setWfBrightness(src->wfBrightness());
             m_radioModel.setWaterfallColorGainFor(targetPanId, src->wfColorGain(),
                                                  dst->wfAutoBlack());
             m_radioModel.setWaterfallBlackLevelFor(targetPanId, src->wfBlackLevel());
@@ -3555,6 +3556,7 @@ int MainWindow::cloneDisplaySettingsToAllPans(PanadapterApplet* source)
                 dst->fftLineWidth(), dst->wfAutoBlackRadioSide(),
                 dst->spectrumRenderMode(), dst->dssFloorDepth(),
                 dst->dssGain(), dst->fftLineColor(), dst->dssRowSpan());
+            dstMenu->syncWfBrightness(dst->wfBrightness());
         }
         // Kiwi-agnostic controls: syncKiwiSdrPanadapterUiState() does not carry
         // these, so they run for every target.
@@ -4837,6 +4839,8 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         sw->setWfColorGain(v);
         m_radioModel.setWaterfallColorGainFor(applet->panId(), v, sw->wfAutoBlack());
     });
+    connect(menu, &SpectrumOverlayMenu::wfBrightnessChanged,
+            sw, &SpectrumWidget::setWfBrightness, Qt::UniqueConnection);
     connect(menu, &SpectrumOverlayMenu::wfBlackLevelChanged,
             this, [this, applet, sw](int v) {
         sw->setWfBlackLevel(v);
@@ -4948,6 +4952,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         sw->setWfColorScheme(0);
         sw->setWfColorGain(FD::kWfColorGain);
         sw->setWfBlackLevel(15);
+        sw->setWfBrightness(50);
         sw->setWfAutoBlack(true);
         sw->setWfAutoBlackOffset(FD::kWfAutoBlackOffset);
         sw->setWfAutoBlackRadioSide(false);
@@ -5001,6 +5006,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         s.setValue(sw->settingsKey("DisplayWfColorScheme"),       "0");
         s.setValue(sw->settingsKey("DisplayWfColorGain"),         QString::number(FD::kWfColorGain));
         s.setValue(sw->settingsKey("DisplayWfBlackLevel"),        "15");
+        s.setValue(sw->settingsKey("DisplayWfBrightness"),        "50");
         s.setValue(sw->settingsKey("DisplayWfAutoBlack"),         "True");
         s.setValue(sw->settingsKey("DisplayWfAutoBlackRadioSide"), "False");
         s.setValue(sw->settingsKey("WaterfallBlankingEnabled"),   "False");
@@ -5041,6 +5047,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                                   FD::kNoiseFloorPosition, true, true, 0,
                                   true, FD::kFftLineWidth, false, 0, 6, 70,
                                   QColor(QString::fromLatin1(FD::kFftLineColor)), 100);
+        menu->syncWfBrightness(50);
         menu->syncExtraDisplaySettings(false, 1.15f, FD::kBackgroundOpacity, 0,
                                        QColor(QString::fromLatin1(FD::kBackgroundFillColor)), 8, 0, 0);
     });
