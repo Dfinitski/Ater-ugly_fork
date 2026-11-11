@@ -2327,41 +2327,31 @@ bool Hl2Backend::removePanadapter(const QString& panId)
 
 void Hl2Backend::publishWideState()
 {
-    // WIDE means a receiver's band filter could not serve it, because another
-    // receiver on the SAME ADC wants a different one and the bank follows
-    // that receiver. Computed from the rule the transport applies to the
-    // relays (P2Transport: sendHighPriority / p1State), per ADC, so the
-    // indicator cannot drift out of step with them.
+    // WIDE: the receive filter bank of this receiver's ADC is BYPASSED,
+    // because the receivers on that ADC want different filters -- so that
+    // every one of them hears its band (P2Transport::bankFor, the rule the
+    // relays follow; build 279). Shown on each pan behind that bank.
     //
-    // ANAN fork build 277 (operator, 11.11: a radio forcedly assigned as a
-    // 7000DLE showed WIDE with its receivers on two bands). The rule here
-    // was the HL2's -- one front end, every receiver behind the same
-    // open-collector filter byte -- and never looked at the ADCs: on a board
-    // with a filter bank per ADC (7000DLE, 8000DLE, G2) two receivers on
-    // different ADCs were reported WIDE although each bank followed its own
-    // receiver. Now, by the profile of the radio as driven:
-    //  - band-pass banks (Orion2BandPass): one bank per ADC that has one; the
-    //    first receiver on that ADC picks it;
-    //  - classic Alex (LegacyHighPassLowPass, 100/100D/200D): a high-pass
-    //    and the TX low-pass ahead of ADC1 only; ADC2 has no filters, so a
-    //    receiver there is never "WIDE" -- nothing is shared with it;
-    //  - SaturnBandPass (as the transport drives it): one selection for
-    //    both ADCs, following receiver 1.
+    // Build 277 made this per ADC and by the profile of the radio as driven
+    // (the HL2 rule before it ignored the ADCs, so a forcedly assigned
+    // 7000DLE with receivers on two ADCs showed WIDE). Banks by scheme:
+    //  - band-pass (Orion2BandPass): ADC1, and ADC2 when the board has one;
+    //  - classic Alex (100/100D/200D): ADC1 only -- ADC2 has no filters, so
+    //    a receiver there is never WIDE;
+    //  - SaturnBandPass: one selection for both ADCs.
     const anan::BoardProfile profile = ananProfile();
     const int numAdcs = std::clamp(profile.numAdcs, 1, 2);
+    const bool legacy = profile.alexScheme == anan::AlexScheme::LegacyHighPassLowPass;
     const auto adcOf = [&](int ddc) {
         return (numAdcs >= 2 && ddc >= 0 && ddc < 2) ? m_ananAdc[ddc] : 0;
     };
     const auto filterKey = [&](double hz) -> int {
-        switch (profile.alexScheme) {
-        case anan::AlexScheme::LegacyHighPassLowPass:
+        if (legacy)
             return static_cast<int>(anan::legacyAlexHpfFor(hz)) * 256
                 + static_cast<int>(anan::p1AlexLpfBitsFor(hz));
-        default:
-            return static_cast<int>(anan::alexRxFilterFor(hz));
-        }
+        return static_cast<int>(anan::alexRxFilterFor(hz));
     };
-    // The ADC whose bank serves this receiver, or -1 when it has none.
+    // The bank serving this receiver, or -1 when its ADC has none.
     const auto bankOf = [&](int ddc) -> int {
         const int adc = adcOf(ddc);
         switch (profile.alexScheme) {
@@ -2370,29 +2360,25 @@ void Hl2Backend::publishWideState()
         case anan::AlexScheme::LegacyHighPassLowPass:
             return adc == 0 ? 0 : -1;
         default:
-            return 0;   // one selection for every receiver
+            return 0;
         }
     };
-    // Each bank's owner: the first receiver that uses it.
-    int ownerDdc[2] = {-1, -1};
-    double bankHz[2] = {0.0, 0.0};
+    int bankKey[2] = {-1, -1};
+    bool bankSpanned[2] = {false, false};
     for (int i = 0; i < static_cast<int>(m_rx.size()); ++i) {
         const int bank = bankOf(i);
-        if (bank >= 0 && ownerDdc[bank] < 0) {
-            ownerDdc[bank] = i;
-            bankHz[bank] = m_rx[static_cast<std::size_t>(i)].sliceFreqHz;
-        }
+        if (bank < 0)
+            continue;
+        const int key = filterKey(m_rx[static_cast<std::size_t>(i)].sliceFreqHz);
+        if (bankKey[bank] < 0)
+            bankKey[bank] = key;
+        else if (key != bankKey[bank])
+            bankSpanned[bank] = true;
     }
     for (const auto& ids : m_ids.all()) {
         const int ddc = ids.ddcIndex;
-        bool wide = false;
-        if (ddc >= 0 && ddc < static_cast<int>(m_rx.size())) {
-            const int bank = bankOf(ddc);
-            if (bank >= 0 && ownerDdc[bank] != ddc)
-                wide = filterKey(m_rx[static_cast<std::size_t>(ddc)].sliceFreqHz)
-                    != filterKey(bankHz[bank]);
-        }
-        emit panWideChanged(ids.panId, wide);
+        const int bank = (ddc >= 0 && ddc < static_cast<int>(m_rx.size())) ? bankOf(ddc) : -1;
+        emit panWideChanged(ids.panId, bank >= 0 && bankSpanned[bank]);
     }
 }
 

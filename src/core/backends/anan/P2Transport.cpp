@@ -746,6 +746,11 @@ void P2Transport::sendHighPriority(bool run)
         }
     }
     o.rxLpfFrequencyHz = static_cast<double>(m_rxHz[filterRx]);
+    // Build 279: the banks per ADC, bypassed when their receivers span bands.
+    const BankChoice bank0 = bankFor(0);
+    const BankChoice bank1 = bankFor(1);
+    if (bank0.used && m_profile.alexScheme == AlexScheme::LegacyHighPassLowPass)
+        o.rxLpfFrequencyHz = bank0.lpfHz;
     // User Out: RX row of the receive band / TX row of the transmit band
     // (Thetis Penny.cs); all off while stopping (the radio does the same in
     // standby).
@@ -763,21 +768,16 @@ void P2Transport::sendHighPriority(bool run)
     o.psFeedbackOnAdc1 = m_psAdc == 1;
     if (run) {
         if (m_profile.alexScheme == AlexScheme::LegacyHighPassLowPass) {
-            o.adc0Filter = legacyAlexHpfFor(static_cast<double>(m_rxHz[filterRx]));
+            o.adc0Filter = bank0.used ? bank0.filter
+                                      : legacyAlexHpfFor(static_cast<double>(m_rxHz[filterRx]));
         } else if (m_profile.alexScheme == AlexScheme::Orion2BandPass) {
-            // Each ADC's bank follows the first receiver listening to it
-            // (deskHPSDR); ADC1 with no receiver of its own takes RX1's band.
-            std::size_t adc1Rx = filterRx;
-            for (int i = 0; i < m_numRx; ++i) {
-                if (effectiveAdc(i) == 1) {
-                    adc1Rx = static_cast<std::size_t>(i);
-                    break;
-                }
-            }
-            o.adc0Filter = alexRxFilterFor(static_cast<double>(m_rxHz[filterRx]));
-            o.adc1Filter = alexRxFilterFor(static_cast<double>(m_rxHz[adc1Rx]));
+            // Each ADC's bank: its receivers' filter, bypassed when they span
+            // bands (build 279); ADC1 with no receiver of its own takes ADC0's.
+            o.adc0Filter = bank0.used ? bank0.filter
+                                      : alexRxFilterFor(static_cast<double>(m_rxHz[filterRx]));
+            o.adc1Filter = bank1.used ? bank1.filter : o.adc0Filter;
         } else {
-            o.adc0Filter = alexRxFilterFor(static_cast<double>(m_rxHz[0]));
+            o.adc0Filter = bank0.filter;
             o.adc1Filter = o.adc0Filter;
         }
     }
@@ -1575,6 +1575,56 @@ void P2Transport::setDitherRandomBits(bool dither, bool random)
     m_random = random;
     if (m_run && m_configured)
         sendDdcSpecific();
+}
+
+// ANAN fork build 279 (operator, 11.11: "WIDE means the filters are bypassed,
+// so that both receivers work"). Until now the bank followed the first
+// receiver on its ADC and a second receiver on another band heard through
+// the wrong filter -- for the classic Alex even through a low-pass below its
+// band. Now: one filter for all receivers on the ADC when they agree; when
+// they do not, the bank is bypassed and the low-pass in the receive path
+// (classic Alex) is set for the highest of their frequencies, which passes
+// them all. Which ADCs have a bank, by the scheme:
+//  - Orion2BandPass: ADC0, and ADC1 when the board has the second bank;
+//  - LegacyHighPassLowPass: ADC0 only (ADC1 has no Alex filters);
+//  - SaturnBandPass (as driven here): one selection for both ADCs.
+P2Transport::BankChoice P2Transport::bankFor(int adc) const
+{
+    BankChoice b;
+    const AlexScheme scheme = m_profile.alexScheme;
+    const bool shared = scheme != AlexScheme::Orion2BandPass
+        && scheme != AlexScheme::LegacyHighPassLowPass;
+    const bool legacy = scheme == AlexScheme::LegacyHighPassLowPass;
+    if (legacy && adc != 0)
+        return b;
+    if (scheme == AlexScheme::Orion2BandPass && adc == 1 && !m_profile.hasAdc1FilterBank)
+        return b;
+    const auto filterOf = [legacy](double hz) {
+        return legacy ? legacyAlexHpfFor(hz) : alexRxFilterFor(hz);
+    };
+    const auto keyOf = [&](double hz) {
+        return static_cast<int>(filterOf(hz)) * 256
+            + (legacy ? static_cast<int>(p1AlexLpfBitsFor(hz)) : 0);
+    };
+    int key = -1;
+    for (int i = 0; i < m_numRx; ++i) {
+        if (!shared && effectiveAdc(i) != adc)
+            continue;
+        const double hz = static_cast<double>(m_rxHz[static_cast<std::size_t>(i)]);
+        if (!b.used) {
+            b.used = true;
+            b.filter = filterOf(hz);
+            b.lpfHz = hz;
+            key = keyOf(hz);
+            continue;
+        }
+        b.lpfHz = std::max(b.lpfHz, hz);
+        if (keyOf(hz) != key)
+            b.spanned = true;
+    }
+    if (b.spanned)
+        b.filter = AlexRxFilter::Bypass;
+    return b;
 }
 
 // Build 277: the ADC a receiver actually listens to -- a board with one ADC
@@ -2640,14 +2690,9 @@ P1CcState P2Transport::p1State() const
     s.micBoost = m_micBoost;
     // The receiver on ADC1 (else the ADC0 one): its frequency picks the ADC1
     // band-pass bank (C0 0x24 C1).
-    std::size_t adc1Rx = filterRx;
-    for (int i = 0; i < m_numRx; ++i) {
-        if (effectiveAdc(i) == 1) {
-            adc1Rx = static_cast<std::size_t>(i);
-            break;
-        }
-    }
-    const double adc1Hz = static_cast<double>(m_rxHz[adc1Rx]);
+    // Build 279: the banks per ADC, bypassed when their receivers span bands.
+    const BankChoice bank0 = bankFor(0);
+    const BankChoice bank1 = bankFor(1);
     // Build 267 (replaces build 245's "Forced RXx filter control like 7000"):
     // a board with firmware modified for 7000DLE-style band-pass banks ahead
     // of both ADCs is forcedly assigned as a 7000DLE, which gives it the ORION
@@ -2655,17 +2700,21 @@ P1CcState P2Transport::p1State() const
     const bool orion2Filters = m_profile.alexScheme == AlexScheme::Orion2BandPass;
     if (orion2Filters) {
         // ORION MkII: band-pass banks per ADC, the LPF on the TX frequency.
-        s.alexHpf = p1AlexHpfBits(alexRxFilterFor(filterHz));
-        s.alex2Hpf = p1AlexHpfBits(alexRxFilterFor(adc1Hz));
+        const AlexRxFilter f0 = bank0.used ? bank0.filter : alexRxFilterFor(filterHz);
+        s.alexHpf = p1AlexHpfBits(f0);
+        s.alex2Hpf = p1AlexHpfBits(bank1.used ? bank1.filter : f0);
         s.alexLpf = p1AlexLpfBitsFor(static_cast<double>(tx));
         s.rx2GroundOnTx = m_adc1GndOnTx;
     } else {
         // ANAN-10/100/100D/200D: high-pass ahead of ADC0, and the receive
         // path through the TX low-pass bank, which therefore follows the
         // receive frequency while receiving (as on Protocol 2).
-        s.alexHpf = p1AlexHpfBits(legacyAlexHpfFor(filterHz));
-        // The PA's harmonic filter on the TX frequency while transmitting.
-        s.alexLpf = p1AlexLpfBitsFor(m_mox ? static_cast<double>(tx) : filterHz);
+        s.alexHpf = p1AlexHpfBits(bank0.used ? bank0.filter : legacyAlexHpfFor(filterHz));
+        // The PA's harmonic filter on the TX frequency while transmitting;
+        // receiving, the low-pass for the highest receiver on ADC0 (build
+        // 279: it then passes every one of them).
+        s.alexLpf = p1AlexLpfBitsFor(m_mox ? static_cast<double>(tx)
+                                           : (bank0.used ? bank0.lpfHz : filterHz));
     }
     if (m_lna && !m_mox)
         s.alexHpf |= 0x40;   // 6 m preamp, the LNA button
