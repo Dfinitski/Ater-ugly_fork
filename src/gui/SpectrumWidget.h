@@ -1116,6 +1116,10 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    // Build 270: every right-click menu here opens from the mouse handlers; the
+    // context-menu event Qt sends after a right release (on the frequency
+    // scale nothing consumes it) must not travel up to a parent.
+    void contextMenuEvent(QContextMenuEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     bool event(QEvent* event) override;

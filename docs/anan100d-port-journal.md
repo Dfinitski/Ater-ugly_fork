@@ -4058,6 +4058,40 @@ hl2/Hl2Backend.{h,cpp}, ForkBuild.h.
 Files: gui/BandStackPanel.cpp, gui/MainWindow.{h,cpp},
 core/BandStackSettings.{h,cpp}, ForkBuild.h.
 
+## 233. Build 270: 3D ridges in the level's colour; no popup after a right click on the scale (11.11)
+
+**Requests (operator).**
+- A right click on the frequency scale shows a useless popup; remove it.
+- Is the CPU load the whole system's or only the program's? Show the
+  program's own.
+- In the 3D panadapter the peaks are drawn with white lines; show the natural
+  colour of the level instead.
+
+**3D (resources/shaders/dss_mesh.frag).** The ridge outline ribbon (edge < 0)
+was a "neutral ridge highlight": `mix(bgFill, vec3(0.92), 0.45 + 0.55*fade)`,
+near-white at the front. It is in upstream v26.10.4 as forked, not a regression
+of ours. It now takes the palette LUT colour at its own level (`vLut`), hazed
+with depth like the curtain, and keeps the slice shadow. Its opacity goes from
+0.12 + 0.5·fade to 0.25 + 0.6·fade, so the coloured ridge still reads over the
+curtain. The shader is compiled by the build (qt_add_shaders).
+
+**Right click on the scale (SpectrumWidget).**
+- A right press on the frequency scale starts the span drag; nothing consumes
+  the QContextMenuEvent Qt sends after the release.
+- SpectrumWidget had no `contextMenuEvent`, so the event travelled up to a
+  parent's context menu.
+- `SpectrumWidget::contextMenuEvent` now accepts it. Every menu of the widget
+  opens from its mouse handlers.
+- Unverified: whether that parent popup is what the operator saw.
+
+**CPU.** No change. The status bar "CPU:" is already the program's own:
+GetProcessTimes (kernel + user) of AetherSDR's process, over the wall time,
+divided by the logical CPU count. That is the same as the process's line in
+Task Manager.
+
+Files: resources/shaders/dss_mesh.frag, gui/SpectrumWidget.{h,cpp},
+ForkBuild.h.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -46,6 +46,7 @@
 #include <QResizeEvent>
 #include <QScopeGuard>
 #include <QMouseEvent>
+#include <QContextMenuEvent>
 #include <QWheelEvent>
 #include <QNativeGestureEvent>
 #include <QGestureEvent>
@@ -12119,6 +12120,15 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
         }
         QToolTip::hideText();
     }
+}
+
+void SpectrumWidget::contextMenuEvent(QContextMenuEvent* ev)
+{
+    // Build 270 (operator, 11.11: a right click on the frequency scale showed
+    // a useless popup): the right press/release here are handled (pan drag,
+    // the spectrum menu, the scale's span drag); the synthetic context-menu
+    // event Qt sends afterwards went up to a parent's menu. Swallow it.
+    ev->accept();
 }
 
 void SpectrumWidget::mouseReleaseEvent(QMouseEvent* ev)
