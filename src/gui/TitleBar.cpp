@@ -60,50 +60,64 @@ namespace {
 // Build 251 (operator, 10.11: the "PC Audio" pill looked too big, its shape
 // with jagged, stretched pixels): a stylesheet border-radius is drawn without
 // antialiasing, so this button paints itself.
-// Build 254 (operator's choice, variant F of the mock-up): a flat, slightly
-// rounded button with a coloured bar along its whole bottom edge -- green for
-// PC Audio, the accent blue for Codec -- like the radio tab's active bar.
+// Build 254: variant F -- a flat button with a bar along its bottom edge.
+// Build 256 (operator, 10.11): drawn like the radio tab on the left -- the
+// tab's active background, a 1 px border and the 2 px bottom bar, both in the
+// target's colour (green PC Audio, accent blue Codec). No focus ring after a
+// click (that was the blue frame that came and went); keyboard focus only.
 class PillButton : public QPushButton {
 public:
     using QPushButton::QPushButton;
 
-    void setPillColors(const QString& bgToken, const QString& barToken, const QString& textToken)
+    void setPillColors(const QString& accentToken, const QString& textToken)
     {
-        m_bg = bgToken;
-        m_bar = barToken;
+        m_accent = accentToken;
         m_text = textToken;
         update();
     }
 
 protected:
+    void focusInEvent(QFocusEvent* ev) override
+    {
+        m_focusVisible = ev->reason() == Qt::TabFocusReason || ev->reason() == Qt::BacktabFocusReason
+                         || ev->reason() == Qt::ShortcutFocusReason;
+        QPushButton::focusInEvent(ev);
+    }
+    void focusOutEvent(QFocusEvent* ev) override
+    {
+        m_focusVisible = false;
+        QPushButton::focusOutEvent(ev);
+    }
+
     void paintEvent(QPaintEvent*) override
     {
         auto& theme = ThemeManager::instance();
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing, true);
         p.setRenderHint(QPainter::TextAntialiasing, true);
-        constexpr qreal kRadius = 4.0;
+        constexpr qreal kRadius = 6.0;
         constexpr qreal kBar = 2.0;
+        const QColor accent = theme.color(this, m_accent);
+        const QRectF body = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
         QPainterPath shape;
-        shape.addRoundedRect(QRectF(rect()), kRadius, kRadius);
-        QColor bg = theme.color(this, m_bg);
+        shape.addRoundedRect(body, kRadius, kRadius);
+        QColor bg = theme.color(this, QStringLiteral("color.titlebar.tab.active.background"));
         if (underMouse() && isEnabled())
-            bg = bg.lighter(125);
+            bg = theme.color(this, QStringLiteral("color.titlebar.tab.hover"));
         if (isDown())
             bg = bg.darker(115);
         p.fillPath(shape, bg);
-        // The bar from edge to edge, inside the rounded outline.
+        // The bottom bar, edge to edge inside the rounded outline.
         p.save();
         p.setClipPath(shape);
-        p.fillRect(QRectF(0, height() - kBar, width(), kBar), theme.color(this, m_bar));
+        p.fillRect(QRectF(0, height() - kBar, width(), kBar), accent);
         p.restore();
-        if (hasFocus() && focusPolicy() != Qt::NoFocus) {
-            p.setPen(QPen(theme.color(this, QStringLiteral("color.border.accent")), 1.0));
-            p.setBrush(Qt::NoBrush);
-            p.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), kRadius, kRadius);
-        }
+        p.setPen(QPen(m_focusVisible ? theme.color(this, QStringLiteral("color.border.accent")) : accent,
+                      m_focusVisible ? 2.0 : 1.0));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(shape);
         QFont f = font();
-        f.setPixelSize(10);   // build 253: +15 % (9 px)
+        f.setPixelSize(10);   // build 253 (the text stays)
         f.setBold(true);
         p.setFont(f);
         p.setPen(theme.color(this, m_text));
@@ -113,9 +127,9 @@ protected:
     }
 
 private:
-    QString m_bg = QStringLiteral("color.background.1");
-    QString m_bar = QStringLiteral("color.accent.success");
+    QString m_accent = QStringLiteral("color.accent.success");
     QString m_text = QStringLiteral("color.text.primary");
+    bool m_focusVisible = false;
 };
 
 constexpr const char* kTitleDragHandleProperty = "aetherTitleDragHandle";
@@ -470,8 +484,10 @@ TitleBar::TitleBar(QWidget* parent)
     m_pcBtn->setChecked(true);   // PC audio itself stays on (required here)
     // Build 251: a third smaller (was 78 x 24), painted (PillButton).
     // Build 253 (operator, 10.11): +15 %, text too (52 x 16, 9 px before).
-    m_pcBtn->setFixedHeight(18);
-    m_pcBtn->setFixedWidth(60);
+    // Build 256: the frame +10 % (60 x 18), the text unchanged.
+    m_pcBtn->setFixedHeight(20);
+    m_pcBtn->setFixedWidth(66);
+    m_pcBtn->setFocusPolicy(Qt::TabFocus);
     m_pcBtn->setAttribute(Qt::WA_Hover, true);
     m_pcBtn->setCursor(Qt::PointingHandCursor);
     m_pcBtn->setAccessibleName("Volume target");
@@ -1322,14 +1338,11 @@ void TitleBar::applyPcAudioStyle()
     // stylesheet it replaced.
     auto* pill = static_cast<PillButton*>(m_pcBtn);
     if (m_codecTarget)
-        pill->setPillColors(QStringLiteral("color.background.1"), QStringLiteral("color.border.accent"),
-                            QStringLiteral("color.text.primary"));
+        pill->setPillColors(QStringLiteral("color.border.accent"), QStringLiteral("color.text.primary"));
     else if (m_pcBtn->isChecked())
-        pill->setPillColors(QStringLiteral("color.background.1"), QStringLiteral("color.accent.success"),
-                            QStringLiteral("color.text.primary"));
+        pill->setPillColors(QStringLiteral("color.accent.success"), QStringLiteral("color.text.primary"));
     else
-        pill->setPillColors(QStringLiteral("color.background.1"), QStringLiteral("color.border.strong"),
-                            QStringLiteral("color.text.secondary"));
+        pill->setPillColors(QStringLiteral("color.border.strong"), QStringLiteral("color.text.secondary"));
 }
 
 void TitleBar::setPcAudioDevices(const QString& inputDevice, const QString& outputDevice)

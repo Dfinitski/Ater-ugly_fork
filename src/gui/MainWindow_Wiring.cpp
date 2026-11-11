@@ -122,7 +122,7 @@ void MainWindow::wireStatusBarMessages()
         } else if (message.isEmpty()
                    && m_stationNickLabel->parentWidget() != m_statusBarContainer) {
             statusBar()->removeWidget(m_stationNickLabel);
-            layout->insertWidget(stationIndex, m_stationNickLabel);
+            layout->insertWidget(stationIndex, m_stationNickLabel, 0, Qt::AlignVCenter);   // build 256: centred
             m_stationNickLabel->show();
             m_statusBarContainer->show();
             updateStatusBarMinimumWidth();

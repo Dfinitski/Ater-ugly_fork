@@ -360,11 +360,16 @@ constexpr int kStationMinFontPx = 15;
 // full size a two-word nickname pushes into the latter. Against our HL2 this
 // resolves to kStationMinFontPx for "Hermes-Lite 2".
 constexpr int kStationWideTextBudgetPx = 105;
+// Build 256: the box grows with the text up to this, then elides.
+constexpr int kStationMaxTextPx = 420;
+// Build 256 (operator, 10.11): the box's height, 17 % below the status bar's
+// full height it used to stretch to; centred in the bar.
+constexpr int kStationBoxHeightPx = 35;
 
 // The largest size in [kStationMinFontPx, kStationFontPx] at which the text
 // still fits the budget on ONE line. Returns the floor when nothing fits;
 // stationFittedText() then elides at that size.
-int stationFittedFontPx(const QString& text)
+[[maybe_unused]] int stationFittedFontPx(const QString& text)
 {
     for (int px = kStationFontPx; px >= kStationMinFontPx; --px) {
         QFont candidate = QApplication::font();
@@ -378,7 +383,7 @@ int stationFittedFontPx(const QString& text)
 }
 
 // One line, elided only if it still overruns the budget at the floor size.
-QString stationFittedText(const QString& text, int fontPx)
+[[maybe_unused]] QString stationFittedText(const QString& text, int fontPx)
 {
     QFont font = QApplication::font();
     font.setPixelSize(fontPx);
@@ -404,11 +409,15 @@ bool setStatusBarStationText(QLabel* label, const QString& text)
     // std::any_of over QChar::isSpace rather than a QRegularExpression: this is
     // reached from the MeterModel::hwTelemetryChanged handler, so a per-call
     // pattern compile would land on every PA-temperature delta.
-    const bool multiWord = std::any_of(trimmed.cbegin(), trimmed.cend(),
-                                       [](QChar c) { return c.isSpace(); });
-    const int fontPx = multiWord ? stationFittedFontPx(trimmed) : kStationFontPx;
-    const QString rendered =
-        multiWord ? stationFittedText(trimmed, fontPx) : text;
+    // Build 256 (operator, 10.11): the box grows with its text -- one size,
+    // no shrinking of multi-word names; only an absurdly long one is elided.
+    const int fontPx = kStationFontPx;
+    QString rendered = trimmed;
+    {
+        QFont font = QApplication::font();
+        font.setPixelSize(fontPx);
+        rendered = QFontMetrics(font).elidedText(trimmed, Qt::ElideRight, kStationMaxTextPx);
+    }
 
     bool changed = false;
     if (label->property(kStationFontPxProperty).toInt() != fontPx) {
@@ -422,9 +431,10 @@ bool setStatusBarStationText(QLabel* label, const QString& text)
         changed = true;
     }
     label->ensurePolished();
-    const int minimumWidth = label->sizeHint().width() + 2;
-    if (label->minimumWidth() != minimumWidth) {
-        label->setMinimumWidth(minimumWidth);
+    // Exactly as wide as its text (build 256): fixed to the size hint.
+    const int width = label->sizeHint().width() + 2;
+    if (label->minimumWidth() != width || label->maximumWidth() != width) {
+        label->setFixedWidth(width);
         changed = true;
     }
     return changed;
@@ -6133,7 +6143,10 @@ void MainWindow::buildUI()
         m_stationNickLabel, statusBarStationLabelStyle(kStationFontPx));
     m_stationNickLabel->setProperty(kStationFontPxProperty, kStationFontPx);
     m_stationNickLabel->setAlignment(Qt::AlignCenter);
-    m_stationNickLabel->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
+    // Build 256: a fixed-height box, centred in the bar (it used to stretch
+    // to the bar's height); the width follows the text.
+    m_stationNickLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    m_stationNickLabel->setFixedHeight(kStationBoxHeightPx);
     setStatusBarStationText(m_stationNickLabel, m_stationNickLabel->text());
     // Build 253 (operator, 10.11): an ordinary arrow; a double click opens
     // the place the text is set (Radio Setup > Radio > Nickname).
@@ -6141,7 +6154,7 @@ void MainWindow::buildUI()
     m_stationNickLabel->setToolTip(tr("Station name -- the radio's nickname.\n"
                                       "Double-click to change it (Radio Setup > Radio > Nickname)."));
     m_stationNickLabel->installEventFilter(this);
-    hbox->addWidget(m_stationNickLabel);
+    hbox->addWidget(m_stationNickLabel, 0, Qt::AlignVCenter);
     m_stationLabel = m_stationNickLabel;  // alias for existing references
 
     hbox->addStretch(1);

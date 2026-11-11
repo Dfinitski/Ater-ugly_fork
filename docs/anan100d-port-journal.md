@@ -3490,6 +3490,25 @@ after each whole second, so the seconds change on time; the value label has a
 fixed minimum width for "00:00:00" (12 px font) so the bar does not shift;
 tooltip with the full UTC date and time.
 
+## 218. Build 256: station box fixed height and grows with its text; PC Audio drawn like the radio tab (10.11)
+
+**Station name box.** It had size policy (Minimum, Preferred), so it
+stretched to the status bar's full height. Now (Fixed, Fixed), height 35 px
+(17 % below what it stretched to), added with Qt::AlignVCenter (also when it
+returns from the permanent-widget slot during a status message,
+MainWindow_Wiring). The width follows the text: one font size (19 px), no
+shrinking of multi-word names, `setFixedWidth(sizeHint + 2)` on every change,
+elided only beyond 420 px. stationFittedFontPx / stationFittedText kept,
+[[maybe_unused]].
+
+**PC Audio / Codec.** The blue frame that appeared after a click and then
+went away was the focus ring (`hasFocus()`), drawn after every click. Now the
+button is drawn like the radio tab: the tab's active background
+(hover background on hover), 1 px border and 2 px full-width bottom bar both in
+the target's colour -- color.accent.success for PC Audio, color.border.accent
+for Codec; a focus ring only for keyboard focus (Tab), focus policy TabFocus.
+Frame 66 x 20 (+10 %), text 10 px unchanged, corners 6 px.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
