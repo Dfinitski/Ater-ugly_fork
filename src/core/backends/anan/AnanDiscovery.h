@@ -123,9 +123,8 @@ public:
     // Two ANANs of the same board type on one network would share it.
     static QString stableSerial(const std::array<std::uint8_t, 6>& mac, std::uint8_t boardId);
 
-    // ANAN-100D port: the model name for a board id -- the operator's choice
-    // (AppSettings "AnanModel_b<boardId>", Setup > Radio) when it fits the
-    // board, else the board's default model.
+    // ANAN-100D port: the model name for a board id -- the forcedly assigned
+    // type (build 267, AnanForcedModel.h) or the board's default model.
     static QString modelName(std::uint8_t boardId);
 
     // The operator's custom name, or `fallback`. An ANAN has no on-radio name

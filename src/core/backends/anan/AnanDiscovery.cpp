@@ -3,6 +3,7 @@
 #include "core/AppSettings.h"
 #include "core/LogManager.h"   // lcDiscovery
 #include "core/backends/anan/P2Protocol.h"
+#include "core/backends/anan/AnanForcedModel.h"
 #include "core/backends/anan/P1Protocol.h"
 #include "core/backends/anan/AnanRoute.h"
 #include "core/backends/hl2/MetisProtocol.h"
@@ -189,13 +190,8 @@ QList<QHostAddress> AnanDiscovery::broadcastTargets(
 
 QString AnanDiscovery::modelName(std::uint8_t boardId)
 {
-    const AnanModel def = defaultModelFor(boardId);
-    const QByteArray key = AppSettings::instance()
-        .value(QStringLiteral("AnanModel_b%1").arg(int(boardId)), QString()).toString().toLatin1();
-    AnanModel m = modelFromKey(key.constData(), std::size_t(key.size())).value_or(def);
-    if (modelTraits(m).boardId != modelTraits(def).boardId)
-        m = def;
-    return QString::fromLatin1(modelTraits(m).key);
+    // Build 267: the forcedly assigned type when there is one.
+    return QString::fromLatin1(modelTraits(effectiveModelFor(boardId, false)).key);
 }
 
 QString AnanDiscovery::stableSerial(const std::array<std::uint8_t, 6>& mac, std::uint8_t boardId)

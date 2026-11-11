@@ -512,7 +512,8 @@ void P2Transport::configureSession(const BoardProfile& profile, bool fromReply)
     if (!m_run || !m_sock || m_configured)
         return;
     m_boardWait->stop();
-    m_profile = profile;
+    m_reportedBoardId.store(profile.boardId, std::memory_order_relaxed);
+    m_profile = forcedProfileOr(profile);   // build 267
     m_configured = true;
     // Build 213: over Protocol 1 every board this backend drives has the
     // Thetis PureSignal pair (Hermes DDC2/DDC3, Hermes II DDC0/DDC1 while
@@ -529,18 +530,11 @@ void P2Transport::configureSession(const BoardProfile& profile, bool fromReply)
         // Protocol 1 (build 194). The Odyssey status is a Protocol 2
         // feature here; the DDC plan is Thetis'. PureSignal since build 213.
         m_profile.odysseyStatus = false;
-        std::uint8_t planBoard = m_profile.boardId;
-        if (planBoard == kBoardIdHermes) {
-            // Protocol 1 reports ANAN-10E / 100B as HERMES; the operator's
-            // model choice (Setup > Radio) tells them apart (Thetis does the same).
-            const QByteArray key = AppSettings::instance()
-                .value(QStringLiteral("AnanModel_b%1").arg(int(kBoardIdHermes)), QString())
-                .toString().toLatin1();
-            const auto m = modelFromKey(key.constData(), std::size_t(key.size()));
-            if (m && (*m == AnanModel::Anan10E || *m == AnanModel::Anan100B))
-                planBoard = kBoardIdHermesII;
-        }
-        m_p1Plan = p1DdcPlanFor(planBoard);
+        // Protocol 1 reports ANAN-10E / 100B as HERMES; the operator tells
+        // them apart (Thetis does the same) -- since build 267 by forcedly
+        // assigning the 10E / 100B, which gives the HERMES II profile here
+        // (AnanForcedModel.h migrates the earlier model choice to that).
+        m_p1Plan = p1DdcPlanFor(m_profile.boardId);
         m_numRx = std::clamp(m_numRx, 1, 2);
         m_p1Ddc.assign(static_cast<std::size_t>(m_p1Plan.nddc), {});
         qCInfo(lcAnanP2T).nospace()
@@ -1956,14 +1950,36 @@ void P2Transport::setAdc1GroundOnTx(bool on)
         sendHighPriority(true);
 }
 
-void P2Transport::setForce7000Filters(bool on)
+void P2Transport::setForcedBoardId(int reportedBoardId, int forcedBoardId)
 {
-    if (on == m_force7000Filters)
+    if (reportedBoardId <= 0 || reportedBoardId >= int(m_forcedBoardFor.size()))
         return;
-    m_force7000Filters = on;
-    // Protocol 1 only: the C&C rotation reads it on the next EP2 packet.
-    qCInfo(lcAnanP2T) << "ANAN transport: 7000-style filter control (Protocol 1, ANAN-100D)"
-                      << (on ? "on" : "off");
+    const int was = m_forcedBoardFor[std::size_t(reportedBoardId)].exchange(forcedBoardId, std::memory_order_relaxed);
+    if (was != forcedBoardId)
+        qCInfo(lcAnanP2T) << "ANAN transport: board" << reportedBoardId << "forcedly assigned as board"
+                          << forcedBoardId << "(0 = itself; applies from the next connection)";
+}
+
+BoardProfile P2Transport::forcedProfileOr(const BoardProfile& reported) const
+{
+    const int forced = reported.boardId < m_forcedBoardFor.size()
+        ? m_forcedBoardFor[reported.boardId].load(std::memory_order_relaxed) : 0;
+    if (forced <= 0 || forced == reported.boardId)
+        return reported;
+    const auto profile = boardProfileFor(static_cast<std::uint8_t>(forced));
+    if (!profile)
+        return reported;
+    // Protocol 1 firmware exists for these boards only (p1DdcPlanFor).
+    if (m_p1 && forced != kBoardIdHermes && forced != kBoardIdHermesII && forced != kBoardIdAngelia
+        && forced != kBoardIdOrion && forced != kBoardIdOrion2) {
+        qCWarning(lcAnanP2T) << "ANAN transport: forcedly assigned" << profile->modelName
+                             << "cannot run over Protocol 1 -- driving the reported" << reported.modelName;
+        return reported;
+    }
+    qCWarning(lcAnanP2T) << "ANAN transport: the radio reports" << reported.modelName << "(board"
+                         << int(reported.boardId) << "); driven as" << profile->modelName << "(board"
+                         << forced << ") -- forcedly assigned by the operator";
+    return *profile;
 }
 
 void P2Transport::setCl1RefClock(bool) {}
@@ -2622,13 +2638,11 @@ P1CcState P2Transport::p1State() const
         }
     }
     const double adc1Hz = static_cast<double>(m_rxHz[adc1Rx]);
-    // Build 245 (operator, 10.11): an ANAN-100D with firmware modified to
-    // drive 7000DLE-style band-pass banks ahead of both ADCs (with Thetis it
-    // runs as "7000DLE"). The operator's "Forced RXx filter control like
-    // 7000" (ANAN Hardware page, Protocol 1 + ANGELIA only) selects the ORION
-    // MkII filter logic below for that board.
-    const bool orion2Filters = m_profile.alexScheme == AlexScheme::Orion2BandPass
-        || (m_force7000Filters && m_profile.boardId == kBoardIdAngelia);
+    // Build 267 (replaces build 245's "Forced RXx filter control like 7000"):
+    // a board with firmware modified for 7000DLE-style band-pass banks ahead
+    // of both ADCs is forcedly assigned as a 7000DLE, which gives it the ORION
+    // MkII profile and this filter logic.
+    const bool orion2Filters = m_profile.alexScheme == AlexScheme::Orion2BandPass;
     if (orion2Filters) {
         // ORION MkII: band-pass banks per ADC, the LPF on the TX frequency.
         s.alexHpf = p1AlexHpfBits(alexRxFilterFor(filterHz));

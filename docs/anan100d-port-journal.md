@@ -3927,6 +3927,63 @@ sit at their true frequencies); MSHV with int24/int32 and 24 kHz.
 Files: core/TciServer.{h,cpp}, core/TciIoWorker.{h,cpp},
 core/backends/hl2/Hl2Backend.{h,cpp}, ForkBuild.h.
 
+## 230. Build 267: "Forcedly assign the radio" replaces the 7000-style filter option (11.11)
+
+**Report.** Build 245's "Forced RXx Filter control like 7000" did not help the
+user. His radio (a modified ANAN-100D) reports itself to Protocol 1 discovery
+as HERMES, so the checkbox, offered for ANGELIA only, never showed.
+
+The operator also noted that the Radio model combo could be changed without any
+option enabled.
+
+**Change.**
+- **Setup > Radio (the radio's page), Model.** The checkbox **"Forcedly assign
+  the radio"** sits right of the Radio model combo.
+  - **Off:** the combo is locked to the type the radio reports.
+  - **On:** a warning appears first (English, Yes/Cancel, shown only when
+    turning it on): the wrong type can seriously limit the radio's functions
+    and may damage it. After Yes, the combo offers every type the connection's
+    protocol drives: all types over Protocol 2; over Protocol 1, only types
+    whose board has Protocol 1 firmware (Hermes, Hermes II, Angelia, Orion,
+    Orion II).
+  - A hint under the row names the reported type.
+- **Settings, new header core/backends/anan/AnanForcedModel.h.** Two keys per
+  REPORTED board id, as the model choice always was:
+  `AnanForceModel_b<id>` (True/False) and `AnanForcedModel_b<id>` (model key).
+- **Migration.** A pre-267 same-board choice (`AnanModel_b<id>`) that is not the
+  board's default becomes a forced assignment of that model, without the
+  warning. This covers 8000DLE / Orion MkII / Anvelina / G2-1K / 10E / 100B,
+  which keep running as before.
+- **P2Transport.** `setForcedBoardId(reported, forced)` fills a per-reported-board
+  map of atomics. `configureSession()` records the reported board
+  (`reportedBoardId()`) and runs the session with the forced board's
+  BoardProfile: DDC plan (P1 `p1DdcPlanFor`), ADCs, Alex scheme (ORION MkII
+  band-pass per ADC), PureSignal, status layout. Over Protocol 1, a board
+  without P1 firmware is refused and logged.
+  - The P1 HERMES -> 10E/100B special case (it read `AnanModel_b1`) is now the
+    forced HERMES II profile.
+  - Build 245's `m_force7000Filters` and its condition are removed: forcedly
+    assign a 7000DLE instead.
+- **Hl2Backend.**
+  - The model is the forced one, if any; otherwise the reported board's default.
+  - `pushAnanForcedBoard()` gives the transport every board's assignment at
+    connect, before discovery and the first packet, and again on every change.
+  - On link-up, `m_ananBoardId` follows the transport's reported board (the
+    unicast probe can go unanswered).
+  - `hw.get` returns `ananForceModel` and `ananReportedModel`; `hw.set` takes
+    `ananForceModel` and `ananModel` (the latter only while forced).
+- `AnanDiscovery::modelName()` shows the forced type in the radio list.
+- The hardware profile applies from the next connection (the note says so);
+  meters and connector options follow at once.
+
+**For the user:** connect, Setup > Radio > the radio's page, turn on "Forcedly
+assign the radio", choose ANAN-7000DLE (filters per ADC as in Thetis
+"7000DLE"), then reconnect.
+
+Files: anan/AnanForcedModel.h (new), anan/AnanDiscovery.{h,cpp},
+anan/P2Transport.{h,cpp}, hl2/Hl2Backend.{h,cpp}, gui/RadioSetupDialog.cpp,
+ForkBuild.h.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

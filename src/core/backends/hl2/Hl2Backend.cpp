@@ -25,6 +25,7 @@
 #include "core/backends/hl2/Hl2TxLevelPolicy.h"
 #include "core/backends/hl2/MetisClient.h"
 #include "core/backends/hl2/MetisProtocol.h"
+#include "core/backends/anan/AnanForcedModel.h"
 #include "core/backends/anan/P2Transport.h"
 #include "core/backends/anan/AnanCodecFeed.h"
 #include "core/backends/anan/AnanPureSignal.h"
@@ -388,29 +389,68 @@ double Hl2Backend::couplerRevWatts(int raw) const noexcept
     return anan::couplerWatts(ananTraits().rev, raw, ananOnSixMeters());
 }
 
+// Build 267: "Forcedly assign the radio" (anan/AnanForcedModel.h). Kept per
+// reported board id; a forced model must run over the session's protocol.
+std::vector<anan::AnanModel> Hl2Backend::ananModelsForProtocol() const
+{
+    return anan::modelsForProtocol(m_ananP1.load(std::memory_order_relaxed));
+}
+
+bool Hl2Backend::ananForcedModel(anan::AnanModel* out) const
+{
+    const auto m = anan::forcedModelFor(m_ananBoardId, m_ananP1.load(std::memory_order_relaxed));
+    if (m && out)
+        *out = *m;
+    return m.has_value();
+}
+
 void Hl2Backend::resolveAnanModel()
 {
-    const anan::AnanModel def = anan::defaultModelFor(m_ananBoardId);
-    const QByteArray key = AppSettings::instance()
-        .value(QStringLiteral("AnanModel_b%1").arg(int(m_ananBoardId)), QString()).toString().toLatin1();
-    anan::AnanModel m = anan::modelFromKey(key.constData(), std::size_t(key.size())).value_or(def);
-    // Only a model this board can be.
-    if (anan::modelTraits(m).boardId != anan::modelTraits(def).boardId)
-        m = def;
+    // Without "Forcedly assign the radio" the model is the reported board's
+    // (the combo is locked); with it, the operator's model.
+    anan::AnanModel m = anan::defaultModelFor(m_ananBoardId);
+    const bool forced = ananForcedModel(&m);
     if (m != m_ananModel || !m_ananModelLogged) {
         m_ananModelLogged = true;
-        qCInfo(lcHl2) << "ANAN: board" << int(m_ananBoardId) << "->" << anan::modelTraits(m).key;
+        qCInfo(lcHl2) << "ANAN: board" << int(m_ananBoardId) << "->" << anan::modelTraits(m).key
+                      << (forced ? "(forcedly assigned by the operator)" : "");
     }
     m_ananModel = m;
+}
+
+void Hl2Backend::pushAnanForcedBoard()
+{
+    if (!m_metis)
+        return;
+    // Every reported board's assignment: the transport learns which board the
+    // radio reports only when its session starts. Direct: it keeps them in
+    // atomics, read when the session is configured.
+    for (const std::uint8_t reported : {anan::kBoardIdHermes, anan::kBoardIdHermesII, anan::kBoardIdAngelia,
+                                        anan::kBoardIdOrion, anan::kBoardIdOrion2, anan::kBoardIdSaturn,
+                                        anan::kBoardIdSaturnMkII, anan::kBoardIdHermesC10}) {
+        // The protocol check is the transport's (it knows the session's).
+        const auto m = anan::forcedModelFor(reported, false);
+        const int board = m ? int(anan::modelTraits(*m).boardId) : 0;
+        QMetaObject::invokeMethod(m_metis, "setForcedBoardId", Qt::DirectConnection,
+                                  Q_ARG(int, int(reported)), Q_ARG(int, board));
+    }
 }
 
 QVariantMap Hl2Backend::ananHwFields() const
 {
     const auto& t = ananTraits();
-    const auto profile = anan::boardProfileFor(m_ananBoardId).value_or(anan::defaultBoardProfile());
+    const bool forced = ananForcedModel();
+    const std::uint8_t board = forced ? t.boardId : m_ananBoardId;
+    const auto profile = anan::boardProfileFor(board).value_or(anan::defaultBoardProfile());
+    // Build 267: locked to the reported model unless forcedly assigned; then
+    // every model this protocol drives.
     QStringList models;
-    for (const anan::AnanModel m : anan::modelsForBoard(m_ananBoardId ? m_ananBoardId : anan::kBoardIdAngelia))
-        models << QString::fromLatin1(anan::modelTraits(m).key);
+    if (forced) {
+        for (const anan::AnanModel m : ananModelsForProtocol())
+            models << QString::fromLatin1(anan::modelTraits(m).key);
+    } else {
+        models << QString::fromLatin1(t.key);
+    }
     const auto& st = AppSettings::instance();
     auto on = [&st](const char* key, bool def) {
         return st.value(QLatin1String(key), def ? QStringLiteral("True") : QStringLiteral("False"))
@@ -430,11 +470,10 @@ QVariantMap Hl2Backend::ananHwFields() const
         {QStringLiteral("ananMicBias"), on("AnanMicBias", false)},
         {QStringLiteral("ananMicXlr"), on("AnanMicXlr", false)},
         {QStringLiteral("ananAdc2GndOnTx"), on("AnanAdc2GndOnTx", true)},
-        // Build 245: "Forced RXx filter control like 7000" -- offered on the
-        // ANAN-100D (ANGELIA) over Protocol 1 only.
-        {QStringLiteral("ananForce7000FiltersAvail"),
-         m_ananP1.load(std::memory_order_relaxed) && t.boardId == anan::kBoardIdAngelia},
-        {QStringLiteral("ananForce7000Filters"), on("AnanForce7000Filters", false)},
+        // Build 267 (replaces build 245's 7000-style filter option).
+        {QStringLiteral("ananForceModel"), forced},
+        {QStringLiteral("ananReportedModel"),
+         QString::fromLatin1(anan::modelTraits(anan::defaultModelFor(m_ananBoardId)).key)},
     };
 }
 
@@ -442,8 +481,7 @@ void Hl2Backend::applyAnanHwFields(const QVariantMap& in)
 {
     auto& st = AppSettings::instance();
     bool any = false;
-    for (const char* k : {"AnanMicPttOff", "AnanMicTipPtt", "AnanMicBias", "AnanMicXlr", "AnanAdc2GndOnTx",
-                          "AnanForce7000Filters"}) {
+    for (const char* k : {"AnanMicPttOff", "AnanMicTipPtt", "AnanMicBias", "AnanMicXlr", "AnanAdc2GndOnTx"}) {
         // "AnanMicPttOff" <-> field "ananMicPttOff"
         QString field = QString::fromLatin1(k);
         field[0] = field[0].toLower();
@@ -453,17 +491,39 @@ void Hl2Backend::applyAnanHwFields(const QVariantMap& in)
         st.setValue(QLatin1String(k), it->toBool() ? QStringLiteral("True") : QStringLiteral("False"));
         any = true;
     }
-    const auto modelIt = in.constFind(QStringLiteral("ananModel"));
     const anan::AnanModel was = m_ananModel;
-    if (modelIt != in.constEnd() && m_ananBoardId != 0) {
-        st.setValue(QStringLiteral("AnanModel_b%1").arg(int(m_ananBoardId)), modelIt->toString());
+    // Build 267: "Forcedly assign the radio", for the board this radio
+    // reports. Turning it on starts from the model in use; the model choice is
+    // taken only while it is on.
+    const auto forceIt = in.constFind(QStringLiteral("ananForceModel"));
+    if (forceIt != in.constEnd() && m_ananBoardId != 0) {
+        const bool on = forceIt->toBool();
+        st.setValue(anan::forceModelKey(m_ananBoardId), on ? QStringLiteral("True") : QStringLiteral("False"));
+        if (on) {
+            const auto m = anan::modelFromSetting(st.value(anan::forcedModelKey(m_ananBoardId), QString()).toString());
+            const auto allowed = ananModelsForProtocol();
+            if (!m || std::find(allowed.begin(), allowed.end(), *m) == allowed.end())
+                st.setValue(anan::forcedModelKey(m_ananBoardId), QString::fromLatin1(anan::modelTraits(m_ananModel).key));
+        }
+        qCInfo(lcHl2) << "ANAN: forcedly assign the radio (reported board" << int(m_ananBoardId) << ")"
+                      << (on ? "ON" : "OFF");
         any = true;
+    }
+    const auto modelIt = in.constFind(QStringLiteral("ananModel"));
+    if (modelIt != in.constEnd() && m_ananBoardId != 0 && anan::forceModelOn(m_ananBoardId)) {
+        const auto m = anan::modelFromSetting(modelIt->toString());
+        const auto allowed = ananModelsForProtocol();
+        if (m && std::find(allowed.begin(), allowed.end(), *m) != allowed.end()) {
+            st.setValue(anan::forcedModelKey(m_ananBoardId), modelIt->toString());
+            any = true;
+        }
     }
     if (!any)
         return;
     st.save();
     resolveAnanModel();
     pushAnanModelOptions();
+    pushAnanForcedBoard();
     if (m_ananModel != was && m_connected) {
         m_havePaVolts = m_havePaAmps = false;
         defineMeters();
@@ -492,9 +552,6 @@ void Hl2Backend::pushAnanModelOptions()
     QMetaObject::invokeMethod(m_metis, "setMicControl", Qt::QueuedConnection, Q_ARG(int, bits));
     QMetaObject::invokeMethod(m_metis, "setAdc1GroundOnTx", Qt::QueuedConnection,
                               Q_ARG(bool, on("AnanAdc2GndOnTx", true)));
-    // Build 245: the transport applies it on Protocol 1 to an ANGELIA board only.
-    QMetaObject::invokeMethod(m_metis, "setForce7000Filters", Qt::QueuedConnection,
-                              Q_ARG(bool, on("AnanForce7000Filters", false)));
 }
 
 double Hl2Backend::ananFwdDisplayWatts(double watts) const
@@ -956,6 +1013,16 @@ Hl2Backend::Hl2Backend(QObject* parent)
         {
             const bool p1 = static_cast<anan::P2Transport*>(m_metis)->isProtocol1();
             const bool was = m_ananP1.exchange(p1, std::memory_order_relaxed);
+            // Build 267: the board the session's radio reported (the unicast
+            // probe at connect can go unanswered); the model follows it.
+            const int reported = static_cast<anan::P2Transport*>(m_metis)->reportedBoardId();
+            if (reported > 0 && reported != int(m_ananBoardId)) {
+                m_ananBoardId = static_cast<std::uint8_t>(reported);
+                QTimer::singleShot(0, this, [this] {
+                    resolveAnanModel();
+                    emit capabilitiesChanged();
+                });
+            }
             if (p1 && m_sampleRateHz > 384000) {
                 QTimer::singleShot(0, this, [this] {
                     qCWarning(lcHl2) << "ANAN: Protocol 1 radio -- span" << m_sampleRateHz / 1000
@@ -964,7 +1031,10 @@ Hl2Backend::Hl2Backend(QObject* parent)
                 });
             }
             if (p1 != was)
-                QTimer::singleShot(0, this, [this] { emit capabilitiesChanged(); });
+                QTimer::singleShot(0, this, [this] {
+                    resolveAnanModel();   // build 267: a forced model must suit the protocol
+                    emit capabilitiesChanged();
+                });
         }
         // #5594 (M1): seed the announcement baseline at the connect edge. The
         // connect itself republishes capabilities through connectionStateChanged,
@@ -3490,6 +3560,9 @@ void Hl2Backend::connectRadio(const RadioConnectRequest& request)
     // Build 194: a radio the discovery sweep found with Protocol 1 firmware
     // (its rates stop at 384 ksps; the transport picks the protocol itself).
     m_ananP1.store(anan::isProtocol1Host(host.toIPv4Address()), std::memory_order_relaxed);
+    // Build 267: a forcedly assigned radio type, before the connect-time
+    // discovery and the session's first packet.
+    pushAnanForcedBoard();
     if (host.isNull()) {
         emit connectionError(QStringLiteral("ANAN: invalid host '%1'").arg(request.host));
         return;

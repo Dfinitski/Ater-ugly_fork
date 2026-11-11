@@ -4182,27 +4182,34 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     modelCombo->setObjectName(QStringLiteral("ananHwModel"));
     modelCombo->setAccessibleName(QStringLiteral("Radio model"));
     modelCombo->setToolTip(QStringLiteral(
-        "The radio this board is. The board does not report it: the ANAN-7000DLE,\n"
-        "8000DLE, Orion MkII and Anvelina Pro3 share one board, as do the G2 and G2-1K."));
+        "The radio type, as the radio reports it. To choose another type,\n"
+        "turn on \"Forcedly assign the radio\"."));
     modelCombo->setMinimumWidth(160);
     modelRow->addWidget(modelLbl);
     modelRow->addWidget(modelCombo);
-    // Build 245 (operator, 10.11): ANAN-100D boards with firmware modified to
-    // drive 7000DLE-style band-pass filters ahead of both ADCs. Shown on the
-    // ANAN-100D over Protocol 1 only.
-    auto* force7000Chk = new QCheckBox(QStringLiteral("Forced RXx Filter control like 7000"));
-    force7000Chk->setObjectName(QStringLiteral("ananHwForce7000Filters"));
-    force7000Chk->setToolTip(QStringLiteral(
-        "For an ANAN-100D whose firmware was modified to drive band-pass filters\n"
-        "ahead of both ADCs, as on the ANAN-7000DLE (in Thetis: model 7000DLE).\n"
-        "Each ADC's filter follows the receiver on that ADC; the low-pass filter\n"
-        "follows the transmit frequency. Leave off on a standard ANAN-100D."));
-    force7000Chk->setVisible(false);
+    // Build 267 (operator, 11.11; replaces build 245's "Forced RXx Filter
+    // control like 7000", which a radio reporting itself as Hermes never
+    // showed): the operator names the radio type. Off: the combo is locked to
+    // the reported type. On (after a warning): any type the connection's
+    // protocol drives; the session runs with that type's board profile from
+    // the next connection.
+    auto* forceModelChk = new QCheckBox(QStringLiteral("Forcedly assign the radio"));
+    forceModelChk->setObjectName(QStringLiteral("ananHwForceModel"));
+    forceModelChk->setToolTip(QStringLiteral(
+        "Drive the radio as the type chosen on the left instead of the type it reports\n"
+        "(for example a radio with modified firmware that reports the wrong board).\n"
+        "Takes effect on the next connection. Choosing the wrong type can limit the\n"
+        "radio's functions or damage it."));
     modelRow->addSpacing(12);
-    modelRow->addWidget(force7000Chk);
-    controls->append(force7000Chk);
+    modelRow->addWidget(forceModelChk);
+    controls->append(forceModelChk);
     modelRow->addStretch(1);
     mvb->addLayout(modelRow);
+    auto* forceNote = new QLabel;
+    setTone(forceNote, Tone::Hint);
+    forceNote->setWordWrap(true);
+    forceNote->setVisible(false);
+    mvb->addWidget(forceNote);
     auto* psNote = new QLabel(
         "PureSignal is not available on this radio: its receivers use the DDCs "
         "PureSignal needs.");
@@ -4249,7 +4256,7 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     const QPointer<QCheckBox> ditherGuard(ditherChk);
     m_hl2HardwareReseed = [this, ditherGuard, ditherChk, randomChk, noRadioLbl, controls,
                            modelCombo, psNote, micPttChk, micTipChk, micBiasChk, micXlrChk,
-                           gndChk, connNone, connGroup, force7000Chk] {
+                           gndChk, connNone, connGroup, forceModelChk, forceNote] {
         if (!ditherGuard)
             return;
         IRadioBackend* backend = m_model->backend();
@@ -4292,16 +4299,17 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
                                && !m.value(QStringLiteral("ananPureSignal")).toBool());
             const bool orion = m.value(QStringLiteral("ananOrionMic")).toBool();
             const bool xlr = m.value(QStringLiteral("ananXlrMic")).toBool();
-            const bool force7000Avail = m.value(QStringLiteral("ananForce7000FiltersAvail")).toBool();
-            const bool force7000 = force7000Avail
-                && m.value(QStringLiteral("ananForce7000Filters")).toBool();
+            const bool forced = m.value(QStringLiteral("ananForceModel")).toBool();
             {
-                const QSignalBlocker bf(force7000Chk);
-                force7000Chk->setChecked(m.value(QStringLiteral("ananForce7000Filters")).toBool());
+                const QSignalBlocker bf(forceModelChk);
+                forceModelChk->setChecked(forced);
             }
-            force7000Chk->setVisible(force7000Avail);
-            // A forced 7000-style board has the RX2 bank, and its ground-on-TX.
-            const bool adc2 = m.value(QStringLiteral("ananAdc2Bank")).toBool() || force7000;
+            const QString reported = m.value(QStringLiteral("ananReportedModel")).toString();
+            forceNote->setText(QStringLiteral(
+                "The radio reports itself as %1. It is driven as the type chosen above "
+                "from the next connection.").arg(reported));
+            forceNote->setVisible(forced);
+            const bool adc2 = m.value(QStringLiteral("ananAdc2Bank")).toBool();
             for (QCheckBox* c : {micPttChk, micTipChk, micBiasChk, micXlrChk, gndChk})
                 c->blockSignals(true);
             micPttChk->setChecked(!m.value(QStringLiteral("ananMicPttOff")).toBool());
@@ -4322,6 +4330,8 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
                 if (w)
                     w->setEnabled(haveRadio);
             }
+            // Build 267: the type is chosen only while forcedly assigned.
+            modelCombo->setEnabled(haveRadio && forced);
             if (noRadioLbl)
                 noRadioLbl->setVisible(!haveRadio);
         };
@@ -4376,9 +4386,28 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     connect(gndChk, &QCheckBox::toggled, this, [apply](bool on) {
         apply(QVariantMap{{QStringLiteral("ananAdc2GndOnTx"), on}});
     });
-    connect(force7000Chk, &QCheckBox::toggled, this, [this, apply](bool on) {
-        apply(QVariantMap{{QStringLiteral("ananForce7000Filters"), on}});
-        // The RX2 ground option shows with it.
+    connect(forceModelChk, &QCheckBox::toggled, this, [this, apply, forceModelChk](bool on) {
+        // Build 267: the warning, on turning it on only.
+        if (on) {
+            const auto answer = QMessageBox::warning(this, QStringLiteral("Forcedly assign the radio"),
+                QStringLiteral(
+                    "You are about to drive this radio as a type you choose, instead of the type "
+                    "it reports.\n\n"
+                    "Choosing the wrong radio type can seriously limit its functions and may even "
+                    "damage the radio: the filter, attenuator, PA and power settings of another "
+                    "type are sent to the hardware.\n\n"
+                    "Use this only if you know the radio's hardware and firmware match the type "
+                    "you select. The choice is remembered and applies from the next connection.\n\n"
+                    "Continue?"),
+                QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+            if (answer != QMessageBox::Yes) {
+                const QSignalBlocker b(forceModelChk);
+                forceModelChk->setChecked(false);
+                return;
+            }
+        }
+        apply(QVariantMap{{QStringLiteral("ananForceModel"), on}});
+        // The combo's list, its lock and the options follow.
         QTimer::singleShot(0, this, [this] {
             if (m_hl2HardwareReseed)
                 m_hl2HardwareReseed();

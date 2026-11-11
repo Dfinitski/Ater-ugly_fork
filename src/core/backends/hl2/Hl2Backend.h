@@ -494,10 +494,19 @@ private:
     // known; the name then defaults to ANAN-100D).
     std::uint8_t m_ananBoardId = 0;
     // ANAN-100D port: which radio the board is (one board id covers several
-    // models; the operator's choice, AppSettings "AnanModel_b<boardId>").
+    // models; since build 267 the board's default unless forcedly assigned,
+    // anan/AnanForcedModel.h).
     anan::AnanModel m_ananModel = anan::AnanModel::Anan100D;
     void resolveAnanModel();
     bool m_ananModelLogged = false;
+    // Build 267 (operator, 11.11): "Forcedly assign the radio" -- the operator
+    // names the radio type when the board reports the wrong one (a modified
+    // ANAN-100D answering Protocol 1 discovery as Hermes). AppSettings
+    // "AnanForceModel" (True/False) and "AnanForcedModel" (model key). The
+    // transport then drives the session with that model's board profile.
+    [[nodiscard]] bool ananForcedModel(anan::AnanModel* out = nullptr) const;
+    [[nodiscard]] std::vector<anan::AnanModel> ananModelsForProtocol() const;
+    void pushAnanForcedBoard();
     [[nodiscard]] const anan::ModelTraits& ananTraits() const noexcept
     {
         return anan::modelTraits(m_ananModel);
