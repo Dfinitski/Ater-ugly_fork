@@ -3468,6 +3468,19 @@ Radio and focuses the Nickname field (`radioNicknameEdit`, text selected)
 instead of the connection dialog. Tooltip: "Station name -- the radio's
 nickname. Double-click to change it (Radio Setup > Radio > Nickname)."
 
+## 216. Build 254: PC Audio button in style F; full-width bar on the radio tab (10.11)
+
+**PC Audio / Codec (operator's choice F of the mock-up):** `PillButton` now
+paints a flat button, 4 px corners, background color.background.1 (lighter on
+hover, darker pressed), and a 2 px bar along the whole bottom edge, clipped to
+the rounded outline: color.accent.success for PC Audio, color.border.accent
+(blue) for Codec. Text 10 px bold, centred above the bar. Still 60 x 18.
+
+**Radio tab (RadioTabBar):** the active tab's accent bar used to be a 2 px
+line from radius+4 to width-radius-4, so it stopped short of both edges. Now a
+2 px fill across the full width, clipped to the tab's rounded shape -- the
+same bar as the PC Audio button.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

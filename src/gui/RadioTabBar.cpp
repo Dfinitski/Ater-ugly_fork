@@ -343,9 +343,14 @@ void RadioTab::paintEvent(QPaintEvent* ev)
                    theme.color(this, QStringLiteral("color.titlebar.tab.active.background")));
         p.setPen(QPen(theme.color(this, QStringLiteral("color.titlebar.tab.active.border")), 1));
         p.drawPath(shape);
-        p.setPen(QPen(theme.color(this, QStringLiteral("color.border.accent")), 2));
-        p.drawLine(QPointF(kTabRadius + 4, height() - 2),
-                   QPointF(width() - kTabRadius - 4, height() - 2));
+        // Build 254 (operator, 10.11): the active bar runs the whole width,
+        // edge to edge inside the rounded outline (it stopped short of the
+        // corners), as on the PC Audio button.
+        p.save();
+        p.setClipPath(shape);
+        p.fillRect(QRectF(0, height() - 2, width(), 2),
+                   theme.color(this, QStringLiteral("color.border.accent")));
+        p.restore();
     } else if (m_hovered || isDown()) {
         p.fillPath(shape, theme.color(this, QStringLiteral("color.titlebar.tab.hover")));
     }

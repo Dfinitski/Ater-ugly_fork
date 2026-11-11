@@ -58,17 +58,19 @@ namespace AetherSDR {
 namespace {
 
 // Build 251 (operator, 10.11: the "PC Audio" pill looked too big, its shape
-// with jagged, stretched pixels). A stylesheet border-radius is drawn without
-// antialiasing; this pill paints itself: an antialiased capsule on half-pixel
-// edges, a 1 px border and centred text, in the theme's colours.
+// with jagged, stretched pixels): a stylesheet border-radius is drawn without
+// antialiasing, so this button paints itself.
+// Build 254 (operator's choice, variant F of the mock-up): a flat, slightly
+// rounded button with a coloured bar along its whole bottom edge -- green for
+// PC Audio, the accent blue for Codec -- like the radio tab's active bar.
 class PillButton : public QPushButton {
 public:
     using QPushButton::QPushButton;
 
-    void setPillColors(const QString& bgToken, const QString& borderToken, const QString& textToken)
+    void setPillColors(const QString& bgToken, const QString& barToken, const QString& textToken)
     {
         m_bg = bgToken;
-        m_border = borderToken;
+        m_bar = barToken;
         m_text = textToken;
         update();
     }
@@ -80,20 +82,25 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing, true);
         p.setRenderHint(QPainter::TextAntialiasing, true);
-        const QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
-        const qreal radius = r.height() / 2.0;
+        constexpr qreal kRadius = 4.0;
+        constexpr qreal kBar = 2.0;
+        QPainterPath shape;
+        shape.addRoundedRect(QRectF(rect()), kRadius, kRadius);
         QColor bg = theme.color(this, m_bg);
         if (underMouse() && isEnabled())
-            bg = bg.lighter(118);
+            bg = bg.lighter(125);
         if (isDown())
             bg = bg.darker(115);
-        p.setPen(QPen(theme.color(this, m_border), 1.0));
-        p.setBrush(bg);
-        p.drawRoundedRect(r, radius, radius);
+        p.fillPath(shape, bg);
+        // The bar from edge to edge, inside the rounded outline.
+        p.save();
+        p.setClipPath(shape);
+        p.fillRect(QRectF(0, height() - kBar, width(), kBar), theme.color(this, m_bar));
+        p.restore();
         if (hasFocus() && focusPolicy() != Qt::NoFocus) {
             p.setPen(QPen(theme.color(this, QStringLiteral("color.border.accent")), 1.0));
             p.setBrush(Qt::NoBrush);
-            p.drawRoundedRect(r.adjusted(1, 1, -1, -1), radius - 1, radius - 1);
+            p.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), kRadius, kRadius);
         }
         QFont f = font();
         f.setPixelSize(10);   // build 253: +15 % (9 px)
@@ -101,12 +108,13 @@ protected:
         p.setFont(f);
         p.setPen(theme.color(this, m_text));
         const QFontMetrics fm(f);
-        p.drawText(rect(), Qt::AlignCenter, fm.elidedText(text(), Qt::ElideRight, width() - 6));
+        p.drawText(QRect(0, 0, width(), height() - int(kBar)), Qt::AlignCenter,
+                   fm.elidedText(text(), Qt::ElideRight, width() - 6));
     }
 
 private:
-    QString m_bg = QStringLiteral("color.background.success");
-    QString m_border = QStringLiteral("color.accent.success");
+    QString m_bg = QStringLiteral("color.background.1");
+    QString m_bar = QStringLiteral("color.accent.success");
     QString m_text = QStringLiteral("color.text.primary");
 };
 
@@ -1314,11 +1322,11 @@ void TitleBar::applyPcAudioStyle()
     // stylesheet it replaced.
     auto* pill = static_cast<PillButton*>(m_pcBtn);
     if (m_codecTarget)
-        pill->setPillColors(QStringLiteral("color.accent.dim"), QStringLiteral("color.accent.bright"),
+        pill->setPillColors(QStringLiteral("color.background.1"), QStringLiteral("color.border.accent"),
                             QStringLiteral("color.text.primary"));
     else if (m_pcBtn->isChecked())
-        pill->setPillColors(QStringLiteral("color.background.success"),
-                            QStringLiteral("color.accent.success"), QStringLiteral("color.text.primary"));
+        pill->setPillColors(QStringLiteral("color.background.1"), QStringLiteral("color.accent.success"),
+                            QStringLiteral("color.text.primary"));
     else
         pill->setPillColors(QStringLiteral("color.background.1"), QStringLiteral("color.border.strong"),
                             QStringLiteral("color.text.secondary"));
