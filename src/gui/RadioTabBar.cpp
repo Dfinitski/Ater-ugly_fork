@@ -44,9 +44,9 @@ namespace {
 // taller tab would sit where a press starts a window resize instead of
 // reaching the tab.  (On Linux the resizer reserves the whole bar height —
 // no top-edge resize there, #4886.)
-constexpr int  kTabHeight     = 36;
+constexpr int  kTabHeight     = 24;   // build 251: one line (was 36, two)
 constexpr int  kTabRadius     = 8;
-constexpr int  kTabPadX       = 14;
+constexpr int  kTabPadX       = 10;
 constexpr int  kTabPadY       = 4;
 constexpr int  kDotDiameter   = 7;
 constexpr int  kDotTextGap    = 8;
@@ -54,7 +54,7 @@ constexpr int  kAddButtonSize = 28;
 constexpr int  kStripSpacing  = 6;
 constexpr int  kStripMinWidth = 112;
 constexpr qreal kNameSizePx   = 12.5;
-constexpr qreal kStatusSizePx = 9.5;
+[[maybe_unused]] constexpr qreal kStatusSizePx = 9.5;   // build 251: no status line
 // A heartbeat swells the dot's glow and lets it fall away over this long.  The
 // glow is data, not decoration: one swell per discovery packet, so a stalled
 // link simply stops breathing.  Long enough to read as a pulse rather than the
@@ -285,14 +285,14 @@ QColor RadioTab::dotColor() const
 
 QSize RadioTab::sizeHint() const
 {
+    // Build 251 (operator, 10.11): the name only, on the dot's line; the
+    // status is the dot's colour and the tooltip, and the title bar says it in
+    // words when the radio is not connected.
     const QFontMetricsF nameFm(uiFont(this, kNameSizePx, 600));
-    const QFontMetricsF statusFm(uiFont(this, kStatusSizePx, 400));
-    const qreal textWidth = qMax(nameFm.horizontalAdvance(m_entry.name),
-                                 statusFm.horizontalAdvance(statusLine()));
+    const qreal textWidth = nameFm.horizontalAdvance(m_entry.name);
     const int w = kTabPadX + kDotDiameter + kDotTextGap
                 + int(qCeil(textWidth)) + kTabPadX;
-    const int h = kTabPadY + int(qCeil(nameFm.height() + statusFm.height()))
-                + kTabPadY;
+    const int h = kTabPadY + int(qCeil(nameFm.height())) + kTabPadY;
     return QSize(w, qMax(kTabHeight, h));
 }
 
@@ -396,30 +396,16 @@ void RadioTab::paintEvent(QPaintEvent* ev)
         p.drawEllipse(dotRect);
     }
 
-    // ── Two-line text block ─────────────────────────────────────────────────
+    // ── Name, on the dot's line (build 251: the status line is gone) ─────────
     const qreal textX = dotX + kDotDiameter + kDotTextGap;
     const qreal textW = width() - textX - kTabPadX;
-
     const QFont nameFont = uiFont(this, kNameSizePx, 600);
-    const QFont statusFont = uiFont(this, kStatusSizePx, 400);
     const QFontMetricsF nameFm(nameFont);
-    const QFontMetricsF statusFm(statusFont);
-
-    const qreal blockH = nameFm.height() + statusFm.height();
-    qreal y = (height() - blockH) / 2.0;
-
     p.setFont(nameFont);
     p.setPen(theme.color(this, QStringLiteral("color.text.primary")));
-    p.drawText(QRectF(textX, y, textW, nameFm.height()),
+    p.drawText(QRectF(textX, 0, textW, height()),
                Qt::AlignLeft | Qt::AlignVCenter,
                nameFm.elidedText(m_entry.name, Qt::ElideRight, textW));
-    y += nameFm.height();
-
-    p.setFont(statusFont);
-    p.setPen(theme.color(this, QStringLiteral("color.text.secondary")));
-    p.drawText(QRectF(textX, y, textW, statusFm.height()),
-               Qt::AlignLeft | Qt::AlignVCenter,
-               statusFm.elidedText(statusLine(), Qt::ElideRight, textW));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

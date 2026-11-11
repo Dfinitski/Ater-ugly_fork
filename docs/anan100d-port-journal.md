@@ -3430,6 +3430,24 @@ Network Diagnostics stays in the menus), with the separator before it.
 panel's AnanRxAnt / AnanTxAnt); the TX line red while transmitting; the
 operator's antenna names in the tooltip.
 
+## 213. Build 251: painted PC Audio pill, one-line radio tab (10.11)
+
+**1. PC Audio / Codec pill (TitleBar).** It was a QPushButton with a
+stylesheet `border-radius: 12px` at 78 x 24: Qt's stylesheet engine draws
+rounded borders without antialiasing, hence the jagged, "stretched" outline.
+Now `PillButton` (TitleBar.cpp) paints an antialiased capsule on half-pixel
+edges (radius = height / 2), a 1 px border, centred bold 9 px text, slightly
+lighter on hover, darker pressed, an accent ring on keyboard focus. Size a
+third smaller: 52 x 16. `applyPcAudioStyle()` sets the same theme colours
+the stylesheets used (codec: accent.dim / accent.bright; PC: background.success
+/ accent.success).
+
+**2. Radio tab with the animated link dot (RadioTabBar).** The second line
+(model / state / detail) is gone: the dot's colour and pulse show the state,
+the tooltip still carries the full description, and the title bar shows the
+state in words when not connected (build 250). The name is centred on the
+dot's line; tab height 36 -> 24, side padding 14 -> 10.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -56,6 +56,60 @@
 namespace AetherSDR {
 
 namespace {
+
+// Build 251 (operator, 10.11: the "PC Audio" pill looked too big, its shape
+// with jagged, stretched pixels). A stylesheet border-radius is drawn without
+// antialiasing; this pill paints itself: an antialiased capsule on half-pixel
+// edges, a 1 px border and centred text, in the theme's colours.
+class PillButton : public QPushButton {
+public:
+    using QPushButton::QPushButton;
+
+    void setPillColors(const QString& bgToken, const QString& borderToken, const QString& textToken)
+    {
+        m_bg = bgToken;
+        m_border = borderToken;
+        m_text = textToken;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        auto& theme = ThemeManager::instance();
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setRenderHint(QPainter::TextAntialiasing, true);
+        const QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        const qreal radius = r.height() / 2.0;
+        QColor bg = theme.color(this, m_bg);
+        if (underMouse() && isEnabled())
+            bg = bg.lighter(118);
+        if (isDown())
+            bg = bg.darker(115);
+        p.setPen(QPen(theme.color(this, m_border), 1.0));
+        p.setBrush(bg);
+        p.drawRoundedRect(r, radius, radius);
+        if (hasFocus() && focusPolicy() != Qt::NoFocus) {
+            p.setPen(QPen(theme.color(this, QStringLiteral("color.border.accent")), 1.0));
+            p.setBrush(Qt::NoBrush);
+            p.drawRoundedRect(r.adjusted(1, 1, -1, -1), radius - 1, radius - 1);
+        }
+        QFont f = font();
+        f.setPixelSize(9);
+        f.setBold(true);
+        p.setFont(f);
+        p.setPen(theme.color(this, m_text));
+        const QFontMetrics fm(f);
+        p.drawText(rect(), Qt::AlignCenter, fm.elidedText(text(), Qt::ElideRight, width() - 6));
+    }
+
+private:
+    QString m_bg = QStringLiteral("color.background.success");
+    QString m_border = QStringLiteral("color.accent.success");
+    QString m_text = QStringLiteral("color.text.primary");
+};
+
 constexpr const char* kTitleDragHandleProperty = "aetherTitleDragHandle";
 
 // Stall timeout for the GitHub latest-release version check (#4688 §6).
@@ -402,12 +456,14 @@ TitleBar::TitleBar(QWidget* parent)
     // Volume target pill (ANAN-100D port): "PC Audio" <-> "Codec". It picks
     // what the speaker icon and the volume slider beside it control; both
     // targets keep their own level and mute.
-    m_pcBtn = new QPushButton("PC Audio");
+    m_pcBtn = new PillButton("PC Audio");
     m_pcBtn->setObjectName(QStringLiteral("pcAudioBtn"));
     m_pcBtn->setCheckable(true);
     m_pcBtn->setChecked(true);   // PC audio itself stays on (required here)
-    m_pcBtn->setFixedHeight(24);
-    m_pcBtn->setFixedWidth(78);
+    // Build 251: a third smaller (was 78 x 24), painted (PillButton).
+    m_pcBtn->setFixedHeight(16);
+    m_pcBtn->setFixedWidth(52);
+    m_pcBtn->setAttribute(Qt::WA_Hover, true);
     m_pcBtn->setCursor(Qt::PointingHandCursor);
     m_pcBtn->setAccessibleName("Volume target");
     m_pcBtn->setAccessibleDescription(
@@ -1253,24 +1309,18 @@ void TitleBar::applyPcAudioStyle()
     if (!m_pcBtn) {
         return;
     }
-    const QString style = m_codecTarget
-        ? QStringLiteral(
-              "QPushButton { background: {{color.accent.dim}};"
-              " color: {{color.text.primary}}; border: 1px solid {{color.accent.bright}};"
-              " border-radius: 12px; font-size: 10px; font-weight: bold; }"
-              "QPushButton:hover { background: {{color.accent.dim}}; }")
-        : m_pcBtn->isChecked()
-        ? QStringLiteral(
-              "QPushButton { background: {{color.background.success}};"
-              " color: {{color.text.primary}}; border: 1px solid {{color.accent.success}};"
-              " border-radius: 12px; font-size: 10px; font-weight: bold; }"
-              "QPushButton:hover { background: {{color.background.success}}; }")
-        : QStringLiteral(
-              "QPushButton { background: {{color.background.1}};"
-              " color: {{color.text.secondary}}; border: 1px solid {{color.border.strong}};"
-              " border-radius: 12px; font-size: 10px; font-weight: bold; }"
-              "QPushButton:hover { background: {{color.background.2}}; }");
-    ThemeManager::instance().applyStyleSheet(m_pcBtn, style);
+    // Build 251: the pill paints itself (PillButton); the same colours as the
+    // stylesheet it replaced.
+    auto* pill = static_cast<PillButton*>(m_pcBtn);
+    if (m_codecTarget)
+        pill->setPillColors(QStringLiteral("color.accent.dim"), QStringLiteral("color.accent.bright"),
+                            QStringLiteral("color.text.primary"));
+    else if (m_pcBtn->isChecked())
+        pill->setPillColors(QStringLiteral("color.background.success"),
+                            QStringLiteral("color.accent.success"), QStringLiteral("color.text.primary"));
+    else
+        pill->setPillColors(QStringLiteral("color.background.1"), QStringLiteral("color.border.strong"),
+                            QStringLiteral("color.text.secondary"));
 }
 
 void TitleBar::setPcAudioDevices(const QString& inputDevice, const QString& outputDevice)
