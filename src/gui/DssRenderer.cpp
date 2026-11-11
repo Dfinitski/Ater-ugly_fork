@@ -230,6 +230,63 @@ std::array<float, DssRenderer::kCols> resampledRawRow(
     return row;
 }
 
+// ANAN fork build 288 (operator, 11.11: "fewer distortions, but still large
+// ones" when the panadapter is moved or zoomed). A tile row is a slice of the
+// captured band, cut at the view's edges, so its first bin and its bin count
+// change at every pan / zoom step. Resampled onto kCols texels across the
+// slice (build 283: interpolated when there are fewer bins than texels),
+// a steady carrier's bin fell at a different fraction between texels in
+// every such row, and its stored peak changed from row to row: in dB a
+// quarter-bin interpolation toward the noise takes off a large part of the
+// peak. Now a captured row is stored EXACTLY: texel t = bins [t*g, (t+1)*g)
+// (g = 1 while the row has no more bins than texels, else the smallest group
+// that fits), the maximum of exactly those bins, with no interpolation; the
+// texels past the data are uncovered; and the row's frame is restated so
+// that texel 0 sits on the first group's centre and texel kCols-1 on the
+// centre of the kCols-th group -- the frame dss_mesh.vert places texels by.
+struct ExactRow {
+    std::array<float, DssRenderer::kCols> values;
+    CoverageRow coverage;
+    double centerMhz = 0.0;
+    double bandwidthMhz = 0.0;
+};
+
+ExactRow exactCapturedRow(const QVector<float>& binsDbm, double centerMhz,
+                          double bandwidthMhz, float fallback)
+{
+    ExactRow r;
+    r.values.fill(fallback);
+    r.coverage.fill(0);
+    const int n = binsDbm.size();
+    if (n <= 0 || !(bandwidthMhz > 0.0)) {
+        r.centerMhz = centerMhz;
+        r.bandwidthMhz = bandwidthMhz;
+        return r;
+    }
+    const int g = std::max(1, (n + DssRenderer::kCols - 1) / DssRenderer::kCols);
+    for (int t = 0; t < DssRenderer::kCols; ++t) {
+        const int i0 = t * g;
+        if (i0 >= n)
+            break;
+        const int i1 = std::min(n, i0 + g);
+        float mx = -std::numeric_limits<float>::infinity();
+        for (int i = i0; i < i1; ++i) {
+            if (std::isfinite(binsDbm[i]))
+                mx = std::max(mx, binsDbm[i]);
+        }
+        if (std::isfinite(mx)) {
+            r.values[static_cast<std::size_t>(t)] = mx;
+            r.coverage[static_cast<std::size_t>(t)] = 1;
+        }
+    }
+    const double binMhz = bandwidthMhz / n;
+    const double lowEdgeMhz = centerMhz - bandwidthMhz * 0.5;
+    const double firstCentreMhz = lowEdgeMhz + 0.5 * g * binMhz;
+    r.bandwidthMhz = static_cast<double>(DssRenderer::kCols - 1) * g * binMhz;
+    r.centerMhz = firstCentreMhz + r.bandwidthMhz * 0.5;
+    return r;
+}
+
 std::array<float, DssRenderer::kCols> smoothDssRow(
     const std::array<float, DssRenderer::kCols>& raw,
     std::array<float, DssRenderer::kCols>& rawPrev1,
@@ -423,7 +480,16 @@ void DssRenderer::pushRowWithSupplemental(
     double supplementalCenterMhz,
     double supplementalBandwidthMhz, bool preserveInput)
 {
-    const std::array<float, kCols> raw = resampledRawRow(binsDbm, -200.0f);
+    // Build 288: a captured (preserveInput) row is stored exactly, on its
+    // own restated frame; see exactCapturedRow().
+    ExactRow exact;
+    if (preserveInput) {
+        exact = exactCapturedRow(binsDbm, centerMhz, bandwidthMhz, -200.0f);
+        centerMhz = exact.centerMhz;
+        bandwidthMhz = exact.bandwidthMhz;
+    }
+    const std::array<float, kCols> raw = preserveInput
+        ? exact.values : resampledRawRow(binsDbm, -200.0f);
     const bool sameFrameAsPrevious =
         m_count > 0
         && frequencyFramesMatch(
@@ -448,7 +514,10 @@ void DssRenderer::pushRowWithSupplemental(
 
     m_head = (m_head - 1 + kRows) % kRows;
     m_rows[m_head] = nr;
-    m_rowCoverage[m_head].fill(1);
+    if (preserveInput)
+        m_rowCoverage[m_head] = exact.coverage;   // build 288
+    else
+        m_rowCoverage[m_head].fill(1);
     m_rowCenterMhz[m_head] = centerMhz;
     m_rowBandwidthMhz[m_head] = bandwidthMhz;
     const bool supplementalValid =

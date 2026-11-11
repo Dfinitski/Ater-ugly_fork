@@ -338,11 +338,20 @@ void main()
             // Only off the primary capture, and only with real frames.
             if (!framed || fr.y <= 0.0) {
                 cov = 0.0;
-            } else if (frame.y > 0.0) {
-                float primaryLo = texelViewUnit(-0.5 / texelSpan, frame.xy, framed);
-                float primaryHi = texelViewUnit(1.0 + 0.5 / texelSpan, frame.xy, framed);
-                if (centerUnit > primaryLo && centerUnit < primaryHi) {
-                    cov = 0.0;
+            } else if (frame.y > 0.0 && rowAge < clamp(validRows, 0.0, rows)) {
+                // Build 288: hidden where the row's own texel at this
+                // frequency holds data (a captured row's frame now runs past
+                // its data; the texels there are uncovered).
+                float primaryU = 0.5
+                    + (targetCenterOffsetMhz - frame.x) / frame.y
+                    + (centerUnit - 0.5) * targetBandwidthMhz / frame.y;
+                if (primaryU >= 0.0 && primaryU <= 1.0) {
+                    vec4 own = texture(heightTex, vec2(
+                        (primaryU * texelSpan + 0.5) / max(texCols, 1.0),
+                        fract(rowOffset + rowAge / rows)));
+                    if (own.g > 0.5) {
+                        cov = 0.0;
+                    }
                 }
             }
         }
