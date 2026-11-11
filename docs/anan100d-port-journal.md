@@ -3271,6 +3271,30 @@ widest rate the running receivers can share on the link) is the upper limit in
 all three places. The zoom is unaffected: `panViewHz()` and the widget both cap
 the view at the current rate's usable span.
 
+## 206. Build 244: ADC1 band-pass bank on two-ADC boards over Protocol 1 (10.11)
+
+**Request:** a user's ANAN-100D (reports board 3, ANGELIA) runs firmware
+modified to drive a band-pass bank ahead of the second ADC "as on the
+7000DLE". RX1's filters follow; RX2's do not. With Thetis set by hand to
+7000DLE, RX2's filters worked.
+
+**Protocol 1:** C0 0x24 C1 bits 0-6 = the ADC1 bank (same bit order as C0 0x12
+C3: 0x01 13 MHz, 0x02 20 MHz, 0x04 9.5 MHz, 0x08 6.5 MHz, 0x10 1.5 MHz,
+0x20 bypass, 0x40 6 m), bit 7 = ground RX2 on TX; C2 bit 0 transverter, bit 6
+PureSignal. Thetis (networkproto1.c case 16) sends 0x24 in the rotation of
+every board; its C1 comes from setAlex2HPF(), called per frequency only for
+ORION MkII/7000/8000/G2/Anvelina/Red Pitaya, but also from the Alex2 bypass
+setters for any model. We sent 0x24 every rotation with C1 = 0 on the 100D.
+
+**Change (P2Transport, Protocol 1 C&C state):** on the legacy (100D/200D)
+scheme, a board with two ADCs gets `alex2Hpf` from the frequency of the
+receiver on ADC1, through `alexRxFilterFor()` -- the table the ORION MkII
+branch already uses, i.e. what Thetis sends as 7000DLE. RX1 is unchanged
+(the user confirms it switches correctly on the 100D scheme). Bit 7 stays 0.
+Single-ADC boards keep 0. Stock ANGELIA/ORION: one more value in a register
+they already receive every rotation; the stock gateware's handling of 0x24
+was not read (inferred safe from Thetis' behaviour). Protocol 2 unchanged.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

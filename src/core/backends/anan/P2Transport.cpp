@@ -2602,17 +2602,20 @@ P1CcState P2Transport::p1State() const
     }
     s.driveLevel = cwDemoActive() ? 0 : m_drive;   // CW demo: no RF
     s.micBoost = m_micBoost;
+    // The receiver on ADC1 (else the ADC0 one): its frequency picks the ADC1
+    // band-pass bank (C0 0x24 C1).
+    std::size_t adc1Rx = filterRx;
+    for (int i = 0; i < m_numRx; ++i) {
+        if (m_rxAdc[static_cast<std::size_t>(i)] == 1) {
+            adc1Rx = static_cast<std::size_t>(i);
+            break;
+        }
+    }
+    const double adc1Hz = static_cast<double>(m_rxHz[adc1Rx]);
     if (m_profile.alexScheme == AlexScheme::Orion2BandPass) {
         // ORION MkII: band-pass banks per ADC, the LPF on the TX frequency.
-        std::size_t adc1Rx = filterRx;
-        for (int i = 0; i < m_numRx; ++i) {
-            if (m_rxAdc[static_cast<std::size_t>(i)] == 1) {
-                adc1Rx = static_cast<std::size_t>(i);
-                break;
-            }
-        }
         s.alexHpf = p1AlexHpfBits(alexRxFilterFor(filterHz));
-        s.alex2Hpf = p1AlexHpfBits(alexRxFilterFor(static_cast<double>(m_rxHz[adc1Rx])));
+        s.alex2Hpf = p1AlexHpfBits(alexRxFilterFor(adc1Hz));
         s.alexLpf = p1AlexLpfBitsFor(static_cast<double>(tx));
         s.rx2GroundOnTx = m_adc1GndOnTx;
     } else {
@@ -2622,6 +2625,19 @@ P1CcState P2Transport::p1State() const
         s.alexHpf = p1AlexHpfBits(legacyAlexHpfFor(filterHz));
         // The PA's harmonic filter on the TX frequency while transmitting.
         s.alexLpf = p1AlexLpfBitsFor(m_mox ? static_cast<double>(tx) : filterHz);
+        // Build 244 (operator, 10.11: an ANAN-100D whose firmware was
+        // modified to drive a band-pass bank ahead of the second ADC, "as on
+        // the 7000DLE"; RX2's filters did not follow -- with Thetis set to
+        // 7000DLE they did): on a two-ADC board the ADC1 bank selection goes
+        // out as Thetis' setAlex2HPF() sends it for the 7000DLE (the same
+        // table as ORION MkII above). Stock ANGELIA/ORION boards have no such
+        // bank: C0 0x24 is in every Protocol 1 rotation anyway (Thetis sends
+        // it to every board, and Thetis' Alex2 bypass settings put non-zero
+        // bits there whatever the model), so they get one more value in a
+        // register they already receive. The ground-RX2-on-TX bit (C1 bit 7)
+        // stays 0 here: not something to switch on a board nobody described.
+        if (m_profile.numAdcs >= 2)
+            s.alex2Hpf = p1AlexHpfBits(alexRxFilterFor(adc1Hz));
     }
     if (m_lna && !m_mox)
         s.alexHpf |= 0x40;   // 6 m preamp, the LNA button
