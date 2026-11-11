@@ -1798,7 +1798,10 @@ void SpectrumOverlayMenu::toggle()
 void SpectrumOverlayMenu::updateLayout()
 {
     constexpr int pad = 2;
-    constexpr int gap = 2;
+    // ANAN fork build 294 (operator, 11.11: "the gap between the buttons lets
+    // the panadapter show through; reduce it"): 0 (was 2) -- the buttons
+    // stack edge to edge, their borders meeting.
+    constexpr int gap = 0;
 
     m_toggleBtn->setText(m_expanded ? QStringLiteral("\u2190") : QStringLiteral("\u2192"));
     m_toggleBtn->move(pad, pad);
