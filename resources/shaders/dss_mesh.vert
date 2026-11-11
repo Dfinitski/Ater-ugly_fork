@@ -178,17 +178,6 @@ void main()
     float distanceRows = max(scrollDistanceRows, 1.0);
     float depthRows = max(visibleRows, 1.0);
     float encodedEdge = inVert.z;
-    // ANAN fork build 271: tag 6 = the far edge of a row's "lid" -- the
-    // row's own ridge (same sample, overlay layer: the one interior rows draw)
-    // placed one row deeper. It fills the step a narrow peak makes sideways
-    // between rows on the slanted sides of the perspective, holding the row's
-    // value until the next row takes over.
-    // Build 272: tag 7 = the same for the wall's floor vertex, so each
-    // column's curtain is carried back as a solid wall.
-    bool lidFar = encodedEdge > 5.5;
-    if (lidFar) {
-        encodedEdge = encodedEdge > 6.5 ? 3.0 : 2.0;
-    }
     bool ribbonOutline = encodedEdge <= -10.0;
     float ribbonCode = -encodedEdge;
     bool overlayLayer = ribbonOutline
@@ -248,28 +237,6 @@ void main()
     float sH   = pow(sLin, max(zCurve, 0.05));   // non-linear Z: lift floor band
     float colorStrength = clamp(
         (dbm - floorDbm) / max(colorRangeDb, 1.0), 0.0, 1.0);
-
-    // ANAN fork build 274 (operator, 11.11, with screenshots: "a steady
-    // carrier is drawn as separate sticks; hold the picture until the new
-    // level arrives, seamless"). The wall / lid far edge goes back as many
-    // rows as it takes to reach the next row that carries this column's level
-    // again (within 6 dB), up to 8 rows: a row that missed it is bridged by
-    // the last one that had it. When no later row has it (a passing noise
-    // spike), the hold is one row, so short peaks do not smear into streaks.
-    if (lidFar && sourceAge < depthRows - 1.5) {
-        float hold = 1.0;
-        for (int k = 1; k <= 8; ++k) {
-            float olderAge = sampleAge + float(k);
-            if (olderAge > depthRows - 1.0 || olderAge >= validRows) {
-                break;
-            }
-            if (effectiveDbmAt(freqUnit, olderAge, rows).x >= dbm - 6.0) {
-                hold = float(k);
-                break;
-            }
-        }
-        geometryV += hold / depthRows;
-    }
 
     // Receding perspective trapezoid in plot space [0,1] (0,0 = top-left).
     // Unchanged: rowSpanFactor widened the frequency range the row COVERS, not
@@ -332,7 +299,10 @@ void main()
 
     // Restore the original curtain palette mapping: ridge = full amplitude
     // colour, floor = a dimmer share of that same amplitude colour.
-    vLut = edge > 0.5 ? colorStrength * 0.6 : colorStrength;
+    // ANAN fork build 282: the 3D waterfall -- one colour per column, the
+    // waterfall's colour for its level, from the ridge down (was a floor
+    // dimmed to 0.6).
+    vLut = colorStrength;
     vDepth = clamp(geometryV, 0.0, 1.0);
     vEdge  = edge;
     // Frequency in viewport units, which is what the slice-shadow decals expect.

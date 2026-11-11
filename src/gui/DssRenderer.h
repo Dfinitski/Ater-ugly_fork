@@ -26,9 +26,6 @@ public:
     // passed to SpectrumWidget::startWaterfallScrollAnimation(); the current
     // Flex, Kiwi, and fallback producers append at most one row per update.
     static constexpr int kTransitionRows = 8;
-    // ANAN fork build 275: rows behind the head that a new row may still
-    // repair (repairRecentDips); the GPU upload re-sends them with each push.
-    static constexpr int kRepairRows = 3;
     static constexpr int kRows = kVisibleRows + kTransitionRows;
     static constexpr int kCols = 768;  // resampled columns per row
 
@@ -36,10 +33,13 @@ public:
     // GPU mesh UBO (SpectrumWidget::renderGpuFrame). dss_mesh.vert applies the
     // SAME formulas with these values passed as uniforms — single source of
     // truth so the CPU fallback and the GPU mesh can't drift apart.
-    static constexpr float kBackWidthFrac     = 0.60f;  // back row width / front
+    // ANAN fork build 282: the 3D waterfall goes straight back -- every row
+    // the full width (was 0.60, a narrowing perspective) -- and keeps the
+    // waterfall's colours (no haze toward the background with depth).
+    static constexpr float kBackWidthFrac     = 1.00f;  // back row width / front
     static constexpr float kDepthSpanFrac     = 0.58f;  // baseline rise to the back
     static constexpr float kFrontMaxRidgeFrac = 0.46f;  // front ridge height / plot H
-    static constexpr float kHaze              = 0.16f;  // fade toward bg with depth
+    static constexpr float kHaze              = 0.0f;   // fade toward bg with depth (was 0.16)
     // Colour uses a stable signal aperture independent of the Ref-level height
     // span. Otherwise a high Ref level compresses every real signal into blue.
     static constexpr float kColorSpanDb        = 45.0f;
@@ -66,8 +66,10 @@ public:
     // widest span instead, so the on-screen region is never sparser than the
     // texture it samples. Below the widest span it merely oversamples, which
     // Nearest filtering absorbs by repeating texels.
-    static constexpr int kMeshCols =
-        static_cast<int>(kCols * kMaxRowSpanFactor) + 1;
+    // Build 282: with no narrowing kMaxRowSpanFactor is 1; keep the mesh at
+    // its former density (5/3 x the texture), so the Nearest sampler never
+    // skips a texel when a row's frame is a little wider than the view.
+    static constexpr int kMeshCols = kCols * 5 / 3 + 1;
     // The invariant dss_mesh.vert's Nearest height sampler depends on: at the
     // widest span the on-screen columns (kMeshCols / kMaxRowSpanFactor) must
     // still be at least kCols, or bins fall between samples and vanish.
@@ -284,10 +286,6 @@ public:
     double newestSupplementalBandwidthMhz(double targetBandwidthMhz) const;
 
     RowStats rowStats(int age, float epsilonDb = 0.01f) const;
-    // ANAN fork build 276: median of the newest row's columns as they are
-    // drawn (max-pooled to kCols), or -1000 before any row. The 3D floor
-    // anchors here so the drawn noise sits on the baseline.
-    float latestRowMedianDbm() const { return m_latestRowMedianDbm; }
     quint64 rowGeneration() const { return m_rowGeneration; }
 
     // Increments on every cache rebuild — lets the GPU path upload the texture
@@ -295,9 +293,6 @@ public:
     quint64 generation() const { return m_generation; }
 
 private:
-    float m_latestRowMedianDbm{-1000.0f};
-    // Build 275: fill short dips in time on strong signals (see .cpp).
-    void repairRecentDips();
     bool historyStorageMatchesCapacity() const;
     void restoreHistorySupplemental(int historyRing, int visibleRing);
     void resetHistorySmoothing();

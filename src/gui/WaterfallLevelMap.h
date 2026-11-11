@@ -79,17 +79,23 @@ struct Params {
 };
 
 // One row sample to a 0..1 colour level.
-inline float level(float value, const Params& p)
+// ANAN fork build 282: the window the level maps -- its black point and its
+// width, in the row's own unit -- so the 3D waterfall can take the same
+// window as the 2D one. level() is (value - low) / width, clamped.
+struct Window {
+    float low = 0.0f;     // black point (row unit)
+    float width = 1.0f;   // high - low (row unit)
+};
+
+inline Window window(const Params& p)
 {
     // Radio-authoritative auto black: the radio's per-tile level is the black
-    // point and the white point follows highThresholdRaw. Otherwise the client's
-    // noise-floor estimate or the manual level. The offset slider biases the
-    // black point: 50 = none, <50 darker, >50 lighter.
+    // point and the white point follows highThresholdRaw. Otherwise the
+    // client's noise-floor estimate (biased by the offset slider) or the
+    // manual level, with the colour gain setting the width.
     float blackThresh = 0.0f;   // low point  (row unit)
     float rangeWidth = 1.0f;    // high - low (row unit)
     if (p.autoBlack && p.radioSideAutoBlack && p.radioAutoBlackRaw > 0.0f) {
-        // Clamp once so the black point, white point, and range all derive from
-        // the same low value: the offset can push lowRaw out of [0, 65535].
         const float lowRaw = bound(
             0.0f,
             p.radioAutoBlackRaw
@@ -106,8 +112,13 @@ inline float level(float value, const Params& p)
         blackThresh = manualBlackThreshold(p.blackLevel, p.rowsAreAbsoluteDb);
         rangeWidth  = gainRangeWidth(p.colorGain);
     }
+    return Window{blackThresh, rangeWidth};
+}
 
-    return bound(0.0f, (value - blackThresh) / rangeWidth, 1.0f);
+inline float level(float value, const Params& p)
+{
+    const Window w = window(p);
+    return bound(0.0f, (value - w.low) / w.width, 1.0f);
 }
 
 }  // namespace AetherSDR::WaterfallLevelMap

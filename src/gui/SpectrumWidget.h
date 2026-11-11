@@ -1878,9 +1878,7 @@ private:
     // Consumed by BOTH the GPU mesh and the CPU fallback surface, so these stay
     // outside the AETHER_GPU_SPECTRUM block below — the CPU paint path needs them
     // even when GPU spectrum rendering is disabled (older Qt / -DAETHER_GPU_SPECTRUM=OFF).
-    // ANAN fork build 276: linear height (was 0.70, which lifted the noise
-    // band into a shelf above the frequency scale).
-    float m_dssZCurve{1.0f};                // <1 expands the floor band (more floor)
+    float m_dssZCurve{0.70f};               // <1 expands the floor band (more floor)
     static constexpr int kDssMaxW = 1024;   // 3DSS surface texture/image caps
     static constexpr int kDssMaxH = 512;
 
@@ -2357,6 +2355,14 @@ private:
     QPushButton* m_rateUpBtn{nullptr};
     QLabel*      m_rateLabel{nullptr};
     [[nodiscard]] int rateGroupWidth() const;
+    // ANAN fork build 282: the 3D waterfall. The surface takes the 2D
+    // waterfall's own window -- black point and width, in the unit of the
+    // rows it holds (native tile dB, or FFT dBm) -- so the same levels give
+    // the same colours, and the level is the height. False for KiwiSDR (its
+    // own 3D mapping stays).
+    bool dssWaterfallWindow(float* low, float* width) const;
+    [[nodiscard]] float dssHeightCurve() const;
+    bool m_dssRowsTileUnit = false;   // the newest 3D row is native tile dB
     // Build 278: WIDE drawn as the rate buttons are (same height, line and
     // transparency), its right edge at rightX; returns its left edge.
     int drawWideChip(QPainter& p, int rightX) const;

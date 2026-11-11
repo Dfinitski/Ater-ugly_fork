@@ -176,12 +176,7 @@ constexpr int dssFillVerticesPerRow()
     // once, never rebuilt while scrolling. The column count is kMeshCols rather
     // than kCols so the on-screen part of a row widened by rowSpanFactor still
     // samples the height texture at least once per texel — see kMeshCols.
-    // Build 271/272 (operator, 11.11): plus one depth wall per column on the overlay
-    // layer -- the row's ridge carried back to the next row's depth -- so a
-    // narrow peak whose rows step sideways with the perspective slant reads as
-    // a continuous ridge instead of a dotted one (dss_mesh.vert, lidFar).
-    // Build 273: walls AND lids (a closed step surface), so * 4.
-    return (DssRenderer::kMeshCols - 1) * 6 * 4;
+    return (DssRenderer::kMeshCols - 1) * 6 * 2;
 }
 
 constexpr int dssLineVerticesPerRow()
@@ -5656,6 +5651,9 @@ void SpectrumWidget::appendDssWaterfallRow(const QVector<float>& binsDbm,
     if (!m_kiwiSdrWaterfallActive && flexDssFftScaleSettling()) {
         return;
     }
+    // Build 282: native tile rows arrive as preserveInput (their dB unit is
+    // the waterfall's tile unit); FFT rows are dBm.
+    m_dssRowsTileUnit = preserveInput;
 
     QVector<float> repairedBins;
     const QVector<float>& dssBins = dcRepairedDssBins(
@@ -13269,6 +13267,52 @@ void SpectrumWidget::raisePanadapterMessageOverlay()
 
 // ─── Colour map ───────────────────────────────────────────────────────────────
 
+// ANAN fork build 282 (operator, 11.11: "it is really a waterfall, not a
+// panadapter. Rebuild it: the waterfall's data with the same settings, the
+// same levels, colour and contrast, drawn straight back without perspective;
+// the level becomes the height"). The window is the one the 2D waterfall
+// applies to the same rows: WaterfallLevelMap for native tiles
+// (intensityToWaterfallLevel), dbmToWaterfallLevel's for FFT rows.
+bool SpectrumWidget::dssWaterfallWindow(float* low, float* width) const
+{
+    if (m_kiwiSdrWaterfallActive)
+        return false;
+    float lo = 0.0f;
+    float w = 1.0f;
+    if (m_dssRowsTileUnit) {
+        WaterfallLevelMap::Params params;
+        params.autoBlack = m_wfAutoBlack;
+        params.radioSideAutoBlack = effectiveWfAutoBlackRadioSide();
+        params.radioAutoBlackRaw = m_radioAutoBlackRaw;
+        params.autoBlackThresh = m_autoBlackThresh;
+        params.autoBlackOffset = m_wfAutoBlackOffset;
+        params.blackLevel = m_wfBlackLevel;
+        params.colorGain = m_wfColorGain;
+        params.rowsAreAbsoluteDb = m_panBinsAbsolute;
+        const WaterfallLevelMap::Window win = WaterfallLevelMap::window(params);
+        lo = win.low;
+        w = win.width;
+    } else {
+        // dbmToWaterfallLevel()'s window.
+        const float floorShift = (125 - m_wfBlackLevel) * 0.4f;
+        lo = m_wfMinDbm + floorShift;
+        w = 80.0f - m_wfColorGain * 0.7f;
+    }
+    if (!std::isfinite(lo) || !std::isfinite(w))
+        return false;
+    if (low)
+        *low = lo;
+    if (width)
+        *width = std::max(w, 1.0f);
+    return true;
+}
+
+// Height = the waterfall level itself (linear) on the 3D waterfall.
+float SpectrumWidget::dssHeightCurve() const
+{
+    return dssWaterfallWindow(nullptr, nullptr) ? 1.0f : m_dssZCurve;
+}
+
 QRgb SpectrumWidget::dbmToRgb(float dbm) const
 {
     return waterfallLevelToRgb(dbmToWaterfallLevel(dbm));
@@ -13312,11 +13356,18 @@ quint64 SpectrumWidget::dssPaletteToken() const
     t = t * 131 + static_cast<quint64>(m_wfColorGain);
     t = t * 131 + static_cast<quint64>(m_wfBlackLevel);
     t = t * 131 + static_cast<quint64>(qRound(m_wfMinDbm));
+    t = t * 131 + static_cast<quint64>(m_wfBrightness);   // build 282
     return t;
 }
 
 float SpectrumWidget::dssFloorDbm()
 {
+    // Build 282: the 3D waterfall's baseline is the waterfall's black point.
+    {
+        float lo = 0.0f;
+        if (dssWaterfallWindow(&lo, nullptr))
+            return lo;
+    }
     // 3D uses the FFT trace floor, not the waterfall colour aperture. Some
     // KiwiSDRs publish a manual display range whose floor is well above the
     // actual trace floor; using that colour floor collapses the 3D ridge to the
@@ -13356,17 +13407,7 @@ float SpectrumWidget::dssFloorDbm()
                 + kAnchorAlpha * targetFloor;
         };
 
-        // ANAN fork build 276 (operator, 11.11: "the noise shelf did not come
-        // down to the frequency scale"). The estimators below average the
-        // lower half of the single FFT bins, but the 3D row draws each column
-        // as the MAX of the bins it covers (DssRenderer::resampledRawRow): the
-        // drawn noise stands several dB above that estimate, more so the more
-        // bins a column holds, so it rose as a shelf. Anchor on the drawn
-        // row itself: its median sits on the baseline.
-        const float drawnMedian = m_dss.latestRowMedianDbm();
-        if (drawnMedian > -500.0f) {
-            updateAnchor(drawnMedian);
-        } else if (m_noiseFloorEnable && m_noiseFloorBaselineValid) {
+        if (m_noiseFloorEnable && m_noiseFloorBaselineValid) {
             updateAnchor(m_noiseFloorBaselineDbm);
         } else if (m_measuredNoiseFloorDbm > -500.0f) {
             updateAnchor(m_measuredNoiseFloorDbm);
@@ -13404,6 +13445,11 @@ float SpectrumWidget::dssFloorDbm()
 
 float SpectrumWidget::peekDssFloorDbm() const
 {
+    {
+        float lo = 0.0f;
+        if (dssWaterfallWindow(&lo, nullptr))   // build 282
+            return lo;
+    }
     float floor;
     if (m_kiwiSdrWaterfallActive) {
         if (m_kiwiSdrFftTraceFloorValid
@@ -13463,6 +13509,12 @@ float SpectrumWidget::kiwiDssPresentationFloorDbm(
 
 float SpectrumWidget::dssSpanDb() const
 {
+    // Build 282: full height = the waterfall's white point.
+    {
+        float width = 0.0f;
+        if (dssWaterfallWindow(nullptr, &width))
+            return width;
+    }
     // The dB-per-height scale follows the normal panadapter dBm range, not the
     // 3D Floor depth. The floor control shifts the surface reference; Ctrl-drag
     // on the dBm strip remains the gesture that changes the scale/span. Keep the
@@ -13479,13 +13531,16 @@ const QImage& SpectrumWidget::buildDssImage(const QSize& px,
 
     // Same mapping as the GPU mesh: a stable colour aperture independent of the
     // Ref-level height span, gamma-shaped by "3D Gain".
-    const float colorRangeDb =
-        std::min(rangeDb, DssRenderer::kColorSpanDb);
-    auto palette = [this, floorDbm, colorRangeDb](float dbm) {
+    // Build 282: the 3D waterfall colours a level as the waterfall does.
+    const bool waterfall3d = dssWaterfallWindow(nullptr, nullptr);
+    const float colorRangeDb = waterfall3d
+        ? rangeDb : std::min(rangeDb, DssRenderer::kColorSpanDb);
+    auto palette = [this, floorDbm, colorRangeDb, waterfall3d](float dbm) {
         const float r = (colorRangeDb > 0.0f) ? colorRangeDb : 1.0f;
-        return dssStrengthToRgb((dbm - floorDbm) / r);
+        return waterfall3d ? waterfallLevelToRgb((dbm - floorDbm) / r)
+                           : dssStrengthToRgb((dbm - floorDbm) / r);
     };
-    return m_dss.image(px, scaleStripPx, floorDbm, rangeDb, m_dssZCurve,
+    return m_dss.image(px, scaleStripPx, floorDbm, rangeDb, dssHeightCurve(),
                        palette, dssPaletteToken(), m_bgFillColor);
 }
 
@@ -14331,15 +14386,21 @@ void SpectrumWidget::uploadDssPaletteLut(QRhiResourceUpdateBatch* batch,
     // range, which jitter every frame), so the LUT re-bakes only on a real change.
     Q_UNUSED(floorDbm);
     Q_UNUSED(rangeDb);
-    const quint64 token = static_cast<quint64>(m_wfColorScheme) * 131
-                        + static_cast<quint64>(m_dssGain);
+    // Build 282: the 3D waterfall's LUT is the waterfall's palette
+    // (waterfallLevelToRgb: scheme + brightness) over its 0..1 level.
+    const bool waterfall3d = dssWaterfallWindow(nullptr, nullptr);
+    const quint64 token = (static_cast<quint64>(m_wfColorScheme) * 131
+                           + static_cast<quint64>(m_dssGain)) * 131
+                        + static_cast<quint64>(m_wfBrightness) * 2
+                        + (waterfall3d ? 1u : 0u);
     if (token == m_dssLutToken) {
         return;  // unchanged
     }
 
     QImage lut(256, 1, QImage::Format_RGBA8888);  // owns its data
     for (int i = 0; i < 256; ++i) {
-        const QRgb c = dssStrengthToRgb(i / 255.0f);
+        const QRgb c = waterfall3d ? waterfallLevelToRgb(i / 255.0f)
+                                   : dssStrengthToRgb(i / 255.0f);
         lut.setPixelColor(i, 0, QColor(qRed(c), qGreen(c), qBlue(c)));
     }
     QRhiTextureSubresourceUploadDescription desc(lut);
@@ -14753,40 +14814,6 @@ void SpectrumWidget::initialize(QRhiCommandBuffer* cb)
                     layer == 0 ? -10.0f : -20.0f;
                 const float ribbonUpperTag =
                     layer == 0 ? -11.0f : -21.0f;
-                if (layer == 1) {
-                    // Build 271/272: a depth wall per column -- the row's
-                    // curtain line (top and floor) carried back to the next
-                    // row's depth (tags 6 / 7), so a carrier's bar is solid
-                    // between rows instead of a row of separate sticks.
-                    // Drawn before the row's curtains so the curtain front
-                    // stays on top. Overlay layer only: it is the one
-                    // interior rows draw (the base layer shows at the two
-                    // boundary rows alone).
-                    for (int cc = 0; cc + 1 < cols; ++cc) {
-                        const float u0 = static_cast<float>(cc) / (cols - 1);
-                        appendDssVertex(fill, u0, v, 2.0f);
-                        appendDssVertex(fill, u0, v, 3.0f);
-                        appendDssVertex(fill, u0, v, 6.0f);
-                        appendDssVertex(fill, u0, v, 6.0f);
-                        appendDssVertex(fill, u0, v, 3.0f);
-                        appendDssVertex(fill, u0, v, 7.0f);
-                    }
-                    // Build 273: and the lid -- the row's ridge held flat
-                    // back to the next row's depth between the columns -- so
-                    // walls, lids and curtains close into one step surface
-                    // with no seam (the operator: "hold the picture until the
-                    // new level arrives").
-                    for (int cc = 0; cc + 1 < cols; ++cc) {
-                        const float u0 = static_cast<float>(cc) / (cols - 1);
-                        const float u1 = static_cast<float>(cc + 1) / (cols - 1);
-                        appendDssVertex(fill, u0, v, 2.0f);
-                        appendDssVertex(fill, u0, v, 6.0f);
-                        appendDssVertex(fill, u1, v, 2.0f);
-                        appendDssVertex(fill, u1, v, 2.0f);
-                        appendDssVertex(fill, u0, v, 6.0f);
-                        appendDssVertex(fill, u1, v, 6.0f);
-                    }
-                }
                 for (int cc = 0; cc + 1 < cols; ++cc) {
                     const float u0 = static_cast<float>(cc) / (cols - 1);
                     const float u1 = static_cast<float>(cc + 1) / (cols - 1);
@@ -15760,10 +15787,6 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                     ? valid
                     : static_cast<int>(rowsSinceUpload);
                 newRows = std::clamp(newRows, 0, valid);
-                // Build 275: the rows just behind the head may have been
-                // repaired by this push (DssRenderer::repairRecentDips).
-                if (newRows < valid)
-                    newRows = std::min(valid, newRows + DssRenderer::kRepairRows);
                 if (newRows > kDssMaxIncrementalUploadRows) {
                     constexpr int kChannels = 4;
                     const int rowBytes =
@@ -15878,7 +15901,7 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
             constexpr int kDssMeshScalarFields = 28;  // through the bgFill vec4
             const float uboScalars[] = {
                 rowOffset,
-                floorDbm, rangeDb, m_dssZCurve,
+                floorDbm, rangeDb, dssHeightCurve(),
                 DssRenderer::kBackWidthFrac, DssRenderer::kDepthSpanFrac,
                 DssRenderer::kFrontMaxRidgeFrac, DssRenderer::kHaze,
                 static_cast<float>(cols),
@@ -15886,7 +15909,9 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                 0.0f, 1.0f,
                 dssScrollProgressRows,
                 static_cast<float>(rows), m_waterfallScrollDistanceRows,
-                std::min(rangeDb, DssRenderer::kColorSpanDb),
+                // Build 282: the waterfall's whole window is the colour range.
+                dssWaterfallWindow(nullptr, nullptr)
+                    ? rangeDb : std::min(rangeDb, DssRenderer::kColorSpanDb),
                 static_cast<float>(valid),
                 static_cast<float>(DssRenderer::kVisibleRows),
                 static_cast<float>(specContentW * dpr),
@@ -16333,43 +16358,21 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
             // the first and last rows remain fixed old/new crossfades.
             const int skippedRows =
                 DssRenderer::kVisibleRows - drawnRows;
-            // ANAN fork build 276 (operator, 11.11, screenshots: a steady
-            // carrier on the slanted sides is drawn as separate sticks, and
-            // walls/holds between rows changed nothing). The cause was the
-            // order: every row's surface was drawn first, then EVERY row's
-            // ridge outline on top of all of them. On the slanted sides a
-            // carrier's bar is crossed by the noise outlines of the rows
-            // behind it (1-2 px apart there), which painted it over in
-            // stripes; only each row's own bright outline showed -- the
-            // sticks. Draw row by row instead, back to front: surface, then
-            // that row's outline, so a nearer row covers what is behind it.
-            // Same shaders and blend state on both pipelines, so the
-            // per-row pipeline change is cheap.
-            QRhiGraphicsPipeline* rowOutlinePipeline = dssOutlinePipelineFor(
-                m_dssOutlinePipelineMode, m_dssMeshFillPipeline,
-                m_dssMeshLinePipeline);
-            const QRhiCommandBuffer::VertexInput fillBuf(m_dssMeshVbo, 0);
-            const QRhiCommandBuffer::VertexInput lineBuf(m_dssMeshLineVbo, 0);
-            for (int i = 0; i < drawnRows; ++i) {
-                const int row = skippedRows + i;
-                cb->setGraphicsPipeline(m_dssMeshFillPipeline);
-                cb->setShaderResources(m_dssMeshSrb);
-                cb->setViewport(vp);
-                cb->setVertexInput(0, 1, &fillBuf);
-                cb->draw(dssFillVerticesPerRow(), 1,
-                         row * dssFillVerticesPerRow(), 0);
-                if (rowOutlinePipeline) {
-                    cb->setGraphicsPipeline(rowOutlinePipeline);
-                    cb->setShaderResources(m_dssMeshSrb);
-                    cb->setViewport(vp);
-                    cb->setVertexInput(0, 1, &lineBuf);
-                    cb->draw(dssLineVerticesPerRow(), 1,
-                             row * dssLineVerticesPerRow(), 0);
-                }
+            cb->setGraphicsPipeline(m_dssMeshFillPipeline);
+            cb->setShaderResources(m_dssMeshSrb);
+            cb->setViewport(vp);
+            {
+                const QRhiCommandBuffer::VertexInput vbuf(m_dssMeshVbo, 0);
+                cb->setVertexInput(0, 1, &vbuf);
+                cb->draw(drawnRows * dssFillVerticesPerRow(), 1,
+                         skippedRows * dssFillVerticesPerRow(), 0);
             }
-            // Outlines are drawn above; the pass below is skipped.
-            dssMeshOutlineRows = 0;
-            dssMeshOutlineSkippedRows = 0;
+            // Build 282: the 3D waterfall is the waterfall's colours alone --
+            // no white ridge outlines over it.
+            if (!dssWaterfallWindow(nullptr, nullptr)) {
+                dssMeshOutlineRows = drawnRows;
+                dssMeshOutlineSkippedRows = skippedRows;
+            }
         }
     } else if (is3D && m_ovPipeline && m_dssSrb && m_dssTexW > 0) {
         // Cached-image fallback quad, stretched to the specRect viewport.
@@ -18022,7 +18025,7 @@ SpectrumWidget::buildDssDepthGeometry(const QRect& specRect,
     const auto projectAtDbm = [&](float frequencyUnit, float depth,
                                   float dbm) {
         const QPointF unit = DssRenderer::projectSurface(
-            frequencyUnit, depth, dbm, floorDbm, rangeDb, m_dssZCurve);
+            frequencyUnit, depth, dbm, floorDbm, rangeDb, dssHeightCurve());
         return QPointF(specRect.left() + unit.x() * contentW,
                        specRect.top() + unit.y() * specRect.height());
     };

@@ -103,16 +103,11 @@ void main()
     float shadowFade = pow(fade, 1.15);
 
     if (vEdge < -0.5) {
-        // Ridge over the amplitude-coloured curtain. The outline is a
-        // screen-space ribbon rather than a line primitive: analytical edge
-        // coverage changes continuously as the trace moves through subpixels
-        // instead of toggling whole pixels on and off.
-        // ANAN fork build 270 (operator, 11.11: "the peaks are drawn with white
-        // lines; I want the natural colour of the level"): the ridge takes the
-        // palette colour of its own level, hazed with depth like the curtain,
-        // instead of a neutral near-white.
-        vec3 oc = texture(paletteLut, vec2(clamp(vLut, 0.0, 1.0), 0.5)).rgb;
-        oc = mix(oc, bgFill.rgb, clamp(vDepth * haze, 0.0, 1.0));
+        // Neutral ridge highlight over the amplitude-coloured curtain. The
+        // outline is a screen-space ribbon rather than a line primitive:
+        // analytical edge coverage changes continuously as the trace moves
+        // through subpixels instead of toggling whole pixels on and off.
+        vec3 oc = mix(bgFill.rgb, vec3(0.92), 0.45 + 0.55 * fade);
         oc = applySliceShadow(oc, shadowFade);
         float flatOutline = 1.0 - smoothstep(0.0, 0.035, vLut);
         float flatOutlineScale = mix(1.0, 0.42, flatOutline);
@@ -128,7 +123,7 @@ void main()
         // outline remains exact.
         float sideOutlineScale = smoothstep(0.0, 8.0, sideDistancePx);
         float outlineOpacity =
-            (0.25 + 0.6 * fade) * vBoundaryFade
+            (0.12 + 0.5 * fade) * vBoundaryFade
             * flatOutlineScale * ribbonCoverage * sideOutlineScale;
         float a;
         if (vOverlayLayer > 0.5) {
