@@ -4092,6 +4092,36 @@ Task Manager.
 Files: resources/shaders/dss_mesh.frag, gui/SpectrumWidget.{h,cpp},
 ForkBuild.h.
 
+## 234. Build 271: 3D ridges continuous on the slanted sides ("lids") (11.11)
+
+**Report (operator, with a screenshot).** In the 3D panadapter, farther from
+the centre and with more slant, gaps appear: a narrow peak reads as a dotted
+line across the rows. Asked: fill a gap with the previous value until a new one
+arrives.
+
+**Cause.** Each row is a vertical curtain at its own depth, and a frequency
+lands at x = 0.5 + (f - 0.5)·w(depth). Toward the sides, successive rows of one
+peak step sideways by (f - 0.5)·(1 - backWidthFrac)/96 of the plot width, about
+2 px at the edge. A peak is about one texel wide (768 columns), so the steps do
+not touch.
+
+**Fix.** Each row now also draws a "lid": its own ridge, the same sample,
+carried back to the next row's depth.
+- dss_mesh.vert: tag 6 = lid far edge. It is decoded as an overlay-layer top
+  vertex with `geometryV += 1/visibleRows` (not on the rear boundary row).
+- SpectrumWidget mesh build: the lid quads come first for each row, on the
+  overlay layer (the one interior rows draw; base shows only at the two
+  boundary rows), then the curtains. The painter's order keeps each curtain
+  front over its lid and every lid over the older row behind it.
+- `dssFillVerticesPerRow` is now (kMeshCols - 1)·18 (was ·12): the fill VBO
+  grows by half, about 8 MiB more GPU memory.
+- The gap between two rows now shows the row's level until the next row.
+  Outlines are unchanged.
+
+Shader not validated here (no GLSL compiler); the build compiles it.
+
+Files: resources/shaders/dss_mesh.vert, gui/SpectrumWidget.cpp, ForkBuild.h.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

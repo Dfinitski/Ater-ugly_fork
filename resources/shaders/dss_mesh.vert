@@ -178,6 +178,15 @@ void main()
     float distanceRows = max(scrollDistanceRows, 1.0);
     float depthRows = max(visibleRows, 1.0);
     float encodedEdge = inVert.z;
+    // ANAN fork build 271: tag 6 = the far edge of a row's "lid" -- the
+    // row's own ridge (same sample, overlay layer: the one interior rows draw)
+    // placed one row deeper. It fills the step a narrow peak makes sideways
+    // between rows on the slanted sides of the perspective, holding the row's
+    // value until the next row takes over.
+    bool lidFar = encodedEdge > 5.5;
+    if (lidFar) {
+        encodedEdge = 2.0;
+    }
     bool ribbonOutline = encodedEdge <= -10.0;
     float ribbonCode = -encodedEdge;
     bool overlayLayer = ribbonOutline
@@ -220,6 +229,10 @@ void main()
         sampleAge = sourceAge;
         geometryV = (sourceAge - remainingRows) / depthRows;
         vLayerAlpha = overlayLayer ? 1.0 : 0.0;
+    }
+
+    if (lidFar && sourceAge < depthRows - 1.5) {
+        geometryV += 1.0 / depthRows;
     }
 
     // Sample texel CENTRES on both axes so Nearest filtering can't pick up the
