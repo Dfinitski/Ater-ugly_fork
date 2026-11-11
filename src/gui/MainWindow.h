@@ -1082,6 +1082,10 @@ private:
     void setLinkState(LinkState state, const QString& detail = {});
     void connectRadioNow(const QString& serial = {});
     void maybeAutoConnectAnan(const RadioInfo& info);
+    // Build 269: quick-memory buttons store and restore the panadapter view.
+    void captureBandStackView(SliceModel* slice, BandStackEntry& entry);
+    void restoreBandStackView(SliceModel* slice, const BandStackEntry& e);
+    void recallBandStackEntry(SliceModel* slice, const BandStackEntry& e);
     QString m_linkDetail;
     bool m_linkStateShown{false};
     // Started when an ANAN link drops on its own. The transport keeps its

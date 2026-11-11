@@ -4024,6 +4024,40 @@ models/RadioModel.cpp, models/SliceModel.h, core/DeviceDiagnostics.cpp,
 core/TciProtocol.cpp, core/BandStackSettings.{h,cpp},
 hl2/Hl2Backend.{h,cpp}, ForkBuild.h.
 
+## 232. Build 269: quick-memory buttons lower, and they restore the whole panadapter view (11.11)
+
+**Request (operator).** The quick-memory buttons on the left:
+- 10 % lower, with the gaps grown so each button stays in its place;
+- also remember the sample rate, the filter position on the panadapter, the
+  zoom and the pan centre, so a press restores the look entirely.
+
+**Panel (BandStackPanel).**
+- Buttons go from 72x26 to 72x23.
+- The layout spacing goes from 3 to 6. The pitch stays 29 px, so each button
+  keeps its slot.
+- A 1 px top margin keeps the button centres where they were.
+- The tooltip also shows the stored rate, pan centre and span.
+
+**Memory.** BandStackEntry gets `sampleRateHz`, `panCenterMhz` and
+`panBandwidthMhz` (JSON; absent in older entries = 0, view left alone).
+- **Add** (the + button and auto-save dwell). `MainWindow::captureBandStackView`
+  stores:
+  - `AnanUiState::sampleRateHz`;
+  - the slice's pan `effectivePanCenterMhz` / `effectivePanBandwidthMhz`, i.e.
+    the visible span = the zoom.
+- **Recall.** If the stored rate differs, `hl2` extension `anan.rate` goes
+  first (it resets the zoom). The rest follows 250 ms later in
+  `recallBandStackEntry`: mode, tune, filter, antennas, AGC, volume, NB/NR,
+  WNB as before. Then `restoreBandStackView` sends `requestPanCenter(pan,
+  center, span, Range)`, and once more 300 ms later, after the tune's own
+  pan-follow. The slice frequency plus the pan centre put the filter where it
+  was on the pan.
+- The recall lambda body moved into the member `recallBandStackEntry`
+  (MainWindow.cpp, end of file).
+
+Files: gui/BandStackPanel.cpp, gui/MainWindow.{h,cpp},
+core/BandStackSettings.{h,cpp}, ForkBuild.h.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

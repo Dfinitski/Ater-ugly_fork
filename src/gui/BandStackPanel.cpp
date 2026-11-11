@@ -40,8 +40,11 @@ BandStackPanel::BandStackPanel(QWidget* parent)
 
     auto* scrollContent = new QWidget;
     m_buttonLayout = new QVBoxLayout(scrollContent);
-    m_buttonLayout->setContentsMargins(0, 0, 0, 0);
-    m_buttonLayout->setSpacing(3);
+    // Build 269 (operator, 11.11): buttons 10 % lower (26 -> 23 px) with the
+    // gap grown by the same 3 px, so each button keeps its place (pitch 29);
+    // the 1 px top margin keeps their centres.
+    m_buttonLayout->setContentsMargins(0, 1, 0, 0);
+    m_buttonLayout->setSpacing(6);
     m_buttonLayout->addStretch(1);  // push buttons to top
 
     m_scrollArea->setWidget(scrollContent);
@@ -231,12 +234,20 @@ void BandStackPanel::rebuildLayout()
         }
 
         auto* btn = new QPushButton(m_scrollArea->widget());
-        btn->setFixedSize(72, 26);   // build 252 (operator, 10.11): height -20 % (was 32)
+        btn->setFixedSize(72, 23);   // build 252: 32 -> 26; build 269: -10 % -> 23
         btn->setText(QString::number(bm.entry.frequencyMhz, 'f', 3));
-        btn->setToolTip(QString("%1 MHz  %2  %3")
+        QString tip = QString("%1 MHz  %2  %3")
             .arg(bm.entry.frequencyMhz, 0, 'f', 6)
             .arg(bm.entry.mode)
-            .arg(bm.entry.rxAntenna));
+            .arg(bm.entry.rxAntenna);
+        // Build 269: the view the button restores.
+        if (bm.entry.sampleRateHz > 0)
+            tip += QString("\nRate %1 kHz").arg(bm.entry.sampleRateHz / 1000);
+        if (bm.entry.panBandwidthMhz > 0.0)
+            tip += QString("\nPan %1 MHz, span %2 kHz")
+                       .arg(bm.entry.panCenterMhz, 0, 'f', 4)
+                       .arg(bm.entry.panBandwidthMhz * 1000.0, 0, 'f', 1);
+        btn->setToolTip(tip);
 
         QColor bg = bm.color.darker(130);
         btn->setStyleSheet(

@@ -45,6 +45,12 @@ QJsonObject entryToJson(const BandStackEntry& e)
     o.insert(QStringLiteral("nrLevel"), e.nrLevel);
     o.insert(QStringLiteral("wnbOn"), e.wnbOn);
     o.insert(QStringLiteral("wnbLevel"), e.wnbLevel);
+    if (e.sampleRateHz > 0)
+        o.insert(QStringLiteral("sampleRateHz"), e.sampleRateHz);
+    if (e.panCenterMhz > 0.0 && e.panBandwidthMhz > 0.0) {
+        o.insert(QStringLiteral("panCenterMhz"), e.panCenterMhz);
+        o.insert(QStringLiteral("panBandwidthMhz"), e.panBandwidthMhz);
+    }
     if (e.createdAtMs > 0) {
         o.insert(QStringLiteral("createdAtMs"), static_cast<double>(e.createdAtMs));
     }
@@ -72,6 +78,9 @@ BandStackEntry entryFromJson(const QJsonObject& o)
     e.nrLevel = o.value(QStringLiteral("nrLevel")).toInt(50);
     e.wnbOn = o.value(QStringLiteral("wnbOn")).toBool();
     e.wnbLevel = o.value(QStringLiteral("wnbLevel")).toInt(50);
+    e.sampleRateHz = o.value(QStringLiteral("sampleRateHz")).toInt(0);
+    e.panCenterMhz = o.value(QStringLiteral("panCenterMhz")).toDouble(0.0);
+    e.panBandwidthMhz = o.value(QStringLiteral("panBandwidthMhz")).toDouble(0.0);
     e.createdAtMs =
         static_cast<qint64>(o.value(QStringLiteral("createdAtMs")).toDouble());
     e.autoSaved = o.value(QStringLiteral("autoSaved")).toBool();

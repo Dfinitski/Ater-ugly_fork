@@ -5505,6 +5505,7 @@ void MainWindow::buildUI()
             entry.wnbOn = pan->wnbActive();
             entry.wnbLevel = pan->wnbLevel();
         }
+        captureBandStackView(slice, entry);   // build 269
 
         BandStackSettings::instance().addEntry(m_radioModel.settingsScope(), entry);
         m_panStack->bandStackPanel()->loadBookmarks(
@@ -5514,57 +5515,21 @@ void MainWindow::buildUI()
             [this](const BandStackEntry& e) {
         auto* slice = activeSlice();
         if (!slice) return;
-        int id = slice->sliceId();
-
-        // Mode first (affects filter ranges). The HL2's data-mode AGC relies
-        // on this order; hl2_bandstack_digital_agc_test replays it.
-        if (slice->mode() != e.mode) {
-            slice->setMode(e.mode);
+        // Build 269: the receiver rate first (it resets the zoom), and the
+        // rest once the radio has taken it.
+        const int rateNow = anan::AnanUiState::instance().sampleRateHz;
+        if (e.sampleRateHz > 0 && rateNow > 0 && e.sampleRateHz != rateNow
+            && m_radioModel.backendDeclaresExtension(QStringLiteral("hl2"))) {
+            m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.rate"), 0,
+                                                QVariant(e.sampleRateHz));
+            const int sliceId = slice->sliceId();
+            QTimer::singleShot(250, this, [this, e, sliceId] {
+                if (SliceModel* s = activeSlice(); s && s->sliceId() == sliceId)
+                    recallBandStackEntry(s, e);
+            });
+            return;
         }
-        applyTuneRequest(slice, e.frequencyMhz,
-                         TuneIntent::AbsoluteJump, "bandstack-recall");
-        // Filter
-        if (e.filterLow != 0 || e.filterHigh != 0) {
-            slice->setFilterWidth(e.filterLow, e.filterHigh);
-        }
-        // Antennas
-        if (!e.rxAntenna.isEmpty() && e.rxAntenna != slice->rxAntenna()) {
-            m_radioModel.sendCommand(QString("slice set %1 rxant=%2").arg(id).arg(e.rxAntenna));
-        }
-        if (!e.txAntenna.isEmpty() && e.txAntenna != slice->txAntenna()) {
-            m_radioModel.sendCommand(QString("slice set %1 txant=%2").arg(id).arg(e.txAntenna));
-        }
-        // AGC while KiwiSDR external receive audio replaces the slice: the
-        // bookmark holds the RADIO's AGC, which the SliceModel setters would
-        // write into the KiwiSDR AGC, so it goes as wire text here and
-        // recallBandStackReceiveDsp() below leaves the AGC alone.
-        if (slice->externalReceiveReplacementActive()) {
-            if (!e.agcMode.isEmpty() && e.agcMode != slice->agcMode()) {
-                m_radioModel.sendCommand(QString("slice set %1 agc_mode=%2").arg(id).arg(e.agcMode));
-            }
-            if (!slice->automaticAgcThresholdActiveOrPending()
-                && e.agcThreshold != slice->agcThreshold()) {
-                m_radioModel.sendCommand(QString("slice set %1 agc_threshold=%2").arg(id).arg(e.agcThreshold));
-            }
-        }
-        // Volume
-        if (static_cast<int>(slice->audioGain()) != e.audioGain) {
-            slice->setAudioGain(static_cast<float>(e.audioGain));
-        }
-        // AGC (outside KiwiSDR replacement), NB and NR through the SliceModel
-        // setters, so they reach every backend, not only a command plane.
-        m_radioModel.recallBandStackReceiveDsp(slice, e);
-        // Stored WNB values are optional replay, not individual control actions.
-        if (auto* pan = m_radioModel.activePanadapter()) {
-            if (e.wnbOn != pan->wnbActive()) {
-                m_radioModel.requestPanDisplay(pan, {PanDisplayField::Wnb, e.wnbOn},
-                    {}, /*announce=*/false);
-            }
-            if (e.wnbLevel != pan->wnbLevel()) {
-                m_radioModel.requestPanDisplay(pan, {PanDisplayField::WnbLevel, e.wnbLevel},
-                    {}, /*announce=*/false);
-            }
-        }
+        recallBandStackEntry(slice, e);
     });
     connect(bsPanel, &BandStackPanel::removeRequested, this,
             [this](int index) {
@@ -5713,6 +5678,7 @@ void MainWindow::buildUI()
             entry.wnbOn = pan->wnbActive();
             entry.wnbLevel = pan->wnbLevel();
         }
+        captureBandStackView(slice, entry);   // build 269
         BandStackSettings::instance().addEntry(m_radioModel.settingsScope(), entry);
         m_panStack->bandStackPanel()->loadBookmarks(
             m_radioModel.settingsScope(), m_bandPlanMgr);
@@ -11806,6 +11772,98 @@ void MainWindow::onSpectrumReadyForSHistory(quint32 streamId, const QVector<floa
             PerfTelemetry::instance().recordSHistorySkipped();
         }
     }
+}
+
+} // namespace AetherSDR
+
+namespace AetherSDR {
+
+// Build 269 (operator, 11.11): a quick-memory button restores the view too --
+// the receiver rate, the pan centre and its zoom; with the slice frequency
+// that puts the filter where it was on the pan.
+void MainWindow::captureBandStackView(SliceModel* slice, BandStackEntry& entry)
+{
+    entry.sampleRateHz = anan::AnanUiState::instance().sampleRateHz;
+    if (auto* pan = slice ? m_radioModel.panadapter(slice->panId()) : nullptr) {
+        entry.panCenterMhz = m_radioModel.effectivePanCenterMhz(pan->panId());
+        entry.panBandwidthMhz = m_radioModel.effectivePanBandwidthMhz(pan->panId());
+    }
+}
+
+void MainWindow::restoreBandStackView(SliceModel* slice, const BandStackEntry& e)
+{
+    if (!slice || !(e.panCenterMhz > 0.0) || !(e.panBandwidthMhz > 0.0))
+        return;
+    const QString panId = slice->panId();
+    if (!m_radioModel.panadapter(panId))
+        return;
+    m_radioModel.requestPanCenter(panId, e.panCenterMhz, e.panBandwidthMhz,
+                                  IRadioBackend::PanCenterIntent::Range);
+}
+
+void MainWindow::recallBandStackEntry(SliceModel* slice, const BandStackEntry& e)
+{
+    if (!slice)
+        return;
+        int id = slice->sliceId();
+
+        // Mode first (affects filter ranges). The HL2's data-mode AGC relies
+        // on this order; hl2_bandstack_digital_agc_test replays it.
+        if (slice->mode() != e.mode) {
+            slice->setMode(e.mode);
+        }
+        applyTuneRequest(slice, e.frequencyMhz,
+                         TuneIntent::AbsoluteJump, "bandstack-recall");
+        // Filter
+        if (e.filterLow != 0 || e.filterHigh != 0) {
+            slice->setFilterWidth(e.filterLow, e.filterHigh);
+        }
+        // Antennas
+        if (!e.rxAntenna.isEmpty() && e.rxAntenna != slice->rxAntenna()) {
+            m_radioModel.sendCommand(QString("slice set %1 rxant=%2").arg(id).arg(e.rxAntenna));
+        }
+        if (!e.txAntenna.isEmpty() && e.txAntenna != slice->txAntenna()) {
+            m_radioModel.sendCommand(QString("slice set %1 txant=%2").arg(id).arg(e.txAntenna));
+        }
+        // AGC while KiwiSDR external receive audio replaces the slice: the
+        // bookmark holds the RADIO's AGC, which the SliceModel setters would
+        // write into the KiwiSDR AGC, so it goes as wire text here and
+        // recallBandStackReceiveDsp() below leaves the AGC alone.
+        if (slice->externalReceiveReplacementActive()) {
+            if (!e.agcMode.isEmpty() && e.agcMode != slice->agcMode()) {
+                m_radioModel.sendCommand(QString("slice set %1 agc_mode=%2").arg(id).arg(e.agcMode));
+            }
+            if (!slice->automaticAgcThresholdActiveOrPending()
+                && e.agcThreshold != slice->agcThreshold()) {
+                m_radioModel.sendCommand(QString("slice set %1 agc_threshold=%2").arg(id).arg(e.agcThreshold));
+            }
+        }
+        // Volume
+        if (static_cast<int>(slice->audioGain()) != e.audioGain) {
+            slice->setAudioGain(static_cast<float>(e.audioGain));
+        }
+        // AGC (outside KiwiSDR replacement), NB and NR through the SliceModel
+        // setters, so they reach every backend, not only a command plane.
+        m_radioModel.recallBandStackReceiveDsp(slice, e);
+        // Stored WNB values are optional replay, not individual control actions.
+        if (auto* pan = m_radioModel.activePanadapter()) {
+            if (e.wnbOn != pan->wnbActive()) {
+                m_radioModel.requestPanDisplay(pan, {PanDisplayField::Wnb, e.wnbOn},
+                    {}, /*announce=*/false);
+            }
+            if (e.wnbLevel != pan->wnbLevel()) {
+                m_radioModel.requestPanDisplay(pan, {PanDisplayField::WnbLevel, e.wnbLevel},
+                    {}, /*announce=*/false);
+            }
+        }
+    // Build 269: the pan centre and zoom last, so the filter sits where it
+    // was on the pan; once more after the tune's own pan-follow has settled.
+    restoreBandStackView(slice, e);
+    const int sliceId = slice->sliceId();
+    QTimer::singleShot(300, this, [this, e, sliceId] {
+        if (SliceModel* s = activeSlice(); s && s->sliceId() == sliceId)
+            restoreBandStackView(s, e);
+    });
 }
 
 } // namespace AetherSDR

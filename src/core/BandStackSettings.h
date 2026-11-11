@@ -24,6 +24,14 @@ struct BandStackEntry {
     int nrLevel{50};
     bool wnbOn{false};
     int wnbLevel{50};
+    // Build 269 (operator, 11.11): the panadapter as it looked, so a recall
+    // restores the view entirely -- the receiver sample rate (ANAN rate
+    // buttons), the pan centre and its span (zoom); with the slice frequency
+    // that also puts the filter where it was on the pan. 0 = not stored
+    // (older entries): the view is left as it is.
+    int sampleRateHz{0};
+    double panCenterMhz{0.0};
+    double panBandwidthMhz{0.0};
     qint64 createdAtMs{0};  // epoch ms; 0 = legacy entry (never auto-expires)
     bool autoSaved{false};  // true if added by auto-save dwell; false = manual
 };
