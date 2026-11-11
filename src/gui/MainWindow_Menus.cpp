@@ -2323,7 +2323,12 @@ void MainWindow::wireUpdateChecker()
     // A release tagged "build-N" with N above AETHER_FORK_BUILD puts a link
     // at the right of the status bar; a click opens its page in the browser.
     // Quiet on any failure (offline, rate limit): nothing to show.
-    QTimer::singleShot(8000, this, [this] {
+    //
+    // Build 247 (operator, 10.11): and then every 15 minutes, so a program
+    // left running sees a new release too. 4 requests an hour stay far below
+    // GitHub's 60/hour for unauthenticated clients. A later check updates the
+    // one status-bar link instead of adding another.
+    const auto checkForkRelease = [this] {
         auto* net = new QNetworkAccessManager(this);
         QNetworkRequest req(QUrl(QStringLiteral(
             "https://api.github.com/repos/Dfinitski/Ater-ugly_fork/releases?per_page=20")));
@@ -2370,12 +2375,17 @@ void MainWindow::wireUpdateChecker()
                 return;
             }
             qCInfo(lcGui) << "Fork release check: newer release" << bestName << bestUrl;
+            const QString linkHtml = QStringLiteral("<a href=\"%1\" style=\"color:#4fc3f7;\">%2</a>")
+                                         .arg(bestUrl.toHtmlEscaped(),
+                                              tr("New release: %1").arg(bestName).toHtmlEscaped());
+            if (auto* shown = statusBar()->findChild<QLabel*>(QStringLiteral("forkNewReleaseLink"))) {
+                shown->setText(linkHtml);   // an earlier check's link: newest release now
+                return;
+            }
             auto* link = new QLabel(statusBar());
             link->setObjectName(QStringLiteral("forkNewReleaseLink"));
             link->setTextFormat(Qt::RichText);
-            link->setText(QStringLiteral("<a href=\"%1\" style=\"color:#4fc3f7;\">%2</a>")
-                              .arg(bestUrl.toHtmlEscaped(),
-                                   tr("New release: %1").arg(bestName).toHtmlEscaped()));
+            link->setText(linkHtml);
             link->setToolTip(tr("Open the release page in the browser"));
             link->setCursor(Qt::PointingHandCursor);
             link->setContentsMargins(6, 0, 6, 0);
@@ -2386,7 +2396,13 @@ void MainWindow::wireUpdateChecker()
             });
             statusBar()->addPermanentWidget(link);
         });
-    });
+    };
+    QTimer::singleShot(8000, this, checkForkRelease);
+    auto* forkReleaseTimer = new QTimer(this);
+    forkReleaseTimer->setObjectName(QStringLiteral("forkReleaseCheckTimer"));
+    forkReleaseTimer->setInterval(15 * 60 * 1000);
+    connect(forkReleaseTimer, &QTimer::timeout, this, checkForkRelease);
+    forkReleaseTimer->start();
 }
 
 void MainWindow::restoreKnownUpdate()

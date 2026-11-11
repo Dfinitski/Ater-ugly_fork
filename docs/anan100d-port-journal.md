@@ -3345,6 +3345,19 @@ environment (testing override).
 Sources: doc.qt.io/qt-6.12/highdpi.html; qhighdpiscaling.cpp and
 qplatformscreen.cpp (overrideDpi) in qtbase.
 
+## 209. Build 247: fork release check every 15 minutes (10.11)
+
+**Request:** the program checks for a new release at start only; check every
+15 minutes.
+
+**Change (MainWindow_Menus.cpp, wireUpdateChecker):** the build-211 check of
+this fork's GitHub releases (tag `build-N`, N > AETHER_FORK_BUILD) is a lambda
+run 8 s after start (as before) and then by a 15-minute QTimer
+(`forkReleaseCheckTimer`). A later check that finds a newer release updates
+the existing status-bar link (`forkNewReleaseLink`) instead of adding a second
+one. 4 requests/hour against GitHub's 60/hour unauthenticated limit; failures
+stay quiet (logged only), as before.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
