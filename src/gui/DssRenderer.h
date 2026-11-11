@@ -27,7 +27,9 @@ public:
     // Flex, Kiwi, and fallback producers append at most one row per update.
     static constexpr int kTransitionRows = 8;
     static constexpr int kRows = kVisibleRows + kTransitionRows;
-    static constexpr int kCols = 768;  // resampled columns per row
+    // ANAN fork build 283: 1280 (was 768) -- about a screen pixel per column
+    // on a typical panadapter, as the 2D waterfall draws.
+    static constexpr int kCols = 1280;  // resampled columns per row
 
     // Perspective geometry of the surface, shared by this CPU renderer and the
     // GPU mesh UBO (SpectrumWidget::renderGpuFrame). dss_mesh.vert applies the
@@ -67,9 +69,9 @@ public:
     // texture it samples. Below the widest span it merely oversamples, which
     // Nearest filtering absorbs by repeating texels.
     // Build 282: with no narrowing kMaxRowSpanFactor is 1; keep the mesh at
-    // its former density (5/3 x the texture), so the Nearest sampler never
+    // a density above the texture's (5/4 x), so the Nearest sampler never
     // skips a texel when a row's frame is a little wider than the view.
-    static constexpr int kMeshCols = kCols * 5 / 3 + 1;
+    static constexpr int kMeshCols = kCols * 5 / 4 + 1;   // build 283: 5/4 of 1280
     // The invariant dss_mesh.vert's Nearest height sampler depends on: at the
     // widest span the on-screen columns (kMeshCols / kMaxRowSpanFactor) must
     // still be at least kCols, or bins fall between samples and vanish.

@@ -191,23 +191,38 @@ std::array<float, DssRenderer::kCols> resampledRawRow(
         return row;
     }
 
+    // ANAN fork build 283 (operator, 11.11: "the 3D waterfall's horizontal
+    // resolution looks several times worse than the waterfall's; smeared
+    // bands instead of peaks"). The max over [floor(c*step), ceil((c+1)*step))
+    // took one neighbouring bin too many on each side: up-sampling (a
+    // zoomed-in view, fewer bins than columns) widened every bin to two or
+    // three, down-sampling added an extra neighbour. Now, as the 2D
+    // waterfall does: fewer bins than columns -> linear interpolation between
+    // bin centres; more -> the maximum of exactly the bins whose position
+    // falls in the column, so no peak is lost and none is widened.
+    const auto value = [&](int i) {
+        const float v = binsDbm[std::clamp(i, 0, n - 1)];
+        return std::isfinite(v) ? v : fallback;
+    };
     if (n == DssRenderer::kCols) {
+        for (int c = 0; c < DssRenderer::kCols; ++c)
+            row[c] = value(c);
+    } else if (n < DssRenderer::kCols) {
+        const double step = static_cast<double>(n) / DssRenderer::kCols;
         for (int c = 0; c < DssRenderer::kCols; ++c) {
-            row[c] = std::isfinite(binsDbm[c]) ? binsDbm[c] : fallback;
+            const double pos = std::clamp((c + 0.5) * step - 0.5, 0.0, double(n - 1));
+            const int i0 = static_cast<int>(std::floor(pos));
+            const float frac = static_cast<float>(pos - i0);
+            row[c] = value(i0) + frac * (value(i0 + 1) - value(i0));
         }
     } else {
         const double step = static_cast<double>(n) / DssRenderer::kCols;
         for (int c = 0; c < DssRenderer::kCols; ++c) {
-            int i0 = static_cast<int>(std::floor(c * step));
-            int i1 = static_cast<int>(std::ceil((c + 1) * step));
-            i0 = std::clamp(i0, 0, n - 1);
-            i1 = std::clamp(i1, i0 + 1, n);
-            float mx = std::isfinite(binsDbm[i0]) ? binsDbm[i0] : fallback;
-            for (int i = i0 + 1; i < i1; ++i) {
-                if (std::isfinite(binsDbm[i])) {
-                    mx = std::max(mx, binsDbm[i]);
-                }
-            }
+            const int i0 = std::clamp(static_cast<int>(std::floor(c * step)), 0, n - 1);
+            const int i1 = std::clamp(static_cast<int>(std::floor((c + 1) * step)), i0 + 1, n);
+            float mx = value(i0);
+            for (int i = i0 + 1; i < i1; ++i)
+                mx = std::max(mx, value(i));
             row[c] = mx;
         }
     }
