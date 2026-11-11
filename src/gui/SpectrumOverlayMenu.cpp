@@ -995,35 +995,38 @@ void SpectrumOverlayMenu::buildAntPanel()
     auto* targetRow = new QHBoxLayout(m_attTargetRow);
     targetRow->setContentsMargins(0, 0, 0, 0);
     targetRow->setSpacing(4);
-    auto* targetLabel = new QLabel(QStringLiteral("NF+"));
+    // Build 295: the AUTO attenuator's target -- the noise floor, absolute.
+    auto* targetLabel = new QLabel(QStringLiteral("NF"));
     targetLabel->setStyleSheet(kLabelStyle);
     targetLabel->setFixedWidth(34);
     targetRow->addWidget(targetLabel);
     m_attTargetSlider = new GuardedSlider(Qt::Horizontal);
     m_attTargetSlider->setObjectName(QStringLiteral("antennaAttTargetSlider"));
-    m_attTargetSlider->setAccessibleName(QStringLiteral("AUTO attenuator noise margin"));
-    m_attTargetSlider->setRange(0, AetherSDR::anan::AnanUiState::kAutoAttMarginMaxDb);
+    m_attTargetSlider->setAccessibleName(QStringLiteral("AUTO attenuator noise floor target"));
+    m_attTargetSlider->setRange(AetherSDR::anan::AnanUiState::kAutoAttTargetMinDbm,
+                                AetherSDR::anan::AnanUiState::kAutoAttTargetMaxDbm);
     m_attTargetSlider->setSingleStep(1);
     m_attTargetSlider->setPageStep(5);
     applyPrimarySliderStyle(m_attTargetSlider);
     m_attTargetSlider->setToolTip(attMarginToolTip());
     const int savedTarget = std::clamp(
         AppSettings::instance()
-            .value(AetherSDR::anan::AnanUiState::autoAttMarginKey(0),
-                   AetherSDR::anan::AnanUiState::kAutoAttMarginDefaultDb).toInt(),
-        0, AetherSDR::anan::AnanUiState::kAutoAttMarginMaxDb);
+            .value(AetherSDR::anan::AnanUiState::autoAttTargetKey(0),
+                   AetherSDR::anan::AnanUiState::kAutoAttTargetDefaultDbm).toInt(),
+        AetherSDR::anan::AnanUiState::kAutoAttTargetMinDbm,
+        AetherSDR::anan::AnanUiState::kAutoAttTargetMaxDbm);
     m_attTargetSlider->setValue(savedTarget);
     targetRow->addWidget(m_attTargetSlider, 1);
-    auto* targetValue = new QLabel(QStringLiteral("+%1 dB").arg(savedTarget));
+    auto* targetValue = new QLabel(QStringLiteral("%1 dBm").arg(savedTarget));
     targetValue->setStyleSheet(kLabelStyle);
     targetValue->setFixedWidth(56);
     targetValue->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     targetRow->addWidget(targetValue);
     m_attTargetValue = targetValue;
     connect(m_attTargetSlider, &QSlider::valueChanged, this, [this, targetValue](int v) {
-        targetValue->setText(QStringLiteral("+%1 dB").arg(v));
+        targetValue->setText(QStringLiteral("%1 dBm").arg(v));
         AppSettings::instance().setValue(
-            AetherSDR::anan::AnanUiState::autoAttMarginKey(m_attRx < 0 ? 0 : m_attRx), v);
+            AetherSDR::anan::AnanUiState::autoAttTargetKey(m_attRx < 0 ? 0 : m_attRx), v);
     });
     connect(m_attTargetSlider, &QSlider::sliderReleased, this,
             [] { AppSettings::instance().save(); });
@@ -3444,11 +3447,13 @@ void SpectrumOverlayMenu::syncAnanAntennas()
 
 QString SpectrumOverlayMenu::attMarginToolTip()
 {
-    return tr("AUTO attenuator: how many dB the band noise is held above the receiver's own noise.\n"
-              "The receiver's own noise then costs this much sensitivity:\n"
-              "  +3 dB: 1.8 dB    +6 dB: 1.0 dB    +10 dB: 0.4 dB    +20 dB: 0.04 dB\n"
-              "A lower margin means more attenuation (more headroom against overload),\n"
-              "a higher one less attenuation for no gain in sensitivity.");
+    // Build 295 (as MicronSDR's ATT Auto target).
+    return tr("AUTO attenuator: the noise floor is held at this level\n"
+              "(dBm / 500 Hz at the ADC, on the S-meter's calibration -- the dashed\n"
+              "noise line on the panadapter). It moves when the floor is more than 3 dB\n"
+              "away, then goes to the target. When more attenuation no longer lowers\n"
+              "the floor (the receiver's own noise), that step is taken back.\n"
+              "Lower = more attenuation, more headroom against overload.");
 }
 
 void SpectrumOverlayMenu::syncAttOwnership()
@@ -3475,13 +3480,14 @@ void SpectrumOverlayMenu::syncAttOwnership()
             m_attRx = rx;
             const int v = std::clamp(
                 AppSettings::instance()
-                    .value(AetherSDR::anan::AnanUiState::autoAttMarginKey(r),
-                           AetherSDR::anan::AnanUiState::kAutoAttMarginDefaultDb).toInt(),
-                0, AetherSDR::anan::AnanUiState::kAutoAttMarginMaxDb);
+                    .value(AetherSDR::anan::AnanUiState::autoAttTargetKey(r),
+                           AetherSDR::anan::AnanUiState::kAutoAttTargetDefaultDbm).toInt(),
+                AetherSDR::anan::AnanUiState::kAutoAttTargetMinDbm,
+                AetherSDR::anan::AnanUiState::kAutoAttTargetMaxDbm);
             QSignalBlocker b(m_attTargetSlider);
             m_attTargetSlider->setValue(v);
             if (m_attTargetValue)
-                m_attTargetValue->setText(QStringLiteral("+%1 dB").arg(v));
+                m_attTargetValue->setText(QStringLiteral("%1 dBm").arg(v));
         }
     }
     const bool autoOn = owner && rx >= 0 && rx < 2 && ui.autoWanted[rx];

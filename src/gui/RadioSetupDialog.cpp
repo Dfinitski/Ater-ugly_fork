@@ -3492,75 +3492,9 @@ QWidget* RadioSetupDialog::buildRxTab()
         connect(ovlTest, &QCheckBox::toggled, this,
                 [](bool on) { AetherSDR::anan::AnanUiState::instance().adcOverloadTest = on; });
         gv->addWidget(ovlTest);
-        auto* warn = new QLabel(
-            "Own noise: disconnect the antenna from the receiver input (or terminate it with "
-            "50 Ohm) before Capture. Every receiver goes to ATT 31 dB for about a second.");
-        setTone(warn, Tone::Warn);
-        warn->setWordWrap(true);
-        gv->addWidget(warn);
-        auto* row = new QHBoxLayout;
-        auto* capture = new QPushButton("Capture");
-        capture->setObjectName(QStringLiteral("ananCaptureOwnNoise"));
-        capture->setToolTip(QStringLiteral(
-            "Measure the receiver's own noise (dBm / 500 Hz at the ADC) and store it per ADC.\n"
-            "The AUTO attenuator holds the band noise this far plus its margin."));
-        auto* status = new QLabel;
-        status->setWordWrap(true);
-        applyLabelStyle(status);
-        auto stored = [] {
-            QStringList parts;
-            auto& st = AppSettings::instance();
-            const double cal = AetherSDR::anan::AnanUiState::instance().sMeterCorrDb;
-            for (int adc = 0; adc < 2; ++adc) {
-                bool ok = false;
-                const double v = st.value(AetherSDR::anan::AnanUiState::ownNoiseKey(adc)).toDouble(&ok);
-                if (ok)
-                    parts << QStringLiteral("ADC%1 %2 dBm / 500 Hz (%3)").arg(adc + 1)
-                                 .arg(v + cal, 0, 'f', 1)
-                                 .arg(st.value(AetherSDR::anan::AnanUiState::ownNoiseDateKey(adc)).toString());
-            }
-            return parts.isEmpty() ? QStringLiteral("Not captured yet: AUTO ATT waits for it.")
-                                   : QStringLiteral("Stored: ") + parts.join(QStringLiteral(", "));
-        };
-        status->setText(stored());
-        row->addWidget(capture);
-        row->addWidget(status, 1);
-        gv->addLayout(row);
-        const QPointer<QLabel> statusP(status);
-        auto* poll = new QTimer(group);
-        poll->setInterval(300);
-        auto sinceRequest = std::make_shared<QElapsedTimer>();
-        connect(capture, &QPushButton::clicked, this, [statusP, poll, sinceRequest] {
-            auto& u = AetherSDR::anan::AnanUiState::instance();
-            u.ownNoiseStatus.clear();
-            u.ownNoiseCaptureRequested = true;
-            sinceRequest->start();
-            if (statusP)
-                statusP->setText(QStringLiteral("Waiting for receive data..."));
-            poll->start();
-        });
-        connect(poll, &QTimer::timeout, this, [statusP, poll, sinceRequest, stored] {
-            auto& u = AetherSDR::anan::AnanUiState::instance();
-            if (!statusP)
-                return;
-            if (u.ownNoiseCaptureRequested && sinceRequest->elapsed() > 3000) {
-                u.ownNoiseCaptureRequested = false;
-                statusP->setText(QStringLiteral("No receive data -- is the radio connected and receiving?"));
-                poll->stop();
-                return;
-            }
-            if (!u.ownNoiseStatus.isEmpty()) {
-                statusP->setText(u.ownNoiseStatus);
-                if (u.ownNoiseStatus.startsWith(QStringLiteral("Captured"))
-                    || u.ownNoiseStatus.startsWith(QStringLiteral("No receive"))) {
-                    poll->stop();
-                    QTimer::singleShot(4000, statusP, [statusP, stored] {
-                        if (statusP)
-                            statusP->setText(stored());
-                    });
-                }
-            }
-        });
+        // ANAN fork build 295: the "own noise" capture is gone -- the AUTO
+        // attenuator holds an absolute noise floor (ANT panel, NF) and finds
+        // the receiver's own noise by itself (Hl2Backend::ananAutoAttStep).
         vbox->addWidget(group);
     }
 

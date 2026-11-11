@@ -580,6 +580,24 @@ private:
     QElapsedTimer m_ananOwnClock;
     void ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, double rateHz);
     [[nodiscard]] int ananAutoAttMarginDb(int rx) const;
+    // Build 295: the AUTO attenuator after MicronSDR (autoAttMeasure): the
+    // floor averaged over windows of frames made at the commanded ATT, held
+    // at an absolute target with a hysteresis; a step that does not lower
+    // the floor marks the receiver's own noise and is taken back.
+    [[nodiscard]] int ananAutoAttTargetDbm(int rx) const;
+    struct AutoAttLoop {
+        double acc = 0.0;
+        int n = 0;
+        qint64 winStartMs = 0;
+        qint64 skipUntilMs = 0;   // frames still at the old ATT
+        int lastStep = 0;         // the last step, dB of attenuation (+ = more)
+        double lastAvg = 0.0;
+        bool lowBlock = false;    // no more attenuation: the floor is our own noise
+        double lowBlockAvg = 0.0;
+        bool moving = false;
+    };
+    AutoAttLoop m_ananAutoLoop[2];
+    void ananAutoAttStep(int rx, double floorCalDbm, qint64 t);
     [[nodiscard]] static double ananRbwTo500HzDb(double rateHz, std::size_t fftSize) noexcept;
     [[nodiscard]] double ananDisplayCalDb() const;
     // The receiver's own noise, dBm / 500 Hz at the ADC, without the meter's

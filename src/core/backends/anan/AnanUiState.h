@@ -240,6 +240,22 @@ public:
         return rx == 1 ? QStringLiteral("AnanAutoAttMarginDbRx2")
                        : QStringLiteral("AnanAutoAttMarginDb");
     }
+
+    // ANAN fork build 295 (operator, 11.11: users could not make sense of
+    // capturing the receiver's own noise; "the base is the S-meter reading,
+    // calibrated by the user or not -- it must work either way"; as in
+    // MicronSDR): the AUTO attenuator holds the noise floor at an absolute
+    // level, dBm / 500 Hz at the ADC on the S-meter's calibration, per
+    // receiver. The receiver's own noise is found by the attenuator itself
+    // (a step that no longer lowers the floor is taken back).
+    static constexpr int kAutoAttTargetDefaultDbm = -120;
+    static constexpr int kAutoAttTargetMinDbm = -150;
+    static constexpr int kAutoAttTargetMaxDbm = -60;
+    [[nodiscard]] static QString autoAttTargetKey(int rx)
+    {
+        return rx == 1 ? QStringLiteral("AnanAutoAttNfTargetDbmRx2")
+                       : QStringLiteral("AnanAutoAttNfTargetDbm");
+    }
 };
 
 }  // namespace AetherSDR::anan

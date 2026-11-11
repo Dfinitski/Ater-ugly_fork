@@ -10280,6 +10280,7 @@ void Hl2Backend::ananSyncUiState()
             m_ananAutoAtt[rx] = ananRxAtt(rx);
             m_ananShownFloorOk[rx] = false;
             m_ananAutoClock[rx].invalidate();
+            m_ananAutoLoop[rx] = AutoAttLoop{};   // build 295
         }
         m_ananAutoOn[rx] = on;
         qCInfo(lcHl2) << "ANAN AUTO ATT RX" << (rx + 1) << (on ? "on" : "off");
@@ -10327,8 +10328,8 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
     auto& ui = anan::AnanUiState::instance();
     const double calDb = ananDisplayCalDb();
     ui.shownFloorDbm[rx] = m_ananShownFloor[rx] + calDb;
-    m_ananOwnNoise[rx] = ananOwnNoiseOfAdc(m_ananAdc[rx]);
-    ui.ownFloorDbm[rx] = m_ananOwnNoise[rx] + calDb;   // NaN until captured
+    // Build 295: no captured own noise any more (the AUTO attenuator finds it).
+    ui.ownFloorDbm[rx] = std::numeric_limits<double>::quiet_NaN();
     ui.shownFloorAtMs[rx] = QDateTime::currentMSecsSinceEpoch();
 
     if (!m_ananOwnClock.isValid())
@@ -10355,31 +10356,107 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
             << (r ? r->filterHighHz - r->filterLowHz : 0) << " Hz, ATT " << ananRxAtt(rx) << " dB";
     }
 
-    if (!m_ananAutoOn[rx] || m_ananCapture.running)
-        return;
-    if (!std::isfinite(m_ananOwnNoise[rx]) || !m_ananShownFloorOk[rx])
-        return;   // never captured (Setup > Receive): AUTO waits
+    // Build 295: the AUTO attenuator, on this frame's floor (not the
+    // display smoothing) on the S-meter's calibration.
+    if (m_ananAutoOn[rx] && !m_ananCapture.running)
+        ananAutoAttStep(rx, now + calDb, t);
+}
 
-    // Act at most every 400 ms, so each change shows in the smoothed floor.
-    if (m_ananAutoClock[rx].isValid() && m_ananAutoClock[rx].elapsed() < 400)
+// ANAN fork build 295 (operator, 11.11): the AUTO attenuator of MicronSDR
+// (micronsdr.cpp autoAttMeasure / autoAttStep), on our noise floor.
+//  - The floor: this frame's noise, dBm / 500 Hz at the ADC (after the
+//    attenuator) on the S-meter's calibration -- the user's calibration only
+//    moves the scale the target is given on, so it works calibrated or not.
+//  - Averaged over windows of at least 200 ms of frames made at the
+//    commanded attenuation (kAnanAttSettleMs after each step skipped).
+//  - Moves when the average is more than 3 dB (hysteresis) from the target,
+//    then goes to within 0.5 dB, at most 6 dB a step.
+//  - A step to MORE attenuation that lowered the floor by less than 30 % of
+//    the step: the floor is the receiver's own noise and the target below
+//    it -- the step is taken back and no more attenuation is added until the
+//    floor rises 3 dB or comes below the target. No capture needed.
+//  - Not while transmitting, nor for 500 ms after.
+void Hl2Backend::ananAutoAttStep(int rx, double floorCalDbm, qint64 t)
+{
+    AutoAttLoop& L = m_ananAutoLoop[rx];
+    if (m_keyed || m_radioPtt
+        || (m_sinceUnkey.isValid() && m_sinceUnkey.elapsed() < 500)) {
+        L.n = 0;
         return;
-    m_ananAutoClock[rx].restart();
+    }
+    if (t < L.skipUntilMs) {
+        L.n = 0;
+        return;
+    }
+    if (L.n == 0) {
+        L.acc = 0.0;
+        L.winStartMs = t;
+    }
+    L.acc += floorCalDbm;
+    ++L.n;
+    if (L.n < 2 || t - L.winStartMs < 200)
+        return;
+    const double avg = L.acc / L.n;
+    L.n = 0;
 
-    // The target: band noise this many dB above the receiver's own.
-    const double target = m_ananOwnNoise[rx] + ananAutoAttMarginDb(rx);
-    const double error = m_ananShownFloor[rx] - target;   // > 0: floor too high -> more ATT
-    if (std::abs(error) < 1.5)
-        return;
+    const double target = ananAutoAttTargetDbm(rx);
+    const double e = avg - target;   // > 0: the floor too high -> more attenuation
     const int att = m_ananAutoAtt[rx];
-    const int step = static_cast<int>(std::lround(error * 0.6));
-    const int next = std::clamp(att + (step == 0 ? (error > 0 ? 1 : -1) : step),
-                                0, anan::kMaxStepAttenuationDb);
-    if (next == att)
+    auto apply = [&](int next) {
+        next = std::clamp(next, 0, anan::kMaxStepAttenuationDb);
+        if (next == att)
+            return false;
+        m_ananAutoAtt[rx] = next;
+        L.skipUntilMs = t + kAnanAttSettleMs;
+        ananPushAttenuators();
+        return true;
+    };
+
+    if (L.lastStep > 0 && avg - L.lastAvg > -0.3 * L.lastStep) {
+        // More attenuation did not lower the floor: our own noise.
+        const int back = L.lastStep;
+        L.lowBlock = true;
+        L.lowBlockAvg = avg;
+        L.lastStep = 0;
+        L.moving = false;
+        qCInfo(lcHl2).nospace() << "ANAN AUTO ATT RX" << rx + 1 << ": " << back
+                                << " dB more did not lower the floor (" << QString::number(avg, 'f', 1)
+                                << " dBm / 500 Hz) -- the receiver's own noise; back to ATT " << att - back << " dB";
+        apply(att - back);
         return;
-    m_ananAutoAtt[rx] = next;
-    ananPushAttenuators();
-    // Frames already in flight still carry the old ATT.
-    m_ananShownFloor[rx] -= (next - att);
+    }
+    L.lastStep = 0;
+    if (L.lowBlock && (e <= 0.0 || avg > L.lowBlockAvg + 3.0))
+        L.lowBlock = false;
+
+    if (std::abs(e) > 3.0)
+        L.moving = true;
+    else if (std::abs(e) <= 0.5)
+        L.moving = false;
+    if (!L.moving)
+        return;
+    const int step = std::clamp(static_cast<int>(std::lround(e)), -6, 6);
+    if (step > 0 && L.lowBlock) {
+        L.moving = false;
+        return;
+    }
+    const int next = std::clamp(att + step, 0, anan::kMaxStepAttenuationDb);
+    if (step == 0 || next == att) {
+        L.moving = false;   // within half a dB, or at the end of the range
+        return;
+    }
+    L.lastAvg = avg;
+    L.lastStep = next - att;
+    apply(next);
+}
+
+int Hl2Backend::ananAutoAttTargetDbm(int rx) const
+{
+    return std::clamp(AppSettings::instance()
+                          .value(anan::AnanUiState::autoAttTargetKey(rx),
+                                 anan::AnanUiState::kAutoAttTargetDefaultDbm)
+                          .toInt(),
+                      anan::AnanUiState::kAutoAttTargetMinDbm, anan::AnanUiState::kAutoAttTargetMaxDbm);
 }
 
 // A bin's noise bandwidth (Hanning: 1.5 bins of rate / N) referred to 500 Hz.

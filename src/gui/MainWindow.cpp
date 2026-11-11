@@ -6747,8 +6747,7 @@ void MainWindow::onConnectionStateChanged(bool connected)
             m_ananBandMem.clear();
             m_ananBandMemTimer->start();
         }
-        if (m_radioModel.family() == QLatin1String("anan") && !m_ownNoiseHintDone)
-            QTimer::singleShot(3000, this, [this] { maybeShowOwnNoiseHint(); });
+        // Build 295: no own-noise capture to remind of (maybeShowOwnNoiseHint).
     } else if (m_userDisconnected) {
         setLinkState(LinkState::UserDisconnected);
     } else if (m_radioModel.family() == QLatin1String("anan")) {
