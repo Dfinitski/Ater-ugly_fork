@@ -922,7 +922,8 @@ void DssRenderer::rebuild(const QSize& px, int scaleStripPx, float floorDbm,
         // Pass 1: geometry — noise-floor-anchored ridge heights, with the same
         // pow(s, zCurve) floor-lift the GPU shader applies.
         for (int c = 0; c < kCols; ++c) {
-            const double x = inset + (kCols > 1 ? double(c) / (kCols - 1) : 0.0) * rowW;
+            const double x = inset + (kCols > 1 ? double(c) / (kCols - 1) : 0.0) * rowW
+                + W * kDepthSkew * depthFrac;   // build 284: leaning right with depth
             const float dbm = coverage[c] != 0 ? row[c] : floorDbm;
             double strength = std::clamp(
                 (dbm - floorDbm) / rangeDb, 0.0f, 1.0f);

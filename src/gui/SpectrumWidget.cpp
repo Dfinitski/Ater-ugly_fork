@@ -15919,8 +15919,8 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                 m_dssRowSpanFactor,
                 static_cast<float>(DssRenderer::kMeshCols),
                 // std140 rounds the 22-float scalar run up to bgFill's vec4
-                // alignment. These two are the hole, not fields.
-                0.0f, 0.0f,
+                // alignment. Build 284: the first of the two is depthSkew.
+                DssRenderer::kDepthSkew, 0.0f,
                 static_cast<float>(m_bgFillColor.redF()),
                 static_cast<float>(m_bgFillColor.greenF()),
                 static_cast<float>(m_bgFillColor.blueF()),

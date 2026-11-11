@@ -37,7 +37,8 @@ layout(std140, binding = 0) uniform U {
     float plotHeightPx;
     float rowSpanFactor;  // see dss_mesh.vert; 1.0 = classic clipped trapezoid
     float meshCols;       // mesh columns per row (>= texCols)
-    // std140 pads this 22-float scalar run out to bgFill's vec4 alignment.
+    float depthSkew;      // build 284 (see dss_mesh.vert); was std140 padding
+    float uboPad0;
     vec4  bgFill;
     vec4  shadowBands[8];
     vec4  shadowStyles[8];

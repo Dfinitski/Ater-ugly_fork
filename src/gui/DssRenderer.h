@@ -40,6 +40,12 @@ public:
     // waterfall's colours (no haze toward the background with depth).
     static constexpr float kBackWidthFrac     = 1.00f;  // back row width / front
     static constexpr float kDepthSpanFrac     = 0.58f;  // baseline rise to the back
+    // ANAN fork build 284 (operator, 11.11: "tilt every line to the right by
+    // our former perspective angle"): every row moves right with depth by
+    // this fraction of the plot width at the back -- the slant the left edge
+    // of the old 0.60 perspective had (0.5 x (1 - 0.60)). An oblique view:
+    // the columns stay parallel, all leaning right.
+    static constexpr float kDepthSkew         = 0.20f;
     static constexpr float kFrontMaxRidgeFrac = 0.46f;  // front ridge height / plot H
     static constexpr float kHaze              = 0.0f;   // fade toward bg with depth (was 0.16)
     // Colour uses a stable signal aperture independent of the Ref-level height
@@ -57,7 +63,9 @@ public:
 
     // Span at which the DEEPEST row lands exactly on the plot edge. Beyond this
     // the surface only overhangs further without revealing more of the plot.
-    static constexpr float kMaxRowSpanFactor = 1.0f / kBackWidthFrac;
+    // Build 284: the leaning rows leave the back-left corner open; a row as
+    // wide as 1 + 2 x skew of the view reaches it (the overhang data allowing).
+    static constexpr float kMaxRowSpanFactor = 1.0f + 2.0f * kDepthSkew;
 
     // Mesh columns per row for the GPU path. The mesh spans rowSpanFactor x the
     // viewport, while the height texture holds kCols texels ACROSS THE VIEWPORT
@@ -71,7 +79,8 @@ public:
     // Build 282: with no narrowing kMaxRowSpanFactor is 1; keep the mesh at
     // a density above the texture's (5/4 x), so the Nearest sampler never
     // skips a texel when a row's frame is a little wider than the view.
-    static constexpr int kMeshCols = kCols * 5 / 4 + 1;   // build 283: 5/4 of 1280
+    static constexpr int kMeshCols =
+        static_cast<int>(kCols * kMaxRowSpanFactor) + 1;   // build 284
     // The invariant dss_mesh.vert's Nearest height sampler depends on: at the
     // widest span the on-screen columns (kMeshCols / kMaxRowSpanFactor) must
     // still be at least kCols, or bins fall between samples and vanish.
@@ -110,7 +119,9 @@ public:
         if (rowSpanFactor >= kMaxRowSpanFactor) {
             return 1.0f;
         }
-        return (1.0f - 1.0f / rowSpanFactor) / (1.0f - kBackWidthFrac);
+        // Build 284: the row's left end, 0.5 - 0.5 x span, reaches the plot
+        // edge until the skew has moved it past 0.
+        return std::clamp((rowSpanFactor - 1.0f) / (2.0f * kDepthSkew), 0.0f, 1.0f);
     }
 
     // Usable span for an overhang of `spanFactor` x the viewport bandwidth.
@@ -156,7 +167,7 @@ public:
     {
         const float d = std::clamp(depth, 0.0f, 1.0f);
         const float width = depthScale(d);
-        return QPointF(0.5f + (frequencyUnit - 0.5f) * width,
+        return QPointF(0.5f + (frequencyUnit - 0.5f) * width + kDepthSkew * d,   // build 284
                        1.0f - d * kDepthSpanFrac);
     }
 

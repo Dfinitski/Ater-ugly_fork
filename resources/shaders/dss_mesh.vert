@@ -45,6 +45,11 @@ layout(std140, binding = 0) uniform U {
     float rowSpanFactor;
     float meshCols;           // mesh columns per row; >= texCols so a widened
                               // row still samples every texel on screen
+    // ANAN fork build 284: rows move right with depth by this fraction of the
+    // plot width at the back (the former perspective's slant). Takes the
+    // first of the two std140 padding floats, so the layout is unchanged.
+    float depthSkew;
+    float uboPad0;
     // std140 rounds this 22-float scalar run up to the next vec4 boundary.
     // SpectrumWidget writes two explicit zeros to match — see kDssMeshUboFloats.
     vec4  bgFill;             // plot background colour (for haze)
@@ -161,7 +166,7 @@ vec2 ridgeNdcAt(float freqUnit, float dbm, float geometryV)
     float strengthHeight =
         pow(strengthLinear, max(zCurve, 0.05));
     float width = dssDepthScale(geometryV);
-    float plotX = 0.5 + (freqUnit - 0.5) * width;
+    float plotX = 0.5 + (freqUnit - 0.5) * width + depthSkew * geometryV;
     float baselineY =
         mix(1.0, 1.0 - depthSpanFrac, geometryV);
     float ridge =
@@ -244,7 +249,7 @@ void main()
     // has its ends fall outside [0,1] and get clipped, which is exactly the
     // near-row overflow that closes the wedge.
     float w = dssDepthScale(geometryV);                // narrows with depth
-    float plotX = 0.5 + (freqUnit - 0.5) * w;
+    float plotX = 0.5 + (freqUnit - 0.5) * w + depthSkew * geometryV;   // build 284
     float baseY = mix(1.0, 1.0 - depthSpanFrac,
                       geometryV);                       // baseline rises with depth
     float ridge = sH * frontMaxRidgeFrac * w;          // far ridges shorter
