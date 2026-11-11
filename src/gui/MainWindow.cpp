@@ -334,7 +334,7 @@ void reserveStatusBarStackWidth(QWidget* stack, const QStringList& samples, int 
 }
 
 // The station label's resting type size. Single-token values keep it.
-constexpr int kStationFontPx = 21;
+constexpr int kStationFontPx = 19;   // build 253: the box 10 % smaller (21 px)
 
 // Property carrying the size the label is currently styled at, so the
 // stylesheet is only re-applied when it actually changes.
@@ -345,7 +345,7 @@ QString statusBarStationLabelStyle(int fontPx)
     return QStringLiteral(
         "QLabel { color: {{color.text.primary}}; font-size: %1px; "
         "background: {{color.background.0}}; "
-        "border: 1px solid rgba(255,255,255,128); padding: 2px 12px; }")
+        "border: 1px solid rgba(255,255,255,128); border-radius: 4px; padding: 2px 11px; }")
         .arg(fontPx);
 }
 
@@ -6095,8 +6095,11 @@ void MainWindow::buildUI()
     m_stationNickLabel->setAlignment(Qt::AlignCenter);
     m_stationNickLabel->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
     setStatusBarStationText(m_stationNickLabel, m_stationNickLabel->text());
-    m_stationNickLabel->setCursor(Qt::PointingHandCursor);
-    m_stationNickLabel->setToolTip("Double-click to connect/disconnect");
+    // Build 253 (operator, 10.11): an ordinary arrow; a double click opens
+    // the place the text is set (Radio Setup > Radio > Nickname).
+    m_stationNickLabel->setCursor(Qt::ArrowCursor);
+    m_stationNickLabel->setToolTip(tr("Station name -- the radio's nickname.\n"
+                                      "Double-click to change it (Radio Setup > Radio > Nickname)."));
     m_stationNickLabel->installEventFilter(this);
     hbox->addWidget(m_stationNickLabel);
     m_stationLabel = m_stationNickLabel;  // alias for existing references

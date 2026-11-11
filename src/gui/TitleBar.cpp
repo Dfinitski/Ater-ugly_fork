@@ -96,7 +96,7 @@ protected:
             p.drawRoundedRect(r.adjusted(1, 1, -1, -1), radius - 1, radius - 1);
         }
         QFont f = font();
-        f.setPixelSize(9);
+        f.setPixelSize(10);   // build 253: +15 % (9 px)
         f.setBold(true);
         p.setFont(f);
         p.setPen(theme.color(this, m_text));
@@ -461,8 +461,9 @@ TitleBar::TitleBar(QWidget* parent)
     m_pcBtn->setCheckable(true);
     m_pcBtn->setChecked(true);   // PC audio itself stays on (required here)
     // Build 251: a third smaller (was 78 x 24), painted (PillButton).
-    m_pcBtn->setFixedHeight(16);
-    m_pcBtn->setFixedWidth(52);
+    // Build 253 (operator, 10.11): +15 %, text too (52 x 16, 9 px before).
+    m_pcBtn->setFixedHeight(18);
+    m_pcBtn->setFixedWidth(60);
     m_pcBtn->setAttribute(Qt::WA_Hover, true);
     m_pcBtn->setCursor(Qt::PointingHandCursor);
     m_pcBtn->setAccessibleName("Volume target");

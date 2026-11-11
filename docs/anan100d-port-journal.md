@@ -3454,6 +3454,20 @@ The left quick-memory panel (BandStackPanel): the remembered-frequency
 buttons are 72 x 26 (were 72 x 32). The header buttons (x, +, gear) are
 unchanged.
 
+## 215. Build 253: PC Audio pill +15 %; station name box (10.11)
+
+**PC Audio / Codec pill:** 60 x 18, text 10 px (was 52 x 16, 9 px). Six style
+variants were shown to the operator as a mock-up (capsule, segmented switch,
+dark capsule with LED dot, glass capsule, slide switch, flat tab with
+underline); the choice is pending.
+
+**Station name box (status bar centre, the radio's nickname):** font 21 ->
+19 px and side padding 12 -> 11 px (the box ~10 % smaller), corners rounded
+4 px, arrow cursor (was the pointing hand). Double click opens Radio Setup >
+Radio and focuses the Nickname field (`radioNicknameEdit`, text selected)
+instead of the connection dialog. Tooltip: "Station name -- the radio's
+nickname. Double-click to change it (Radio Setup > Radio > Nickname)."
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

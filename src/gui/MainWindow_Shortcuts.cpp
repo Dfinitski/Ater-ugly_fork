@@ -4,6 +4,7 @@
 // interception), handleCwMomentaryShortcut() and keyPress/keyRelease overrides.
 
 #include "MainWindow.h"
+#include "RadioSetupDialog.h"
 #include "core/TxKeyingMarker.h"
 #include "TxInputKeyEvent.h"
 #include "TxKeyActivationGuard.h"
@@ -968,7 +969,16 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         return true;
     }
     if (obj == m_stationNickLabel && event->type() == QEvent::MouseButtonDblClick) {
-        toggleConnectionDialog();
+        // Build 253 (operator, 10.11): the station text is the nickname, so a
+        // double click opens where it is set, with the field ready to edit.
+        if (RadioSetupDialog* dlg = openRadioSetupPage(QStringLiteral("Radio"))) {
+            QTimer::singleShot(0, dlg, [dlg] {
+                if (auto* edit = dlg->findChild<QLineEdit*>(QStringLiteral("radioNicknameEdit"))) {
+                    edit->setFocus(Qt::OtherFocusReason);
+                    edit->selectAll();
+                }
+            });
+        }
         return true;
     }
     // The context-menu key and Shift+F10 open the keyer-source chooser on the
