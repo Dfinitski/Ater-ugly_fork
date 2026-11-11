@@ -194,15 +194,30 @@ QList<hl2::MetisClient::Discovered> P2Transport::discover(int timeoutMs,
 
     QDeadlineTimer deadline(timeoutMs);
     QSet<QString> seen;
+    // Build 242 (operator, 10.11: the radio left running in receive, streaming
+    // I/Q to a session that is gone; every connect then hung the program at
+    // "HL2 hardware options"): a busy radio can send its stream to this socket
+    // (thousands of datagrams a second). Two things made that a hang on the
+    // I/O thread -- and so on the GUI thread, which waits for this call with
+    // BlockingQueuedConnection:
+    //  - the inner loop drained "while datagrams are pending" and never looked
+    //    at the deadline, so a socket that never runs dry never returned;
+    //  - every datagram, discovery reply or not, went through localRouteFor(),
+    //    which enumerates the PC's network interfaces (milliseconds on
+    //    Windows), slower than the stream arrives.
+    // The deadline now bounds the whole call, and only a parsed discovery
+    // reply is looked up.
+    auto noteRoute = [](const QNetworkDatagram& dg) {
+        // Build 221: the adapter this reply came in on (AnanRoute.h).
+        if (const LocalRoute route = localRouteFor(dg); route.valid())
+            noteHostRoute(dg.senderAddress().toIPv4Address(), route.local.toIPv4Address());
+    };
     while (!deadline.hasExpired()) {
         if (!s.waitForReadyRead(static_cast<int>(std::max<qint64>(1, deadline.remainingTime()))))
             break;
-        while (s.hasPendingDatagrams()) {
+        while (s.hasPendingDatagrams() && !deadline.hasExpired()) {
             const QNetworkDatagram dg = s.receiveDatagram();
             const QByteArray data = dg.data();
-            // Build 221: the adapter this reply came in on (AnanRoute.h).
-            if (const LocalRoute route = localRouteFor(dg); route.valid())
-                noteHostRoute(dg.senderAddress().toIPv4Address(), route.local.toIPv4Address());
             if (const auto r1 = hl2::parseDiscoveryReply(asBytes(data))) {
                 // Protocol 1 firmware (EF FE 02/03 ...): its board type mapped
                 // to the Protocol 2 id the profiles and models are keyed by.
@@ -213,6 +228,7 @@ QList<hl2::MetisClient::Discovered> P2Transport::discover(int timeoutMs,
                 if (seen.contains(key))
                     continue;
                 seen.insert(key);
+                noteRoute(dg);
                 noteProtocol1Host(dg.senderAddress().toIPv4Address(),
                                   Protocol1HostInfo{*id, r1->gatewareVersion});
                 Discovered d;
@@ -232,6 +248,7 @@ QList<hl2::MetisClient::Discovered> P2Transport::discover(int timeoutMs,
             if (seen.contains(key))
                 continue;
             seen.insert(key);
+            noteRoute(dg);
             noteProtocol1Host(dg.senderAddress().toIPv4Address(), false);
             const BoardProfile profile =
                 boardProfileFor(reply->boardId).value_or(defaultBoardProfile());

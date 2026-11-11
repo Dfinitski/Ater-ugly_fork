@@ -3231,6 +3231,29 @@ hypothesis, not a finding.
 **Next:** reproduce (radio off -> on during a session), send the
 `aethersdr-crash-*.txt/.dmp` and `AetherSDR.pdb` from the build folder.
 
+## 204. Build 242: discovery probe could never return on a streaming radio (10.11)
+
+**Symptom:** the radio left running in receive (streaming I/Q to a session that
+no longer exists: power cycle during a session, or the program killed) made
+every connect hang at `HL2 hardware options` (sections 202-203: "busy: taking
+over our previous session"); Windows' "not responding" box, no report.
+
+**Cause (code):** `P2Transport::discover()`, the unicast probe that
+`Hl2Backend::connectRadio()` runs on the I/O thread while the GUI thread waits
+(`BlockingQueuedConnection`):
+- the inner `while (s.hasPendingDatagrams())` never checked the deadline, so
+  the call returned only when the socket ran dry;
+- every datagram, before parsing, went through `localRouteFor()` =
+  `QNetworkInterface::allInterfaces()` (milliseconds on Windows).
+A streaming radio that sends to the probe's socket feeds it thousands of
+datagrams a second, faster than that loop drains them: the probe never returns,
+the I/O thread never gets back to its event loop, the GUI waits forever.
+(That the radio redirects its stream to the probe's port is inferred from the
+behaviour, not captured on the wire.)
+
+**Fix:** the deadline bounds the inner loop too; the route lookup runs only
+for a parsed discovery reply from a new host.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
