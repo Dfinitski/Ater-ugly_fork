@@ -795,7 +795,18 @@ int main(int argc, char* argv[])
         "QCheckBox::indicator:hover { border-color: #00b4d8; }"
         "QCheckBox::indicator:checked { background: #00b4d8; border-color: #00b4d8; }"
         "QCheckBox::indicator:disabled { border-color: #4a5560; }"
-        "QCheckBox::indicator:checked:disabled { background: #4a5560; }"));
+        "QCheckBox::indicator:checked:disabled { background: #4a5560; }"
+        // ANAN fork build 314 (operator, 12.11: "black background, blue
+        // border and white text, as for all window elements; fix any other
+        // tooltips with the problem"). One application-wide tooltip look.
+        // A tooltip only matches QToolTip rules and selector-less ones of the
+        // widget it belongs to (and that widget's ancestors); before, with no
+        // QToolTip rule anywhere, a selector-less dark background around a
+        // button (the band-stack panel's, build 313) left the tip's default
+        // black text on black. White text from here keeps such a tip
+        // readable even where an ancestor's background still applies.
+        "QToolTip { color: #ffffff; background-color: #000000;"
+        " border: 1px solid #00b4d8; padding: 3px 5px; }"));
 
     // Load slice color overrides (must be after AppSettings::load)
     AetherSDR::SliceColorManager::instance().load();
