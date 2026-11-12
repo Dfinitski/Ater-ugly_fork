@@ -2043,7 +2043,8 @@ void MainWindow::onSliceAdded(SliceModel* s)
         activeTuning = activeTuning || m_flexCoalesceTimer.isActive();
 #endif
 #ifdef HAVE_MIDI
-        activeTuning = activeTuning || m_midiTuneIdleTimer.isActive();
+        activeTuning = activeTuning || m_midiTuneIdleTimer.isActive()
+                       || m_midiTuneIdleTimerB.isActive();   // build 316
 #endif
         // HID encoder frequency tuning routes through applyFlexControlWheelAction,
         // so m_flexCoalesceTimer above already covers it.

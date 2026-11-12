@@ -49,7 +49,9 @@ int relativeCcDelta(int value)
 
 bool MidiControlManager::isVfoTuneKnob(const QString& paramId)
 {
-    return paramId == QLatin1String("rx.tuneKnob");
+    // ANAN fork build 316: rx.tuneKnob is VFO A's knob, rx.tuneKnobB VFO B's;
+    // both are endless tuning dials.
+    return paramId == QLatin1String("rx.tuneKnob") || paramId == QLatin1String("rx.tuneKnobB");
 }
 
 // ── MidiBinding helpers ─────────────────────────────────────────────────────

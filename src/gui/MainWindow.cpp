@@ -1829,6 +1829,8 @@ MainWindow::MainWindow(QWidget* parent)
 #ifdef HAVE_MIDI
         m_midiTuneTargetMhz = -1.0;
         m_midiTuneIdleTimer.stop();
+        m_midiTuneTargetMhzB = -1.0;
+        m_midiTuneIdleTimerB.stop();
 #endif
     });
     // Deliberate operator step changes only (STEP buttons/scroll, cycle
@@ -8658,6 +8660,8 @@ void MainWindow::applyTuneRequest(SliceModel* slice, double mhz,
 #ifdef HAVE_MIDI
         m_midiTuneTargetMhz = -1.0;
         m_midiTuneIdleTimer.stop();
+        m_midiTuneTargetMhzB = -1.0;
+        m_midiTuneIdleTimerB.stop();
 #endif
     }
 

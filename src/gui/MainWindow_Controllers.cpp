@@ -2146,10 +2146,28 @@ void MainWindow::registerMidiParams()
     // Set the binding to "relative" mode in MIDI Mapping dialog.
     // Steps are coalesced every 20ms, but each controller detent remains one
     // radio step to avoid jumpy jog-wheel behavior.
-    reg("rx.tuneKnob", "VFO Tune Knob", "RX", P::Slider, 0, 127,
+    // ANAN fork build 316 (operator, 12.11): two knobs, VFO A and VFO B.
+    // With only one of them bound, it tunes the active VFO as before; with
+    // both bound, each tunes its own VFO (slice A / slice B) whatever is
+    // active. rx.tuneKnob keeps its id (VFO A) so saved bindings stay.
+    reg("rx.tuneKnob", "VFO A Tune Knob", "RX", P::Slider, 0, 127,
         [this](float v) {
             // Absolute fallback (non-relative bindings): center=64
-            auto* s = activeSlice();
+            auto* s = midiTuneKnobSlice(false);
+            if (!s) return;
+            int steps = static_cast<int>(v) - 64;
+            if (steps == 0) return;
+            if (s->isLocked()) {
+                s->notifyTuneBlockedByLock();
+                return;
+            }
+            int stepHz = spectrum() ? spectrum()->stepSize() : 100;
+            double newMhz = s->frequency() + steps * stepHz / 1e6;
+            applyTuneRequest(s, newMhz, TuneIntent::IncrementalTune, "midi-absolute");
+        });
+    reg("rx.tuneKnobB", "VFO B Tune Knob", "RX", P::Slider, 0, 127,
+        [this](float v) {
+            auto* s = midiTuneKnobSlice(true);
             if (!s) return;
             int steps = static_cast<int>(v) - 64;
             if (steps == 0) return;
@@ -2848,6 +2866,11 @@ void MainWindow::wireExternalControllers()
     connect(&m_midiTuneIdleTimer, &QTimer::timeout, this, [this] {
         m_midiTuneTargetMhz = -1.0;
     });
+    m_midiTuneIdleTimerB.setSingleShot(true);   // build 316: VFO B's knob
+    m_midiTuneIdleTimerB.setInterval(250);
+    connect(&m_midiTuneIdleTimerB, &QTimer::timeout, this, [this] {
+        m_midiTuneTargetMhzB = -1.0;
+    });
 
     // Register MIDI params — setters/getters stored on MainWindow for
     // main-thread dispatch. Param metadata still registered on the manager.
@@ -2889,17 +2912,22 @@ void MainWindow::wireExternalControllers()
     // steps are exact detents; controller-side jog speed is not multiplied here.
     connect(m_midiControl, &MidiControlManager::relativeAction,
             this, [this](const QString& paramId, int steps) {
-        if (paramId == "rx.tuneKnob") {
-            auto* s = activeSlice();
+        if (paramId == "rx.tuneKnob" || paramId == "rx.tuneKnobB") {
+            // Build 316: each knob its slice (midiTuneKnobSlice) and its own
+            // in-flight target.
+            const bool knobB = paramId == "rx.tuneKnobB";
+            double& tuneTargetMhz = knobB ? m_midiTuneTargetMhzB : m_midiTuneTargetMhz;
+            QTimer& tuneIdleTimer = knobB ? m_midiTuneIdleTimerB : m_midiTuneIdleTimer;
+            auto* s = midiTuneKnobSlice(knobB);
             if (!s) {
-                m_midiTuneTargetMhz = -1.0;
-                m_midiTuneIdleTimer.stop();
+                tuneTargetMhz = -1.0;
+                tuneIdleTimer.stop();
                 return;
             }
             if (s->isLocked()) {
                 s->notifyTuneBlockedByLock();
-                m_midiTuneTargetMhz = -1.0;
-                m_midiTuneIdleTimer.stop();
+                tuneTargetMhz = -1.0;
+                tuneIdleTimer.stop();
                 return;
             }
             // Prefer spectrum widget's step (updates immediately on UI change,
@@ -2910,19 +2938,20 @@ void MainWindow::wireExternalControllers()
             // Keep an in-flight target while the wheel is moving.  Radio
             // RF_frequency echoes can lag behind command sends; using the echo
             // as the next base makes rapid MIDI tuning jump backward/forward.
-            if (m_midiTuneTargetMhz < 0.0
-                || (!m_midiTuneIdleTimer.isActive()
-                    && std::abs(m_midiTuneTargetMhz - s->frequency()) > 0.001)) {
+            if (tuneTargetMhz < 0.0
+                || (!tuneIdleTimer.isActive()
+                    && std::abs(tuneTargetMhz - s->frequency()) > 0.001)) {
                 const long long curHz =
                     static_cast<long long>(std::round(s->frequency() * 1e6));
                 const long long snapped =
                     ((curHz + stepHz / 2) / stepHz) * stepHz;
-                m_midiTuneTargetMhz = snapped / 1e6;
+                tuneTargetMhz = snapped / 1e6;
             }
-            m_midiTuneTargetMhz += steps * stepHz / 1e6;
-            pushSliceFrequencyToOverlays(s, m_midiTuneTargetMhz);
-            m_midiTuneIdleTimer.start();
-            applyTuneRequest(s, m_midiTuneTargetMhz, TuneIntent::IncrementalTune,
+            tuneTargetMhz += steps * stepHz / 1e6;
+            const double targetMhz = tuneTargetMhz;   // applyTuneRequest may reset it
+            pushSliceFrequencyToOverlays(s, targetMhz);
+            tuneIdleTimer.start();
+            applyTuneRequest(s, targetMhz, TuneIntent::IncrementalTune,
                              "midi-relative");
         }
     });
@@ -3459,5 +3488,26 @@ void MainWindow::wireExternalControllers()
     }
 #endif
 }
+
+#ifdef HAVE_MIDI
+// ANAN fork build 316: the slice a MIDI VFO knob tunes. One knob bound (A or
+// B, either): the active slice, as the single knob always did. Both bound:
+// knob A tunes slice A, knob B slice B (letters from the slice id, 0 = A),
+// whichever is active; a VFO that does not exist is not tuned.
+SliceModel* MainWindow::midiTuneKnobSlice(bool knobB) const
+{
+    bool boundA = false;
+    bool boundB = false;
+    if (m_midiControl) {
+        for (const MidiBinding& b : m_midiControl->bindings()) {
+            boundA = boundA || b.paramId == QLatin1String("rx.tuneKnob");
+            boundB = boundB || b.paramId == QLatin1String("rx.tuneKnobB");
+        }
+    }
+    if (!(boundA && boundB))
+        return activeSlice();
+    return m_radioModel.slice(knobB ? 1 : 0);
+}
+#endif
 
 } // namespace AetherSDR

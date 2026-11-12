@@ -1557,6 +1557,10 @@ private:
     MidiControlManager*  m_midiControl{nullptr};
     QTimer               m_midiTuneIdleTimer;
     double               m_midiTuneTargetMhz{-1.0};
+    // ANAN fork build 316: VFO B's knob keeps its own in-flight target.
+    QTimer               m_midiTuneIdleTimerB;
+    double               m_midiTuneTargetMhzB{-1.0};
+    SliceModel* midiTuneKnobSlice(bool knobB) const;
     void registerMidiParams();
     bool dispatchScopedMidiTx(const QString& id, float value,
                                const std::shared_ptr<TxController>& controller);
