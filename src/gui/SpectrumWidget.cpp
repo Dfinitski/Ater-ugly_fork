@@ -15389,6 +15389,45 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
         ++m_frequencyPreviewPresentCount;
     }
 
+    // ANAN fork build 296 (operator, 11.11: "dragging the panadapter, a
+    // receiver filter that was off screen is not drawn until the button is
+    // released"). During a drag the frequency-anchored overlay (slices,
+    // filters, spots, band plan) is the texture painted at the drag's start,
+    // only moved by the preview transform -- what was off screen then is not
+    // in it. When a slice's filter now on screen reaches outside the frame
+    // that texture was painted for, it is repainted at the current frame
+    // (m_centerMhz is already the drag's target) and the transform re-based
+    // on it. Only that layer; it happens while a filter crosses into view.
+    bool previewFrequencyOverlayRefresh = false;
+    if (m_frequencyPreviewActive && m_ovPreviewPipeline && !m_overlayStaticDirty
+        && std::isfinite(m_frequencyPreviewTargetCenterMhz)
+        && m_frequencyPreviewTargetBandwidthMhz > 0.0) {
+        const double baseBw = panDisplayBandwidthMhz(
+            m_frequencyPreviewOverlayBaseBandwidthMhz, panEdgeCropActive());
+        const double targetBw = panDisplayBandwidthMhz(
+            m_frequencyPreviewTargetBandwidthMhz, panEdgeCropActive());
+        const double baseLo = m_frequencyPreviewOverlayBaseCenterMhz - baseBw / 2.0;
+        const double baseHi = m_frequencyPreviewOverlayBaseCenterMhz + baseBw / 2.0;
+        const double viewLo = m_frequencyPreviewTargetCenterMhz - targetBw / 2.0;
+        const double viewHi = m_frequencyPreviewTargetCenterMhz + targetBw / 2.0;
+        for (const SliceOverlay& so : m_sliceOverlays) {
+            const double lo = so.freqMhz
+                + std::min({0, so.filterLowHz, so.filterHighHz}) / 1.0e6;
+            const double hi = so.freqMhz
+                + std::max({0, so.filterLowHz, so.filterHighHz}) / 1.0e6;
+            const double shownLo = std::max(lo, viewLo);
+            const double shownHi = std::min(hi, viewHi);
+            if (shownLo <= shownHi && (shownLo < baseLo || shownHi > baseHi)) {
+                previewFrequencyOverlayRefresh = true;
+                break;
+            }
+        }
+        if (previewFrequencyOverlayRefresh) {
+            m_frequencyPreviewOverlayBaseCenterMhz = m_centerMhz;
+            m_frequencyPreviewOverlayBaseBandwidthMhz = m_bandwidthMhz;
+        }
+    }
+
     if (m_ovPreviewPipeline && m_ovPreviewSrb && m_ovPreviewUbo) {
         float overlayScale = 1.0f;
         float overlayOffset = 0.0f;
@@ -15590,6 +15629,22 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
         // Static overlays: only repaint when state changes (markOverlayDirty).
         // Frequency-anchored elements live in their own texture so the preview
         // shader can move them without also distorting screen-space controls.
+        // Build 296: the frequency layer alone, re-based during a drag.
+        if (previewFrequencyOverlayRefresh && !rebuildStaticOverlay && !resizePreview) {
+            m_overlayFrequency.fill(Qt::transparent);
+            QPainter frequencyPainter(&m_overlayFrequency);
+            frequencyPainter.setRenderHint(QPainter::Antialiasing, false);
+            if (m_bandPlanFontSize > 0) {
+                drawBandPlan(frequencyPainter, specRect);
+            }
+            drawTnfMarkers(frequencyPainter, specRect, wfRect);
+            if (m_showSpots || m_showSHistory) {
+                drawSpotMarkers(frequencyPainter, specRect);
+            }
+            drawSliceMarkers(frequencyPainter, specRect, wfRect);
+            drawOffScreenSlices(frequencyPainter, specRect);
+            m_overlayFrequencyNeedsUpload = true;
+        }
         if (rebuildStaticOverlay) {
             m_overlayFrequency.fill(Qt::transparent);
             QPainter frequencyPainter(&m_overlayFrequency);
