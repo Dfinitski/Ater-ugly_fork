@@ -299,6 +299,7 @@ void Hl2RxDsp::installChannel(RebuildResult result)
     applyMinimumPhaseForMode();
     m_channel->setFilter(m_config.filterLowHz, m_config.filterHighHz);
     m_channel->setAgc(m_config.agcMode, m_config.maximumAgcGainDb);
+    m_channel->setBinaural(m_binaural);   // build 307
     // The squelch, AFTER setMode above so WdspChannel routes it to the stage
     // for the mode actually in force. A fresh channel opens with every
     // squelch stage off; without this a rate change would open the squelch
@@ -661,6 +662,13 @@ void Hl2RxDsp::setAgc(int agcMode, double maximumGainDb)
     m_config.maximumAgcGainDb = maximumGainDb;
     if (canPushToChannel())
         m_channel->setAgc(agcMode, maximumGainDb);
+}
+
+void Hl2RxDsp::setBinaural(bool on)
+{
+    m_binaural = on;
+    if (canPushToChannel())
+        m_channel->setBinaural(on);
 }
 
 void Hl2RxDsp::setAudioMuted(bool muted)

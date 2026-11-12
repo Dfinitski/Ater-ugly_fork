@@ -961,6 +961,8 @@ private:
         // Owns its demod + spectrum chain; created on connect, destroyed on disconnect,
         // lives on the I/O thread.
         Hl2RxDsp* dsp = nullptr;
+        Hl2RxDsp* binauralDsp = nullptr;   // build 307: the DSP BIN was last sent to
+        bool binauralSent = false;
         // ANAN port: the DRM decoder on this receiver (DrmApplet), or null.
         // Shared with the dsp, which feeds it on the I/O thread.
         std::shared_ptr<aether_drm::DrmEngine> drm;

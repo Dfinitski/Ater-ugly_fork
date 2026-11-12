@@ -385,6 +385,8 @@ public:
     // already in flight. Control-path work, guarded exactly like setMode(); it
     // must not be called from the processIq() callback.
     bool setAgc(int agcMode, double maximumGainDb) noexcept;
+    // Build 307: binaural audio (left I, right Q) in the audio modes; off = mono.
+    bool setBinaural(bool on) noexcept;
     // Build 303: the AGC mode WDSP runs -- off (0) in DRM mode.
     [[nodiscard]] int effectiveAgcMode(int agcMode) const noexcept;
     // The AGC's gain in mode 0 (off), in dB; xwcpagc() ignores it in every
@@ -650,6 +652,7 @@ private:
     struct WbfmState;
     std::unique_ptr<WbfmState> m_wbfm;
     std::atomic<int> m_wbfmStereo {-1};
+    bool m_binaural = false;   // build 307
     std::optional<AetherSDR::WfmReceptionDiagnostics> m_wbfmReception;
     int m_channelId = -1;
     Config m_config;

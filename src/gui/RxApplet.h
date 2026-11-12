@@ -224,6 +224,7 @@ private:
     RadioModel* m_radioModel{nullptr};
     ControlAvailabilityRegistry* m_filterAvailability{nullptr};
     QPushButton* m_autoAgcTButton{nullptr};
+    QPushButton* m_binauralBtn{nullptr};   // build 307
     std::optional<ReceiveFilterControl> m_receiveFilterControl;
     // exclusiveSquelchScaleValue(caps.squelchLevelScale): the receiver's own gate.
     std::optional<SquelchLevelScale> m_exclusiveSquelch;

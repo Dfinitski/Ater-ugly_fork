@@ -4711,6 +4711,22 @@ Auto AGC не менялся: он уже работал от полки плю�
 
 Файлы: WdspChannel.cpp, third_party/wdsp/include/aether_wdsp.h, ForkBuild.h (306).
 
+## 271. Сборка 307 — кнопка BIN (бинауральный звук) в RX-апплете
+
+Оператор: «а может сделать нам его включение, это полезно же».
+
+**Сделано.** Кнопка **BIN** в строке панорамы звука (L — ползунок — R — BIN) RX-апплета, по приёмнику, запоминается (`AnanRx1Binaural` / `AnanRx2Binaural`).
+- Выключена (по умолчанию) — моно, как в сборке 306.
+- Включена — бинаурально, как BIN в Thetis: левый канал = I, правый = Q выхода демодулятора (пара со сдвигом 90°). Звук «объёмнее», образ смещается с боковой полосой.
+
+**Цепочка:**
+- `AnanUiState::binaural[rx]` / `setBinaural`;
+- `Hl2Backend` в шаге шумовой линии отправляет состояние в DSP приёмника, если оно изменилось или DSP новый (`binauralDsp` сбрасывается при создании DSP);
+- `Hl2RxDsp::setBinaural` (хранит состояние и повторяет его после пересборки канала);
+- `WdspChannel::setBinaural` → `applyRxPanel(mode, binaural)`: `SetRXAPanelBinaural(1)` при BIN или в режимах DRM/WFM/SPEC, иначе 0.
+
+Файлы: WdspChannel.cpp/.h, Hl2RxDsp.cpp/.h, Hl2Backend.cpp/.h, AnanUiState.h, RxApplet.cpp/.h, ForkBuild.h (307).
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

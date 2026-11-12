@@ -208,6 +208,8 @@ public:
     // rebuilds the channel with the operator's current AGC rather than the
     // construction-time default.
     Q_INVOKABLE void setAgc(int agcMode, double maximumGainDb);
+    // Build 307: binaural audio (RX applet BIN); kept across channel rebuilds.
+    Q_INVOKABLE void setBinaural(bool on);
     // RX frequency shift in Hz relative to the NCO — how the backend tunes the
     // slice inside the passband without moving the DDC. Kept in m_config so a
     // later reconfigure() rebuilds the channel with the operator's offset.
@@ -733,6 +735,7 @@ private:
     // read from the GUI thread by Hl2Backend::healthSnapshot().
     std::atomic<quint64> m_spectrumGapDiscards {0};
     Config m_config;
+    bool m_binaural = false;   // build 307
 
     // Notch set, mirrored so reconfigure() can replay it — see the note on
     // addNotch(). Index in this vector IS the WDSP notch index; keeping them

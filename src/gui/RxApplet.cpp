@@ -998,6 +998,23 @@ void RxApplet::buildUI()
         rLbl->setStyleSheet(kDimLabelStyle);
         row->addWidget(rLbl);
 
+        // ANAN fork build 307 (operator, 11.11: "make it switchable, it is
+        // useful"): binaural receive audio, as Thetis' BIN. Off (mono): the
+        // same audio in both ears. On: left = I, right = Q of the
+        // demodulator, a 90-degree pair -- a wider, "spatial" sound, and the
+        // image moves with the sideband. Per receiver, remembered.
+        m_binauralBtn = mkToggle(tr("BIN"), nullptr, kBlueActive());
+        m_binauralBtn->setFixedWidth(30);
+        m_binauralBtn->setObjectName(QStringLiteral("binaural"));
+        m_binauralBtn->setAccessibleName(tr("Binaural audio"));
+        m_binauralBtn->setToolTip(tr("Binaural: left ear I, right ear Q of the receiver "
+                                     "(a spatial sound). Off: mono, the same audio in both ears."));
+        connect(m_binauralBtn, &QPushButton::clicked, this, [this](bool on) {
+            if (const int rx = ananAgcRx(); rx >= 0)
+                AetherSDR::anan::AnanUiState::instance().setBinaural(rx, on);
+        });
+        row->addWidget(m_binauralBtn);
+
         connect(m_panSlider, &QSlider::valueChanged, this, [this](int v) {
             AetherSDR::SplitAudioOperatorEdit op;  // #2242: operator-origin
             if (m_slice) m_slice->setAudioPan(v);
@@ -3825,6 +3842,10 @@ void RxApplet::applyAnanAgcAuto()
     if (rx < 0 || !m_autoAgcTButton)
         return;
     const auto& ui = AetherSDR::anan::AnanUiState::instance();
+    if (m_binauralBtn && m_binauralBtn->isChecked() != ui.binaural[rx]) {   // build 307
+        const QSignalBlocker bb(m_binauralBtn);
+        m_binauralBtn->setChecked(ui.binaural[rx]);
+    }
     const bool on = ui.agcAuto[rx];
     const bool agcOff = m_slice && m_slice->receiveAgcMode() == QStringLiteral("off");
     if (m_ananAutoShown != int(on)) {

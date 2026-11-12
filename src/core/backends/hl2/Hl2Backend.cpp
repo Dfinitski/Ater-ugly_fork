@@ -1861,6 +1861,7 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
     // Recorded, not published. m_rx is this thread's, so this is a plain store;
     // the sample path sees nothing until the caller calls publishIoDsps().
     r->dsp = dsp;
+    r->binauralDsp = nullptr;   // build 307: a new DSP gets the BIN state again
     // ANAN port: a DRM decoder running on this receiver follows it to the new
     // chain (rate change, rebuild).
     if (r->drm)
@@ -10420,6 +10421,16 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
     // The Auto AGC follows the same floor.
     ananAutoAgcStep(rx);
     ananPublishAgcGate(rx);
+    // Build 307: the BIN button, to this receiver's DSP (again whenever the
+    // DSP object is new: a reconnect or a rebuild of the receivers).
+    if (Receiver* br = this->rx(rx); br && br->dsp) {
+        const bool want = anan::AnanUiState::instance().binaural[rx];
+        if (br->dsp != br->binauralDsp || want != br->binauralSent) {
+            br->binauralDsp = br->dsp;
+            br->binauralSent = want;
+            QMetaObject::invokeMethod(br->dsp, "setBinaural", Qt::QueuedConnection, Q_ARG(bool, want));
+        }
+    }
     ananOwnNoiseCaptureStep(rx, t);
 
     // A check against the S-meter (Average, no options): in a 500 Hz filter

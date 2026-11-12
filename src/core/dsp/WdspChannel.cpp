@@ -281,11 +281,13 @@ int openWdspChannel(int channelId, const WdspChannel::Config& config,
 // speakers on USB / LSB. Thetis and pihpsdr run it mono (Binaural off: I on
 // both channels). Mono here, except where both channels carry the signal:
 // DRM (the filtered I/Q for Dream), WFM stereo, and SPEC.
-void applyRxPanel(int channel, WdspChannel::Mode mode)
+// Build 307 (operator: "make it switchable, it is useful"): binaural on
+// request (the RX applet's BIN button), as Thetis' BIN.
+void applyRxPanel(int channel, WdspChannel::Mode mode, bool binaural)
 {
     const bool twoChannels = mode == WdspChannel::Mode::Drm || mode == WdspChannel::Mode::Wbfm
                              || mode == WdspChannel::Mode::Spec;
-    SetRXAPanelBinaural(channel, twoChannels ? 1 : 0);
+    SetRXAPanelBinaural(channel, (twoChannels || binaural) ? 1 : 0);
 }
 
 void applyRxAgc(int channel, int mode, double topDb, int slopeDb, double fixedDb)
@@ -705,7 +707,7 @@ bool WdspChannel::setMode(Mode mode) noexcept
         const std::scoped_lock setupLock(g_setupMutex);
         if (m_config.direction == Direction::Receive) {
             SetRXAMode(m_channelId, wdspMode(mode));
-            applyRxPanel(m_channelId, mode);   // build 306
+            applyRxPanel(m_channelId, mode, m_binaural);   // build 306
             // The squelch belongs to a mode family, so a mode change moves it
             // to the new family's stage and stops the old one — see
             // setSquelch() in the header.
@@ -992,6 +994,19 @@ bool WdspChannel::setAgc(int agcMode, double maximumGainDb) noexcept
     }
     m_config.agcMode = agcMode;
     m_config.maximumAgcGainDb = maximumGainDb;
+    endControlOperation();
+    return true;
+}
+
+bool WdspChannel::setBinaural(bool on) noexcept
+{
+    if (m_config.direction != Direction::Receive || !beginControlOperation())
+        return false;
+    {
+        const std::scoped_lock setupLock(g_setupMutex);
+        m_binaural = on;
+        applyRxPanel(m_channelId, m_config.mode, on);
+    }
     endControlOperation();
     return true;
 }
@@ -1744,7 +1759,7 @@ bool WdspChannel::open() noexcept
     }
     if (m_config.direction == Direction::Receive) {
         SetRXAMode(m_channelId, wdspMode(m_config.mode));
-        applyRxPanel(m_channelId, m_config.mode);   // build 306
+        applyRxPanel(m_channelId, m_config.mode, m_binaural);   // build 306
         if (m_config.fmReceive) {
             // Upstream RX panel gain defaults to 4 and the FM limiter is off.
             // Together with FM de-emphasis this clips valid modulation at

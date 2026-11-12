@@ -64,6 +64,7 @@ public:
             st.save();
         }
         for (int rx = 0; rx < 2; ++rx) {
+            binaural[rx] = st.value(binauralKey(rx), QStringLiteral("False")).toString() == QLatin1String("True");
             agcAuto[rx] = st.value(agcAutoKey(rx), QStringLiteral("False")).toString() == QLatin1String("True");
             agcNfOffsetDb[rx] = std::clamp(st.value(agcOffsetKey(rx), kAgcNfOffsetDefaultDb).toInt(),
                                            kAgcNfOffsetMinDb, kAgcNfOffsetMaxDb);
@@ -127,6 +128,22 @@ public:
     qint64 agcGateAtMs[2] = {0, 0};
     double agcGatePlusGainDb[2] = {0.0, 0.0};
     double agcGainAtT0Db[2] = {0.0, 0.0};
+    // Build 307: binaural receive audio per receiver (RX applet BIN), read
+    // by the backend (Hl2Backend::ananBinauralStep).
+    bool binaural[2] = {false, false};
+    [[nodiscard]] static QString binauralKey(int rx)
+    {
+        return rx == 1 ? QStringLiteral("AnanRx2Binaural") : QStringLiteral("AnanRx1Binaural");
+    }
+    void setBinaural(int rx, bool on)
+    {
+        if (rx < 0 || rx > 1)
+            return;
+        binaural[rx] = on;
+        auto& st = AppSettings::instance();
+        st.setValue(binauralKey(rx), on ? QStringLiteral("True") : QStringLiteral("False"));
+        st.save();
+    }
     [[nodiscard]] static QString agcAutoKey(int rx)
     {
         return rx == 1 ? QStringLiteral("AnanRx2AgcAuto") : QStringLiteral("AnanRx1AgcAuto");
