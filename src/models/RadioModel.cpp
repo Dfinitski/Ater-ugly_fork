@@ -1482,6 +1482,15 @@ void RadioModel::wireBackendReceiverState()
     // universal pan center/bandwidth from Flex status and emits this normalized
     // signal; RadioModel drives the addressed PanadapterModel. (Template for the
     // remaining universal fields and the other mixed models.)
+    // ANAN fork build 317: host-kept transverters arrive as the `xvtr N`
+    // status a Flex sends, so the setup page and the band menu read them
+    // the same way.
+    connect(m_backend.get(), &IRadioBackend::transverterStatus, this,
+            [this, generation](int index, const QMap<QString, QString>& kvs) {
+        if (generation != m_backendReceiverGeneration)
+            return;
+        onStatusReceived(QStringLiteral("xvtr %1").arg(index), kvs);
+    });
     connect(m_backend.get(), &IRadioBackend::panCenterBandwidthChanged, this,
             [this, generation](const QString& panId, double centerMhz, double bandwidthMhz) {
         // Qt may already have queued this call before sender destruction.

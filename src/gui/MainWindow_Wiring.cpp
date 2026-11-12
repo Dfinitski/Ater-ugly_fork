@@ -3743,10 +3743,12 @@ void MainWindow::selectBand(const QString& panId, const QString& bandName, doubl
         // reported = no check). evaluateBandTune() is shared with the typed-tune
         // gate (#5041) so decision and message match; the typed path only range-
         // checks above 54 MHz. Flex/XVTR arguments are empty defaults here.
+        // Build 317: with the transverters, so an XVTR band button tunes
+        // through one (the openHPSDR backends keep them on the host).
         const auto admissibility =
             XvtrPolicy::evaluateBandTune(false, bandName, freqMhz,
                                          caps.tuningMinHz, caps.tuningMaxHz,
-                                         {}, {});
+                                         xvtrPolicyBandsFrom(m_radioModel.xvtrList()), {});
         if (!admissibility.supported) {
             qCWarning(lcProtocol).noquote()
                 << "MainWindow: band button refused:" << admissibility.reason;

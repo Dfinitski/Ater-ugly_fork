@@ -134,6 +134,9 @@ public:
     ReceiveDispatch requestSliceControl(int sliceId, const SliceControlRequest& request) override;
     // Build 248: the VFO flag's RX antenna (the ANT panel's AnanRxAnt).
     ReceiveDispatch requestSliceRxAntenna(int sliceId, const QString& antenna) override;
+    // Build 317: transverters kept on the host (anan/AnanXvtr.h).
+    ReceiveDispatch requestTransverter(const TransverterRequest& request,
+                                       const RadioSetupCompletion& completion = {}) override;
     ReceiveDispatch requestTransmitControl(const TransmitControlRequest& request,
         TunePowerContext context = TunePowerContext::Deferred) override;
     ReceiveDispatch requestSliceAudio(int sliceId, const SliceAudioRequest& request) override;
@@ -857,6 +860,8 @@ private:
 
     // NCO register value (0x01 TX, 0x02+ RX) for a true-RF frequency.
     [[nodiscard]] std::uint32_t ncoCommandHz(double trueHz) const noexcept;
+    [[nodiscard]] double xvtrOffsetHz(double rfHz) const noexcept;   // build 317
+    void publishTransverters();                                       // build 317
     // DSP shift that puts sliceTrueHz at baseband, given the true-RF NCO. Rounds
     // the NCO command first and computes the shift against that rounded value,
     // so the register's 1 Hz quantisation cancels instead of leaking into audio.

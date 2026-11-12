@@ -1251,6 +1251,11 @@ signals:
     void panCenterBandwidthChanged(const QString& panId,
                                    double centerMhz, double bandwidthMhz);
 
+    // ANAN fork build 317: a host-kept transverter, as the `xvtr N` status
+    // object a Flex reports (kvs as RadioModel::onStatusReceived parses them;
+    // in_use=0 = removed). Backends whose radio keeps its own never emit it.
+    void transverterStatus(int index, const QMap<QString, QString>& kvs);
+
     // A pan the backend owned is GONE. Emitted after removePanadapter() has
     // actually torn the receiver down, so the model removes the pane only once
     // the thing behind it has stopped — never optimistically, which would leave

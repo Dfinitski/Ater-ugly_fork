@@ -31,6 +31,7 @@
 #include "core/backends/anan/AnanPureSignal.h"
 #include "core/backends/anan/AnanTxEngine.h"
 #include "core/backends/anan/AnanUiState.h"
+#include "core/backends/anan/AnanXvtr.h"
 
 #include "core/AutomationBridgeSettings.h"
 #include "core/AppSettings.h"
@@ -269,7 +270,9 @@ constexpr double kTuningMaxHz = 38'400'000.0;
 [[nodiscard]] bool restorableRfHz(double hz, double minHz = kTuningMinHz,
                                   double maxHz = kTuningMaxHz) noexcept
 {
-    return hz >= minHz && hz <= maxHz;
+    // Build 317: or on a configured transverter's band.
+    return (hz >= minHz && hz <= maxHz)
+           || anan::AnanXvtrStore::instance().forRf(hz, minHz, maxHz) != nullptr;
 }
 
 // ANAN-100D port: 122.88 MSPS ADCs, receive coverage 10 kHz - 55 MHz.
@@ -1086,6 +1089,7 @@ Hl2Backend::Hl2Backend(QObject* parent)
             emit transmitChanged(delta);
         }
         emit connected();
+        publishTransverters();   // build 317: after connected(), which resets the model
         // Publish slice/pan state after connected(): RadioModel::onConnected()
         // wipes earlier emissions. Order: pans first, since RadioModel drops
         // pushInitialState()'s zoom limits for a pan that does not exist yet
@@ -4780,6 +4784,65 @@ void Hl2Backend::setSliceNoiseBlanker(int sliceId, AetherSDR::NoiseBlankerKind k
     notifyOperatingStateChanged();
 }
 
+// ANAN fork build 317: transverters, kept on the host (AnanXvtr.h). Each
+// change is saved, reported back as the `xvtr N` status a Flex sends, and the
+// registers and band filters re-pushed, so a receiver already on the band
+// moves with it.
+void Hl2Backend::publishTransverters()
+{
+    for (const anan::Xvtr& x : anan::AnanXvtrStore::instance().all())
+        emit transverterStatus(x.index,
+                               anan::AnanXvtrStore::statusKvs(x, m_tuningMinHz, m_tuningMaxHz));
+}
+
+ReceiveDispatch Hl2Backend::requestTransverter(const TransverterRequest& request,
+                                               const RadioSetupCompletion& completion)
+{
+    using Field = TransverterRequest::Field;
+    if (!request.valid())
+        return ReceiveDispatch::Unsupported;
+    auto& store = anan::AnanXvtrStore::instance();
+    int idx = request.id;
+    if (request.field == Field::Create) {
+        idx = store.create();
+    } else if (request.field == Field::Remove) {
+        if (!store.find(idx))
+            return ReceiveDispatch::Unsupported;
+        store.remove(idx);
+        QMap<QString, QString> gone;
+        gone[QStringLiteral("in_use")] = QStringLiteral("0");
+        emit transverterStatus(idx, gone);
+    } else {
+        anan::Xvtr* x = store.find(idx);
+        if (!x)
+            return ReceiveDispatch::Unsupported;
+        switch (request.field) {
+        case Field::Name: x->name = std::get<QString>(request.value).left(4); break;
+        case Field::RfFrequencyMhz: x->rfMhz = std::get<double>(request.value); break;
+        case Field::IfFrequencyMhz: x->ifMhz = std::get<double>(request.value); break;
+        case Field::LoErrorMhz: x->loErrorMhz = std::get<double>(request.value); break;
+        case Field::RxGainDb: x->rxGainDb = std::get<double>(request.value); break;
+        case Field::MaximumPowerDbm: x->maxPowerDbm = std::get<double>(request.value); break;
+        case Field::RxOnly: x->rxOnly = std::get<bool>(request.value); break;
+        case Field::Create: case Field::Remove: case Field::Count: return ReceiveDispatch::Unsupported;
+        }
+        store.save();
+    }
+    if (const anan::Xvtr* x = store.find(idx))
+        emit transverterStatus(idx, anan::AnanXvtrStore::statusKvs(*x, m_tuningMinHz, m_tuningMaxHz));
+    qCInfo(lcHl2) << "ANAN transverter" << idx << "field" << static_cast<int>(request.field)
+                  << "->" << store.all().size() << "configured";
+    if (m_connected) {   // a receiver or TX already on that band follows
+        repushAllFrequencies();
+        if (const Receiver* t = rx(m_txDdc))
+            setTxFrequency(t->sliceFreqHz);
+        applyBandFilter("transverter");
+    }
+    if (completion)
+        completion({RadioSetupReply::Kind::Accepted, 0, QString()});
+    return ReceiveDispatch::Dispatched;
+}
+
 ReceiveDispatch Hl2Backend::requestSliceControl(int sliceId, const SliceControlRequest& request)
 {
     using Field = SliceControlRequest::Field;
@@ -6591,6 +6654,24 @@ bool Hl2Backend::hzInAmateurBand(double lo, double hi) const
 {
     if (lo <= 0.0)
         return false;
+    // Build 317: on a transverter, the VHF/UHF/SHF allocations (any region),
+    // and never through one set RX only.
+    if (const anan::Xvtr* x = anan::AnanXvtrStore::instance().forRf(lo, m_tuningMinHz, m_tuningMaxHz)) {
+        if (x->rxOnly)
+            return false;
+        static const std::vector<std::pair<double, double>> kVhfUp = {
+            {69'900'000, 70'500'000},       {144'000'000, 148'000'000},
+            {219'000'000, 225'000'000},     {420'000'000, 450'000'000},
+            {902'000'000, 928'000'000},     {1'240'000'000, 1'300'000'000},
+            {2'300'000'000, 2'450'000'000}, {3'300'000'000, 3'500'000'000},
+            {5'650'000'000, 5'925'000'000}, {10'000'000'000, 10'500'000'000},
+            {24'000'000'000, 24'250'000'000}};
+        for (const auto& [bLo, bHi] : kVhfUp) {
+            if (lo >= bLo - 0.5 && hi <= bHi + 0.5)
+                return true;
+        }
+        return false;
+    }
     // Built-in until the band plan arrives: every amateur allocation of the
     // three IARU regions (the ANAN tunes to 55 MHz).
     static const std::vector<std::pair<double, double>> kAllRegions = {
@@ -6706,14 +6787,27 @@ void Hl2Backend::setTxFrequency(double hz)
         m_ps->setTxFrequency(txHz);
 }
 
+// ANAN fork build 317: RF - IF of the transverter that carries `rfHz`, 0 for
+// the radio's own coverage (AnanXvtr.h). Everything above the registers stays
+// RF -- the slice, the pan, the spectrum's axis, the band memories; only what
+// the radio is told (NCOs, TX, band filters) is the IF.
+double Hl2Backend::xvtrOffsetHz(double rfHz) const noexcept
+{
+    const anan::Xvtr* x = anan::AnanXvtrStore::instance().forRf(rfHz, m_tuningMinHz, m_tuningMaxHz);
+    return x ? anan::AnanXvtrStore::offsetHz(*x) : 0.0;
+}
+
 std::uint32_t Hl2Backend::ncoCommandHz(double trueHz) const noexcept
 {
-    return Hl2FreqCal::ncoCommandHz(trueHz, m_freqCalScale);
+    // Build 317: on a transverter band the register gets the IF.
+    return Hl2FreqCal::ncoCommandHz(trueHz - xvtrOffsetHz(trueHz), m_freqCalScale);
 }
 
 double Hl2Backend::dspShiftHz(double sliceTrueHz, double ncoTrueHz) const noexcept
 {
-    return Hl2FreqCal::dspShiftHz(sliceTrueHz, ncoCommandHz(ncoTrueHz),
+    // Build 317: the slice in the NCO's IF terms, so the shift stays slice -
+    // NCO (the transverter's offset cancels).
+    return Hl2FreqCal::dspShiftHz(sliceTrueHz - xvtrOffsetHz(ncoTrueHz), ncoCommandHz(ncoTrueHz),
                                   m_freqCalScale);
 }
 
@@ -11510,7 +11604,9 @@ void Hl2Backend::pushAnanTunedFrequencies()
             m_ananTunedPushed.resize(ddc + 1, 0);
         // The slice frequency (the filter's carrier), true RF: the band edges
         // are true RF too, so no frequency calibration here.
-        const auto hz = static_cast<std::uint32_t>(std::max(0.0, std::round(r->sliceFreqHz)));
+        // Build 317: on a transverter band, the IF the filters see.
+        const double ifHz = r->sliceFreqHz - xvtrOffsetHz(r->sliceFreqHz);
+        const auto hz = static_cast<std::uint32_t>(std::max(0.0, std::round(ifHz)));
         if (hz == m_ananTunedPushed[ddc])
             continue;
         m_ananTunedPushed[ddc] = hz;
@@ -11547,8 +11643,8 @@ void Hl2Backend::applyBandFilter(const char* reason)
     bool spanned = false;
     for (std::size_t i = 0; i < m_rx.size(); ++i) {
         const int want = static_cast<int>(
-            transmitting ? m_hw.ocTransmitByteForHz(m_rx[i].sliceFreqHz)
-                         : m_hw.ocReceiveByteForHz(m_rx[i].sliceFreqHz));
+            transmitting ? m_hw.ocTransmitByteForHz(m_rx[i].sliceFreqHz - xvtrOffsetHz(m_rx[i].sliceFreqHz))
+                         : m_hw.ocReceiveByteForHz(m_rx[i].sliceFreqHz - xvtrOffsetHz(m_rx[i].sliceFreqHz)));   // build 317: IF
         if (oc < 0)
             oc = want;
         else if (want != oc)
@@ -11564,7 +11660,7 @@ void Hl2Backend::applyBandFilter(const char* reason)
         // receive-side convenience justifies that.
         if (transmitting) {
             const Receiver* txRx = rx(m_txDdc);
-            oc = txRx ? static_cast<int>(m_hw.ocTransmitByteForHz(txRx->sliceFreqHz))
+            oc = txRx ? static_cast<int>(m_hw.ocTransmitByteForHz(txRx->sliceFreqHz - xvtrOffsetHz(txRx->sliceFreqHz)))
                       : static_cast<int>(kOcNone);
         } else {
             oc = static_cast<int>(kOcNone);

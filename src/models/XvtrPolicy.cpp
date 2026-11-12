@@ -109,7 +109,22 @@ BandTuneAdmissibility evaluateBandTune(bool usesFlexCommandPlane,
         const double hz = targetMhz * 1.0e6;
         const double minMhz = tuningMinHz / 1.0e6;
         const double maxMhz = tuningMaxHz / 1.0e6;
-        if (tuningMaxHz > tuningMinHz && (hz < tuningMinHz || hz > tuningMaxHz)) {
+        // ANAN fork build 317: a backend with host-kept transverters (an
+        // openHPSDR radio) reaches a frequency beyond its own range through
+        // one whose IF falls inside it (rf_freq appears at if_freq).
+        bool viaTransverter = false;
+        if (tuningMaxHz > tuningMinHz && hz > tuningMaxHz) {
+            for (const auto& x : xvtrs) {
+                if (!x.isValid || x.rfFreqMhz <= 0.0 || x.ifFreqMhz <= 0.0)
+                    continue;
+                const double ifHz = hz - (x.rfFreqMhz - x.ifFreqMhz) * 1.0e6;
+                if (ifHz >= tuningMinHz && ifHz <= tuningMaxHz) {
+                    viaTransverter = true;
+                    break;
+                }
+            }
+        }
+        if (!viaTransverter && tuningMaxHz > tuningMinHz && (hz < tuningMinHz || hz > tuningMaxHz)) {
             BandTuneAdmissibility refused;
             // The LOG form: the numbers that decided it, in the units the
             // caller passed. The operator's sentence is composed once, in
