@@ -65,21 +65,21 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 265
+## Build 302
 
-Full notes: [docs/release-notes-build-265.md](docs/release-notes-build-265.md).
+Full notes: [docs/release-notes-build-302.md](docs/release-notes-build-302.md).
 
-- **DRM receiver** (Dream decoder, FDK-AAC audio): applet with sync lights, services, text,
-  slideshow and Journaline.
-- **Connection:** no hang on a radio still streaming to an old session; radios outside the
-  adapter's subnet driven by broadcasts; hang report with a minidump.
-- **Transmit:** a refused key (out of band, receive-only mode) changes nothing but the
-  message; steeper SSB transmit filter.
-- **ANAN-100D P1:** optional 7000-style filter control for modified radios.
-- **Waterfall brightness** slider; [+] rate button fixed; overlay panels close on an outside
-  click; native resolution under Windows scaling; status/title bar cleanup, UTC clock.
+- **Start-up:** volumes default to 1; the radio is found but started only on a click; the
+  window shows openHPSDR controls before a radio is connected.
+- **Radio type:** "Forcedly assign the radio" in Setup -> Radio (any board profile).
+- **Band filters per ADC**, WIDE on the panadapter when an ADC's bank is in bypass.
+- **AUTO ATT** after MicronSDR (absolute noise-floor target); noise-floor and AGC-gate lines on
+  the panadapter, the gate dragged as AGC-T.
+- **TCI:** unmirrored I/Q for skimmers, all Thetis audio formats.
+- **3D waterfall** rebuilt at full resolution with its own sliders; quick memories restore the
+  whole view.
 
-Earlier notes: [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Windows portable build
 

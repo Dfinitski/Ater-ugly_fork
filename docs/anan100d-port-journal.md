@@ -4649,6 +4649,12 @@ Auto AGC не менялся: он уже работал от полки плю�
 
 Файлы: Hl2Backend.cpp/.h, RadioModel.cpp/.h, ControlAvailabilityRegistry.cpp, MainWindow.cpp, RadioSetupDialog.cpp, RxApplet.cpp, VfoWidget.cpp, AnanUiState.h, ForkBuild.h (302).
 
+## 266. Релиз build 302 подготовлен (11.11.2026)
+
+- docs/release-notes-build-302.md: сборки 266–302 по темам (старт, тип радио, фильтры по АЦП, AUTO ATT и АРУ, TCI, панорама и водопад), с тем, что не проверено на радио. README.md: раздел «Build 265» заменён на «Build 302», build 265 добавлен в «Earlier notes».
+- Архив AetherSDR-ANAN-build302-win64-portable.zip: архив build 265 с exe сборки 302 (build\Desktop_Qt_6_12_0_MSVC2022_64bit_Release\AetherSDR.exe = Desktop\AetherSDR-Release\AetherSDR.exe, 11.11 20:36 местного, содержит «AnanLinesOnMigrated302», «AGC Gate %1 dBm/500 Hz»), README-build302.md вместо README-build265.md; верхняя папка AetherSDR-ANAN-build302; 90 записей, 154450301 байт, SHA-256 5b8446762c36dbacb2ce4b2d5df2f1a664893e23e3186a649adc75587afdc361. Сохранён в Desktop\AetherSDR-Release.
+- Релиз (тег build-302 на main) создаёт оператор в веб-интерфейсе GitHub; пуш тега запускает сборку AppImage.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
