@@ -1717,8 +1717,10 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
                 wf = SpectrumCoverage();
         }
         const std::vector<float> dbm = resample(bins);
-        if (ids->ddcIndex < 2 && !txOnAir && raw.size() == n)
-            ananNoiseLineStep(ids->ddcIndex, raw, rate, first, keep);
+        // Build 298: the floor from the spectrum as drawn (after the FFT
+        // average), as MicronSDR takes it from its smoothed spectrum.
+        if (ids->ddcIndex < 2 && !txOnAir && bins.size() == n)
+            ananNoiseLineStep(ids->ddcIndex, bins, rate, first, keep);
         emit spectrumFrameReady(ui, floatBytes(dbm), wf);
     });
 
@@ -10294,10 +10296,10 @@ void Hl2Backend::ananSyncUiState()
 // 1024, 18 Hz at 48 k / 4096), and a zoomed-out view keeps the PEAK of the
 // bins under each pixel. So the floor comes from the raw frame (before AVG
 // and before the display resampling):
-//  - build 297: the bins on screen (at least 1024), the 20th percentile of
-//    their power over -ln(0.8) -- the mean noise per bin (a noise-only bin
-//    is exponentially distributed), unmoved until signals fill 80 % of the
-//    view (MicronSDR's statistic; it was the median of the whole band);
+//  - builds 297/298: the bins on screen (at least 1024) of the spectrum as
+//    drawn (after the FFT average), their 20th percentile -- MicronSDR's
+//    floor; unmoved until signals fill 80 % of the view (it was the median
+//    of the whole band's raw frame);
 //  - the mean per bin is referred to 500 Hz: - 10 log10(1.5 rate / N)
 //    + 10 log10(500). That holds at any rate, FFT size or zoom.
 // The level is the ruler's (the panadapter's dBm, a tone reads its power):
@@ -10337,13 +10339,22 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
     hi = std::min(hi, n - edge);
     if (hi <= lo + 16)
         return;
-    std::vector<double> p;
-    p.reserve(hi - lo);
-    for (std::size_t i = lo; i < hi; ++i)
-        p.push_back(std::pow(10.0, 0.1 * static_cast<double>(rawDbfs[i])));
+    // Build 298 (operator, 11.11: "the line is drawn above the noise and
+    // reads the same as the S-meter, whose filter is 2.7 kHz -- that is
+    // wrong"). The log agreed: the line 2-3 dB under the S-meter in 2.8 kHz,
+    // where 500 Hz should be ~7.5 dB under it. The build 297 correction to
+    // the MEAN noise power (+6.5 dB over the 20th percentile) put the line
+    // above the noise as it is drawn and read. MicronSDR applies none: its
+    // floor is the 20th percentile of the SMOOTHED spectrum it draws. So:
+    // the spectrum after the FFT average (the caller passes the averaged
+    // bins, as drawn), the 20th percentile of the bins on screen, as is.
+    std::vector<float> p(rawDbfs.begin() + static_cast<std::ptrdiff_t>(lo),
+                         rawDbfs.begin() + static_cast<std::ptrdiff_t>(hi));
     const std::size_t k = p.size() / 5;
     std::nth_element(p.begin(), p.begin() + static_cast<std::ptrdiff_t>(k), p.end());
-    const double meanPerBin = p[k] / -std::log(0.8);
+    if (!std::isfinite(p[k]))
+        return;
+    const double meanPerBin = std::pow(10.0, 0.1 * static_cast<double>(p[k]));
     if (!(meanPerBin > 0.0))
         return;
     // Kept WITHOUT the meter's calibration (AUTO ATT works on differences);
