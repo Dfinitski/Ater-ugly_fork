@@ -236,18 +236,9 @@ void BandStackPanel::rebuildLayout()
         auto* btn = new QPushButton(m_scrollArea->widget());
         btn->setFixedSize(72, 23);   // build 252: 32 -> 26; build 269: -10 % -> 23
         btn->setText(QString::number(bm.entry.frequencyMhz, 'f', 3));
-        QString tip = QString("%1 MHz  %2  %3")
-            .arg(bm.entry.frequencyMhz, 0, 'f', 6)
-            .arg(bm.entry.mode)
-            .arg(bm.entry.rxAntenna);
-        // Build 269: the view the button restores.
-        if (bm.entry.sampleRateHz > 0)
-            tip += QString("\nRate %1 kHz").arg(bm.entry.sampleRateHz / 1000);
-        if (bm.entry.panBandwidthMhz > 0.0)
-            tip += QString("\nPan %1 MHz, span %2 kHz")
-                       .arg(bm.entry.panCenterMhz, 0, 'f', 4)
-                       .arg(bm.entry.panBandwidthMhz * 1000.0, 0, 'f', 1);
-        btn->setToolTip(tip);
+        // Build 311 (operator, 12.11: "hovering a quick-memory button opens
+        // a black empty window -- the tooltip; remove them, not needed"). No
+        // tooltip on the memory buttons.
 
         QColor bg = bm.color.darker(130);
         // Build 281 (operator, 11.11): text one size larger, 11 -> 12 px.
