@@ -23,7 +23,16 @@ BandStackPanel::BandStackPanel(QWidget* parent)
 {
     theme::setContainer(this, QStringLiteral("panel/bandStack"));
     setFixedWidth(80);
-    AetherSDR::ThemeManager::instance().applyStyleSheet(this, "background: {{color.background.0}};");
+    // Build 313 (operator, 12.11: the panel's tooltips were black boxes, "all
+    // our tooltips are black on yellow -- bring these to the same standard").
+    // A style sheet with no selector applies to the panel AND everything in
+    // it -- including the tooltips its buttons show, which took the dark
+    // background with their black text. The background is now the panel's
+    // own (by object name); its tooltips are the application's.
+    setObjectName(QStringLiteral("bandStackPanel"));
+    setAttribute(Qt::WA_StyledBackground, true);
+    AetherSDR::ThemeManager::instance().applyStyleSheet(
+        this, "QWidget#bandStackPanel { background: {{color.background.0}}; }");
 
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(4, 4, 4, 4);
@@ -48,6 +57,10 @@ BandStackPanel::BandStackPanel(QWidget* parent)
     m_buttonLayout->addStretch(1);  // push buttons to top
 
     m_scrollArea->setWidget(scrollContent);
+    // Build 313: the viewport and the content no longer get the panel's
+    // background through the selector-less rule -- let them show it.
+    m_scrollArea->viewport()->setAutoFillBackground(false);
+    scrollContent->setAutoFillBackground(false);
     root->addWidget(m_scrollArea, 1);
 
     // Bottom button row: [Clear All] [+] [Settings]
@@ -254,15 +267,7 @@ void BandStackPanel::rebuildLayout()
         btn->setStyleSheet(
             QString("QPushButton { background: %1; border: 1px solid %2; "
                     "border-radius: 3px; color: #ffffff; font-size: 12px; font-weight: bold; }"
-                    "QPushButton:hover { background: %3; }"
-                    // Build 312 (operator, 12.11: the tooltip was a black
-                    // empty box). A tooltip takes its style from the widget's
-                    // style sheet, and this one had no QToolTip rule, so the
-                    // tip fell back to a palette with dark text on the dark
-                    // base. Its own colours, as PropDashboardDialog's.
-                    "QToolTip { color: #e8f4fb; background-color: #102131; "
-                    "border: 1px solid #355166; padding: 4px 6px; font-size: 12px; "
-                    "font-weight: normal; }")
+                    "QPushButton:hover { background: %3; }")
                 .arg(bg.name(), bm.color.name(), bm.color.name()));
 
         btn->setContextMenuPolicy(Qt::CustomContextMenu);
