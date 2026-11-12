@@ -137,6 +137,7 @@ void DrmApplet::buildCompact(QVBoxLayout* root)
         m_lights[i] = new QLabel(QLatin1String(kLightNames[i]));
         m_lights[i]->setAlignment(Qt::AlignCenter);
         m_lights[i]->setMinimumWidth(30);
+        m_lights[i]->setFixedHeight(16);   // build 305
         m_lights[i]->setToolTip(QLatin1String(kLightTips[i]));
         lights->addWidget(m_lights[i], 1);
     }
@@ -147,6 +148,15 @@ void DrmApplet::buildCompact(QVBoxLayout* root)
     sig->setSpacing(8);
     m_snr = makeLabel(QString(), kValueLabel);
     m_mode = makeLabel(QString(), kDimLabel);
+    // Build 305 (operator, 11.11: "when FAC turns green the window redraws
+    // and jumps"): no row may change the applet's size as the decoder's
+    // state comes and goes. Text widths do not count (Ignored), and every
+    // row has a fixed height whether it holds text or not.
+    for (QLabel* l : {m_snr, m_mode}) {
+        l->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        l->setFixedHeight(16);
+    }
+    m_snr->setMinimumWidth(80);
     sig->addWidget(m_snr);
     sig->addWidget(m_mode, 1);
     root->addLayout(sig);
@@ -159,6 +169,7 @@ void DrmApplet::buildCompact(QVBoxLayout* root)
     // line, no wrap.
     m_label = makeLabel(QString(), kStationLabel);
     m_label->setWordWrap(false);
+    m_label->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     m_label->setFixedHeight(22);
     root->addWidget(m_label);
 
@@ -176,18 +187,28 @@ void DrmApplet::buildCompact(QVBoxLayout* root)
         svc->addWidget(m_serviceBtns[i], 1);
     }
     root->addLayout(svc);
+    // Build 305: fixed rows -- the service line one line, the text message
+    // three (DRM text messages are up to 128 characters), the note two.
     m_serviceInfo = makeLabel(QString(), kDimLabel);
-    m_serviceInfo->setWordWrap(true);
+    m_serviceInfo->setWordWrap(false);
+    m_serviceInfo->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    m_serviceInfo->setFixedHeight(16);
     root->addWidget(m_serviceInfo);
 
     // Text message
     m_text = makeLabel(QString(), kValueLabel);
     m_text->setWordWrap(true);
     m_text->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_text->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    m_text->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    m_text->setFixedHeight(46);
     root->addWidget(m_text);
 
     m_note = makeLabel(QString(), kHintLabel);
     m_note->setWordWrap(true);
+    m_note->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    m_note->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    m_note->setFixedHeight(30);
     root->addWidget(m_note);
 }
 
@@ -403,8 +424,13 @@ void DrmApplet::refresh()
     const bool live = m_enabled && st.running;
 
     const DrmStatus::Light lights[6] = {st.io, st.timeSync, st.freqSync, st.fac, st.sdc, st.msc};
-    for (int i = 0; i < 6; ++i)
-        m_lights[i]->setStyleSheet(lightStyle(live ? lights[i] : DrmStatus::Light::Off));
+    // Build 305: restyled only when a light changes (a style sheet set every
+    // 250 ms re-polishes the label each time).
+    for (int i = 0; i < 6; ++i) {
+        const QString style = lightStyle(live ? lights[i] : DrmStatus::Light::Off);
+        if (m_lights[i]->styleSheet() != style)
+            m_lights[i]->setStyleSheet(style);
+    }
 
     if (live && st.robustness.isLetterOrNumber()) {
         m_snr->setText(QStringLiteral("SNR %1 dB").arg(st.snrDb, 0, 'f', 1));
@@ -467,10 +493,8 @@ void DrmApplet::refresh()
     } else {
         m_serviceInfo->setText(QString());
     }
-    m_serviceInfo->setVisible(!m_serviceInfo->text().isEmpty());
 
-    m_text->setText(live ? st.textMessage : QString());
-    m_text->setVisible(!m_text->text().isEmpty());
+    m_text->setText(live ? st.textMessage : QString());   // build 305: the row stays
 
     QString note;
     if (!m_decoderAvailable)
@@ -479,8 +503,7 @@ void DrmApplet::refresh()
         note = QStringLiteral("Tune a receiver to the centre of a DRM station and press DRM On.");
     else
         note = st.note;
-    m_note->setText(note);
-    m_note->setVisible(!note.isEmpty());
+    m_note->setText(note);   // build 305: the row stays
 
     if (!m_floating)
         return;
