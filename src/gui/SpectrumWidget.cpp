@@ -10528,6 +10528,15 @@ bool SpectrumWidget::spectrumDefaultsToCrosshairAt(const QPoint& localPos) const
     if (y < 0 || y >= specH || mx < 0 || mx >= width() - DBM_STRIP_W) {
         return false;
     }
+    // Build 300 (operator, 11.11: "the arrow is set, but the cross is drawn
+    // over it"): the per-frame cursor check in renderGpuFrame put the cross
+    // back over the Auto AGC line's up/down arrow every frame. Not here.
+    {
+        const int ya = ananAgcLineY(specH);
+        if (ya >= 0 && std::abs(y - ya) <= 4) {
+            return false;
+        }
+    }
 
     for (const QRect& rect : m_offScreenRects) {
         if (!rect.isNull() && rect.contains(localPos)) {

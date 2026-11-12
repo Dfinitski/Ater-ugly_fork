@@ -4608,6 +4608,16 @@ Auto AGC не менялся: он уже работал от полки плю�
 
 Файлы: SpectrumWidget.cpp/.h, RadioSetupDialog.cpp, AnanUiState.h, ForkBuild.h (299).
 
+## 263. Сборка 300 — над жёлтой линией АРУ не рисуется крест
+
+Оператор: «указатель-стрелка ставится, но поверх него всё равно рисуется крест».
+
+**Причина.** `renderGpuFrame` каждый кадр сам проверяет курсор под мышью и, если `spectrumDefaultsToCrosshairAt()`, ставит крест. Поэтому двойная стрелка над линией (её ставит `mouseMoveEvent`) сразу заменялась.
+
+**Исправлено.** `spectrumDefaultsToCrosshairAt()` возвращает false в ±4 px от линии Auto AGC (`ananAgcLineY`), и кадровая проверка курсор там не трогает.
+
+Файлы: SpectrumWidget.cpp, ForkBuild.h (300).
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
