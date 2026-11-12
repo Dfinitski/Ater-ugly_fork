@@ -1925,17 +1925,21 @@ void MainWindow::wireRadioModel()
                 m_panApplet->spectrumWidget()->ananStartUnkeyTrace();
             }
         }
+        // Build 315: in DUP the receiver automatics still hold for the over.
+        const bool dupHold = tx && ananDuplex;
         for (auto* pan : m_radioModel.panadapters()) {
             if (auto* sw = m_panStack ? m_panStack->spectrum(pan->panId()) : nullptr) {
                 if (panTx)
                     sw->setTxFixedDbmRange(ananTxScale);
                 sw->setTransmitting(panTx);
+                sw->setDuplexTxHold(dupHold);
             }
         }
         if (!m_panStack && m_panApplet) {
             if (panTx)
                 m_panApplet->spectrumWidget()->setTxFixedDbmRange(ananTxScale);
             m_panApplet->spectrumWidget()->setTransmitting(panTx);
+            m_panApplet->spectrumWidget()->setDuplexTxHold(dupHold);
         }
         // S-Meter: use raw interlock state so Level/Compression modes work
         // during VOX/hardware CW without the effectiveTx power threshold (#877)

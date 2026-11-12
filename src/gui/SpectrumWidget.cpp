@@ -3913,7 +3913,7 @@ bool SpectrumWidget::flexFloorClipAwaitsRecovery() const
 
 bool SpectrumWidget::requestFlexRadioHeadroom(qint64 nowMs)
 {
-    if (!flexHeadroomRecoveryAllowed() || m_bins.isEmpty() || m_transmitting
+    if (!flexHeadroomRecoveryAllowed() || m_bins.isEmpty() || m_transmitting || m_dupTxHold
         || flexDssFftScaleSettling()
         || isDraggingDbmScale()
         || m_pendingDbmRangeEcho
@@ -4007,7 +4007,7 @@ void SpectrumWidget::syncDssRangeFromFreshZoomFrame(const QVector<float>& bins)
         return;
     }
     if (!m_dssZoomFloorSync.waitingForFreshFrame()
-        || m_transmitting || m_pendingDbmRangeEcho || bins.isEmpty()) {
+        || m_transmitting || m_dupTxHold || m_pendingDbmRangeEcho || bins.isEmpty()) {
         return;
     }
 
@@ -4190,7 +4190,7 @@ bool SpectrumWidget::captureNoiseFloorTargetFromCurrentScale(bool notify, bool p
 
 bool SpectrumWidget::updateNoiseFloorBaseline(const QVector<float>& bins, bool forceBaseline)
 {
-    if (!m_noiseFloorEnable || m_transmitting || bins.isEmpty()) return false;
+    if (!m_noiseFloorEnable || m_transmitting || m_dupTxHold || bins.isEmpty()) return false;
 
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     if (m_pendingDbmRangeEcho
@@ -5150,7 +5150,7 @@ void SpectrumWidget::setAutoSqlMarginDb(int dBm)
 
 void SpectrumWidget::updateAutoSquelchFromBins(const QVector<float>& binsDbm)
 {
-    if (!m_autoSquelchEnabled || m_transmitting || binsDbm.isEmpty()) {
+    if (!m_autoSquelchEnabled || m_transmitting || m_dupTxHold || binsDbm.isEmpty()) {
         return;
     }
 
@@ -8612,6 +8612,32 @@ void SpectrumWidget::reprojectBinsToFrozenTxDbmRange(QVector<float>& bins) const
     }
 }
 
+// ANAN fork build 315 (operator, 12.11: "transmit blocks the receivers'
+// automatics, which is right, but not in DUP mode -- it must there too"). In
+// DUP the pans are never told about the over (they keep showing the
+// receivers, MainWindow_Session), so everything setTransmitting() pauses
+// kept running on spectra of our own transmitter: the noise-floor detector,
+// auto squelch, the waterfall's auto black level and blanker, headroom
+// recovery. This holds those -- and only those -- for the over; the
+// display goes on as in DUP.
+void SpectrumWidget::setDuplexTxHold(bool hold)
+{
+    // The receive path still carries the over for ~180-285 ms after unkey
+    // (Hl2Backend: m_sinceUnkey); the hold ends 500 ms after it, as the
+    // backend's AUTO ATT does.
+    const int gen = ++m_dupTxHoldGen;
+    if (hold) {
+        m_dupTxHold = true;
+        return;
+    }
+    if (!m_dupTxHold)
+        return;
+    QTimer::singleShot(500, this, [this, gen] {
+        if (gen == m_dupTxHoldGen)
+            m_dupTxHold = false;
+    });
+}
+
 void SpectrumWidget::setTransmitting(bool tx)
 {
     if (tx && !m_transmitting) {
@@ -9423,7 +9449,7 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
     // Client-side auto-black: track the noise floor from tile data and adjust
     // the black threshold to sit just above it. This replaces the radio's
     // auto_black which targets SmartSDR's different rendering engine.
-    if (m_wfAutoBlack && !m_transmitting && m_panBinsAbsolute && binsIntensity.size() >= 64) {
+    if (m_wfAutoBlack && !m_transmitting && !m_dupTxHold && m_panBinsAbsolute && binsIntensity.size() >= 64) {
         // ANAN fork build 273 (operator, 11.11: "the waterfall's black level
         // changes with zoom; the floor must be taken over the whole pan, not
         // only what is shown"). The row already is the whole captured band
@@ -9472,7 +9498,7 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
             const float target = noiseCount > 0 ? noiseSum / noiseCount : mean;
             m_autoBlackThresh = 0.95f * m_autoBlackThresh + 0.05f * target;
         }
-    } else if (m_wfAutoBlack && !m_transmitting) {
+    } else if (m_wfAutoBlack && !m_transmitting && !m_dupTxHold) {
         // Estimate noise floor from incoming tiles using a two-pass trimmed mean.
         // Freeze during TX; threshold is restored to pre-TX value on TX→RX transition.
         // Pass 1: compute overall mean (sampled every 8th bin for speed).
@@ -9592,7 +9618,7 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
     // TX-era row) for ~10–18 s while baseline slowly re-converges —
     // visible as a frozen, striped waterfall.  Freezing the ring across TX
     // means post-TX rows are compared against the pre-TX baseline instead.
-    if (m_wfBlankerEnabled && !m_transmitting) {
+    if (m_wfBlankerEnabled && !m_transmitting && !m_dupTxHold) {
         // The row's level: the mean for a tile (#277); for an absolute dB row
         // (ANAN: one unaveraged FFT frame) the median, i.e. the noise floor,
         // which strong signals do not move and a broadband impulse lifts

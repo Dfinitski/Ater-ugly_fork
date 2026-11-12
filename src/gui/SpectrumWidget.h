@@ -989,6 +989,8 @@ public:
     void setSpotBgColor(const QColor& c) { m_spotBgColor = c; markOverlayDirty(); }
     void setSpotBgOpacity(int pct) { m_spotBgOpacity = pct; markOverlayDirty(); }
     void setTransmitting(bool tx);
+    // Build 315: DUP over -- the receiver automatics hold, the display does not.
+    void setDuplexTxHold(bool hold);
     // ANAN-100D port: while transmitting the panadapter shows a fixed
     // -60 .. +10 dBm scale; the receive scale comes back on unkey.
     void setTxFixedDbmRange(bool on) { m_txFixedRange = on; }
@@ -1787,6 +1789,8 @@ private:
     QVector<float> m_kiwiSdrSquelchMeterSamples;
     QTimer* m_squelchLineHideTimer{nullptr};
     QTimer* m_ananOverlayPoll{nullptr};   // ANAN noise line / overload warning -> overlay dirty
+    bool m_dupTxHold{false};   // build 315: a DUP over is on the air
+    int m_dupTxHoldGen{0};
     QString m_ananOverlayStateSig;        // build 308: overload/visibility part
     QElapsedTimer m_ananOverlayLineClock; // build 308: line-driven repaints <= 2/s
     QString m_ananOverlaySig; // auto-hides yellow line 3 s after enable/adjust (manual SQL only)
