@@ -67,6 +67,20 @@
 namespace AetherSDR {
 
 namespace {
+
+// ANAN fork build 310 (operators, 12.11: "FreeDV needs USB or LSB depending
+// on the band"). FreeDV follows the analog SSB convention (freedv.org,
+// Getting Started: "On bands below 10 MHz, LSB is used for FreeDV. On 10MHz
+// and above, USB is used."), so a DV station can be worked on the same
+// sideband as voice. 60 m is USB by regulation, as for voice (the whole
+// 5.25-5.45 MHz span, which holds every country's 60 m allocation).
+QString freeDvSidebandFor(double mhz)
+{
+    if (mhz >= 5.25 && mhz <= 5.45)
+        return QStringLiteral("USB");
+    return mhz < 10.0 ? QStringLiteral("LSB") : QStringLiteral("USB");
+}
+
 struct DecoderInputHint {
     QString text;
     QString reason;
@@ -943,14 +957,26 @@ void MainWindow::activateLocalFdv(int sliceId)
     m_localFdvLastCallSerial = st.rxCallsignSerial;
     m_localFdvLastLabel = st.label();
 
-    // FreeDV is upper-sideband audio both ways, and this slice transmits it.
+    // Build 310: FreeDV rides the band's SSB sideband (freeDvSidebandFor:
+    // LSB below 10 MHz except 60 m, USB above), both ways; this slice
+    // transmits it. The modem works on the demodulated audio, which either
+    // sideband delivers the right way up. Tuning to another band moves the
+    // sideband with it; any other mode than USB / LSB ends FreeDV.
     if (!s->isTxSlice())
         s->setTxSlice(true);
-    if (s->mode() != QLatin1String("USB"))
-        s->setMode(QStringLiteral("USB"));
+    if (const QString sb = freeDvSidebandFor(s->frequency()); s->mode() != sb)
+        s->setMode(sb);
     m_localFdvModeConn = connect(s, &SliceModel::modeChanged, this, [this](const QString& mode) {
-        if (mode != QLatin1String("USB"))
+        if (mode != QLatin1String("USB") && mode != QLatin1String("LSB"))
             deactivateRADE();
+    });
+    m_localFdvFreqConn = connect(s, &SliceModel::frequencyChanged, this, [this, sliceId](double mhz) {
+        auto* sl = m_radioModel.slice(sliceId);
+        if (!m_localFdv || !sl)
+            return;
+        const QString sb = freeDvSidebandFor(mhz);
+        if (sl->mode() != sb && (sl->mode() == QLatin1String("USB") || sl->mode() == QLatin1String("LSB")))
+            sl->setMode(sb);
     });
 
     if (auto* sw = spectrumForSlice(s)) {
@@ -1042,6 +1068,7 @@ void MainWindow::deactivateLocalFdv()
         release.release();
     }
     disconnect(m_localFdvModeConn);
+    disconnect(m_localFdvFreqConn);   // build 310
     if (m_localFdvTimer)
         m_localFdvTimer->stop();
     if (auto* s = m_radioModel.slice(sliceId)) {

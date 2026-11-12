@@ -2146,6 +2146,7 @@ private:
     TxCoordinator::Producer m_codecMicTxProducer;
     QTimer* m_localFdvTimer{nullptr};
     QMetaObject::Connection m_localFdvModeConn;
+    QMetaObject::Connection m_localFdvFreqConn;   // build 310: sideband follows the band
     TransmitModel::PttRelease m_localFdvRelease;
     bool m_localFdvEooPending{false};
     QElapsedTimer m_localFdvEooClock;
