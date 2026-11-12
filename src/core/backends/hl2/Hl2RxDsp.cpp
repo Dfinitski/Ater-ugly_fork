@@ -509,6 +509,14 @@ void Hl2RxDsp::applyDrm(std::size_t frames)
     // In: the slice's filtered I/Q (L = I, R = Q). Out: decoded audio, after
     // ~0.8 s of it is buffered (Dream delivers audio in 400 ms super-frame
     // blocks); silence while it is not, and re-buffer after a gap.
+    // Build 303 (operator, 11.11: "had to tick Flip Spectrum"). The chain
+    // runs on the HPSDR wire, which puts a signal above the NCO at negative
+    // frequency (the demodulators are set for it; the spectrum takes the
+    // conjugate -- as the TCI I/Q tap since build 266). DRM's output is that
+    // I/Q as is, so it went to Dream mirrored. Conjugated here: Flip Spectrum
+    // off is the normal orientation.
+    for (std::size_t k = 0; k < frames; ++k)
+        m_stereo[2 * k + 1] = -m_stereo[2 * k + 1];
     m_drm->pushIq(m_stereo.data(), frames);
     const auto prime = static_cast<std::size_t>(m_config.audioSampleRateHz) * 8 / 10;
     if (!m_drmPrimed && m_drm->audioFramesAvailable() >= prime)

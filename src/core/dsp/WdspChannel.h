@@ -385,6 +385,8 @@ public:
     // already in flight. Control-path work, guarded exactly like setMode(); it
     // must not be called from the processIq() callback.
     bool setAgc(int agcMode, double maximumGainDb) noexcept;
+    // Build 303: the AGC mode WDSP runs -- off (0) in DRM mode.
+    [[nodiscard]] int effectiveAgcMode(int agcMode) const noexcept;
     // The AGC's gain in mode 0 (off), in dB; xwcpagc() ignores it in every
     // other mode, so it may be set any time. Receive only; refuses a
     // non-finite value or a racing control operation.

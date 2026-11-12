@@ -694,6 +694,12 @@ bool WdspChannel::setMode(Mode mode) noexcept
             // to the new family's stage and stops the old one — see
             // setSquelch() in the header.
             applySquelchLocked(mode);
+            // Build 303: into or out of DRM, the AGC goes off or comes back
+            // (effectiveAgcMode).
+            if ((mode == Mode::Drm) != (m_config.mode == Mode::Drm))
+                applyRxAgc(m_channelId, mode == Mode::Drm ? 0 : m_config.agcMode,
+                           m_config.maximumAgcGainDb, m_config.agcSlopeDb,
+                           m_config.agcFixedGainDb);
         } else {
             SetTXAMode(m_channelId, wdspMode(mode));
         }
@@ -944,6 +950,17 @@ WdspChannel::AppliedSquelch WdspChannel::appliedSquelch() const
     return m_appliedSquelch;
 }
 
+// ANAN fork build 303 (operator, 11.11: a DRM station -- FAC locks, SDC stays
+// red, no sound). DRM is OFDM: QAM symbols whose amplitude carries the data,
+// on a noise-like envelope. The AGC (2 ms attack) rode that envelope and
+// modulated the symbols' amplitude, which 4-QAM FAC survives and 16/64-QAM
+// SDC / MSC do not. DrmEngine has its own slow (2 s) input gain, so in DRM
+// mode the AGC is off: the fixed gain only.
+int WdspChannel::effectiveAgcMode(int agcMode) const noexcept
+{
+    return m_config.mode == Mode::Drm ? 0 : agcMode;
+}
+
 bool WdspChannel::setAgc(int agcMode, double maximumGainDb) noexcept
 {
     // RX-only: SetRXAAGC* has no transmit counterpart, and a TX channel has no
@@ -954,7 +971,7 @@ bool WdspChannel::setAgc(int agcMode, double maximumGainDb) noexcept
     }
     {
         const std::scoped_lock setupLock(g_setupMutex);
-        applyRxAgc(m_channelId, agcMode, maximumGainDb,
+        applyRxAgc(m_channelId, effectiveAgcMode(agcMode), maximumGainDb,
                    m_config.agcSlopeDb, m_config.agcFixedGainDb);
     }
     m_config.agcMode = agcMode;
@@ -1744,7 +1761,7 @@ bool WdspChannel::open() noexcept
             SetRXAAMDSBMode(m_channelId, 0);
             SetRXAAMDFadeLevel(m_channelId, 1);
         }
-        applyRxAgc(m_channelId, m_config.agcMode, m_config.maximumAgcGainDb,
+        applyRxAgc(m_channelId, effectiveAgcMode(m_config.agcMode), m_config.maximumAgcGainDb,
                    m_config.agcSlopeDb, m_config.agcFixedGainDb);
         // Filter length / phase mode. RXASetNC internally stops and restarts
         // the channel (SetChannelState 0 then restore), so it is control-path
