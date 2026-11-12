@@ -106,6 +106,15 @@ public:
     double panShiftDb[2] = {0.0, 0.0};
     double agcAutoFloorDbm[2] = {std::numeric_limits<double>::quiet_NaN(),
                                  std::numeric_limits<double>::quiet_NaN()};
+    // Build 301, written by the backend: the AGC gate as WDSP holds it, in
+    // dBm / 500 Hz on the panadapter's ruler (NaN = AGC off / unknown), when
+    // it was written, gate + gain (constant for the filter and rate: a gate
+    // turns into a gain), and the gain of AGC-T 0 (+0.6 dB per unit).
+    double agcGateDbm[2] = {std::numeric_limits<double>::quiet_NaN(),
+                            std::numeric_limits<double>::quiet_NaN()};
+    qint64 agcGateAtMs[2] = {0, 0};
+    double agcGatePlusGainDb[2] = {0.0, 0.0};
+    double agcGainAtT0Db[2] = {0.0, 0.0};
     [[nodiscard]] static QString agcAutoKey(int rx)
     {
         return rx == 1 ? QStringLiteral("AnanRx2AgcAuto") : QStringLiteral("AnanRx1AgcAuto");

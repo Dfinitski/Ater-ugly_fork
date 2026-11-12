@@ -10379,6 +10379,7 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
         m_ananShownFloorOk[rx] = false;
     // The Auto AGC follows the same floor.
     ananAutoAgcStep(rx);
+    ananPublishAgcGate(rx);
     ananOwnNoiseCaptureStep(rx, t);
 
     // A check against the S-meter (Average, no options): in a 500 Hz filter
@@ -10611,6 +10612,40 @@ double Hl2Backend::agcCeilingFor(const Receiver& r) const
 // ADC (ananNoiseLineStep), referred back to a 1024-point Hanning bin of the
 // DDC rate -- what WDSP's per-bin threshold means; a bin-centred tone reads
 // kToneGainDb high in Hl2Spectrum, so that is taken off to get WDSP's dBFS.
+namespace {
+const double kAnanAgcOutTargetDb = 20.0 * std::log10(1.0 * (1.0 - std::exp(-4.0)) * 0.9999);
+constexpr double kAnanAgcVarGainDb = 35.0 / 10.0;   // 20 log10(10^(35 / 200))
+}
+
+// ANAN fork build 301 (operator, 11.11: "the gate and the target of the
+// regulation are different things, separate them"): the AGC GATE as it is,
+// whatever set it -- the inverse of the law in ananAutoAgcStep() applied to
+// the gain WDSP actually holds (agcCeilingFor: Auto's, or the manual AGC-T
+// law, after the 0..120 dB clamp), on the panadapter's ruler (dBm / 500 Hz
+// at the ADC, the meter's calibration). The level of noise whose power in
+// the filter equals the knee (WDSP GetRXAAGCThresh's convention). In Auto
+// it lands on floor + NF+ unless the gain is clamped. Published with
+// gate + gain, so the panadapter can turn a dragged gate back into AGC-T.
+void Hl2Backend::ananPublishAgcGate(int rx)
+{
+    auto& ui = anan::AnanUiState::instance();
+    Receiver* r = this->rx(rx);
+    if (!r || m_sampleRateHz <= 0
+        || r->agcMode.compare(QStringLiteral("off"), Qt::CaseInsensitive) == 0) {
+        ui.agcGateDbm[rx] = std::numeric_limits<double>::quiet_NaN();
+        return;
+    }
+    const double bwHz = std::max(50.0, double(std::abs(r->filterHighHz - r->filterLowHz)));
+    const double noiseOffsetDb = 10.0 * std::log10(bwHz * 1024.0 / double(m_sampleRateHz));
+    const double gatePlusGainDb = kAnanAgcOutTargetDb - kAnanAgcVarGainDb - noiseOffsetDb
+                                  + m_dbRef.offsetDb() + Hl2Spectrum::kToneGainDb
+                                  + ananRbwTo500HzDb(double(m_sampleRateHz), 1024) + ananDisplayCalDb();
+    ui.agcGatePlusGainDb[rx] = gatePlusGainDb;
+    ui.agcGainAtT0Db[rx] = m_dbRef.agcCeilingDb(0);
+    ui.agcGateDbm[rx] = gatePlusGainDb - agcCeilingFor(*r);
+    ui.agcGateAtMs[rx] = QDateTime::currentMSecsSinceEpoch();
+}
+
 void Hl2Backend::ananAutoAgcStep(int rx)
 {
     Receiver* r = this->rx(rx);
@@ -10635,8 +10670,8 @@ void Hl2Backend::ananAutoAgcStep(int rx)
     if (m_ananAgcClock[rx].isValid() && m_ananAgcClock[rx].elapsed() < 500)
         return;
     m_ananAgcClock[rx].restart();
-    static const double kOutTargetDb = 20.0 * std::log10(1.0 * (1.0 - std::exp(-4.0)) * 0.9999);
-    static const double kVarGainDb = 35.0 / 10.0;   // 20 log10(10^(35 / 200))
+    const double kOutTargetDb = kAnanAgcOutTargetDb;
+    const double kVarGainDb = kAnanAgcVarGainDb;
     const double bwHz = std::max(50.0, double(std::abs(r->filterHighHz - r->filterLowHz)));
     const double noiseOffsetDb = 10.0 * std::log10(bwHz * 1024.0 / double(m_sampleRateHz));
     const double floorBinDbm = m_ananShownFloor[rx] - ananRbwTo500HzDb(double(m_sampleRateHz), 1024);

@@ -5491,6 +5491,25 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(menu, &SpectrumOverlayMenu::antennaChoiceRefused,
             this, &MainWindow::announceAntennaChoiceRefused);
 
+    // ANAN fork build 301: the manual AGC gate dragged on the panadapter is
+    // the AGC-T slider of the pan's slice (the active one if it is on this
+    // pan, else the pan's first).
+    connect(sw, &SpectrumWidget::ananAgcThresholdRequested,
+            this, [this, applet](int value) {
+        if (!applet)
+            return;
+        const QString panId = applet->panId();
+        SliceModel* target = nullptr;
+        if (SliceModel* a = activeSlice(); a && a->panId() == panId)
+            target = a;
+        for (SliceModel* s : m_radioModel.slices()) {
+            if (!target && s && s->panId() == panId)
+                target = s;
+        }
+        if (target && target->agcThreshold() != value)
+            target->setAgcThreshold(value);
+    });
+
     // ── Slice marker clicks ──────────────────────────────────────────────
     connect(sw, &SpectrumWidget::sliceClicked,
             this, &MainWindow::setActiveSlice);

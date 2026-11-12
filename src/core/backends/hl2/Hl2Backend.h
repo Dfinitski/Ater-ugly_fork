@@ -543,6 +543,7 @@ private:
     // AGC follows the noise floor (AnanUiState::agcAuto, 04.11): every 500 ms
     // on receive the ceiling is set from the floor + offset and the filter.
     void ananAutoAgcStep(int rx);
+    void ananPublishAgcGate(int rx);   // build 301
     QElapsedTimer m_ananAgcClock[2];
     // ANAN-100D port: per-receiver attenuation and the ADC <-> attenuator
     // rule (AnanUiState.h): RX1 owns its ADC's attenuator; RX2 owns its own

@@ -3489,13 +3489,14 @@ QWidget* RadioSetupDialog::buildRxTab()
         connect(show, &QCheckBox::toggled, this,
                 [](bool on) { AetherSDR::anan::AnanUiState::instance().setShowNoiseLine(on); });
         gv->addWidget(show);
-        auto* showAgc = new QCheckBox("Show the Auto AGC level (noise floor + NF+)");
+        auto* showAgc = new QCheckBox("Show the AGC gate");
         showAgc->setObjectName(QStringLiteral("ananShowAgcLine"));
         showAgc->setChecked(ui.showAgcLine);
         showAgc->setToolTip(QStringLiteral(
-            "Yellow dashed line, while Auto AGC is on: the signal noise floor + NF+, the level\n"
-            "Auto AGC is set from. Drag it with the mouse to change NF+ (the AGC NF+ slider\n"
-            "follows)."));
+            "Yellow dashed line: the AGC gate as the receiver holds it, in dBm / 500 Hz.\n"
+            "Signals above it are levelled by the AGC; below it the gain is fixed.\n"
+            "With Auto AGC it is set from the noise floor + NF+ and only shown (marked Auto);\n"
+            "set NF+ on its slider. With Auto off, drag it: it is the AGC-T slider."));
         connect(showAgc, &QCheckBox::toggled, this,
                 [](bool on) { AetherSDR::anan::AnanUiState::instance().setShowAgcLine(on); });
         gv->addWidget(showAgc);

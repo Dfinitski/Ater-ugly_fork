@@ -1016,6 +1016,9 @@ signals:
     // Connect to SliceModel::setSquelch and setSquelchLine to apply.
     void autoSquelchLevelSuggested(int level);
     void autoSquelchNoiseFloorChanged(float floor);
+    // ANAN fork build 301: the manual AGC gate was dragged on the panadapter
+    // to this AGC-T (0..100) -- for the pan's slice.
+    void ananAgcThresholdRequested(int value);
 
     // Emitted when user clicks on an inactive slice marker.
     void sliceClicked(int sliceId);
@@ -1181,8 +1184,11 @@ private:
     // Build 299: the Auto AGC line (signal noise floor + NF+): its y in the
     // spectrum area, or -1 when it is not shown; rx of this pan.
     int ananAgcLineY(int specH, int* rxOut = nullptr) const;
+    double ananAgcGateShownDbm(int rx) const;          // build 301
+    bool ananAgcLineGrabbable(int specH, int y) const;  // build 301
     bool m_draggingAgcLine = false;
     int m_agcLineDragRx = -1;
+    int m_agcLineDragT = -1;   // build 301: the AGC-T last sent while dragging
     void drawAnanAdcOverload(QPainter& p, const QRect& specRect);
     void drawSquelchLine(QPainter& p, const QRect& specRect);
     void updateAutoSquelchFromBins(const QVector<float>& binsDbm);
