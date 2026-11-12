@@ -4632,6 +4632,23 @@ Auto AGC не менялся: он уже работал от полки плю�
 
 Файлы: Hl2Backend.cpp/.h, AnanUiState.h, SpectrumWidget.cpp/.h, MainWindow_Wiring.cpp, RadioSetupDialog.cpp, ForkBuild.h (301).
 
+## 265. Сборка 302 — линии включены по умолчанию; до подключения радио интерфейс openHPSDR, а не Flex
+
+Оператор: «сделай, чтобы линии были активированы по умолчанию. Также при старте программы, пока радио ещё не подключено, на экране видны несвойственные нашему радио кнопки и элементы — для Флекс. Исправь, чтобы сразу показывались кнопки и элементы для openHPSDR».
+
+**Линии.** Умолчание и так было «включено», но сохранённое ранее «выключено» оставалось. `AnanUiState`: один раз (ключ `AnanLinesOnMigrated302`) обе линии — шумовая полка и гейт АРУ — включаются; галочки в Setup > Receive выключают их снова насовсем.
+
+**Причина элементов Flex.** Все ворота видимости устроены как `!connected || caps.x`: пока радио не подключено, показывается всё, что умеет хоть какое-то радио, — то есть Flex (Waveforms, MultiFlex, DAX, GPS, PROC, FlexControl, сжатие аудио и т.д.). `RadioModel` при этом отвечал «есть» на все has…() и брал расширенный DSP из таблицы моделей Flex.
+
+**Исправлено.** Форк работает только с openHPSDR, поэтому до подключения интерфейс читает то, что объявил бы ещё не подключённый openHPSDR-бэкенд:
+- `Hl2Backend::capabilities()` разделён на `buildCapabilities(CapsInputs)` (зависимости записи: dB-референс, модель платы, потолок приёмников, IQ-скорости, диапазон настройки, разрешение TX) и статический `presumedCapabilities()` — те же входы, что ставит конструктор (100D, все скорости, без подключения), без создания бэкенда.
+- `RadioModel::uiCapabilities()` — записи подключённого бэкенда, иначе `presumedCapabilities()`. Через неё идут hasRadioSideDsp / LMS / APF / автоблэк / CW-кейер / CW-макросы / голосовой кейер / DAX / WPM / расширенный DSP, вместо «есть» и таблицы Flex.
+- `ControlAvailabilityRegistry::applyOne`: без подключения контрол таков, каким он был бы на openHPSDR (`available(true, uiCapabilities())`), а не «доступен».
+- `MainWindow::applyCapabilitiesToUi(live, …)`: без подключения ворота читают `uiCapabilities()` как подключённые; `live` оставлен для фактов сессии (производитель, состояние мик-метра, сброс последних показаний напряжения).
+- `RadioSetupDialog::updateRadioCapabilityVisibility`, FM-репитер в `RxApplet` / `VfoWidget` — то же.
+
+Файлы: Hl2Backend.cpp/.h, RadioModel.cpp/.h, ControlAvailabilityRegistry.cpp, MainWindow.cpp, RadioSetupDialog.cpp, RxApplet.cpp, VfoWidget.cpp, AnanUiState.h, ForkBuild.h (302).
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

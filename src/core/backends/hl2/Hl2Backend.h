@@ -99,6 +99,9 @@ public:
     ~Hl2Backend() override;
 
     RadioCapabilities capabilities() const override;
+    // Build 302: what a not-yet-connected openHPSDR backend declares, with no
+    // backend at all (RadioModel serves it while nothing is connected).
+    [[nodiscard]] static RadioCapabilities presumedCapabilities();
     // Demodulates in-process (Hl2RxDsp); there is no VITA-49 stream at all.
     bool ownsRxAudio() const override { return true; }
 
@@ -529,6 +532,16 @@ private:
     bool m_havePaAmps = false;
     double m_tuningMinHz = 100'000.0;
     double m_tuningMaxHz = 38'400'000.0;
+    struct CapsInputs {   // build 302: what the capability record depends on
+        const Hl2DbReference& dbRef;
+        const anan::ModelTraits& traits;
+        int receiverCeiling = 1;
+        std::span<const int> iqRates;
+        double tuningMinHz = 0.0;
+        double tuningMaxHz = 0.0;
+        bool txAllowed = false;
+    };
+    [[nodiscard]] static RadioCapabilities buildCapabilities(const CapsInputs& in);
     [[nodiscard]] QString radioDisplayName() const;
     // ANAN-100D port: the ANAN's rate ladder.
     [[nodiscard]] std::span<const int> iqRates() const noexcept;

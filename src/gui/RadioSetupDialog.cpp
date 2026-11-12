@@ -1578,8 +1578,12 @@ bool RadioSetupDialog::isGpsPage(const QTreeWidgetItem* item) const
 
 void RadioSetupDialog::updateRadioCapabilityVisibility()
 {
-    const bool connected = m_model->isConnected();
-    const RadioCapabilities caps = m_model->backendCapabilities();
+    // ANAN fork build 302: while nothing is connected the fields follow what
+    // an openHPSDR radio declares (RadioModel::uiCapabilities), so no Flex
+    // field is offered before the radio connects; `live` keeps the session key.
+    const bool live = m_model->isConnected();
+    const bool connected = true;
+    const RadioCapabilities caps = m_model->uiCapabilities();
     // M3b: these legacy info-field hides await their scoped migration.
     // This legacy radio/API status is distinct from the host knob settings.
     if (m_flexControlInfoField) {
@@ -1641,7 +1645,7 @@ void RadioSetupDialog::updateRadioCapabilityVisibility()
     }
     if (m_ipDhcpButton) {
         const bool canConfigure = caps.hasClientNetworkConfig;
-        const QString sessionKey = connected
+        const QString sessionKey = live
             ? QStringLiteral("%1:%2").arg(m_model->family(), m_model->serial())
             : QString();
         const QString tip = canConfigure

@@ -226,8 +226,12 @@ void ControlAvailabilityRegistry::applyOne(Entry& entry,
 {
     // Preserve the historical disconnected treatment unless a control explicitly
     // requires a live receiver (for example observed broadcast-FM settings).
-    const bool available = connected ? entry.available(connected, caps)
-                                     : entry.availableWhenDisconnected;
+    // ANAN fork build 302: disconnected, a control is what it would be on an
+    // openHPSDR radio (this fork's only family), not offered by default --
+    // so Flex-only controls are not on screen before the radio connects.
+    const bool available = connected
+        ? entry.available(connected, caps)
+        : entry.availableWhenDisconnected && entry.available(true, m_model.uiCapabilities());
     const bool engaged = connected && available && entry.engaged && entry.engaged();
     entry.state = !available   ? ControlAvailability::Unavailable
                 : engaged      ? ControlAvailability::Active

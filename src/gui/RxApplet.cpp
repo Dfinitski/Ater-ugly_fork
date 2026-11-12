@@ -2349,9 +2349,11 @@ void RxApplet::configureFmToneControls()
         || !m_fmLayout) {
         return;
     }
-    const bool connected = m_radioModel && m_radioModel->isConnected();
+    // ANAN fork build 302: disconnected, the FM controls are openHPSDR's
+    // (RadioModel::uiCapabilities), not the permissive Flex set.
+    const bool connected = m_radioModel != nullptr;
     const RadioCapabilities caps = connected
-        ? m_radioModel->backendCapabilities() : RadioCapabilities{};
+        ? m_radioModel->uiCapabilities() : RadioCapabilities{};
     const bool repeaterAvailable = !connected || caps.hasFmRepeaterOffset;
     if (m_offsetSpin) {
         m_offsetSpin->setEnabled(repeaterAvailable);
@@ -2472,9 +2474,9 @@ void RxApplet::configureRepeaterReverseControl()
     // when hasTransmitFrequencyCheck, else REV, and only REV moves the
     // repeater offset. The capabilities are independent (IC-7300MK2: XFC
     // without duplex), so gate on the personality the button is wearing.
-    const bool connected = m_radioModel && m_radioModel->isConnected();
+    const bool connected = m_radioModel != nullptr;   // build 302
     const bool repeaterAvailable = !connected
-        || m_radioModel->backendCapabilities().hasFmRepeaterOffset;
+        || m_radioModel->uiCapabilities().hasFmRepeaterOffset;
     m_revBtn->setEnabled(xfc || repeaterAvailable);
     // AGENTS.md: "unavailable (the radio lacks it, dimmed WITH A STATED
     // REASON)", and the reason "must reach a screen reader via

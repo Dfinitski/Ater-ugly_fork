@@ -4158,6 +4158,17 @@ RadioCapabilities RadioModel::backendCapabilities() const
     return m_backend ? m_backend->capabilities() : RadioCapabilities{};
 }
 
+// ANAN fork build 302 (operator, 11.11: before the radio is connected the
+// screen showed Flex's buttons and elements). This fork drives openHPSDR
+// radios only: until a radio is connected, the UI's gates read what an
+// openHPSDR backend declares before it connects, not "assume everything".
+RadioCapabilities RadioModel::uiCapabilities() const
+{
+    if (m_backend && isConnected())
+        return m_backend->capabilities();
+    return hl2::Hl2Backend::presumedCapabilities();
+}
+
 // Client-owned receive state; radio-owned requests stay on the backend route.
 
 bool RadioModel::applyClientOwnedSliceStep(int sliceId, int hz)
@@ -4177,7 +4188,7 @@ bool RadioModel::applyClientOwnedSliceStep(int sliceId, int hz)
 bool RadioModel::radioSideNoiseReductionAvailable() const
 {
     // Fails open without a backend: the pre-connect behaviour is unchanged.
-    return !m_backend || backendCapabilities().hasRadioSideDsp;
+    return uiCapabilities().hasRadioSideDsp;   // build 302
 }
 
 bool RadioModel::radioSideAutoNotchAvailable() const
@@ -4287,34 +4298,24 @@ bool RadioModel::hasExtendedDspFilters() const
     if (m_backend && isConnected()) {
         return backendCapabilities().hasExtendedDsp;
     }
-    // Disconnected or unknown: fall back to the model-name table, so a session
-    // restored from settings still shows the right filters before a backend has
-    // reported anything.
-    return capabilitiesFor(m_model).hasExtendedDsp();
+    // Build 302: disconnected -- openHPSDR's declaration, not the Flex
+    // model-name table.
+    return uiCapabilities().hasExtendedDsp;
 }
 
 bool RadioModel::hasRadioSideDsp() const
 {
-    if (!m_backend || !isConnected()) {
-        return true;   // nothing attached — assume present, see the header
-    }
-    return backendCapabilities().hasRadioSideDsp;
+    return uiCapabilities().hasRadioSideDsp;   // build 302: openHPSDR's until connected
 }
 
 bool RadioModel::hasLmsNoiseFilters() const
 {
-    if (!m_backend || !isConnected()) {
-        return true;   // nothing attached — assume present, see the header
-    }
-    return backendCapabilities().hasLmsNoiseFilters;
+    return uiCapabilities().hasLmsNoiseFilters;   // build 302: openHPSDR's until connected
 }
 
 bool RadioModel::hasAudioPeakingFilter() const
 {
-    if (!m_backend || !isConnected()) {
-        return true;   // nothing attached — assume present, see the header
-    }
-    return backendCapabilities().hasAudioPeakingFilter;
+    return uiCapabilities().hasAudioPeakingFilter;   // build 302: openHPSDR's until connected
 }
 
 bool RadioModel::hasManualNotch() const
@@ -4384,44 +4385,32 @@ void RadioModel::selectRadioFilterPreset(int sliceId, int presetId)
 
 bool RadioModel::hasRadioSideWaterfallAutoBlack() const
 {
-    if (!m_backend || !isConnected()) {
-        return true;   // nothing attached — assume present, see the header
-    }
-    return backendCapabilities().hasRadioSideWaterfallAutoBlack;
+    return uiCapabilities().hasRadioSideWaterfallAutoBlack;   // build 302: openHPSDR's until connected
 }
 
 bool RadioModel::hasRadioSideCwKeyer() const
 {
-    if (!m_backend || !isConnected()) {
-        return true;   // nothing attached — assume present, see the header
-    }
-    return backendCapabilities().hasRadioSideCwKeyer;
+    return uiCapabilities().hasRadioSideCwKeyer;   // build 302: openHPSDR's until connected
 }
 
 bool RadioModel::hasCwTextProgress() const
 {
-    if (!m_backend || !isConnected()) {
-        return true;
-    }
-    return backendCapabilities().cwTextHasProgress;
+    return uiCapabilities().cwTextHasProgress;   // build 302: openHPSDR's until connected
 }
 
 bool RadioModel::hasCwTextStoredMacros() const
 {
-    if (!m_backend || !isConnected()) {
-        return true;
-    }
-    return backendCapabilities().cwTextHasStoredMacros;
+    return uiCapabilities().cwTextHasStoredMacros;   // build 302: openHPSDR's until connected
 }
 
 int RadioModel::cwTextMinWpm() const
 {
-    return (!m_backend || !isConnected()) ? 5 : backendCapabilities().cwTextMinWpm;
+    return uiCapabilities().cwTextMinWpm;   // build 302
 }
 
 int RadioModel::cwTextMaxWpm() const
 {
-    return (!m_backend || !isConnected()) ? 100 : backendCapabilities().cwTextMaxWpm;
+    return uiCapabilities().cwTextMaxWpm;   // build 302
 }
 
 QString RadioModel::cwTextValidationError(const QString& text) const
@@ -4450,18 +4439,12 @@ QString RadioModel::cwTextValidationError(const QString& text) const
 
 bool RadioModel::hasVoiceKeyer() const
 {
-    if (!m_backend || !isConnected()) {
-        return true;   // nothing attached — assume present, see the header
-    }
-    return backendCapabilities().hasVoiceKeyer;
+    return uiCapabilities().hasVoiceKeyer;   // build 302: openHPSDR's until connected
 }
 
 bool RadioModel::hasDaxStreams() const
 {
-    if (!m_backend || !isConnected()) {
-        return true;   // nothing attached — assume present, see the header
-    }
-    return backendCapabilities().hasDaxStreams;
+    return uiCapabilities().hasDaxStreams;   // build 302: openHPSDR's until connected
 }
 
 // The single fan-out point for "what this radio says it can do".

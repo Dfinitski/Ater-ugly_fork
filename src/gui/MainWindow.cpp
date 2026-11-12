@@ -7951,14 +7951,22 @@ void MainWindow::refreshRadioIdentityLabels()
     updateStatusBarMinimumWidth();
 }
 
-void MainWindow::applyCapabilitiesToUi(bool connected, const RadioCapabilities& caps)
+void MainWindow::applyCapabilitiesToUi(bool live, const RadioCapabilities& liveCaps)
 {
     // See the header for why every flag is `!connected || caps.x` and why each
     // surface gets exactly one owning call.
+    // ANAN fork build 302 (operator, 11.11: before the radio connects the
+    // screen showed Flex's buttons and elements). This fork drives openHPSDR
+    // radios only, so while nothing is connected the gates below read what an
+    // openHPSDR backend declares before it connects (RadioModel::
+    // uiCapabilities), as if connected; `live` is kept for what is a fact of a
+    // real session (the manufacturer, the mic meter, the last readings).
+    const RadioCapabilities caps = live ? liveCaps : m_radioModel.uiCapabilities();
+    const bool connected = true;
 
     // Manufacturer clears on disconnect (no permissive `!connected ||`): it is a
     // fact about a connected radio, a text value rather than a control.
-    m_radioManufacturer = connected ? caps.manufacturer : QString();
+    m_radioManufacturer = live ? caps.manufacturer : QString();
     refreshRadioIdentityLabels();
 
     // The compact status stack gives PA temperature priority whenever the
@@ -7994,7 +8002,7 @@ void MainWindow::applyCapabilitiesToUi(bool connected, const RadioCapabilities& 
         // the session and leave a Flex's continuous control stepping through
         // another radio's list.
         m_appletPanel->setMicLevelMeterState(
-            connected ? MicMeterSessionState::Connected
+            live ? MicMeterSessionState::Connected
                       : MicMeterSessionState::Disconnected,
             m_radioModel.meterModel().hasMicPeakMeter());
     }
@@ -8190,7 +8198,7 @@ void MainWindow::applyCapabilitiesToUi(bool connected, const RadioCapabilities& 
     }
     if (m_supplyVoltLabel) {
         m_supplyVoltLabel->setVisible(!connected || caps.hasSupplyVoltageTelemetry);
-        if (!connected) {
+        if (!live) {
             // Drop the previous session's readings instead of leaving them on
             // screen with no radio attached — the same "do not assert what the
             // radio did not report" rule this gate exists for. MeterModel::clear()

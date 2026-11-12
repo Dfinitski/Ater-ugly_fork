@@ -3239,7 +3239,48 @@ AetherSDR::WidebandConverterView widebandConverterViewRecord() noexcept
     return wide;
 }
 
+// Build 302: the capability record from its inputs, so the record can also
+// be had with no backend (presumedCapabilities).
 RadioCapabilities Hl2Backend::capabilities() const
+{
+    CapsInputs in{m_dbRef, ananTraits()};
+    in.receiverCeiling = m_connected ? receiverCeiling() : std::max(1, m_ids.size());
+    in.iqRates = iqRates();
+    in.tuningMinHz = m_tuningMinHz;
+    in.tuningMaxHz = m_tuningMaxHz;
+    in.txAllowed = m_txAllowed;
+    return buildCapabilities(in);
+}
+
+// ANAN fork build 302 (operator, 11.11: "before the radio is connected the
+// screen shows buttons and elements foreign to our radio -- Flex's"). This
+// fork drives openHPSDR radios only, so the UI is theirs from the start: the
+// record a backend would declare before it connects (the default board, the
+// level references the constructor sets, every IQ rate, transmit as the
+// constructor decides it). RadioModel serves it while nothing is connected.
+RadioCapabilities Hl2Backend::presumedCapabilities()
+{
+    static const RadioCapabilities caps = [] {
+        Hl2DbReference ref;
+        ref.setDefaultFullScaleDbm(10.0);
+        ref.setAgcFollowsGain(false);
+        ref.setExtraAgcCeilingDb(40.0);
+        ref.setDisplayFollowsGain(false);
+        ref.setLnaGainDb(0.0);
+        CapsInputs in{ref, anan::modelTraits(anan::AnanModel::Anan100D)};
+        in.receiverCeiling = 1;
+        in.iqRates = std::span<const int>(kAnanIqSampleRatesHz);
+        in.tuningMinHz = kAnanTuningMinHz;
+        in.tuningMaxHz = kAnanTuningMaxHz;
+        const bool automation = qEnvironmentVariableIsSet("AETHER_AUTOMATION");
+        in.txAllowed = !automation || qEnvironmentVariableIsSet("AETHER_AUTOMATION_ALLOW_TX")
+                       || AutomationBridgeSettings::txAllowed();
+        return buildCapabilities(in);
+    }();
+    return caps;
+}
+
+RadioCapabilities Hl2Backend::buildCapabilities(const CapsInputs& in)
 {
     RadioCapabilities c;
     c.broadcastFmReceive = std::nullopt;
@@ -3268,7 +3309,7 @@ RadioCapabilities Hl2Backend::capabilities() const
     c.twoToneGenerator = std::nullopt;
     c.firmwareUpdateSource = std::nullopt;  // gateware number; no published list covers it.
     c.manufacturer = QStringLiteral("Apache Labs");
-    c.model = radioDisplayName();
+    c.model = QString::fromLatin1(in.traits.key);
     // No repeater duplex and no tone encode, although the TXA build keys FM:
     // hasFmRepeaterOffset defaults true and this backend overrides no
     // repeater-offset setter, and no tone control reaches TXA's CTCSS encoder,
@@ -3279,12 +3320,11 @@ RadioCapabilities Hl2Backend::capabilities() const
     // The ceiling, not the running count, so "Add Panadapter" can be offered:
     // the board's discovery byte 0x13 capped by the link budget at the current
     // span (it falls when zooming out).
-    const int ceiling = m_connected ? receiverCeiling()
-                                    : std::max(1, m_ids.size());
+    const int ceiling = in.receiverCeiling;
     c.canCreateSlices = false;
     c.maxSlices = ceiling;
     c.maxPanadapters = ceiling;
-    for (const int rate : iqRates())
+    for (const int rate : in.iqRates)
         c.sampleRatesHz.append(rate);
     PanSpanModel span;
     // The span is the sample rate: spectrum is computed from raw IQ, so no pan
@@ -3305,9 +3345,9 @@ RadioCapabilities Hl2Backend::capabilities() const
     // per unit, and isCalibrated() stays false until setFullScaleDbm() is
     // called (nothing in src/ does). Relative levels are consistent; absolute
     // levels must not be compared, spotted or thresholded.
-    amplitude.calibratedDbm = m_dbRef.isCalibrated();
+    amplitude.calibratedDbm = in.dbRef.isCalibrated();
     // Bins are absolute dBFS computed on this host, shifted only by
-    // m_dbRef.offsetDb() (the LNA reference, which never follows m_refLevel),
+    // in.dbRef.offsetDb() (the LNA reference, which never follows m_refLevel),
     // and passed through RadioModel::onBackendSpectrumFrame untouched, so
     // SpectrumWidget's noise-floor auto-adjust converges without a dBm range
     // echo. See PanAmplitudeModel::binsAbsolute.
@@ -3323,10 +3363,10 @@ RadioCapabilities Hl2Backend::capabilities() const
     // d101: the loop settles, 0.307 dB in 74 s quiescent).
     // Tuning range: the AD9866 samples at 76.8 MHz, so the first Nyquist zone is
     // DC to 38.4 MHz; below 100 kHz the input transformer rolls off.
-    c.tuningMinHz = m_tuningMinHz;
-    c.tuningMaxHz = m_tuningMaxHz;
+    c.tuningMinHz = in.tuningMinHz;
+    c.tuningMaxHz = in.tuningMaxHz;
     c.sliceFrequencyControl = {SliceFrequencyControl::Authority::Engine,
-                               static_cast<int>(m_tuningMinHz), static_cast<int>(m_tuningMaxHz)};
+                               static_cast<int>(in.tuningMinHz), static_cast<int>(in.tuningMaxHz)};
     // Modes the headless receive path accepts. ModelReceiveControlTarget checks
     // both the requested mode and the slice's observed mode against this list,
     // so every mode publishedModeStrings() offers must be here (including DSB,
@@ -3363,7 +3403,7 @@ RadioCapabilities Hl2Backend::capabilities() const
                                   100.0}};
     // Reported from the gate, not hardcoded: the engine's TX guard keys off this,
     // so a build with transmit disabled must look RX-only from above the seam.
-    c.canTransmit = m_txAllowed;
+    c.canTransmit = in.txAllowed;
     // Modes this radio demodulates but does not modulate. SAM is a receive
     // detector (TXA would send plain AM), WDSP TX has no WBFM mode, and there
     // is no DRM encoder. Both spellings of an alias are listed because
@@ -3394,7 +3434,7 @@ RadioCapabilities Hl2Backend::capabilities() const
     c.forwardPowerRequiresSmoothing = false;
     // Drive here is OPERATOR INTENT, not a readback (#5518). setTxPower() records
     // the requested percent before the transmit gate and applyDrive() holds the
-    // drive register at 0 while !m_txAllowed, so TransmitModel::rfPower() can read
+    // drive register at 0 while !in.txAllowed, so TransmitModel::rfPower() can read
     // 100 with no RF leaving the radio. Consumers that act on drive must see that
     // distinction rather than infer applied power from a request.
     c.transmitDriveControl = RadioCapabilities::TransmitDriveControl{
@@ -3451,8 +3491,8 @@ RadioCapabilities Hl2Backend::capabilities() const
     {
         SquelchLevelScale sql;
         sql.dbPerStep = WdspChannel::kLevelSquelchDbPerStep;
-        sql.offsetDb = WdspChannel::kLevelSquelchBaseDbfs + m_dbRef.levelSquelchOffsetDb()
-                       + m_dbRef.offsetDb() + Hl2Spectrum::kToneGainDb;
+        sql.offsetDb = WdspChannel::kLevelSquelchBaseDbfs + in.dbRef.levelSquelchOffsetDb()
+                       + in.dbRef.offsetDb() + Hl2Spectrum::kToneGainDb;
         for (const QString& mode : publishedModeStrings()) {
             if (WdspChannel::squelchStageFor(modeFromString(mode))
                 == WdspChannel::SquelchStage::Level) {
@@ -3556,7 +3596,7 @@ RadioCapabilities Hl2Backend::capabilities() const
     // hides the temperature gauge, which would otherwise sit empty.
     c.hasSupplyVoltageTelemetry = true;
     c.hasPaTemperatureTelemetry = false;
-    c.hasPaCurrentTelemetry = ananTraits().hasAmps;
+    c.hasPaCurrentTelemetry = in.traits.hasAmps;
     // PROC runs in this host's ClientComp (hostModulates), not in the radio.
     c.speechProcessorControl = std::nullopt;
     c.voxControl = std::nullopt;

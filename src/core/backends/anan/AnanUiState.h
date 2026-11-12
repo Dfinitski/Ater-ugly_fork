@@ -51,6 +51,18 @@ public:
                         == QLatin1String("True");
         showAgcLine = st.value(QStringLiteral("AnanShowAgcLine"), QStringLiteral("True")).toString()
                       == QLatin1String("True");
+        // Build 302 (operator, 11.11: "make the lines on by default"): the
+        // default was already on, but a setting saved off before stayed off.
+        // Once, on this build, both lines are switched on; the checkboxes in
+        // Setup > Receive turn them off again for good.
+        if (st.value(QStringLiteral("AnanLinesOnMigrated302")).toString() != QLatin1String("True")) {
+            showNoiseLine = true;
+            showAgcLine = true;
+            st.setValue(QStringLiteral("AnanShowNoiseLine"), QStringLiteral("True"));
+            st.setValue(QStringLiteral("AnanShowAgcLine"), QStringLiteral("True"));
+            st.setValue(QStringLiteral("AnanLinesOnMigrated302"), QStringLiteral("True"));
+            st.save();
+        }
         for (int rx = 0; rx < 2; ++rx) {
             agcAuto[rx] = st.value(agcAutoKey(rx), QStringLiteral("False")).toString() == QLatin1String("True");
             agcNfOffsetDb[rx] = std::clamp(st.value(agcOffsetKey(rx), kAgcNfOffsetDefaultDb).toInt(),

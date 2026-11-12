@@ -356,6 +356,10 @@ public:
     // e.g. TX capability and reboot support, which differ by radio family (#4448).
     // Non-inline: IRadioBackend is only forward-declared here.
     RadioCapabilities backendCapabilities() const;
+    // Build 302: the connected backend's record, or, while nothing is
+    // connected, what an openHPSDR backend declares before it connects (this
+    // fork's only family) -- for UI gates, so the disconnected UI is not Flex's.
+    RadioCapabilities uiCapabilities() const;
 
     // The connected backend's health/status registers, for the Radio Health
     // dialog. Empty when no backend is connected or the family reports none —
