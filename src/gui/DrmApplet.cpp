@@ -152,8 +152,14 @@ void DrmApplet::buildCompact(QVBoxLayout* root)
     root->addLayout(sig);
 
     // Station
+    // Build 304 (operator, 11.11: "the station name TDF-DRM shows now and
+    // then and the window grows down and back -- give the name its place at
+    // once"). The row is always there, one line high (14 px bold), empty
+    // while no label is known. DRM labels are at most 16 characters, so one
+    // line, no wrap.
     m_label = makeLabel(QString(), kStationLabel);
-    m_label->setWordWrap(true);
+    m_label->setWordWrap(false);
+    m_label->setFixedHeight(22);
     root->addWidget(m_label);
 
     // Services 1..4
@@ -427,8 +433,7 @@ void DrmApplet::refresh()
             if (st.services[i].present)
                 station = st.services[i].label;
     }
-    m_label->setText(station);
-    m_label->setVisible(!station.isEmpty());
+    m_label->setText(station);   // build 304: the row stays (no setVisible)
 
     for (int i = 0; i < 4; ++i) {
         const bool present = live && i < st.services.size() && st.services[i].present;
