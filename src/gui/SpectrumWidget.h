@@ -1964,7 +1964,10 @@ private:
     int    m_timeScaleDragStartY{0};
     int    m_timeScaleDragStartOffsetRows{0};
     int    m_timeScaleDragStartRatePercent{1};
-    static constexpr qint64 kWaterfallHistoryMs = 20LL * 60LL * 1000LL;
+    // ANAN fork build 309 (operator, 12.11: "reduce the waterfall memory to
+    // 5 minutes"): the scrollback was 20 minutes -- up to ~80 MB per
+    // panadapter (view and supplemental rows, 1 byte a pixel).
+    static constexpr qint64 kWaterfallHistoryMs = 5LL * 60LL * 1000LL;
 
     // True while native waterfall tile data (PCC 0x8004) is arriving on the
     // expected cadence.  RX uses paced FFT-derived rows only as a stale-native
