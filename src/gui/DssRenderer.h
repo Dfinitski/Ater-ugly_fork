@@ -35,6 +35,9 @@ public:
     // Build 293: 2048 -- a captured row now spans what the back row shows
     // (1 / kBackWidthFrac = 1.67 views), every bin kept up to 2048 of them.
     static constexpr int kCols = 2048;  // resampled columns per row
+    // Build 308: rows of 3D scrollback kept at most (~3 min at 50 ms/row;
+    // 14.7 MB at kCols, as qfloat16).
+    static constexpr int kMaxHistoryRows = 3600;
 
     // Perspective geometry of the surface, shared by this CPU renderer and the
     // GPU mesh UBO (SpectrumWidget::renderGpuFrame). dss_mesh.vert applies the

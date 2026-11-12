@@ -1648,6 +1648,13 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         const double dispOff = off + panShift;
         if (ids->ddcIndex < 2)
             anan::AnanUiState::instance().panShiftDb[ids->ddcIndex] = panShift;
+        // Build 308 (CPU): dB -> power for the mean-power bins as one float
+        // exp (std::pow in double was ~4x the cost; up to 63 k bins a frame
+        // for the waterfall row at 64 k FFT points, per receiver, on the GUI
+        // thread that also carries the receiver audio).
+        const auto dbToPower = [](float db) {
+            return std::exp(0.23025850929940458f * db);   // 10^(db / 10)
+        };
         auto resample = [&](const std::vector<float>& src) {
             std::vector<float> out(kOutBins);
             if (keep == kOutBins) {
@@ -1659,7 +1666,7 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
                     const std::size_t b1 = std::max(b0 + 1, first + (o + 1) * keep / kOutBins);
                     double sum = 0.0;
                     for (std::size_t b = b0; b < b1; ++b)
-                        sum += std::pow(10.0, 0.1 * static_cast<double>(src[b]));
+                        sum += static_cast<double>(dbToPower(src[b]));   // build 308
                     out[o] = static_cast<float>(10.0 * std::log10(sum / static_cast<double>(b1 - b0) + 1e-30)
                                                 + dispOff);
                 }
@@ -1702,7 +1709,7 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
                 }
                 double sum = 0.0;
                 for (std::size_t b = b0; b < b1; ++b)
-                    sum += std::pow(10.0, 0.1 * static_cast<double>(raw[b]));
+                    sum += static_cast<double>(dbToPower(raw[b]));   // build 308
                 row[o] = static_cast<float>(10.0 * std::log10(sum / static_cast<double>(b1 - b0) + 1e-30)
                                             + dispOff);
             }

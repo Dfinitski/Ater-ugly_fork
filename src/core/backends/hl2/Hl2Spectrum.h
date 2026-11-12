@@ -118,8 +118,8 @@ public:
     // object on FFT size/rate change.
     std::size_t reset() noexcept
     {
-        const std::size_t discarded = m_acc.size();
-        m_acc.clear();
+        const std::size_t discarded = m_accCount;
+        accClear();
         return discarded;
     }
 
@@ -128,7 +128,37 @@ private:
     bool m_sliding = false;   // build 225
 
     int m_fftSize;
-    std::vector<std::complex<float>> m_acc;   // accumulation buffer (< m_fftSize)
+    // ANAN fork build 308 (CPU): the accumulation window is a ring of
+    // m_fftSize samples (oldest at m_accStart, m_accCount held). It was a
+    // vector whose front was erased: with the sliding window that moved the
+    // whole window (512 KB at 64 k points) on every IQ packet, ~1600 times a
+    // second at 384 ksps, per receiver, on the I/O thread.
+    std::vector<std::complex<float>> m_acc;   // ring storage, size m_fftSize
+    std::size_t m_accStart = 0;
+    std::size_t m_accCount = 0;
+    void accClear() noexcept { m_accStart = 0; m_accCount = 0; }
+    void accPush(std::complex<float> v) noexcept
+    {
+        const std::size_t cap = m_acc.size();
+        if (m_accCount < cap) {
+            m_acc[(m_accStart + m_accCount) % cap] = v;
+            ++m_accCount;
+        } else {   // full: the oldest goes
+            m_acc[m_accStart] = v;
+            m_accStart = (m_accStart + 1) % cap;
+        }
+    }
+    void accDropOldest() noexcept
+    {
+        if (m_accCount == 0)
+            return;
+        m_accStart = (m_accStart + 1) % m_acc.size();
+        --m_accCount;
+    }
+    [[nodiscard]] std::complex<float> accAt(std::size_t i) const noexcept
+    {
+        return m_acc[(m_accStart + i) % m_acc.size()];
+    }
     std::vector<double> m_window;             // Hanning window
     double m_coherentGain = 1.0;              // sum(window) / 2
     // The square of it, precomputed. computeFrame() divides POWER by this

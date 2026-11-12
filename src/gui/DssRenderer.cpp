@@ -590,7 +590,13 @@ void DssRenderer::pushRowWithSupplemental(
 
 void DssRenderer::setHistoryCapacityRows(int rows)
 {
-    rows = std::max(0, rows);
+    // ANAN fork build 308 (operator, 11.11: "the program takes 600 MB"). The
+    // 3D scrollback was the waterfall's whole 20 minutes (24000 rows) at
+    // kCols texels, allocated at once on entering 3D: 98 MB per panadapter
+    // since kCols went to 2048 (build 293), twice that with a supplemental
+    // row. Capped at kMaxHistoryRows; a waterfall scrolled back further shows
+    // the oldest 3D rows kept (rebuildVisibleFromHistory clamps).
+    rows = std::clamp(rows, 0, kMaxHistoryRows);
     if (rows == m_historyCapacityRows && historyStorageMatchesCapacity()) {
         return;
     }

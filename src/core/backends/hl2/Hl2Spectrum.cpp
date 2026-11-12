@@ -17,7 +17,7 @@ Hl2Spectrum::Hl2Spectrum(int fftSize, double sampleRateHz)
     : m_fftSize(fftSize < 2 ? 2 : fftSize),
       m_sampleRateHz(sampleRateHz > 0.0 ? sampleRateHz : 0.0)
 {
-    m_acc.reserve(static_cast<std::size_t>(m_fftSize));
+    m_acc.assign(static_cast<std::size_t>(m_fftSize), {});   // build 308: the ring
     m_window.resize(static_cast<std::size_t>(m_fftSize));
     double sum = 0.0;
     for (int n = 0; n < m_fftSize; ++n) {
@@ -72,20 +72,20 @@ int Hl2Spectrum::process(std::span<const std::complex<float>> iq, std::vector<fl
 {
     int frames = 0;
     for (std::size_t i = 0; i < iq.size(); ++i) {
-        m_acc.push_back(iq[i]);
+        accPush(iq[i]);
         ++m_samplesSinceFrame;
         ++m_clockSamples;
-        if (static_cast<int>(m_acc.size()) == m_fftSize) {
+        if (static_cast<int>(m_accCount) == m_fftSize) {
             computeFrame(binsDbfs);
             ++frames;
             if (m_sliding) {
                 // Build 225: keep the window minus its oldest sample; the rest
                 // of this block only slides it (accumulate()).
-                m_acc.erase(m_acc.begin());
+                accDropOldest();
                 accumulate(iq.subspan(i + 1));
                 return frames;
             }
-            m_acc.clear();
+            accClear();
         }
     }
     return frames;
@@ -181,8 +181,10 @@ void Hl2Spectrum::seedFrom(const Hl2Spectrum& other)
         m_haveAverage = true;
     }
     // The newest IQ the old analyser had not yet framed.
-    const std::size_t keep = std::min(other.m_acc.size(), static_cast<std::size_t>(nn - 1));
-    m_acc.assign(other.m_acc.end() - static_cast<std::ptrdiff_t>(keep), other.m_acc.end());
+    const std::size_t keep = std::min(other.m_accCount, static_cast<std::size_t>(nn - 1));
+    accClear();
+    for (std::size_t i = other.m_accCount - keep; i < other.m_accCount; ++i)
+        accPush(other.accAt(i));
     m_samplesSinceFrame = other.m_samplesSinceFrame;
 }
 
@@ -223,7 +225,7 @@ void Hl2Spectrum::restorePreOver() noexcept
     if (!m_overActive)
         return;
     m_overActive = false;
-    m_acc.clear();   // the partial window may still hold the over
+    accClear();   // the partial window may still hold the over
     if (m_preOver.valid && m_preOver.log == m_logAverage
         && m_preOver.power.size() == m_avgPower.size()) {
         m_avgPower = m_preOver.power;
@@ -257,13 +259,15 @@ void Hl2Spectrum::accumulate(std::span<const std::complex<float>> iq)
     // Time passes whether or not these samples survive the cap below.
     m_samplesSinceFrame += iq.size();
     m_clockSamples += iq.size();
-    m_acc.insert(m_acc.end(), iq.begin(), iq.end());
     // Hold at most fftSize - 1: see the header for why exactly-full would wedge
-    // process()'s boundary check.
+    // process()'s boundary check. Build 308: in the ring, each sample past
+    // that replaces the oldest.
     const std::size_t keep = static_cast<std::size_t>(m_fftSize) - 1;
-    if (m_acc.size() > keep) {
-        m_acc.erase(m_acc.begin(),
-                    m_acc.end() - static_cast<std::ptrdiff_t>(keep));
+    const std::size_t skip = iq.size() > keep ? iq.size() - keep : 0;
+    for (std::size_t i = skip; i < iq.size(); ++i) {
+        if (m_accCount >= keep)
+            accDropOldest();
+        accPush(iq[i]);
     }
 }
 
@@ -272,15 +276,20 @@ void Hl2Spectrum::computeFrame(std::vector<float>& binsDbfs)
     // Remove the frame's DC offset (the ADC offset lives on I in direct
     // sampling), then apply the window.
     double meanRe = 0.0, meanIm = 0.0;
-    for (const auto& s : m_acc) { meanRe += s.real(); meanIm += s.imag(); }
+    for (std::size_t i = 0; i < m_accCount; ++i) {
+        const auto s = accAt(i);
+        meanRe += s.real();
+        meanIm += s.imag();
+    }
     meanRe /= m_fftSize;
     meanIm /= m_fftSize;
 
     auto* in = static_cast<fftw_complex*>(m_in);
     for (int n = 0; n < m_fftSize; ++n) {
         const double w = m_window[static_cast<std::size_t>(n)];
-        in[n][0] = (static_cast<double>(m_acc[static_cast<std::size_t>(n)].real()) - meanRe) * w;
-        in[n][1] = (static_cast<double>(m_acc[static_cast<std::size_t>(n)].imag()) - meanIm) * w;
+        const auto s = accAt(static_cast<std::size_t>(n));
+        in[n][0] = (static_cast<double>(s.real()) - meanRe) * w;
+        in[n][1] = (static_cast<double>(s.imag()) - meanIm) * w;
     }
 
     fftw_execute(static_cast<fftw_plan>(m_plan));
@@ -303,8 +312,15 @@ void Hl2Spectrum::computeFrame(std::vector<float>& binsDbfs)
     }
     m_samplesSinceFrame = 0;
     const bool logDomain = blending && m_logAverage;
+    // ANAN fork build 308 (CPU): this loop runs on the I/O thread with the
+    // receivers' DSP, up to 64 k bins a frame per receiver. The logarithms
+    // are float (a dB value needs no more), the raw frame's is reused when
+    // nothing is averaged, and the fftshift index needs no modulo.
+    const auto toDb = [](double power) {
+        return 10.0f * std::log10(static_cast<float>(power) + 1e-30f);
+    };
     for (int k = 0; k < m_fftSize; ++k) {
-        const int src = (k + half) % m_fftSize;                       // fftshift: DC -> centre
+        const int src = k < half ? k + half : k - half;                // fftshift: DC -> centre
         const double re = out[src][0];
         const double im = out[src][1];
         // POWER, not magnitude. The square root this replaces was only ever
@@ -315,18 +331,22 @@ void Hl2Spectrum::computeFrame(std::vector<float>& binsDbfs)
         // reads it to mean; see setAverageFrames() in the header for what an
         // average of logarithms actually computes.
         double power = (re * re + im * im) / m_coherentGainSq;
-        m_rawBins[static_cast<std::size_t>(k)] =
-            static_cast<float>(10.0 * std::log10(power + 1e-24));
+        const float rawDb = toDb(power);
+        m_rawBins[static_cast<std::size_t>(k)] = rawDb;
         if (logDomain) {
             // Log-recursive, by the operator's choice (setLogAverage): the
             // state is dBFS and the blend is of logarithms. Emitted as-is.
-            const double db = 10.0 * std::log10(power + 1e-24);
+            const double db = rawDb;
             double& state = m_avgPower[static_cast<std::size_t>(k)];
             state = m_haveAverage ? state + alpha * (db - state) : db;
             binsDbfs[static_cast<std::size_t>(k)] = static_cast<float>(state);
             continue;
         }
-        if (blending) {
+        if (!blending) {
+            binsDbfs[static_cast<std::size_t>(k)] = rawDb;   // the same number
+            continue;
+        }
+        {
             double& state = m_avgPower[static_cast<std::size_t>(k)];
             // Take the first frame whole rather than blending it into a zero
             // state, which would open every average with a ramp from the
@@ -335,10 +355,9 @@ void Hl2Spectrum::computeFrame(std::vector<float>& binsDbfs)
             power = state;
         }
         // IQ is normalized to full scale 1.0, so this is dBFS directly. The
-        // 1e-24 power floor (a 1e-12 magnitude floor squared) keeps log10 finite;
-        // an exactly-zero bin reads -240 dBFS.
-        binsDbfs[static_cast<std::size_t>(k)] =
-            static_cast<float>(10.0 * std::log10(power + 1e-24));
+        // power floor keeps log10 finite (float: 1e-30, an exactly-zero bin
+        // reads -300 dBFS).
+        binsDbfs[static_cast<std::size_t>(k)] = toDb(power);
     }
     // Set after the loop and only while blending, so a pass with averaging off
     // cannot leave a stale "we have a state" behind for the next one to blend

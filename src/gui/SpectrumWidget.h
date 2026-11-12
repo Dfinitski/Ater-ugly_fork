@@ -1787,6 +1787,8 @@ private:
     QVector<float> m_kiwiSdrSquelchMeterSamples;
     QTimer* m_squelchLineHideTimer{nullptr};
     QTimer* m_ananOverlayPoll{nullptr};   // ANAN noise line / overload warning -> overlay dirty
+    QString m_ananOverlayStateSig;        // build 308: overload/visibility part
+    QElapsedTimer m_ananOverlayLineClock; // build 308: line-driven repaints <= 2/s
     QString m_ananOverlaySig; // auto-hides yellow line 3 s after enable/adjust (manual SQL only)
     bool  m_autoSquelchFloorVisible{true};
     bool  m_autoSquelchEnabled{false};
@@ -2510,6 +2512,7 @@ private:
     float m_dssRowSpanFactor{1.0f};
 
     void initDssMeshPipeline();
+    bool ensureDssMeshGeometry(QRhiResourceUpdateBatch* batch);   // build 308
     // Frequency span each mesh row should cover, as a multiple of the on-screen
     // bandwidth. See dss_mesh.vert's rowSpanFactor.
     float dssRowSpanTarget(double targetBandwidthMhz) const;

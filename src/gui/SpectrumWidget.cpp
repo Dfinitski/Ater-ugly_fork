@@ -1985,26 +1985,50 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
             return;
         const auto& ui = AetherSDR::anan::AnanUiState::instance();
         const int rx = ui.rxForPan(m_overlayMenu->panId());
-        QString sig;
+        // ANAN fork build 308 (operator, 11.11: CPU load). Every change here
+        // repaints the whole cached overlay layer (scales, slices, labels)
+        // and re-uploads it. The lines are now compared as drawn (their pixel
+        // row and the whole-dB label), and a change of the lines alone
+        // repaints at most twice a second; the overload warning and its blink
+        // still at once.
+        QString lineSig;
+        QString stateSig;
         if (rx >= 0 && rx < 2) {
             const qint64 now = QDateTime::currentMSecsSinceEpoch();
             const bool lineShown = ui.showNoiseLine && std::isfinite(ui.shownFloorDbm[rx])
                                    && now - ui.shownFloorAtMs[rx] <= 3000;
             const int adc = std::clamp(ui.rxAdc[rx], 0, 1);
             const bool ovl = ui.adcOverloadTest || now - ui.adcOverloadAtMs[adc] <= 1000;
-            sig = QStringLiteral("%1|%2|%3|%4|%5|%6")
-                      .arg(lineShown ? std::lround(ui.shownFloorDbm[rx] * 2.0) : -99999)
-                      .arg(lineShown && std::isfinite(ui.ownFloorDbm[rx]) ? std::lround(ui.ownFloorDbm[rx]) : -99999)
-                      .arg(ovl ? 1 : 0)
-                      .arg(ovl && (now / 400) % 2 == 0 ? 1 : 0)
-                      .arg(adc)
-                      // build 301: the AGC gate (and whether Auto sets it)
-                      .arg(ui.showAgcLine && std::isfinite(ui.agcGateDbm[rx])
-                               ? std::lround(ui.agcGateDbm[rx] * 2.0) * 2 + (ui.agcAuto[rx] ? 1 : 0)
-                               : -99999);
+            const int specH = spectrumPixelHeight();
+            const auto yOf = [&](double dbm) {
+                if (m_dynamicRange <= 0.0f)
+                    return -1;
+                const float norm = (m_refLevel - static_cast<float>(dbm)) / m_dynamicRange;
+                return static_cast<int>(std::clamp(norm, 0.0f, 1.0f) * specH);
+            };
+            const bool gateShown = ui.showAgcLine && std::isfinite(ui.agcGateDbm[rx]);
+            lineSig = QStringLiteral("%1|%2|%3|%4|%5|%6")
+                          .arg(lineShown ? yOf(ui.shownFloorDbm[rx]) : -99999)
+                          .arg(lineShown ? std::lround(ui.shownFloorDbm[rx]) : -99999)
+                          .arg(lineShown && std::isfinite(ui.ownFloorDbm[rx]) ? std::lround(ui.ownFloorDbm[rx]) : -99999)
+                          // build 301: the AGC gate
+                          .arg(gateShown ? yOf(ui.agcGateDbm[rx]) : -99999)
+                          .arg(gateShown ? std::lround(ui.agcGateDbm[rx]) : -99999)
+                          .arg(gateShown && ui.agcAuto[rx] ? 1 : 0);
+            stateSig = QStringLiteral("%1|%2|%3|%4|%5")
+                           .arg(ovl ? 1 : 0)
+                           .arg(ovl && (now / 400) % 2 == 0 ? 1 : 0)
+                           .arg(adc)
+                           .arg(lineShown ? 1 : 0)
+                           .arg(gateShown ? 1 : 0);
         }
-        if (sig != m_ananOverlaySig) {
-            m_ananOverlaySig = sig;
+        const bool stateChanged = stateSig != m_ananOverlayStateSig;
+        const bool linesChanged = lineSig != m_ananOverlaySig;
+        if (stateChanged || (linesChanged && (!m_ananOverlayLineClock.isValid()
+                                              || m_ananOverlayLineClock.elapsed() >= 500))) {
+            m_ananOverlayStateSig = stateSig;
+            m_ananOverlaySig = lineSig;
+            m_ananOverlayLineClock.restart();
             markOverlayDirty();
         }
     });
@@ -5265,6 +5289,10 @@ void SpectrumWidget::setSpectrumRenderMode(int mode) {
                    QString::number(static_cast<int>(m_spectrumRenderMode)));
         s.save();
         if (m_spectrumRenderMode == SpectrumRenderMode::Mode3D) {
+            // Build 308: the 3D rows are fed only in 3D -- what they held
+            // from an earlier 3D session is stale; start from the live rows.
+            m_dss.clear();
+            m_dss3dNoiseDbm = -1000.0f;
             // Allocate retained DSS scrollback only while it can be displayed.
             ensureWaterfallHistory();
         } else {
@@ -5737,6 +5765,14 @@ void SpectrumWidget::appendDssWaterfallRow(const QVector<float>& binsDbm,
     // Build 282: native tile rows arrive as preserveInput (their dB unit is
     // the waterfall's tile unit); FFT rows are dBm.
     m_dssRowsTileUnit = preserveInput;
+    // ANAN fork build 308 (operator, 11.11: "check whether the 3D panadapter
+    // is computed when it is not needed"). It was: every waterfall row was
+    // also resampled, smoothed and median-sorted into the 3D rows (2048
+    // columns since build 293) with the panadapter in 2D. Only in 3D now;
+    // setSpectrumRenderMode() clears the 3D rows on the way in, so the
+    // surface builds up from the live rows (96 rows, a few seconds).
+    if (m_spectrumRenderMode != SpectrumRenderMode::Mode3D)
+        return;
 
     QVector<float> repairedBins;
     const QVector<float>& dssBins = dcRepairedDssBins(
@@ -9413,7 +9449,7 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
                 const float v = binsIntensity[b];
                 if (!std::isfinite(v))
                     continue;
-                p += std::pow(10.0, 0.1 * static_cast<double>(v));
+                p += static_cast<double>(std::exp(0.23025850929940458f * v));   // build 308: 10^(v/10)
                 ++k;
             }
             if (k > 0)
@@ -10098,7 +10134,7 @@ const QVector<float>& SpectrumWidget::buildFftDisplayTrace(const QVector<float>&
             const int b1 = std::max(b0 + 1, static_cast<int>(static_cast<qint64>(o + 1) * srcCount / targetPoints));
             double sum = 0.0;
             for (int b = b0; b < b1 && b < srcCount; ++b)
-                sum += std::pow(10.0, 0.1 * static_cast<double>(displayBins[b]));
+                sum += static_cast<double>(std::exp(0.23025850929940458f * displayBins[b]));   // build 308
             reduced[o] = static_cast<float>(10.0 * std::log10(sum / static_cast<double>(b1 - b0) + 1e-30));
         }
         return reduced;
@@ -14630,6 +14666,108 @@ float SpectrumWidget::dssRowSpanTarget(double targetBandwidthMhz) const
         m_dssRowSpanPct);
 }
 
+bool SpectrumWidget::ensureDssMeshGeometry(QRhiResourceUpdateBatch* batch)
+{
+    // ANAN fork build 308: the static perspective grid, made and uploaded the
+    // first time a 3D frame needs it (geometry never changes -- height comes
+    // from the ring-buffered texture sampled per vertex). Kept until the
+    // QRhi resources are released.
+    if (m_dssMeshVbo && m_dssMeshLineVbo)
+        return true;
+    if (!m_dssMeshReady || !batch)
+        return false;
+    QRhi* r = rhi();
+    {
+        const int meshRows = DssRenderer::kVisibleRows;
+        m_dssMeshVbo = r->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer,
+                                    meshRows * dssFillVerticesPerRow() * 3 * sizeof(float));
+        m_dssMeshLineVbo = r->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer,
+                                        meshRows * dssLineVerticesPerRow() * 3 * sizeof(float));
+        if (!m_dssMeshVbo->create() || !m_dssMeshLineVbo->create()) {
+            qCWarning(lcGui) << "SpectrumWidget: dss_mesh buffer create failed";
+            delete m_dssMeshVbo;
+            m_dssMeshVbo = nullptr;
+            delete m_dssMeshLineVbo;
+            m_dssMeshLineVbo = nullptr;
+            m_dssMeshReady = false;
+            return false;
+        }
+
+        // Mesh columns, NOT texture columns: the mesh is wider than the
+        // viewport so a widened row keeps texel density on screen.
+        const int cols = DssRenderer::kMeshCols;
+        const int rows = DssRenderer::kVisibleRows;
+        QVector<float> fill;
+        QVector<float> line;
+        fill.reserve(rows * dssFillVerticesPerRow() * 3);
+        line.reserve(rows * dssLineVerticesPerRow() * 3);
+        for (int rr = rows - 1; rr >= 0; --rr) {
+            const float v = static_cast<float>(rr) / rows;   // 0 front .. ~1 back
+            // Base first, overlay second. Curtains use both only at the fixed
+            // front/rear boundaries; ridge outlines use both at every fixed
+            // depth for exact-row crossfades.
+            for (int layer = 0; layer < 2; ++layer) {
+                const float fillTag = layer == 0 ? 0.0f : 2.0f;
+                const float floorTag = layer == 0 ? 1.0f : 3.0f;
+                const float ribbonLowerTag =
+                    layer == 0 ? -10.0f : -20.0f;
+                const float ribbonUpperTag =
+                    layer == 0 ? -11.0f : -21.0f;
+                // Build 285 (dss_mesh.vert): each column is a flat bar (its
+                // right-hand vertices carry tag + 100) and, on the overlay
+                // layer, a box carried back to the next row: its right wall
+                // and its lid (4/5 near top/floor, 6/7 at the next row),
+                // drawn before the row's fronts so the fronts stay on top.
+                constexpr float kRight = 100.0f;
+                if (layer == 1) {
+                    for (int cc = 0; cc + 1 < cols; ++cc) {
+                        const float u1 = static_cast<float>(cc + 1) / (cols - 1);
+                        // Build 291: side walls 8/9/10/11 -- the shader
+                        // puts each on the side the perspective shows.
+                        appendDssVertex(fill, u1, v, 8.0f + kRight);
+                        appendDssVertex(fill, u1, v, 9.0f + kRight);
+                        appendDssVertex(fill, u1, v, 10.0f + kRight);
+                        appendDssVertex(fill, u1, v, 10.0f + kRight);
+                        appendDssVertex(fill, u1, v, 9.0f + kRight);
+                        appendDssVertex(fill, u1, v, 11.0f + kRight);
+                    }
+                    for (int cc = 0; cc + 1 < cols; ++cc) {
+                        const float u0 = static_cast<float>(cc) / (cols - 1);
+                        const float u1 = static_cast<float>(cc + 1) / (cols - 1);
+                        appendDssVertex(fill, u0, v, 4.0f);
+                        appendDssVertex(fill, u0, v, 6.0f);
+                        appendDssVertex(fill, u1, v, 4.0f + kRight);
+                        appendDssVertex(fill, u1, v, 4.0f + kRight);
+                        appendDssVertex(fill, u0, v, 6.0f);
+                        appendDssVertex(fill, u1, v, 6.0f + kRight);
+                    }
+                }
+                for (int cc = 0; cc + 1 < cols; ++cc) {
+                    const float u0 = static_cast<float>(cc) / (cols - 1);
+                    const float u1 = static_cast<float>(cc + 1) / (cols - 1);
+                    appendDssVertex(fill, u0, v, fillTag);
+                    appendDssVertex(fill, u0, v, floorTag);
+                    appendDssVertex(fill, u1, v, fillTag + kRight);
+                    appendDssVertex(fill, u1, v, fillTag + kRight);
+                    appendDssVertex(fill, u0, v, floorTag);
+                    appendDssVertex(fill, u1, v, floorTag + kRight);
+                    appendDssVertex(line, u0, v, ribbonLowerTag);
+                    appendDssVertex(line, u0, v, ribbonUpperTag);
+                    appendDssVertex(line, u1, v, ribbonLowerTag);
+                    appendDssVertex(line, u1, v, ribbonLowerTag);
+                    appendDssVertex(line, u0, v, ribbonUpperTag);
+                    appendDssVertex(line, u1, v, ribbonUpperTag);
+                }
+            }
+        }
+        batch->uploadStaticBuffer(m_dssMeshVbo, fill.constData());
+        batch->uploadStaticBuffer(m_dssMeshLineVbo, line.constData());
+        // The palette LUT is baked from the live floor/range on the first 3D
+        // frame (renderGpuFrame) before the surface is drawn — no init upload.
+    }
+    return true;
+}
+
 void SpectrumWidget::initDssMeshPipeline()
 {
     QRhi* r = rhi();
@@ -14653,17 +14791,14 @@ void SpectrumWidget::initDssMeshPipeline()
 
     const int cols = m_dss.cols();
     const int textureRows = m_dss.rows();
-    const int meshRows = DssRenderer::kVisibleRows;
-    const int fillVerts = meshRows * dssFillVerticesPerRow();
-    const int lineVerts = meshRows * dssLineVerticesPerRow();
-
-    m_dssMeshVbo = r->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer,
-                                fillVerts * 3 * sizeof(float));
-    m_dssMeshLineVbo = r->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer,
-                                    lineVerts * 3 * sizeof(float));
+    // ANAN fork build 308 (operator, 11.11: "the program takes 600 MB"):
+    // the two static vertex buffers (96 rows x 2048 columns: ~57 MB of fill
+    // and ~28 MB of ribbons, per panadapter) are no longer made here, for
+    // every pan whether or not it is ever shown in 3D -- ensureDssMeshGeometry()
+    // makes them on the first 3D frame.
     m_dssMeshUbo = r->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer,
                                 kDssMeshUboFloats * sizeof(float));
-    if (!m_dssMeshVbo->create() || !m_dssMeshLineVbo->create() || !m_dssMeshUbo->create()) {
+    if (!m_dssMeshUbo->create()) {
         qCWarning(lcGui) << "SpectrumWidget: dss_mesh buffer create failed";
         return;
     }
@@ -14980,81 +15115,8 @@ void SpectrumWidget::initialize(QRhiCommandBuffer* cb)
     batch->uploadStaticBuffer(m_wfVbo, kQuadData);
     batch->uploadStaticBuffer(m_ovVbo, kQuadData);
 
-    // 3DSS mesh: build the static perspective grid once (geometry never changes —
-    // height comes from the ring-buffered texture sampled per-vertex).
-    if (m_dssMeshReady) {
-        // Mesh columns, NOT texture columns: the mesh is wider than the
-        // viewport so a widened row keeps texel density on screen.
-        const int cols = DssRenderer::kMeshCols;
-        const int rows = DssRenderer::kVisibleRows;
-        QVector<float> fill;
-        QVector<float> line;
-        fill.reserve(rows * dssFillVerticesPerRow() * 3);
-        line.reserve(rows * dssLineVerticesPerRow() * 3);
-        for (int rr = rows - 1; rr >= 0; --rr) {
-            const float v = static_cast<float>(rr) / rows;   // 0 front .. ~1 back
-            // Base first, overlay second. Curtains use both only at the fixed
-            // front/rear boundaries; ridge outlines use both at every fixed
-            // depth for exact-row crossfades.
-            for (int layer = 0; layer < 2; ++layer) {
-                const float fillTag = layer == 0 ? 0.0f : 2.0f;
-                const float floorTag = layer == 0 ? 1.0f : 3.0f;
-                const float ribbonLowerTag =
-                    layer == 0 ? -10.0f : -20.0f;
-                const float ribbonUpperTag =
-                    layer == 0 ? -11.0f : -21.0f;
-                // Build 285 (dss_mesh.vert): each column is a flat bar (its
-                // right-hand vertices carry tag + 100) and, on the overlay
-                // layer, a box carried back to the next row: its right wall
-                // and its lid (4/5 near top/floor, 6/7 at the next row),
-                // drawn before the row's fronts so the fronts stay on top.
-                constexpr float kRight = 100.0f;
-                if (layer == 1) {
-                    for (int cc = 0; cc + 1 < cols; ++cc) {
-                        const float u1 = static_cast<float>(cc + 1) / (cols - 1);
-                        // Build 291: side walls 8/9/10/11 -- the shader
-                        // puts each on the side the perspective shows.
-                        appendDssVertex(fill, u1, v, 8.0f + kRight);
-                        appendDssVertex(fill, u1, v, 9.0f + kRight);
-                        appendDssVertex(fill, u1, v, 10.0f + kRight);
-                        appendDssVertex(fill, u1, v, 10.0f + kRight);
-                        appendDssVertex(fill, u1, v, 9.0f + kRight);
-                        appendDssVertex(fill, u1, v, 11.0f + kRight);
-                    }
-                    for (int cc = 0; cc + 1 < cols; ++cc) {
-                        const float u0 = static_cast<float>(cc) / (cols - 1);
-                        const float u1 = static_cast<float>(cc + 1) / (cols - 1);
-                        appendDssVertex(fill, u0, v, 4.0f);
-                        appendDssVertex(fill, u0, v, 6.0f);
-                        appendDssVertex(fill, u1, v, 4.0f + kRight);
-                        appendDssVertex(fill, u1, v, 4.0f + kRight);
-                        appendDssVertex(fill, u0, v, 6.0f);
-                        appendDssVertex(fill, u1, v, 6.0f + kRight);
-                    }
-                }
-                for (int cc = 0; cc + 1 < cols; ++cc) {
-                    const float u0 = static_cast<float>(cc) / (cols - 1);
-                    const float u1 = static_cast<float>(cc + 1) / (cols - 1);
-                    appendDssVertex(fill, u0, v, fillTag);
-                    appendDssVertex(fill, u0, v, floorTag);
-                    appendDssVertex(fill, u1, v, fillTag + kRight);
-                    appendDssVertex(fill, u1, v, fillTag + kRight);
-                    appendDssVertex(fill, u0, v, floorTag);
-                    appendDssVertex(fill, u1, v, floorTag + kRight);
-                    appendDssVertex(line, u0, v, ribbonLowerTag);
-                    appendDssVertex(line, u0, v, ribbonUpperTag);
-                    appendDssVertex(line, u1, v, ribbonLowerTag);
-                    appendDssVertex(line, u1, v, ribbonLowerTag);
-                    appendDssVertex(line, u0, v, ribbonUpperTag);
-                    appendDssVertex(line, u1, v, ribbonUpperTag);
-                }
-            }
-        }
-        batch->uploadStaticBuffer(m_dssMeshVbo, fill.constData());
-        batch->uploadStaticBuffer(m_dssMeshLineVbo, line.constData());
-        // The palette LUT is baked from the live floor/range on the first 3D
-        // frame (renderGpuFrame) before the surface is drawn — no init upload.
-    }
+    // 3DSS mesh geometry: built on the first 3D frame (build 308,
+    // ensureDssMeshGeometry()).
 
     // Initial full waterfall texture upload (convert RGB32→RGBA8)
     if (!m_waterfall.isNull()) {
@@ -16029,7 +16091,7 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
         // texture is visually free via the Linear overlay sampler) and stretched
         // to the specRect viewport. This keeps the per-frame QPainter rebuild and
         // texture upload an order of magnitude cheaper than a full-widget image.
-        if (is3D && m_dssMeshReady) {
+        if (is3D && m_dssMeshReady && ensureDssMeshGeometry(batch)) {
             // GPU mesh path: keep the palette LUT current, upload every height
             // row pushed since the last frame into the ring texture, and refresh
             // the uniforms. Geometry is static — pan/zoom rebuild nothing.
@@ -16618,7 +16680,7 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
     // below, static overlay on top).
     int dssMeshOutlineRows = 0;
     int dssMeshOutlineSkippedRows = 0;
-    if (is3D && m_dssMeshReady && m_dssMeshFillPipeline) {
+    if (is3D && m_dssMeshReady && m_dssMeshFillPipeline && m_dssMeshVbo) {
         // GPU height-map mesh: static grid, height from the ring texture.
         const QRhiViewport vp(static_cast<float>(specRect.x()) * dpr,
                               static_cast<float>(h - specRect.bottom() - 1) * dpr,
@@ -16662,7 +16724,7 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
 
     QRhiGraphicsPipeline* outlinePipeline = dssOutlinePipelineFor(
         m_dssOutlinePipelineMode, m_dssMeshFillPipeline, m_dssMeshLinePipeline);
-    if (dssMeshOutlineRows > 0 && outlinePipeline && m_dssMeshSrb) {
+    if (dssMeshOutlineRows > 0 && outlinePipeline && m_dssMeshSrb && m_dssMeshLineVbo) {
         const QRhiViewport vp(
             static_cast<float>(specRect.x()) * dpr,
             static_cast<float>(h - specRect.bottom() - 1) * dpr,
