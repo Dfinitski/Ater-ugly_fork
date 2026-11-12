@@ -1718,7 +1718,7 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         }
         const std::vector<float> dbm = resample(bins);
         if (ids->ddcIndex < 2 && !txOnAir && raw.size() == n)
-            ananNoiseLineStep(ids->ddcIndex, raw, rate);
+            ananNoiseLineStep(ids->ddcIndex, raw, rate, first, keep);
         emit spectrumFrameReady(ui, floatBytes(dbm), wf);
     });
 
@@ -10292,31 +10292,58 @@ void Hl2Backend::ananSyncUiState()
 // AUTO attenuator's base. The drawn trace cannot be one: each bin holds the
 // noise of its own bandwidth (Hanning, 1.5 * rate / N: 563 Hz at 384 k /
 // 1024, 18 Hz at 48 k / 4096), and a zoomed-out view keeps the PEAK of the
-// bins under each pixel. So the floor comes from the raw frame (all bins of
-// the DDC, before AVG and before the display resampling):
-//  - in linear power a noise-only bin is exponentially distributed, its
-//    median is ln 2 of its mean -- the median of the middle 80 % (the DDC
-//    edges roll off) over ln 2 is the mean noise per bin, and signals have
-//    to fill a third of the span before they move it;
+// bins under each pixel. So the floor comes from the raw frame (before AVG
+// and before the display resampling):
+//  - build 297: the bins on screen (at least 1024), the 20th percentile of
+//    their power over -ln(0.8) -- the mean noise per bin (a noise-only bin
+//    is exponentially distributed), unmoved until signals fill 80 % of the
+//    view (MicronSDR's statistic; it was the median of the whole band);
 //  - the mean per bin is referred to 500 Hz: - 10 log10(1.5 rate / N)
 //    + 10 log10(500). That holds at any rate, FFT size or zoom.
 // The level is the ruler's (the panadapter's dBm, a tone reads its power):
 // what reaches the ADC -- not corrected for the attenuator or the S-meter
 // options. It is drawn as a line on the panadapter (AnanUiState
 // shownFloorDbm) and is what AUTO ATT holds.
-void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, double rateHz)
+void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, double rateHz,
+                                   std::size_t viewFirst, std::size_t viewKeep)
 {
     if (rx < 0 || rx > 1 || rawDbfs.size() < 64 || rateHz <= 0.0 || m_keyed || m_radioPtt)
         return;
     const std::size_t n = rawDbfs.size();
-    const std::size_t e = n / 10;
+    // ANAN fork build 297 (operator, 11.11: "the median cannot be the noise
+    // floor -- the spectrum is full of strong signals; see how MicronSDR
+    // does it"). MicronSDR (Panarama.cpp, after the frame smoothing): the
+    // 20th percentile of the VISIBLE spectrum, at least 1024 bins. Strong
+    // signals only lift the upper bins, so the statistic holds until they
+    // fill 80 % of the view; the median of the whole captured band (before)
+    // broke once they filled half of it -- and the band holds more of them
+    // than the view. So: the bins on screen (viewFirst / viewKeep, widened
+    // to 1024 around their centre, within the DDC's middle 80 %), the 20th
+    // percentile of their power. On noise alone a bin's power is
+    // exponentially distributed: its 20th percentile is -ln(0.8) = 0.223 of
+    // the mean (-6.5 dB) -- divided by that it is the mean noise per bin,
+    // so the line still agrees with the S-meter on a quiet band.
+    const std::size_t edge = n / 10;
+    std::size_t lo = std::min(viewFirst, n);
+    std::size_t hi = std::min(viewFirst + viewKeep, n);
+    constexpr std::size_t kMinStatBins = 1024;
+    if (hi <= lo || hi - lo < kMinStatBins) {
+        const std::size_t centre = hi > lo ? (lo + hi) / 2 : n / 2;
+        const std::size_t want = std::min(kMinStatBins, n - 2 * edge);
+        lo = centre > want / 2 ? centre - want / 2 : 0;
+        hi = lo + want;
+    }
+    lo = std::max(lo, edge);
+    hi = std::min(hi, n - edge);
+    if (hi <= lo + 16)
+        return;
     std::vector<double> p;
-    p.reserve(n - 2 * e);
-    for (std::size_t i = e; i < n - e; ++i)
+    p.reserve(hi - lo);
+    for (std::size_t i = lo; i < hi; ++i)
         p.push_back(std::pow(10.0, 0.1 * static_cast<double>(rawDbfs[i])));
-    const std::size_t mid = p.size() / 2;
-    std::nth_element(p.begin(), p.begin() + static_cast<std::ptrdiff_t>(mid), p.end());
-    const double meanPerBin = p[mid] / std::log(2.0);
+    const std::size_t k = p.size() / 5;
+    std::nth_element(p.begin(), p.begin() + static_cast<std::ptrdiff_t>(k), p.end());
+    const double meanPerBin = p[k] / -std::log(0.8);
     if (!(meanPerBin > 0.0))
         return;
     // Kept WITHOUT the meter's calibration (AUTO ATT works on differences);

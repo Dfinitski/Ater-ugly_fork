@@ -578,7 +578,9 @@ private:
     [[nodiscard]] double ananOwnNoiseOfAdc(int adc) const;
     void ananOwnNoiseCaptureStep(int rx, qint64 t);
     QElapsedTimer m_ananOwnClock;
-    void ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, double rateHz);
+    // Build 297: viewFirst / viewKeep = the bins of the frame on screen.
+    void ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, double rateHz,
+                           std::size_t viewFirst, std::size_t viewKeep);
     [[nodiscard]] int ananAutoAttMarginDb(int rx) const;
     // Build 295: the AUTO attenuator after MicronSDR (autoAttMeasure): the
     // floor averaged over windows of frames made at the commanded ATT, held
