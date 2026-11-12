@@ -273,6 +273,21 @@ int openWdspChannel(int channelId, const WdspChannel::Config& config,
 // default slope of 0 is total compression — it lifts the noise floor to the
 // gain ceiling and clips. The per-mode constants match wcpAGC's own presets;
 // setting them explicitly keeps the behaviour pinned if those defaults move.
+// ANAN fork build 306 (operator, 11.11: "switching USB - LSB I clearly heard
+// a different left-right balance in the PC speakers"). WDSP's RX patch panel
+// is created binaural (copy 0): left = I, right = Q of the demodulator's
+// complex output. For SSB that Q is the 90-degree companion of the audio,
+// and its sign flips with the sideband, so the image moved between the
+// speakers on USB / LSB. Thetis and pihpsdr run it mono (Binaural off: I on
+// both channels). Mono here, except where both channels carry the signal:
+// DRM (the filtered I/Q for Dream), WFM stereo, and SPEC.
+void applyRxPanel(int channel, WdspChannel::Mode mode)
+{
+    const bool twoChannels = mode == WdspChannel::Mode::Drm || mode == WdspChannel::Mode::Wbfm
+                             || mode == WdspChannel::Mode::Spec;
+    SetRXAPanelBinaural(channel, twoChannels ? 1 : 0);
+}
+
 void applyRxAgc(int channel, int mode, double topDb, int slopeDb, double fixedDb)
 {
     SetRXAAGCMode(channel, mode);
@@ -690,6 +705,7 @@ bool WdspChannel::setMode(Mode mode) noexcept
         const std::scoped_lock setupLock(g_setupMutex);
         if (m_config.direction == Direction::Receive) {
             SetRXAMode(m_channelId, wdspMode(mode));
+            applyRxPanel(m_channelId, mode);   // build 306
             // The squelch belongs to a mode family, so a mode change moves it
             // to the new family's stage and stops the old one — see
             // setSquelch() in the header.
@@ -1728,6 +1744,7 @@ bool WdspChannel::open() noexcept
     }
     if (m_config.direction == Direction::Receive) {
         SetRXAMode(m_channelId, wdspMode(m_config.mode));
+        applyRxPanel(m_channelId, m_config.mode);   // build 306
         if (m_config.fmReceive) {
             // Upstream RX panel gain defaults to 4 and the FM limiter is off.
             // Together with FM de-emphasis this clips valid modulation at

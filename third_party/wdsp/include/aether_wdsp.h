@@ -91,6 +91,8 @@ void SetRXAFMDeviation(int channel, double deviationHz);
 void SetRXAFMLimGain(int channel, double maximumGainDb);
 void SetRXAFMLimRun(int channel, int run);
 void SetRXAPanelGain1(int channel, double gain);
+// 0 = mono (I copied to both channels), 1 = binaural (I left, Q right).
+void SetRXAPanelBinaural(int channel, int bin);
 void SetRXABandpassFreqs(int channel, double lowHz, double highHz);
 // Canonical passband setter. RXASetPassband() is what both reference clients
 // (Thetis, pihpsdr) call: it sets the bandpass AND the SNBA output bandwidth
