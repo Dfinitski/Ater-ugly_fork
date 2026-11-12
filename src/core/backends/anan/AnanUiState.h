@@ -49,6 +49,8 @@ public:
                      != QLatin1String("Average");
         showNoiseLine = st.value(QStringLiteral("AnanShowNoiseLine"), QStringLiteral("True")).toString()
                         == QLatin1String("True");
+        showAgcLine = st.value(QStringLiteral("AnanShowAgcLine"), QStringLiteral("True")).toString()
+                      == QLatin1String("True");
         for (int rx = 0; rx < 2; ++rx) {
             agcAuto[rx] = st.value(agcAutoKey(rx), QStringLiteral("False")).toString() == QLatin1String("True");
             agcNfOffsetDb[rx] = std::clamp(st.value(agcOffsetKey(rx), kAgcNfOffsetDefaultDb).toInt(),
@@ -202,6 +204,17 @@ public:
     [[nodiscard]] int rxForPan(const QString& panId) const { return panRx.value(backendPan(panId), -1); }
     [[nodiscard]] bool ownsAtt(const QString& panId) const { return panOwnsAtt.value(backendPan(panId), true); }
 
+    // Build 299 (operator, 11.11): the Auto AGC level -- the signal noise
+    // floor + NF+ -- as a yellow line on the panadapter, draggable (it sets
+    // NF+, the same value as the AGC applet's slider). Setup > Receive.
+    bool showAgcLine = true;
+    void setShowAgcLine(bool on)
+    {
+        showAgcLine = on;
+        auto& st = AppSettings::instance();
+        st.setValue(QStringLiteral("AnanShowAgcLine"), on ? QStringLiteral("True") : QStringLiteral("False"));
+        st.save();
+    }
     // The noise-floor line on the panadapter (Setup > Receive, 06.11).
     bool showNoiseLine = true;
     void setShowNoiseLine(bool on)

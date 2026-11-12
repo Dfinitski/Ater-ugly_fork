@@ -1991,12 +1991,14 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
                                    && now - ui.shownFloorAtMs[rx] <= 3000;
             const int adc = std::clamp(ui.rxAdc[rx], 0, 1);
             const bool ovl = ui.adcOverloadTest || now - ui.adcOverloadAtMs[adc] <= 1000;
-            sig = QStringLiteral("%1|%2|%3|%4|%5")
+            sig = QStringLiteral("%1|%2|%3|%4|%5|%6")
                       .arg(lineShown ? std::lround(ui.shownFloorDbm[rx] * 2.0) : -99999)
                       .arg(lineShown && std::isfinite(ui.ownFloorDbm[rx]) ? std::lround(ui.ownFloorDbm[rx]) : -99999)
                       .arg(ovl ? 1 : 0)
                       .arg(ovl && (now / 400) % 2 == 0 ? 1 : 0)
-                      .arg(adc);
+                      .arg(adc)
+                      // build 299: the AGC line
+                      .arg(ui.showAgcLine && ui.agcAuto[rx] ? ui.agcNfOffsetDb[rx] : -99999);
         }
         if (sig != m_ananOverlaySig) {
             m_ananOverlaySig = sig;
@@ -3672,7 +3674,8 @@ bool SpectrumWidget::anyDragActive() const {
         || m_draggingDssFloor
         || m_draggingTimeScale
         || m_draggingTimeScaleRate
-        || m_draggingTnfId >= 0;
+        || m_draggingTnfId >= 0
+        || m_draggingAgcLine;   // build 299
 }
 void SpectrumWidget::publishPerfDragState() const {
     PerfTelemetry::instance().setDragActive(anyDragActive());
@@ -4902,11 +4905,52 @@ void SpectrumWidget::drawAnanAdcOverload(QPainter& p, const QRect& specRect)
 // it does not move with the rate, the FFT size, the zoom or AVG). The base
 // of the AUTO attenuator; the receiver's own noise, once measured, is the
 // short mark at the right edge.
+// ANAN fork build 299 (operator, 11.11): the Auto AGC line -- the signal
+// noise floor + NF+ (the level Auto AGC is set from), only while Auto AGC is
+// on for this pan's receiver and the floor is fresh. -1 = not shown.
+int SpectrumWidget::ananAgcLineY(int specH, int* rxOut) const
+{
+    // Drawn on the 2D panadapter only (as the noise line).
+    if (!m_overlayMenu || m_dynamicRange <= 0.0f || specH <= 0
+        || m_spectrumRenderMode == SpectrumRenderMode::Mode3D)
+        return -1;
+    const auto& ui = AetherSDR::anan::AnanUiState::instance();
+    const int rx = ui.rxForPan(m_overlayMenu->panId());
+    if (rx < 0 || rx > 1 || !ui.showAgcLine || !ui.agcAuto[rx]
+        || !std::isfinite(ui.shownFloorDbm[rx])
+        || QDateTime::currentMSecsSinceEpoch() - ui.shownFloorAtMs[rx] > 3000)
+        return -1;
+    if (rxOut)
+        *rxOut = rx;
+    const double dbm = ui.shownFloorDbm[rx] + ui.agcNfOffsetDb[rx];
+    const float norm = (m_refLevel - static_cast<float>(dbm)) / m_dynamicRange;
+    return static_cast<int>(std::clamp(norm, 0.0f, 1.0f) * specH);
+}
+
 void SpectrumWidget::drawAnanNoiseFloor(QPainter& p, const QRect& specRect)
 {
     if (!m_overlayMenu || m_dynamicRange <= 0.0f)
         return;
     const auto& ui = AetherSDR::anan::AnanUiState::instance();
+    // Build 299: the yellow Auto AGC line (its own checkbox).
+    {
+        int agcRx = -1;
+        const int ya = ananAgcLineY(specRect.height(), &agcRx);
+        if (ya >= 0) {
+            const int y = specRect.top() + ya;
+            const QColor c(0xff, 0xd0, 0x20, 200);
+            p.setPen(QPen(c, 1, Qt::DashLine));
+            p.drawLine(specRect.left(), y, specRect.right() - DBM_STRIP_W, y);
+            QFont f = p.font();
+            f.setPointSize(8);
+            p.setFont(f);
+            p.setPen(c);
+            p.drawText(specRect.left() + 6, y - 3,
+                       QStringLiteral("AGC %1 dBm/500 Hz (NF+%2)")
+                           .arg(std::lround(ui.shownFloorDbm[agcRx] + ui.agcNfOffsetDb[agcRx]))
+                           .arg(ui.agcNfOffsetDb[agcRx]));
+        }
+    }
     if (!ui.showNoiseLine)
         return;   // Setup > Receive
     const int rx = ui.rxForPan(m_overlayMenu->panId());
@@ -10554,6 +10598,20 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
     if (ev->button() == Qt::LeftButton)
         m_clickPressPos = ev->position().toPoint();
 
+    // Build 299: grab the yellow Auto AGC line (left of the dBm strip).
+    if (ev->button() == Qt::LeftButton && y < specH
+        && static_cast<int>(ev->position().x()) < width() - DBM_STRIP_W) {
+        int rx = -1;
+        const int ya = ananAgcLineY(specH, &rx);
+        if (ya >= 0 && std::abs(y - ya) <= 4) {
+            m_draggingAgcLine = true;
+            m_agcLineDragRx = rx;
+            setSpectrumCursor(Qt::SizeVerCursor);
+            ev->accept();
+            return;
+        }
+    }
+
     // Click on prop forecast overlay → open dashboard
     if (ev->button() == Qt::LeftButton && !m_propClickRect.isNull()) {
         const QPoint pos(static_cast<int>(ev->position().x()), y);
@@ -11805,6 +11863,36 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
         return;
     }
 
+    // Build 299: dragging the Auto AGC line sets NF+ (saved on release; the
+    // AGC applet's NF+ slider follows AnanUiState).
+    if (m_draggingAgcLine) {
+        auto& ui = AetherSDR::anan::AnanUiState::instance();
+        const int rx = m_agcLineDragRx;
+        if (rx >= 0 && rx < 2 && std::isfinite(ui.shownFloorDbm[rx]) && specH > 0
+            && m_dynamicRange > 0.0f) {
+            const double dbm = m_refLevel
+                - std::clamp(static_cast<double>(y) / specH, 0.0, 1.0) * m_dynamicRange;
+            const int v = std::clamp(static_cast<int>(std::lround(dbm - ui.shownFloorDbm[rx])),
+                                     AetherSDR::anan::AnanUiState::kAgcNfOffsetMinDb,
+                                     AetherSDR::anan::AnanUiState::kAgcNfOffsetMaxDb);
+            if (v != ui.agcNfOffsetDb[rx]) {
+                ui.agcNfOffsetDb[rx] = v;
+                markOverlayDirty();
+            }
+        }
+        setSpectrumCursor(Qt::SizeVerCursor);
+        ev->accept();
+        return;
+    }
+    if (!anyDragActive() && y < specH && mx < width() - DBM_STRIP_W) {
+        const int ya = ananAgcLineY(specH);
+        if (ya >= 0 && std::abs(y - ya) <= 4) {
+            setSpectrumCursor(Qt::SizeVerCursor);
+            ev->accept();
+            return;
+        }
+    }
+
     if (m_draggingDssFloor) {
         const int dragHeight = std::max(1, specH);
         const float previewDepth = DbmRangeTransition::floorDepthForDrag(
@@ -12253,6 +12341,17 @@ void SpectrumWidget::mouseReleaseEvent(QMouseEvent* ev)
 
     if (m_draggingTnfId >= 0) {
         m_draggingTnfId = -1;
+        setSpectrumCursor(Qt::CrossCursor);
+        ev->accept();
+        return;
+    }
+    if (m_draggingAgcLine) {   // build 299: keep the NF+ it was dragged to
+        m_draggingAgcLine = false;
+        auto& ui = AetherSDR::anan::AnanUiState::instance();
+        const int rx = m_agcLineDragRx;
+        if (rx >= 0 && rx < 2)
+            ui.setAgcAuto(rx, ui.agcAuto[rx], ui.agcNfOffsetDb[rx]);
+        m_agcLineDragRx = -1;
         setSpectrumCursor(Qt::CrossCursor);
         ev->accept();
         return;

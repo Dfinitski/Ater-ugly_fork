@@ -4590,6 +4590,24 @@ Auto AGC не менялся: он уже работал от полки плю�
 
 Файлы: Hl2Backend.cpp, ForkBuild.h (298).
 
+## 262. Сборка 299 — жёлтая линия Auto AGC, перетаскивается мышью; «Signal Noise Floor»
+
+Оператор: переименовать галку линии шума так, чтобы было ясно, что это шум входного сигнала, а не собственный шум АЦП (выбран вариант 4); добавить такую же жёлтую линию для смещения АРУ со своей галкой; линию можно двигать мышью, значение синхронизируется с ползунком NF+ в АРУ.
+
+**Setup → Receive:**
+- группа «Receiver Noise Floor» → **«Signal Noise Floor»**;
+- галка «Show the noise floor line on the panadapter» → **«Show the signal noise floor at the ADC input»** (с подсказкой);
+- новая галка **«Show the Auto AGC level (noise floor + NF+)»** — `AnanUiState::showAgcLine`, ключ `AnanShowAgcLine`, по умолчанию включена.
+
+**Панорама** (`SpectrumWidget`, только 2D, пока Auto AGC включён у приёмника этой панорамы):
+- жёлтый пунктир на уровне полки + NF+ с подписью «AGC N dBm/500 Hz (NF+M)» (`ananAgcLineY`, рисуется в `drawAnanNoiseFloor`);
+- захват ±4 px левее шкалы дБм, курсор SizeVer; при перетаскивании NF+ = round(уровень под мышью − полка), в пределах −20..+60;
+- во время перетаскивания меняется `AnanUiState::agcNfOffsetDb` (бэкенд читает его раз в 500 мс, ползунки NF+ в апплете RX и VFO следят за ним по своим таймерам);
+- при отпускании значение сохраняется (`setAgcAuto`);
+- состояние линии добавлено в опрос перерисовки слоя (`m_ananOverlaySig`).
+
+Файлы: SpectrumWidget.cpp/.h, RadioSetupDialog.cpp, AnanUiState.h, ForkBuild.h (299).
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

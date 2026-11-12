@@ -1178,6 +1178,11 @@ private:
     void drawSpotMarkers(QPainter& p, const QRect& specRect);
     void drawAutoSqlFloor(QPainter& p, const QRect& specRect);
     void drawAnanNoiseFloor(QPainter& p, const QRect& specRect);
+    // Build 299: the Auto AGC line (signal noise floor + NF+): its y in the
+    // spectrum area, or -1 when it is not shown; rx of this pan.
+    int ananAgcLineY(int specH, int* rxOut = nullptr) const;
+    bool m_draggingAgcLine = false;
+    int m_agcLineDragRx = -1;
     void drawAnanAdcOverload(QPainter& p, const QRect& specRect);
     void drawSquelchLine(QPainter& p, const QRect& specRect);
     void updateAutoSquelchFromBins(const QVector<float>& binsDbm);

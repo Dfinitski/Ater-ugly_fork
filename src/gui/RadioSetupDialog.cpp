@@ -3474,15 +3474,31 @@ QWidget* RadioSetupDialog::buildRxTab()
         // antenna noise is far above it even at ATT 31 dB -- so it is captured
         // here with the antenna disconnected (Hl2Backend::ananOwnNoiseCaptureStep).
         auto& ui = AetherSDR::anan::AnanUiState::instance();
-        auto* group = new QGroupBox("Receiver Noise Floor");
+        // Build 299: "Signal Noise Floor" -- the noise of the received signal
+        // at the ADC input, not the converter's own noise.
+        auto* group = new QGroupBox("Signal Noise Floor");
         auto* gv = new QVBoxLayout(group);
         gv->setSpacing(6);
-        auto* show = new QCheckBox("Show the noise floor line on the panadapter");
+        auto* show = new QCheckBox("Show the signal noise floor at the ADC input");
         show->setObjectName(QStringLiteral("ananShowNoiseLine"));
         show->setChecked(ui.showNoiseLine);
+        show->setToolTip(QStringLiteral(
+            "Green dashed line: the noise of the received signal at the ADC input, after the\n"
+            "attenuator, in dBm / 500 Hz on the S-meter's calibration (the 20th percentile of\n"
+            "the spectrum on screen). AUTO ATT and Auto AGC work from it."));
         connect(show, &QCheckBox::toggled, this,
                 [](bool on) { AetherSDR::anan::AnanUiState::instance().setShowNoiseLine(on); });
         gv->addWidget(show);
+        auto* showAgc = new QCheckBox("Show the Auto AGC level (noise floor + NF+)");
+        showAgc->setObjectName(QStringLiteral("ananShowAgcLine"));
+        showAgc->setChecked(ui.showAgcLine);
+        showAgc->setToolTip(QStringLiteral(
+            "Yellow dashed line, while Auto AGC is on: the signal noise floor + NF+, the level\n"
+            "Auto AGC is set from. Drag it with the mouse to change NF+ (the AGC NF+ slider\n"
+            "follows)."));
+        connect(showAgc, &QCheckBox::toggled, this,
+                [](bool on) { AetherSDR::anan::AnanUiState::instance().setShowAgcLine(on); });
+        gv->addWidget(showAgc);
         auto* ovlTest = new QCheckBox("Test the ADC overload warning on the panadapter");
         ovlTest->setObjectName(QStringLiteral("ananAdcOverloadTest"));
         ovlTest->setChecked(ui.adcOverloadTest);
