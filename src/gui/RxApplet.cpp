@@ -39,6 +39,7 @@
 #include <QGridLayout>
 #include <QMenu>
 #include <QApplication>
+#include "core/fdv/FdvState.h"   // build 340
 #include <QToolButton>
 #include <QButtonGroup>
 #include <QSpinBox>
@@ -2175,6 +2176,21 @@ void RxApplet::updateSliceButtons(const QList<SliceModel*>& slices, int activeSl
     refreshAllMutedDim();
 }
 
+// ANAN fork build 340: FreeDV rides the receiver's USB / LSB, so the combo
+// showed USB and picking USB there was no change -- no way out of FreeDV.
+// While FreeDV runs on this receiver the combo shows FDV.
+void RxApplet::refreshModeDisplay()
+{
+    if (!m_modeCombo || !m_slice)
+        return;
+    const bool fdvOn = fdv::FdvState::instance().sliceId == m_slice->sliceId();
+    const int idx = m_modeCombo->findText(fdvOn ? QStringLiteral("FDV") : m_slice->mode());
+    if (idx < 0 || idx == m_modeCombo->currentIndex())
+        return;
+    QSignalBlocker b(m_modeCombo);
+    m_modeCombo->setCurrentIndex(idx);
+}
+
 void RxApplet::setSlice(SliceModel* slice)
 {
     m_pendingSquelchWrites.flush();
@@ -2769,6 +2785,7 @@ void RxApplet::connectSlice(SliceModel* s)
         int idx = m_modeCombo->findText(s->mode());
         if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
     }
+    refreshModeDisplay();   // build 340
     connect(s, &SliceModel::modeListChanged, this, [this](const QStringList& modes) {
         if (modes.isEmpty()) return;          // keep static fallback list (#891)
         QSignalBlocker b(m_modeCombo);
@@ -2785,6 +2802,7 @@ void RxApplet::connectSlice(SliceModel* s)
         int idx = m_slice ? m_modeCombo->findText(m_slice->mode()) : -1;
         if (idx < 0) idx = m_modeCombo->findText(cur);
         if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
+        refreshModeDisplay();   // build 340
     });
     if (!s->modeList().isEmpty()) {
         QSignalBlocker b(m_modeCombo);
@@ -2801,11 +2819,13 @@ void RxApplet::connectSlice(SliceModel* s)
         int idx = m_slice ? m_modeCombo->findText(m_slice->mode()) : -1;
         if (idx < 0) idx = m_modeCombo->findText(cur);
         if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
+        refreshModeDisplay();   // build 340
     }
     connect(s, &SliceModel::modeChanged, this, [this](const QString& mode) {
         QSignalBlocker b(m_modeCombo);
         int idx = m_modeCombo->findText(mode);
         if (idx >= 0) m_modeCombo->setCurrentIndex(idx);
+        refreshModeDisplay();   // build 340
         updateModeSettings(mode);
         syncAgcSliderFromSlice();
     });

@@ -47,6 +47,9 @@ public:
 
     // Attach to a slice; pass nullptr to detach.
     void setSlice(SliceModel* slice);
+    // Build 340: the mode combo shows FDV while FreeDV runs on this receiver
+    // (the receiver itself is in USB / LSB), else the receiver's mode.
+    void refreshModeDisplay();
     void setAfGain(int pct);
 
     // Cross-widget access for the bidirectional SQL sync with VfoWidget.

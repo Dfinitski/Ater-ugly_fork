@@ -818,6 +818,18 @@ private:
     // old "ModeButton0..2" so earlier assignments survive.
     static QString quickModeKey(int slot);
     static QString sidebandPartner(const QString& mode);   // build 336
+    // Build 340: FreeDV runs on this flag's receiver. The receiver itself is
+    // in USB / LSB then, but to the operator FDV is a mode of its own.
+    bool fdvShown() const
+    {
+#ifdef HAVE_RADE
+        return m_radeActive;
+#else
+        return false;
+#endif
+    }
+    // Build 340: a press outside the expanded flag only folds it.
+    bool foldOnOutsidePress(QObject* obj, QEvent* event);
     QStringList quickModeChoices() const;
     void updateQuickModeButtons();
     QGridLayout* m_filterGrid{nullptr};

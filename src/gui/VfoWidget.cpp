@@ -76,6 +76,8 @@
 #include <QEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QApplication>   // build 340
+#include <QWindow>
 #include <QImage>            // FlagShadow::m_shadowImage (was transitive only)
 #include <QtMath>            // qCeil in FlagShadow::paintEvent
 #include <algorithm>
@@ -567,6 +569,7 @@ QString VfoWidget::accessibleSummary() const
 VfoWidget::VfoWidget(QWidget* parent)
     : QWidget(parent)
 {
+    qApp->installEventFilter(this);   // build 340: foldOnOutsidePress
     static bool s_a11yFactoryInstalled = false;
     if (!s_a11yFactoryInstalled) {
         s_a11yFactoryInstalled = true;
@@ -3025,7 +3028,11 @@ void VfoWidget::buildTabContent()
         auto& settings = AppSettings::instance();
         static const char* kDefaults[kQuickModeButtons] = {
             "LSB", "USB", "CW", "AM",      // row 1 (slots 1..3 = old buttons)
+#ifdef HAVE_RADE
+            "CWL", "DIGL", "DIGU", "FDV"}; // row 2 (build 340: FDV, was SAM)
+#else
             "CWL", "DIGL", "DIGU", "SAM"}; // row 2
+#endif
         for (int i = 0; i < kQuickModeButtons; ++i) {
             QString a = settings.value(quickModeKey(i), QString::fromLatin1(kDefaults[i])).toString();
             // ANAN-100D port: the RADE pseudo-mode is now "FDV" (FreeDV).
@@ -3067,6 +3074,10 @@ void VfoWidget::buildTabContent()
                     // CW/CWL) it swaps to the other sideband; any other mode
                     // stays as it is.
                     if (!m_slice)
+                        return;
+                    // Build 340: the lit button in FreeDV is FDV itself --
+                    // nothing to swap.
+                    if (fdvShown())
                         return;
                     const QString other = sidebandPartner(m_slice->mode());
                     const QStringList offered = m_slice->modeList();
@@ -5196,7 +5207,7 @@ void VfoWidget::setSlice(SliceModel* slice)
     connect(m_slice, &SliceModel::modeChanged, this, [this](const QString& mode) {
         updateAgcSliderFromSlice();
         updateDspParameterResetControls();
-        m_tabBtns[2]->setText(mode);  // update mode tab label
+        m_tabBtns[2]->setText(fdvShown() ? QStringLiteral("FDV") : mode);  // update mode tab label
         updateModeTab();
         // Show/hide mode-specific DSP controls
         // Categorize by mode family (supports future/unknown modes)
@@ -5764,7 +5775,7 @@ void VfoWidget::syncFromSlice()
     updateFilterLabel();
 
     // Mode tab
-    m_tabBtns[2]->setText(m_slice->mode());
+    m_tabBtns[2]->setText(fdvShown() ? QStringLiteral("FDV") : m_slice->mode());
     updateModeTab();
 
     // Audio
@@ -6278,10 +6289,19 @@ void VfoWidget::updateQuickModeButtons()
         // Determine label and active state
         QString label = assign;
         bool active = (cur == assign);
+        // Build 340 (operator, 13.11: "in FDV I cannot switch to SSB with the
+        // button, it thinks it is in SSB already"): FreeDV rides the
+        // receiver's USB / LSB, and that button was the lit one, so a press
+        // on it was a press on the active mode. FDV is a mode of its own
+        // here: its button is the lit one and USB / LSB are not, so a press
+        // on them leaves FreeDV for that sideband.
+        const bool fdvOn = fdvShown();
+        if (fdvOn)
+            active = (assign == QLatin1String("FDV"));
         // Build 336: after a sideband swap with no button of its own (e.g.
         // only a USB button), the swapped button stays lit and shows the
         // mode in use, so a click still swaps back.
-        if (!active && !cur.isEmpty() && sidebandPartner(assign) == cur) {
+        if (!fdvOn && !active && !cur.isEmpty() && sidebandPartner(assign) == cur) {
             bool owned = false;
             for (int j = 0; j < kQuickModeButtons; ++j)
                 owned = owned || (m_quickModeBtns[j] && m_quickModeAssign[j] == cur);
@@ -7706,8 +7726,45 @@ void VfoWidget::updateAntennaButtons()
     updateAntennaButton(m_txAntBtn, m_slice->txAntenna(), true);
 }
 
+// ANAN fork build 340 (operator, 13.11: "a click anywhere outside the expanded
+// frequency panel folds it and does nothing else, as we did for the
+// panadapter's side buttons"). Same scheme as SpectrumOverlayMenu::
+// closeSubPanelsOnOutsidePress (build 249): decided on the window-level press,
+// before any widget sees it. Expanded = a tab (DSP / mode / RIT / DAX) or the
+// meter selector is open. Presses in other top-level windows (a combo popup or
+// a menu opened from the flag, dialogs) are theirs.
+bool VfoWidget::foldOnOutsidePress(QObject* obj, QEvent* event)
+{
+    if (m_activeTab < 0 && !m_meterMenuOpen)
+        return false;
+    auto* win = qobject_cast<QWindow*>(obj);
+    if (!win || !isVisible() || m_collapsed)
+        return false;
+    QWindow* top = win;
+    while (top->parent())
+        top = top->parent();
+    const QWidget* hostTop = window();
+    if (!hostTop || top != hostTop->windowHandle())
+        return false;
+    const QPoint global = static_cast<QMouseEvent*>(event)->globalPosition().toPoint();
+    if (rect().contains(mapFromGlobal(global)))
+        return false;   // inside the flag
+    if (m_meterMenuOpen)
+        setMeterMenuOpen(false);
+    if (m_activeTab >= 0) {
+        closeActiveTab();
+        relayoutToCurrentContent();
+    }
+    return true;   // consumed: the click only folded the flag
+}
+
 bool VfoWidget::eventFilter(QObject* obj, QEvent* event)
 {
+    if ((event->type() == QEvent::MouseButtonPress
+         || event->type() == QEvent::MouseButtonDblClick)
+        && foldOnOutsidePress(obj, event))
+        return true;
+
     if (obj == m_fmRevBtn
         && (event->type() == QEvent::Hide
             || event->type() == QEvent::HideToParent
@@ -7800,6 +7857,10 @@ void VfoWidget::setRadeActive(bool on, const QString& label)
             m_radeCallsignLabel->hide();
         }
     }
+    // Build 340: FDV shows as the mode -- tab label and mode buttons.
+    if (m_slice && m_tabBtns.size() > 2 && m_tabBtns[2])
+        m_tabBtns[2]->setText(on ? QStringLiteral("FDV") : m_slice->mode());
+    updateQuickModeButtons();
     // Build 338: the callsign strip under the flag.
     m_fdvTextOn = on;
     if (!on)
