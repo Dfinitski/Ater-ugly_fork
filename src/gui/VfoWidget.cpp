@@ -840,6 +840,7 @@ VfoWidget::~VfoWidget()
     // them before us (they're siblings, not children). QPointer auto-nulls when
     // the target is deleted, preventing double-free.
     delete m_shadowWidget.data();
+    delete m_fdvTextLabel.data();   // build 338
     delete m_closeSliceBtn.data();
     delete m_lockVfoBtn.data();
     delete m_recordBtn.data();
@@ -3452,6 +3453,7 @@ void VfoWidget::setCollapsed(bool collapsed)
 {
     if (m_collapsed == collapsed) return;
     m_collapsed = collapsed;
+    QTimer::singleShot(0, this, [this] { syncFdvTextGeometry(); });   // build 338
 
     // Persist per-slice preference
     if (m_slice) {
@@ -4082,6 +4084,7 @@ void VfoWidget::updatePosition(int vfoX, int specTop, FlagDir dir)
 
     move(newPos);
     syncShadowGeometry();
+    syncFdvTextGeometry();   // build 338
 
     // The value labels (drawn by the spectrum's above-flags layer) are anchored to
     // this flag — repaint them as it pans. Only when labels are actually shown.
@@ -4158,12 +4161,52 @@ void VfoWidget::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
     syncShadowGeometry();
+    syncFdvTextGeometry();
 }
 
 void VfoWidget::showEvent(QShowEvent* event)
 {
     QWidget::showEvent(event);
     syncShadowGeometry();
+    syncFdvTextGeometry();
+}
+
+// ANAN fork build 338 (operator, 13.11: "a field for the short text received,
+// fixed to the bottom of the flag; when the options open and the flag grows
+// it must stay at the bottom"). MicronSDR shows these 8 characters (the RADE
+// callsign of the end-of-over frame / the reliable text of 1600, 700D, 700E:
+// fdv_status().callsign) on its S-meter. Placed from the flag's own move,
+// resize and show, so it follows every change of the flag's height.
+void VfoWidget::syncFdvTextGeometry()
+{
+    QWidget* flagParent = parentWidget();
+    const bool on = m_fdvTextOn && flagParent && isVisible() && !m_collapsed;
+    if (!on) {
+        if (m_fdvTextLabel)
+            m_fdvTextLabel->hide();
+        return;
+    }
+    if (!m_fdvTextLabel) {
+        m_fdvTextLabel = new QLabel(flagParent);
+        m_fdvTextLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        m_fdvTextLabel->setAlignment(Qt::AlignCenter);
+        m_fdvTextLabel->setTextFormat(Qt::RichText);
+        m_fdvTextLabel->setToolTip(tr("FreeDV: the callsign received (up to 8 characters)"));
+        AetherSDR::ThemeManager::instance().applyStyleSheet(m_fdvTextLabel,
+            "QLabel { background: rgba(0, 0, 0, 200); border: 1px solid {{color.accent}};"
+            " border-top: none; font-size: 13px; font-weight: bold; padding: 0; margin: 0; }");
+    } else if (m_fdvTextLabel->parentWidget() != flagParent) {
+        m_fdvTextLabel->setParent(flagParent);
+    }
+    const QString shown = m_fdvText.isEmpty()
+        ? QStringLiteral("<span style='color:#607080'>RX text</span>")
+        : QStringLiteral("<span style='color:#00ff88; font-family:Consolas,monospace'>%1</span>")
+              .arg(m_fdvText.toHtmlEscaped());
+    if (m_fdvTextLabel->text() != shown)
+        m_fdvTextLabel->setText(shown);
+    m_fdvTextLabel->setGeometry(x(), y() + height(), width(), 20);
+    m_fdvTextLabel->show();
+    m_fdvTextLabel->raise();
 }
 
 void VfoWidget::hideEvent(QHideEvent* event)
@@ -4172,6 +4215,8 @@ void VfoWidget::hideEvent(QHideEvent* event)
     if (m_shadowWidget) {
         m_shadowWidget->hide();
     }
+    if (m_fdvTextLabel)
+        m_fdvTextLabel->hide();
     QWidget::hideEvent(event);
 }
 
@@ -7755,7 +7800,12 @@ void VfoWidget::setRadeActive(bool on, const QString& label)
             m_radeCallsignLabel->hide();
         }
     }
+    // Build 338: the callsign strip under the flag.
+    m_fdvTextOn = on;
+    if (!on)
+        m_fdvText.clear();
     relayoutToCurrentContent();
+    syncFdvTextGeometry();
 }
 
 void VfoWidget::setRadeSynced(bool synced)
@@ -7773,6 +7823,8 @@ void VfoWidget::setRadeSynced(bool synced)
         // New sync acquired \u2014 clear callsign from previous transmission
         m_radeCallsignLabel->setText({});
         m_radeCallsignLabel->hide();
+        m_fdvText.clear();   // build 338
+        syncFdvTextGeometry();
     }
 }
 
@@ -7797,14 +7849,12 @@ void VfoWidget::setRadeFreqOffset(float hz)
 
 void VfoWidget::setRadeCallsign(const QString& callsign)
 {
+    // Build 338: shown in the strip under the flag, not in the info row.
+    m_fdvText = callsign.left(8);
+    syncFdvTextGeometry();
     if (!m_radeCallsignLabel) return;
-    if (callsign.isEmpty()) {
-        m_radeCallsignLabel->setText({});
-        m_radeCallsignLabel->hide();
-    } else {
-        m_radeCallsignLabel->setText(callsign);
-        m_radeCallsignLabel->show();
-    }
+    m_radeCallsignLabel->setText({});
+    m_radeCallsignLabel->hide();
 }
 #endif
 
@@ -7817,6 +7867,7 @@ void VfoWidget::reparentFlagSatellites(QWidget* newParent)
         m_closeSliceBtn.data(), m_lockVfoBtn.data(),
         m_recordBtn.data(), m_playBtn.data(),
         m_collapsedFreqLabel.data(), m_shadowWidget.data(),
+        m_fdvTextLabel.data(),   // build 338
     };
     for (QWidget* sat : satellites) {
         if (!sat || sat->parentWidget() == newParent) {

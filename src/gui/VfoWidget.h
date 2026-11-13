@@ -572,6 +572,13 @@ private:
     int m_activeTab{-1};
     int m_daxTabIndex{-1};
     QPointer<QWidget> m_shadowWidget;
+    // ANAN fork build 338: FreeDV -- the short text received (the callsign,
+    // up to 8 characters), a strip under the flag. A sibling like the shadow,
+    // so it stays at the flag's bottom edge whatever the flag's height.
+    QPointer<QLabel> m_fdvTextLabel;
+    bool    m_fdvTextOn{false};
+    QString m_fdvText;
+    void syncFdvTextGeometry();
 
     // Tab content widgets
     // Audio tab
