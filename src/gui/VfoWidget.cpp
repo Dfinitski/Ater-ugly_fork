@@ -3045,14 +3045,20 @@ void VfoWidget::buildTabContent()
             m_quickModeBtns[i] = btn;
 
             connect(btn, &QPushButton::clicked, this, [this, i](bool checked) {
+                const QString& assign = m_quickModeAssign[i];
                 if (!checked) {
-                    // Don't let the user uncheck the active mode — re-check and bail
+                    // Don't let the user uncheck the active mode — re-check.
                     QSignalBlocker b(m_quickModeBtns[i]);
                     m_quickModeBtns[i]->setChecked(true);
-                    return;
+                    // Build 331 (operator, 12.11: a second press did not swap
+                    // the sideband): a press on an ACTIVE button arrives as an
+                    // uncheck, and returning here meant SSB / DIG could never
+                    // reach their toggle below. Those two go on; every other
+                    // mode button stays as it was.
+                    if (assign != "SSB" && assign != "DIG")
+                        return;
                 }
                 if (!m_slice) return;
-                const QString& assign = m_quickModeAssign[i];
 #ifdef HAVE_RADE
                 if (assign == "FDV") {
                     emit radeActivated(true, m_slice->sliceId());
