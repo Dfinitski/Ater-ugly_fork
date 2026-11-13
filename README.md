@@ -65,21 +65,21 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 302
+## Build 336
 
-Full notes: [docs/release-notes-build-302.md](docs/release-notes-build-302.md).
+Full notes: [docs/release-notes-build-336.md](docs/release-notes-build-336.md).
 
-- **Start-up:** volumes default to 1; the radio is found but started only on a click; the
-  window shows openHPSDR controls before a radio is connected.
-- **Radio type:** "Forcedly assign the radio" in Setup -> Radio (any board profile).
-- **Band filters per ADC**, WIDE on the panadapter when an ADC's bank is in bypass.
-- **AUTO ATT** after MicronSDR (absolute noise-floor target); noise-floor and AGC-gate lines on
-  the panadapter, the gate dragged as AGC-T.
-- **TCI:** unmirrored I/Q for skimmers, all Thetis audio formats.
-- **3D waterfall** rebuilt at full resolution with its own sliders; quick memories restore the
-  whole view.
+- **TCI / CW Skimmer:** I/Q works with CW Skimmer (protocol 2.0, 2048-pair frames);
+  "Center Lock when I/Q" keeps the skimmer on the tuned frequency (CTUN off); client details in
+  the TCI applet.
+- **Mode buttons:** two rows, right-click to assign, second click swaps the sideband; Marker and
+  Filter Edge in the panadapter menu; FreeDV on the band's sideband.
+- **Panadapter:** CW decode panel over the waterfall; steady noise floor while dragging; band
+  buttons per panadapter; one-click switching of menu windows.
+- **Audio:** mono by default, BIN for binaural; DRM fixes.
+- **Transverters** for openHPSDR; **MIDI** VFO A / VFO B knobs; lower CPU and memory use.
 
-Earlier notes: [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Windows portable build
 

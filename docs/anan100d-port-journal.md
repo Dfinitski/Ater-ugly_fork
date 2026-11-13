@@ -5105,6 +5105,12 @@ Auto AGC не менялся: он уже работал от полки плю�
 
 Файлы: ForkBuild.h, VfoWidget.h/.cpp.
 
+## 301. Релиз build 336 подготовлен (12.11.2026)
+
+- docs/release-notes-build-336.md: сборки 303–336 по темам (TCI и CW Skimmer, кнопки режимов во флаге VFO, панорама, звук приёмника и DRM, трансвертеры, MIDI, процессор и память), с тем, что не проверено на радио. README.md: раздел «Build 302» заменён на «Build 336», build 302 добавлен в «Earlier notes».
+- Архив AetherSDR-ANAN-build336-win64-portable.zip: архив build 302 с exe сборки 336 (Desktop\AetherSDR-Release\AetherSDR.exe, 12.11 22:14 местного, 77766656 байт, содержит «click again: the other sideband», «Center Lock when I/Q», «VFO B Tune Knob»), README-build336.md вместо README-build302.md; верхняя папка AetherSDR-ANAN-build336; 90 записей, 156055255 байт, SHA-256 58660596628ca947fa81bc8cf9e5ba695e445cfa627b32946610a5306c2df8a5. Сохранён в Desktop\AetherSDR-Release.
+- Релиз (тег build-336 на main) создаёт оператор в веб-интерфейсе GitHub; пуш тега запускает сборку AppImage.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
