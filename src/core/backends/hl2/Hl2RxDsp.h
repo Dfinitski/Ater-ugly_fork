@@ -244,6 +244,14 @@ public:
     // deltaHz now) and the audio dips -- a short fade, silence, fade back --
     // over the time the shift and the IQ disagree.
     Q_INVOKABLE void ncoMoved(double deltaHz);
+    // ANAN fork build 335: the averaged bins of the last emitted frame that
+    // are not built up yet after a pan move (Hl2Spectrum::unsettledBins), as
+    // [lo, hi) fftshifted; lo == hi when all are settled. Any thread.
+    [[nodiscard]] std::pair<int, int> unsettledBins() const noexcept
+    {
+        const std::uint64_t v = m_unsettled.load(std::memory_order_relaxed);
+        return {static_cast<int>(v >> 32), static_cast<int>(v & 0xffffffffu)};
+    }
     // What the installed spectrum is actually running, for tests. DSP thread.
     [[nodiscard]] double spectrumAverageMsApplied() const noexcept
     {
@@ -728,6 +736,7 @@ private:
     void applyAgcHold();
     int m_outMuteFrames{0};   // output frames still silenced after the over
     std::atomic<bool> m_sMeterPeak {true};
+    std::atomic<std::uint64_t> m_unsettled {0};   // build 335: see unsettledBins()
     std::atomic<float> m_ananInPeak {0.0f};
     std::atomic<float> m_ananOutPeak {0.0f};
     std::atomic<std::int64_t> m_adcPeakAtNs {0};

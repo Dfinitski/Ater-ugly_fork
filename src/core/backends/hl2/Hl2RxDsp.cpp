@@ -1029,6 +1029,12 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq)
         // 126 samples and a frame is 1024, so a frame boundary can be up to one
         // block away even with a full window behind it.
         if (m_spectrum->process(m_conjugated, m_bins) > 0) {
+            int ulo = 0, uhi = 0;   // build 335
+            if (!m_spectrum->unsettledBins(ulo, uhi))
+                ulo = uhi = 0;
+            m_unsettled.store((static_cast<std::uint64_t>(static_cast<std::uint32_t>(ulo)) << 32)
+                                  | static_cast<std::uint32_t>(uhi),
+                              std::memory_order_relaxed);
             emit spectrumReady(m_bins, m_spectrum->rawBins());
             m_lastSpectrumMs = m_spectrumClock.elapsed();
         }

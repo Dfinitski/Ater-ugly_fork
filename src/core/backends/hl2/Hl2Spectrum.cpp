@@ -145,6 +145,24 @@ void Hl2Spectrum::shiftBins(int k) noexcept
         dropAverage();
         return;
     }
+    // Build 335: the unsettled range moves with the bins and grows by the
+    // edge filled now; it settles after 3 time constants (at least 0.3 s).
+    {
+        const bool active = m_freshHi > m_freshLo && m_clockSamples < m_freshUntil;
+        int lo = active ? std::clamp(m_freshLo - k, 0, n) : n;
+        int hi = active ? std::clamp(m_freshHi - k, 0, n) : 0;
+        const int eLo = k > 0 ? n - k : 0;
+        const int eHi = k > 0 ? n : -k;
+        m_freshLo = hi > lo ? std::min(lo, eLo) : eLo;
+        m_freshHi = hi > lo ? std::max(hi, eHi) : eHi;
+        const double rate = m_sampleRateHz > 0.0 ? m_sampleRateHz : 192000.0;
+        double settleS = 0.3;
+        if (m_averageTimeMs > 0.0)
+            settleS = std::max(settleS, 3.0 * m_averageTimeMs / 1000.0);
+        else if (m_averageFrames > 1)
+            settleS = std::max(settleS, 3.0 * m_averageFrames * m_fftSize / rate);
+        m_freshUntil = m_clockSamples + static_cast<std::uint64_t>(rate * settleS);
+    }
     // A signal at a fixed RF frequency moves DOWN k bins when the NCO goes up
     // k bins: new[i] = old[i + k].
     if (k > 0) {
@@ -188,8 +206,18 @@ void Hl2Spectrum::seedFrom(const Hl2Spectrum& other)
     m_samplesSinceFrame = other.m_samplesSinceFrame;
 }
 
+bool Hl2Spectrum::unsettledBins(int& lo, int& hi) const noexcept
+{
+    if (m_freshHi <= m_freshLo || m_clockSamples >= m_freshUntil)
+        return false;
+    lo = m_freshLo;
+    hi = m_freshHi;
+    return true;
+}
+
 void Hl2Spectrum::dropAverage() noexcept
 {
+    m_freshLo = m_freshHi = 0;   // build 335: nothing averaged, nothing unsettled
     // Assign rather than resize — the vector was sized at construction, so
     // this touches no allocator.
     m_avgPower.assign(static_cast<std::size_t>(m_fftSize), 0.0);

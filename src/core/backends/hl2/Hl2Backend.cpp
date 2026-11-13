@@ -1730,8 +1730,11 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         const std::vector<float> dbm = resample(bins);
         // Build 298: the floor from the spectrum as drawn (after the FFT
         // average), as MicronSDR takes it from its smoothed spectrum.
-        if (ids->ddcIndex < 2 && !txOnAir && bins.size() == n)
-            ananNoiseLineStep(ids->ddcIndex, bins, rate, first, keep);
+        if (ids->ddcIndex < 2 && !txOnAir && bins.size() == n) {
+            // Build 335: only bins whose average has built up.
+            const auto [ulo, uhi] = producer->unsettledBins();
+            ananNoiseLineStep(ids->ddcIndex, bins, rate, first, keep, ulo, uhi);
+        }
         emit spectrumFrameReady(ui, floatBytes(dbm), wf);
     });
 
@@ -10534,7 +10537,8 @@ void Hl2Backend::ananSyncUiState()
 // options. It is drawn as a line on the panadapter (AnanUiState
 // shownFloorDbm) and is what AUTO ATT holds.
 void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, double rateHz,
-                                   std::size_t viewFirst, std::size_t viewKeep)
+                                   std::size_t viewFirst, std::size_t viewKeep,
+                                   int unsettledLo, int unsettledHi)
 {
     if (rx < 0 || rx > 1 || rawDbfs.size() < 64 || rateHz <= 0.0 || m_keyed || m_radioPtt)
         return;
@@ -10564,6 +10568,26 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
     }
     lo = std::max(lo, edge);
     hi = std::min(hi, n - edge);
+    // ANAN fork build 335 (operator, 12.11: "while the panadapter is dragged
+    // the floor takes the part drawn in, whose data is not accumulated yet,
+    // and goes wrong -- take only accumulated data, as everything else
+    // does"). The unsettled bins sit at one edge of the band (Hl2Spectrum::
+    // shiftBins); cut them off the side of the window they overlap. If too
+    // little is left, this frame gives no floor and the last one stands.
+    if (unsettledHi > unsettledLo) {
+        const std::size_t ulo = static_cast<std::size_t>(std::max(0, unsettledLo));
+        const std::size_t uhi = static_cast<std::size_t>(std::max(0, unsettledHi));
+        if (uhi > lo && ulo < hi) {
+            if (ulo <= lo)
+                lo = std::min(hi, uhi);
+            else if (uhi >= hi)
+                hi = std::max(lo, ulo);
+            else if (ulo - lo >= hi - uhi)
+                hi = ulo;   // keep the larger settled side
+            else
+                lo = uhi;
+        }
+    }
     if (hi <= lo + 16)
         return;
     // Build 298 (operator, 11.11: "the line is drawn above the noise and

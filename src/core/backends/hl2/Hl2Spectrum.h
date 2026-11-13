@@ -81,6 +81,12 @@ public:
     // trace. The window held for the next frame is kept too (one frame mixes
     // the two axes). Edges are filled from the nearest kept bin.
     void shiftBins(int k) noexcept;
+    // ANAN fork build 335 (operator, 12.11: during a pan drag the noise floor
+    // took the newly revealed edge, whose average had not built up yet). The
+    // bins shiftBins() filled from the edge hold no averaged data until the
+    // average has had time to build there (3 time constants, at least
+    // 0.3 s): [lo, hi) in fftshifted bins, false when every bin is settled.
+    [[nodiscard]] bool unsettledBins(int& lo, int& hi) const noexcept;
     // ANAN-100D port: carry another analyser's average (and its pending IQ)
     // into this one after an FFT-size change, so the trace and waterfall
     // continue instead of starting over. Same sample rate assumed; bins are
@@ -204,6 +210,10 @@ private:
     void* m_in = nullptr;                     // fftw_complex[m_fftSize]
     void* m_out = nullptr;                     // fftw_complex[m_fftSize]
     void* m_plan = nullptr;                    // fftw_plan
+    // Build 335: see unsettledBins().
+    int m_freshLo = 0;
+    int m_freshHi = 0;
+    std::uint64_t m_freshUntil = 0;   // m_clockSamples at which they are settled
 };
 
 }  // namespace AetherSDR::hl2
