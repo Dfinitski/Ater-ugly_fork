@@ -316,7 +316,15 @@ QString TciProtocol::generateInitBurst()
     burst += QStringLiteral("device:AetherSDR;");
     burst += QStringLiteral("receive_only:false;");
     burst += QStringLiteral("modulations_list:usb,lsb,cw,cwr,am,sam,fm,nfm,digu,digl,rtty;");
-    burst += QStringLiteral("protocol:ExpertSDR3,1.5;");
+    // Build 323 (operator, 12.11: TciCwSkimmer gets every I/Q frame -- build
+    // 321/322 counters -- and still restarts the stream after 5 s; the same
+    // skimmer works with Thetis). Thetis announces "protocol:<name>,2.0;"
+    // ("ExpertSDR3,2.0" when emulating ESDR3, which WSJT-X also accepts: it
+    // keys on the name). TCI 1.x left the stream header's `length` ambiguous
+    // (samples vs floats); 2.0 counts floats, which is what we send. A client
+    // told 1.5 may read length 4096 as 4096 I/Q pairs and reject every frame.
+    // Our stream frames are the 2.0 layout (channels at word 7), so say 2.0.
+    burst += QStringLiteral("protocol:ExpertSDR3,2.0;");
 
     // ── Phase 2: Current state notifications ──────────────────────────
     // Identical in syntax to the events fired by a live tuning
