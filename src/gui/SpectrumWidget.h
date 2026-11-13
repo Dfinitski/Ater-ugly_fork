@@ -848,6 +848,11 @@ public:
         bool   adaptiveEnabled{false};    // draw adaptive-filter edge markers (RFC #3878)
         bool   adaptiveActive{false};     // a confident auto fit is currently applied
         QString perClientLetter;   // radio-provided index_letter (Multi-Flex)
+        // ANAN fork build 337: FreeDV. Non-zero = the centre of the modem
+        // signal from the dial frequency (+1500 Hz on USB, -1500 on LSB): no
+        // carrier line, the flag sits centred over the filter, and a click
+        // tunes the centre of the filter to the click.
+        int    fdvCenterHz{0};
     };
 
     // Add or update a slice overlay (called per-slice on any state change).
@@ -871,6 +876,7 @@ public:
     void setSliceOverlayLetter(int sliceId, const QString& letter);
     // Update per-slice marker display style (#1526)
     void setSliceOverlayMarkerStyle(int sliceId, int markerWidth, bool filterEdgesHidden);
+    void setSliceOverlayFdvCenter(int sliceId, int centerHz);   // build 337, 0 = not FreeDV
     // Toggle the adaptive-filter floor-level edge markers for a slice (RFC #3878)
     void setSliceOverlayAdaptive(int sliceId, bool enabled);
     // Status of the adaptive fit (green/red ball after the high-cut label)
@@ -1540,6 +1546,9 @@ private:
     int overlayIndex(int sliceId) const;
     // Helper: find active overlay (or nullptr).
     const SliceOverlay* activeOverlay() const;
+    // Build 337: the dial frequency for a click at rawMhz -- in FreeDV the
+    // click is the centre of the signal, not the carrier.
+    double clickDialMhz(double rawMhz) const;
     // Composes the shared accessible description from Center Lock + Slice
     // Link state (one description per widget; the setters must not clobber
     // each other's announcement).

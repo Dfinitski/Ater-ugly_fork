@@ -35,6 +35,18 @@ inline constexpr int kFdvSubModeCount = 4;
     }
 }
 
+// ANAN fork build 337: the receive band of a sub-mode in the demodulated audio,
+// as MicronSDR's fdvBand(): centred at 1500 Hz, the modem's RF bandwidth plus
+// 100 Hz on each side for the tuning.
+inline constexpr int kFdvCenterHz = 1500;
+inline void fdvRxBandHz(int subMode, int* lo, int* hi)
+{
+    static const int bw[kFdvSubModeCount] = {1250, 1000, 1500, 1500};   // 1600, 700D, 700E, RADE
+    const int half = bw[std::clamp(subMode, 0, kFdvSubModeCount - 1)] / 2 + 100;
+    *lo = kFdvCenterHz - half;
+    *hi = kFdvCenterHz + half;
+}
+
 class FdvState {
 public:
     static FdvState& instance()

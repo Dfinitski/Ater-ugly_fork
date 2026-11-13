@@ -8943,6 +8943,22 @@ void SpectrumWidget::setSliceOverlayMarkerStyle(int sliceId, int markerWidth, bo
     markOverlayDirty();
 }
 
+void SpectrumWidget::setSliceOverlayFdvCenter(int sliceId, int centerHz)
+{
+    const int idx = overlayIndex(sliceId);
+    if (idx < 0 || m_sliceOverlays[idx].fdvCenterHz == centerHz)
+        return;
+    m_sliceOverlays[idx].fdvCenterHz = centerHz;
+    markOverlayDirty();
+    update();
+}
+
+double SpectrumWidget::clickDialMhz(double rawMhz) const
+{
+    const SliceOverlay* a = activeOverlay();
+    return (a && a->fdvCenterHz != 0) ? rawMhz - a->fdvCenterHz / 1.0e6 : rawMhz;
+}
+
 void SpectrumWidget::setSliceOverlayAdaptive(int sliceId, bool enabled)
 {
     int idx = overlayIndex(sliceId);
@@ -12664,7 +12680,7 @@ void SpectrumWidget::mouseReleaseEvent(QMouseEvent* ev)
                 && !m_indicatorStripRect.contains(ev->position().toPoint())) {
                 const int mx = static_cast<int>(ev->position().x());
                 if (mx < width() - DBM_STRIP_W) {
-                    double rawMhz = xToMhz(mx);
+                    double rawMhz = clickDialMhz(xToMhz(mx));   // build 337
                     emit frequencyClicked(snapToStep(rawMhz, m_stepHz));
                 }
             }
@@ -12683,7 +12699,8 @@ void SpectrumWidget::mouseReleaseEvent(QMouseEvent* ev)
         if (!m_spotClickConsumed && delta.manhattanLength() <= 4
             && !m_indicatorStripRect.contains(ev->position().toPoint())
             && mx < width() - DBM_STRIP_W) {
-            emit edgePanTuneRequested(m_centerMhz, snapToStep(xToMhz(mx), m_stepHz));
+            emit edgePanTuneRequested(m_centerMhz,
+                snapToStep(clickDialMhz(xToMhz(mx)), m_stepHz));   // build 337
         }
         m_spotClickConsumed = false;
         ev->accept();
@@ -12697,7 +12714,7 @@ void SpectrumWidget::mouseReleaseEvent(QMouseEvent* ev)
             && !m_indicatorStripRect.contains(ev->position().toPoint())) {
             const int mx = static_cast<int>(ev->position().x());
             if (mx < width() - DBM_STRIP_W) {
-                double rawMhz = xToMhz(mx);
+                double rawMhz = clickDialMhz(xToMhz(mx));   // build 337
                 emit frequencyClicked(snapToStep(rawMhz, m_stepHz));
                 ev->accept();
                 m_spotClickConsumed = false;
@@ -12850,6 +12867,7 @@ void SpectrumWidget::mouseDoubleClickEvent(QMouseEvent* ev)
         double rawMhz = startMhz + (clickX / contentWidth()) * displayBw;
 
         // ANAN-100D port: like the single click -- tune, the pan stays put.
+        rawMhz = clickDialMhz(rawMhz);   // build 337
         emit edgePanTuneRequested(m_centerMhz, snapToStep(rawMhz, m_stepHz));
         ev->accept();
         return;
@@ -17312,6 +17330,8 @@ void SpectrumWidget::repositionVfoFlags(const QRect& specRect)
                     so.freqMhz + so.filterHighHz / 1.0e6;
                 x = mhzToX(hiMhz) + 4;
             }
+            if (so.fdvCenterHz != 0)   // build 337: the centre of the filter
+                x = mhzToX(so.freqMhz + so.fdvCenterHz / 1.0e6);
             vfos.append({so.sliceId, x, flag, so.splitPartnerId, &so});
         }
     }
@@ -17321,6 +17341,15 @@ void SpectrumWidget::repositionVfoFlags(const QRect& specRect)
 
     const int panelW = vfos.isEmpty() ? 0 : vfos.constFirst().w->width();
     const int specW = contentWidth();
+    // Build 337: a FreeDV flag sits centred over its filter (operator, 13.11).
+    // Locked "left of the marker" with the marker half a flag to the right.
+    auto placeFdvFlag = [&](const VfoPos& v) {
+        if (!v.overlay || v.overlay->fdvCenterHz == 0)
+            return false;
+        v.w->updatePosition(v.x + v.w->width() / 2, specRect.top() + flagTopPad(),
+                            VfoWidget::LockLeft);
+        return true;
+    };
     QMap<int, VfoWidget::FlagDir> directionBySlice;
     assignDiversityPairDirections(vfos, directionBySlice);
     assignSplitPairDirections(vfos, directionBySlice);
@@ -17334,8 +17363,9 @@ void SpectrumWidget::repositionVfoFlags(const QRect& specRect)
             direction = singleVfoFlagDirectionForOverlay(
                 *vfos[0].overlay, vfos[0].w, vfos[0].x, specW);
         }
-        vfos[0].w->updatePosition(
-            vfos[0].x, specRect.top() + flagTopPad(), direction);
+        if (!placeFdvFlag(vfos[0]))
+            vfos[0].w->updatePosition(
+                vfos[0].x, specRect.top() + flagTopPad(), direction);
         return;
     }
 
@@ -17347,8 +17377,9 @@ void SpectrumWidget::repositionVfoFlags(const QRect& specRect)
             direction =
                 deconflictedVfoFlagDirection(vfos, index, panelW, specW);
         }
-        vfos[index].w->updatePosition(
-            vfos[index].x, specRect.top() + flagTopPad(), direction);
+        if (!placeFdvFlag(vfos[index]))
+            vfos[index].w->updatePosition(
+                vfos[index].x, specRect.top() + flagTopPad(), direction);
     }
 }
 
@@ -18824,7 +18855,9 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
             p.drawText(markX + 2, specRect.top() + m_topInset + 12, "M");
             p.setPen(AetherSDR::theme::withAlpha("color.accent.danger", 240));
             p.drawText(spaceX + 2, specRect.top() + m_topInset + 12, "S");
-        } else if (so.markerWidth > 0) {
+        } else if (so.markerWidth > 0 && so.fdvCenterHz == 0) {
+            // Build 337: FreeDV has no carrier line -- the suppressed carrier
+            // is not a frequency of the operator; the filter is the signal.
             // ── Standard VFO center line ─────────────────────────────────
             // Skipped entirely when markerWidth == 0 (user chose
             // "Marker: Off") — passband bracket only.

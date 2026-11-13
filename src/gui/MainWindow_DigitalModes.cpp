@@ -964,6 +964,18 @@ void MainWindow::activateLocalFdv(int sliceId)
     // sideband with it; any other mode than USB / LSB ends FreeDV.
     if (!s->isTxSlice())
         s->setTxSlice(true);
+    // Build 337: remember the operator's SSB filter (as audio Hz) for the way
+    // out; from any other mode the SSB default.
+    m_localFdvSavedLo = 100;
+    m_localFdvSavedHi = 2900;
+    if (s->mode() == QLatin1String("USB") || s->mode() == QLatin1String("LSB")) {
+        const int a = std::abs(s->filterLow()), b = std::abs(s->filterHigh());
+        if (std::max(a, b) > std::min(a, b)) {
+            m_localFdvSavedLo = std::min(a, b);
+            m_localFdvSavedHi = std::max(a, b);
+        }
+    }
+    m_localFdvSentLo = m_localFdvSentHi = 0;
     if (const QString sb = freeDvSidebandFor(s->frequency()); s->mode() != sb)
         s->setMode(sb);
     m_localFdvModeConn = connect(s, &SliceModel::modeChanged, this, [this](const QString& mode) {
@@ -1008,7 +1020,46 @@ void MainWindow::activateLocalFdv(int sliceId)
         connect(m_localFdvTimer, &QTimer::timeout, this, [this] { localFdvTick(); });
     }
     m_localFdvTimer->start();
+    applyLocalFdvPassband();
     qInfo() << "MainWindow: FDV activated on slice" << sliceId << st.label();
+}
+
+// ANAN fork build 337 (operator, 13.11: "the FreeDV filter is just the SSB
+// one, not even as wide as the signal: make it the width of the sub-mode,
+// centred on the signal, no zero-frequency line, the flag centred above it;
+// as MicronSDR does, but on the lower sideband below 10 MHz").
+// MicronSDR (micronsdr.cpp fdvBand, OnPitch): the receive filter is the band
+// of the FreeDV mode, centred 1500 Hz from the dial, +100 Hz each side, and it
+// is not the operator's to change while FreeDV runs. Here that band goes on
+// the sideband in use; called from the 50 ms tick, so a sub-mode, sideband or
+// band change -- or a dragged edge -- is put right at once.
+void MainWindow::applyLocalFdvPassband()
+{
+    auto* s = m_radioModel.slice(m_radeSliceId);
+    if (!m_localFdv || !s)
+        return;
+    const bool lsb = s->mode() == QLatin1String("LSB");
+    if (!lsb && s->mode() != QLatin1String("USB"))
+        return;
+    int lo = 0, hi = 0;
+    fdv::fdvRxBandHz(fdv::FdvState::instance().subMode, &lo, &hi);
+    if (lsb) {
+        const int t = lo;
+        lo = -hi;
+        hi = -t;
+    }
+    if (s->filterLow() != lo || s->filterHigh() != hi) {
+        // Once per change; again after 500 ms if the radio did not take it.
+        if (lo != m_localFdvSentLo || hi != m_localFdvSentHi
+            || !m_localFdvFilterClock.isValid() || m_localFdvFilterClock.elapsed() > 500) {
+            m_localFdvSentLo = lo;
+            m_localFdvSentHi = hi;
+            m_localFdvFilterClock.start();
+            s->setFilterWidth(lo, hi);
+        }
+    }
+    if (auto* sw = spectrumForSlice(s))
+        sw->setSliceOverlayFdvCenter(m_radeSliceId, lsb ? -fdv::kFdvCenterHz : fdv::kFdvCenterHz);
 }
 
 void MainWindow::localFdvTick()
@@ -1026,6 +1077,7 @@ void MainWindow::localFdvTick()
         m_localFdvRelease = {};
         release.release();
     }
+    applyLocalFdvPassband();   // build 337
     auto* s = m_radioModel.slice(m_radeSliceId);
     VfoWidget* vfo = nullptr;
     if (auto* sw = spectrumForSlice(s))
@@ -1075,7 +1127,14 @@ void MainWindow::deactivateLocalFdv()
         if (auto* sw = spectrumForSlice(s)) {
             if (auto* vfo = sw->vfoWidget(sliceId))
                 vfo->setRadeActive(false);
+            sw->setSliceOverlayFdvCenter(sliceId, 0);   // build 337
         }
+        // Build 337: back to the SSB filter the operator had. Another mode
+        // has brought its own passband already.
+        if (s->mode() == QLatin1String("USB"))
+            s->setFilterWidth(m_localFdvSavedLo, m_localFdvSavedHi);
+        else if (s->mode() == QLatin1String("LSB"))
+            s->setFilterWidth(-m_localFdvSavedHi, -m_localFdvSavedLo);
     }
     if (m_appletPanel) {
         if (auto* applet = m_appletPanel->radeApplet())

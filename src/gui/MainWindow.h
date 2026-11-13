@@ -2157,6 +2157,13 @@ private:
     bool m_localFdvLastSync{false};
     int  m_localFdvLastCallSerial{-1};
     QString m_localFdvLastLabel;
+    // Build 337: the receive filter is the band of the FreeDV sub-mode.
+    void applyLocalFdvPassband();
+    int  m_localFdvSavedLo{100};     // the SSB filter to put back, audio Hz
+    int  m_localFdvSavedHi{2900};
+    int  m_localFdvSentLo{0};
+    int  m_localFdvSentHi{0};
+    QElapsedTimer m_localFdvFilterClock;
     void onRadeSliceModeChanged(const QString& mode);
     void startFreeDvReporting(int sliceId);
     void stopFreeDvReporting(int sliceId);
