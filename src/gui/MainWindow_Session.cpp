@@ -2793,6 +2793,25 @@ void MainWindow::wireCatPorts()
     connect(m_appletPanel->tciApplet(), &TciApplet::tciTxOverflowModeChanged,
             tciServer(), &TciServer::setOverflowMode);
 
+    // Build 324: "Center Lock when I/Q" -- follows the TCI I/Q subscriptions
+    // and the applet's checkbox; a filter change re-centres a held pan.
+    connect(tciServer(), &TciServer::clientsChanged, this, [this] { updateTciIqCenterLock(); });
+    connect(m_appletPanel->tciApplet(), &TciApplet::tciCenterLockWhenIqChanged,
+            this, [this](bool) { updateTciIqCenterLock(); });
+    {
+        auto wireFilter = [this](SliceModel* s) {
+            if (!s)
+                return;
+            connect(s, &SliceModel::filterChanged, this, [this, s](int, int) {
+                if (m_tciIqCenterLockPans.contains(s->panId()))
+                    recenterCenterLockForPan(s->panId());
+            });
+        };
+        connect(&m_radioModel, &RadioModel::sliceAdded, this, wireFilter);
+        for (SliceModel* s : m_radioModel.slices())
+            wireFilter(s);
+    }
+
     // TciServer level signals → TCI applet meters
     connect(tciServer(), &TciServer::rxLevel,
             m_appletPanel->tciApplet(), &TciApplet::setTciRxLevel);

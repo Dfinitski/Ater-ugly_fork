@@ -19,6 +19,7 @@
 #include "models/SpotModel.h"
 
 #include "TciIoWorker.h"
+#include "core/backends/anan/AnanUiState.h"
 #include "TciClient.h"
 #include <QAbstractSocket>
 #include <QHostAddress>
@@ -1148,6 +1149,20 @@ QVector<TciClientInfo> TciServer::connectedClients() const
     return out;
 }
 
+QList<int> TciServer::iqSliceIds() const
+{
+    QList<int> ids;
+    for (const auto& cs : m_clients) {
+        if (!cs.socket)
+            continue;
+        for (int trx : cs.iqReceivers) {
+            if (SliceModel* s = sliceForTrx(trx); s && !ids.contains(s->sliceId()))
+                ids.append(s->sliceId());
+        }
+    }
+    return ids;
+}
+
 TciServer::ClientState* TciServer::clientStateFor(TciClient* socket)
 {
     for (ClientState& client : m_clients) {
@@ -1561,6 +1576,20 @@ void TciServer::onTextMessage(const QString& msg)
                 continue;
             }
             m_iqSampleRate = rate;
+            // Build 324 (operator, 12.11): a client asking for more I/Q
+            // bandwidth than the receiver captures gets it -- the DDC rate is
+            // raised to the request, as the pan's rate buttons do; asking
+            // for less, the tap converts down (Hl2Backend::tciIqTap).
+            if (native) {
+                const int ddcRate = anan::AnanUiState::instance().sampleRateHz;
+                if (ddcRate > 0 && rate > ddcRate) {
+                    qCInfo(lcCat).noquote() << "TCI: iq_samplerate" << rate
+                                            << "is wider than the receiver rate" << ddcRate
+                                            << "Hz; raising the receiver rate to" << rate;
+                    m_model->invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.rate"), 0,
+                                                    QVariant(rate));
+                }
+            }
             const int effectiveRate = effectiveIqSampleRate();
             const int announcedRate = effectiveRate != 0 ? effectiveRate : rate;
             m_announcedIqSampleRate = announcedRate;

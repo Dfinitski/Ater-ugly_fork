@@ -121,6 +121,9 @@ public:
     // Cheap to call; intended for the Radio Setup → TCI tab on demand and
     // whenever clientsChanged() fires.
     QVector<TciClientInfo> connectedClients() const;
+    // Build 324: the slices whose receivers a client takes I/Q from (for
+    // "Center Lock when I/Q"); changes are signalled by clientsChanged().
+    QList<int> iqSliceIds() const;
 
     void setAudioEngine(AudioEngine* audio);
     // Thread-safe owning ingress, safe even if a source callback overlaps

@@ -3,6 +3,7 @@
 #include <QWidget>
 
 class QPushButton;
+class QCheckBox;
 class QLabel;
 class QLineEdit;
 
@@ -46,6 +47,8 @@ signals:
     void tciTxGainChanged(float gain);
     // 0=Clip, 1=NaNGuard, 2=Measure — selected via right-click on TX slider.
     void tciTxOverflowModeChanged(int mode);
+    // Build 324: "Center Lock when I/Q" toggled (AppSettings "TciCenterLockWhenIq").
+    void tciCenterLockWhenIqChanged(bool on);
 
 private:
 #ifdef HAVE_WEBSOCKETS
@@ -61,6 +64,7 @@ private:
     QLineEdit*   m_tciPort{nullptr};
     QLabel*      m_tciStatus{nullptr};
     QLabel*      m_clientsInfo{nullptr};   // build 321: per-client streams
+    QCheckBox*   m_centerLockIq{nullptr};  // build 324
 
     QWidget*     m_rxRow[kChannels]{};  // per-channel row container — hidden to gate to maxSlices()
     MeterSlider* m_rxMeter[kChannels]{};

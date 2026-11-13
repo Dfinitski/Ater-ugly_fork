@@ -2173,6 +2173,11 @@ private:
     // Center Lock — per-pan mode that keeps a selected slice centered while
     // tuning, so the pan/waterfall scrolls underneath it.
     QHash<QString, int> m_centerLockSliceByPan;  // panId -> sliceId
+    // Build 324: pans held by "Center Lock when I/Q" (TCI applet). Value: the
+    // lock was switched on for it (false = the operator's own lock, kept).
+    // On these pans Center Lock centres the filter, not the VFO.
+    QHash<QString, bool> m_tciIqCenterLockPans;
+    void updateTciIqCenterLock();
     // Persist the client-side intent by radio + display slot + slice letter.
     // Radio pan/slice IDs remain radio-authoritative and are never saved.
     QHash<QString, QHash<int, QString>> m_centerLockSliceLetterByRadioPanIndex;

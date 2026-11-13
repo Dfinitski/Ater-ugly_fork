@@ -678,6 +678,12 @@ bool MainWindow::snapCenterLockForSlice(SliceModel* slice, double mhz, bool send
         return false;
     }
 
+    // Build 324: "Center Lock when I/Q" centres the FILTER (the passband's
+    // middle, so the CW / SSB offset of the passband from the VFO counts):
+    // the I/Q a skimmer gets is centred on the view.
+    if (m_tciIqCenterLockPans.contains(panId))
+        mhz += (slice->filterLow() + slice->filterHigh()) / 2.0e6;
+
     SpectrumWidget* sw = m_panStack ? m_panStack->spectrum(panId) : nullptr;
     // Pan-BACKGROUND drag standdown (#3854 review): m_sliceDragInProgress only
     // covers slice/VFO drags. During a background drag the drag path owns the
@@ -890,6 +896,52 @@ void MainWindow::recenterCenterLockForPan(const QString& panId)
 
     const double displayMhz = centerLockDisplayFrequency(slice, slice->frequency());
     snapCenterLockForSlice(slice, displayMhz, true);
+}
+
+// Build 324 (operator, 12.11): "Center Lock when I/Q" in the TCI applet.
+// While a TCI client takes I/Q from a receiver, Center Lock holds that
+// receiver's filter in the middle of its pan; when the I/Q stops, a lock this
+// switched on is switched off again (an operator's own lock stays, and goes
+// back to centring the VFO). Not persisted.
+void MainWindow::updateTciIqCenterLock()
+{
+    QHash<QString, int> want;   // panId -> slice
+#ifdef HAVE_WEBSOCKETS
+    const bool enabled = AppSettings::instance().value(QStringLiteral("TciCenterLockWhenIq"), QStringLiteral("False"))
+                             .toString() == QLatin1String("True");
+    if (enabled && tciServer()) {
+        for (int id : tciServer()->iqSliceIds()) {
+            SliceModel* s = m_radioModel.slice(id);
+            if (s && !s->panId().isEmpty() && !want.contains(s->panId()))
+                want.insert(s->panId(), id);
+        }
+    }
+#endif
+    QList<QPair<QString, bool>> release;
+    for (auto it = m_tciIqCenterLockPans.cbegin(); it != m_tciIqCenterLockPans.cend(); ++it) {
+        if (!want.contains(it.key()))
+            release.append({it.key(), it.value()});
+    }
+    for (const auto& [panId, ours] : release) {
+        m_tciIqCenterLockPans.remove(panId);
+        qCInfo(lcProtocol).noquote() << "MainWindow: Center Lock when I/Q released on pan" << panId;
+        if (ours)
+            setCenterLockForPan(panId, centerLockSliceForPan(panId), false, /*persist=*/false);
+        else
+            recenterCenterLockForPan(panId);
+    }
+    for (auto it = want.cbegin(); it != want.cend(); ++it) {
+        if (m_tciIqCenterLockPans.contains(it.key()))
+            continue;
+        const bool operatorLock = centerLockSliceForPan(it.key()) >= 0;
+        m_tciIqCenterLockPans.insert(it.key(), !operatorLock);
+        qCInfo(lcProtocol).noquote() << "MainWindow: Center Lock when I/Q on pan" << it.key()
+                                     << "slice" << it.value() << (operatorLock ? "(operator's lock kept)" : "");
+        if (!operatorLock)
+            setCenterLockForPan(it.key(), it.value(), true, /*persist=*/false);
+        else
+            recenterCenterLockForPan(it.key());
+    }
 }
 
 void MainWindow::recenterCenterLocks()

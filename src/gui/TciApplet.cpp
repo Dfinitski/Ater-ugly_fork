@@ -14,6 +14,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QLineEdit>
+#include <QCheckBox>
 #include <QMenu>
 #include <QActionGroup>
 #include <algorithm>
@@ -214,6 +215,32 @@ void TciApplet::buildUI()
     m_clientsInfo->setStyleSheet(QStringLiteral("QLabel { color: #8090a0; font-size: 10px; }"));
     m_clientsInfo->hide();
     outer->addWidget(m_clientsInfo);
+
+    // Build 324 (operator, 12.11): while a client (a skimmer) takes I/Q from a
+    // receiver, Center Lock keeps that receiver's filter in the middle of
+    // its panadapter, so whatever is tuned -- a click anywhere on a wide
+    // pan -- stays inside the I/Q band the client gets (centred on the view).
+    m_centerLockIq = new QCheckBox(tr("Center Lock when I/Q"));
+    m_centerLockIq->setObjectName(QStringLiteral("tciCenterLockWhenIq"));
+    m_centerLockIq->setToolTip(tr("While a TCI client takes I/Q from a receiver, keep that "
+                                  "receiver's filter in the middle of its panadapter, so the "
+                                  "tuned signal stays inside the I/Q band the client receives."));
+    m_centerLockIq->setStyleSheet(QStringLiteral("QCheckBox { color: #8090a0; font-size: 11px; }"));
+    m_centerLockIq->setChecked(settings.value(QStringLiteral("TciCenterLockWhenIq"), QStringLiteral("False"))
+                                   .toString() == QLatin1String("True"));
+    {
+        auto* row = new QHBoxLayout;
+        row->setContentsMargins(4, 2, 4, 0);
+        row->addWidget(m_centerLockIq);
+        row->addStretch(1);
+        outer->addLayout(row);
+    }
+    connect(m_centerLockIq, &QCheckBox::toggled, this, [this](bool on) {
+        auto& ss = AppSettings::instance();
+        ss.setValue(QStringLiteral("TciCenterLockWhenIq"), on ? QStringLiteral("True") : QStringLiteral("False"));
+        ss.save();
+        emit tciCenterLockWhenIqChanged(on);
+    });
 
     // Port + Enable row (bottom)
     auto* enableRow = new QHBoxLayout;
