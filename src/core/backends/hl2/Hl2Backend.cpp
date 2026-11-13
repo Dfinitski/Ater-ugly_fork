@@ -2882,6 +2882,16 @@ void Hl2Backend::fdvTick()
     if (m_txEngine)
         m_txEngine->setFdvTxRunning(m_fdv && m_fdv->txRunning());
     auto& st = fdv::FdvState::instance();
+    // Build 339: FreeDV on / off on the transmitting receiver, or another
+    // sub-mode -- push the transmit filter that now applies.
+    {
+        const int key = (st.sliceId >= 0 && ddcForSlice(st.sliceId) == m_txDdc) ? st.subMode : -1;
+        if (key != m_fdvTxBandKey) {
+            m_fdvTxBandKey = key;
+            if (const Receiver* txRx = rx(m_txDdc))
+                pushTxPassband(txRx->mode);
+        }
+    }
     if (!m_fdv)
         return;
     if (st.sliceId < 0) {
@@ -7978,6 +7988,17 @@ std::pair<int, int> Hl2Backend::effectiveTxPassband(const QString& mode) const
     // what far-end decoders expect).
     const QString u = mode.toUpper();
     const bool ssbVoice = u == QLatin1String("USB") || u == QLatin1String("LSB");
+    // ANAN fork build 339 (operator, 13.11: "the transmit filter too, as in
+    // MicronSDR"): FreeDV on the transmitting receiver -- the band of its
+    // sub-mode, not the voice passband (300..2700 cut RADE's 100..3000).
+    if (ssbVoice) {
+        const auto& fs = fdv::FdvState::instance();
+        if (fs.sliceId >= 0 && ddcForSlice(fs.sliceId) == m_txDdc) {
+            int lo = 0, hi = 0;
+            fdv::fdvTxBandHz(fs.subMode, &lo, &hi);
+            return {lo, hi};
+        }
+    }
     if (m_txFilterFromOperator && ssbVoice)
         return {m_txFilterLowHz, m_txFilterHighHz};
     return defaultTxPassbandForMode(mode);

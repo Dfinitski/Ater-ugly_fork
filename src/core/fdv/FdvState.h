@@ -47,6 +47,19 @@ inline void fdvRxBandHz(int subMode, int* lo, int* hi)
     *hi = kFdvCenterHz + half;
 }
 
+// ANAN fork build 339: the transmit filter of a sub-mode, audio Hz, as
+// MicronSDR's fdvTxBand(): the whole modem signal with its skirts. Measured
+// there, not taken from the documentation (the modem output is down 25 dB at
+// these edges; RADE: 99 % of the power in 100 .. 3070 Hz).
+inline void fdvTxBandHz(int subMode, int* lo, int* hi)
+{
+    static const int band[kFdvSubModeCount][2] = {
+        {700, 2300}, {600, 2400}, {400, 2600}, {100, 3000}};   // 1600, 700D, 700E, RADE
+    const int m = std::clamp(subMode, 0, kFdvSubModeCount - 1);
+    *lo = band[m][0];
+    *hi = band[m][1];
+}
+
 class FdvState {
 public:
     static FdvState& instance()
