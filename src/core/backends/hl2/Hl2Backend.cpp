@@ -5450,7 +5450,7 @@ void Hl2Backend::setNotchesEnabled(bool on)
 }
 
 // Intent ignored — the HL2's DDC window is independent of any slice.
-void Hl2Backend::setPanCenter(const QString& panId, double hz, PanCenterIntent)
+void Hl2Backend::setPanCenter(const QString& panId, double hz, PanCenterIntent intent)
 {
     ananUnkeyEvent(QStringLiteral("setPanCenter %1 Hz").arg(hz, 0, 'f', 0));
     // The slice does NOT move with the window -- that is the point of keeping
@@ -5482,6 +5482,30 @@ void Hl2Backend::setPanCenter(const QString& panId, double hz, PanCenterIntent)
     constexpr double kDragReach = 0.96;
     const double rate = static_cast<double>(m_sampleRateHz);
     const double view = panViewHz(*r);
+    // Build 325 (operator, 12.11: with Center Lock a click retunes the pan,
+    // then for a moment it shows the old picture). A centre that is not a
+    // drag -- Center Lock, a reveal, a zoom's centre -- took the drag path
+    // below: the NCO moved with a lead (the view ~25 kHz off it, in the DDC
+    // filter's roll-off), the spectrum average kept the old NCO's frames on
+    // the new axis, and 400 ms later settlePanViews() moved the NCO a second
+    // time, old average again. Now: inside the clean 80 % the view just
+    // moves; beyond it the NCO goes straight to the centre (no lead, nothing
+    // for the settle to do) and the average starts afresh.
+    if (intent != PanCenterIntent::Drag) {
+        const double slack = std::max(0.0, (rate * anan::kUsableSpanFraction - view) / 2.0);
+        if (std::abs(hz - r->ncoHz) <= slack) {
+            r->viewOffsetHz = hz - r->ncoHz;
+            r->viewForNcoHz = r->ncoHz;
+        } else {
+            moveNcoForView(ddc, *r, hz, hz);
+            dropPanAverage(*r);
+        }
+        applyBandFilter("pan");
+        publishWideState();
+        emitPanState(ddc);
+        notifyOperatingStateChanged();
+        return;
+    }
     const double reach = std::max(0.0, (rate * kDragReach - view) / 2.0);
     if (std::abs(hz - r->ncoHz) <= reach) {
         r->viewOffsetHz = hz - r->ncoHz;

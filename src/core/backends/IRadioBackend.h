@@ -212,7 +212,14 @@ public:
                 setPanCenter(panId, *geometry.centerMhz * 1.0e6,
                     geometry.intent == PanGeometryRequest::Intent::Drag ? PanCenterIntent::Drag : PanCenterIntent::Range);
             }
-            if (!alive || (current && !current())) { return ReceiveDispatch::Unsupported; }
+            if (!alive) { return ReceiveDispatch::Unsupported; }
+            // ANAN fork build 325: a backend that applies the centre at once
+            // (HL2/ANAN) publishes the new pan state inside setPanCenter, which
+            // moves the fence -- the centre is applied all the same, so this is
+            // not a refusal (it read as "Backend refused operation pan display"
+            // and Center Lock took the centre as deferred). Stop before the
+            // bandwidth only.
+            if (current && !current()) { return ReceiveDispatch::Dispatched; }
             if (geometry.bandwidthMhz) { alive->setPanBandwidth(panId, *geometry.bandwidthMhz * 1.0e6); }
             break;
         }

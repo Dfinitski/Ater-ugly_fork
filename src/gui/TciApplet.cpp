@@ -202,21 +202,7 @@ void TciApplet::buildUI()
         outer->addLayout(row);
     }
 
-    // Build 321 (operator, 12.11: "add to the applet which mode the client
-    // asked for and anything else important"): one block per connected
-    // client -- program, I/Q (receivers, rate, frames and samples actually
-    // sent per second), audio format, the last command. Hidden without
-    // clients.
-    m_clientsInfo = new QLabel;
-    m_clientsInfo->setObjectName(QStringLiteral("tciClientsInfo"));
-    m_clientsInfo->setTextFormat(Qt::RichText);
-    m_clientsInfo->setWordWrap(true);
-    m_clientsInfo->setContentsMargins(4, 2, 4, 2);
-    m_clientsInfo->setStyleSheet(QStringLiteral("QLabel { color: #8090a0; font-size: 10px; }"));
-    m_clientsInfo->hide();
-    outer->addWidget(m_clientsInfo);
-
-    // Build 324 (operator, 12.11): while a client (a skimmer) takes I/Q from a
+    // Build 324/325 (operator, 12.11; build 325: right under the TX slider): while a client (a skimmer) takes I/Q from a
     // receiver, Center Lock keeps that receiver's filter in the middle of
     // its panadapter, so whatever is tuned -- a click anywhere on a wide
     // pan -- stays inside the I/Q band the client gets (centred on the view).
@@ -241,6 +227,20 @@ void TciApplet::buildUI()
         ss.save();
         emit tciCenterLockWhenIqChanged(on);
     });
+
+    // Build 321 (operator, 12.11: "add to the applet which mode the client
+    // asked for and anything else important"): one block per connected
+    // client -- program, I/Q (receivers, rate, frames and samples actually
+    // sent per second), audio format, the last command. Hidden without
+    // clients.
+    m_clientsInfo = new QLabel;
+    m_clientsInfo->setObjectName(QStringLiteral("tciClientsInfo"));
+    m_clientsInfo->setTextFormat(Qt::RichText);
+    m_clientsInfo->setWordWrap(true);
+    m_clientsInfo->setContentsMargins(4, 2, 4, 2);
+    m_clientsInfo->setStyleSheet(QStringLiteral("QLabel { color: #8090a0; font-size: 10px; }"));
+    m_clientsInfo->hide();
+    outer->addWidget(m_clientsInfo);
 
     // Port + Enable row (bottom)
     auto* enableRow = new QHBoxLayout;
