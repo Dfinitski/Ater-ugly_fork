@@ -23,16 +23,17 @@ BandStackPanel::BandStackPanel(QWidget* parent)
 {
     theme::setContainer(this, QStringLiteral("panel/bandStack"));
     setFixedWidth(80);
-    // Build 313 (operator, 12.11: the panel's tooltips were black boxes, "all
-    // our tooltips are black on yellow -- bring these to the same standard").
-    // A style sheet with no selector applies to the panel AND everything in
-    // it -- including the tooltips its buttons show, which took the dark
-    // background with their black text. The background is now the panel's
-    // own (by object name); its tooltips are the application's.
-    setObjectName(QStringLiteral("bandStackPanel"));
-    setAttribute(Qt::WA_StyledBackground, true);
-    AetherSDR::ThemeManager::instance().applyStyleSheet(
-        this, "QWidget#bandStackPanel { background: {{color.background.0}}; }");
+    // Build 320 (operator, 12.11: build 313/314 changed the colour of the
+    // panel's elements, "only the tooltips were meant"). The panel's rule is
+    // back to applying to the panel and everything in it, as before build
+    // 313 (`* {}` is what the old selector-less sheet meant), so the elements
+    // look as they did. A tooltip also matches this sheet, so it gets its own
+    // QToolTip rule here -- the application standard of build 314 -- which,
+    // being more specific than `*`, wins over the panel background.
+    AetherSDR::ThemeManager::instance().applyStyleSheet(this,
+        "* { background: {{color.background.0}}; }"
+        "QToolTip { color: #ffffff; background-color: #000000;"
+        " border: 1px solid #00b4d8; padding: 3px 5px; }");
 
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(4, 4, 4, 4);
@@ -57,10 +58,6 @@ BandStackPanel::BandStackPanel(QWidget* parent)
     m_buttonLayout->addStretch(1);  // push buttons to top
 
     m_scrollArea->setWidget(scrollContent);
-    // Build 313: the viewport and the content no longer get the panel's
-    // background through the selector-less rule -- let them show it.
-    m_scrollArea->viewport()->setAutoFillBackground(false);
-    scrollContent->setAutoFillBackground(false);
     root->addWidget(m_scrollArea, 1);
 
     // Bottom button row: [Clear All] [+] [Settings]
