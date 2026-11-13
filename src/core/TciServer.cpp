@@ -1129,6 +1129,20 @@ QVector<TciClientInfo> TciServer::connectedClients() const
         info.iq           = !cs.iqReceivers.isEmpty();
         info.rxSensors    = cs.rxSensorsEnabled;
         info.txSensors    = cs.txSensorsEnabled;
+        // Build 321.
+        info.iqReceivers  = QList<int>(cs.iqReceivers.cbegin(), cs.iqReceivers.cend());
+        std::sort(info.iqReceivers.begin(), info.iqReceivers.end());
+        info.iqSampleRate = cs.iqRateSent > 0 ? cs.iqRateSent : m_announcedIqSampleRate;
+        info.iqFrames     = cs.iqFrames;
+        info.iqRefused    = cs.iqRefused;
+        info.iqFramesPerSec   = cs.iqFps;
+        info.iqKSamplesPerSec = cs.iqKsps;
+        info.iqRadioFramesPerSec = m_iqRadioFps;
+        info.audioSampleRate = cs.audioSampleRate;
+        info.audioChannels   = cs.audioChannels;
+        info.audioFormat     = cs.audioFormat;
+        info.spectrum     = cs.spectrumEnabled;
+        info.lastCommand  = cs.lastRxCommand;
         out.append(info);
     }
     return out;
@@ -1603,6 +1617,8 @@ void TciServer::onTextMessage(const QString& msg)
                 replyText(ws, QStringLiteral("iq_stop:%1;").arg(trx));
                 continue;
             }
+            client.iqStartedAtMs = m_tciPttTelemetryClock.elapsed();   // build 321
+            client.iqNoDataWarned = false;
             qCInfo(lcCat) << "TCI: IQ started for client"
                           << ws->peerAddress().toString()
                           << "trx=" << trx
@@ -3715,6 +3731,8 @@ void TciServer::teardownTciRoute()
 
 void TciServer::broadcastStatus()
 {
+    if (!m_clients.isEmpty())
+        updateIqStats();   // build 321
     if (m_clients.isEmpty() || !m_model || !m_model->isConnected())
         return;
 
@@ -3784,6 +3802,7 @@ void TciServer::onDaxStreamUnregistered(int channel, quint32 /*streamId*/)
 
 void TciServer::onIqDataReady(int channel, const QByteArray& rawPayload, int sampleRate)
 {
+    ++m_iqFramesIn;   // build 321: what the radio side delivers, sent or not
     // Which receivers does this channel feed? Normally one (receiver n ↔ channel
     // n+1), but two receivers whose slices share a panadapter share its channel
     // — and see the same spectrum, so both are served from this one payload,
@@ -3820,10 +3839,77 @@ void TciServer::onIqDataReady(int channel, const QByteArray& rawPayload, int sam
             trx, 0 /*IQ*/, sampleRate, 2,
             reinterpret_cast<const float*>(swapped.constData()), iqFrames);
         for (auto& cs : m_clients) {
-            if (cs.iqReceivers.contains(trx))
-                cs.socket->sendBinaryMessage(frame);
+            if (!cs.iqReceivers.contains(trx) || !cs.socket)
+                continue;
+            // Build 321: count what actually goes out, per client.
+            if (cs.socket->sendBinaryMessage(frame) < 0) {
+                ++cs.iqRefused;
+                continue;
+            }
+            if (cs.iqFrames == 0) {
+                qCInfo(lcCat).noquote().nospace()
+                    << "TCI: first I/Q frame to " << (cs.processName.isEmpty() ? QStringLiteral("client") : cs.processName)
+                    << ": receiver " << trx << ", " << sampleRate << " Hz, float32, 2 channels, "
+                    << iqFrames << " complex samples (header length " << iqFrames * 2 << "), "
+                    << frame.size() << " bytes";
+            }
+            ++cs.iqFrames;
+            cs.iqSamples += static_cast<quint64>(iqFrames);
+            cs.iqRateSent = sampleRate;
         }
     }
+}
+
+// Build 321 (operator, 12.11: CW Skimmer over TCI shows control but no I/Q).
+// Once a second (5 ticks of the 200 ms status timer): per-client I/Q frame
+// and sample rates for the TCI applet; every 5 s a log line per I/Q client;
+// and one warning when a client has had I/Q on for 3 s and nothing went out
+// in the last second -- with how many frames the radio side delivered, so
+// the log tells "no I/Q from the radio" from "I/Q not reaching the client".
+void TciServer::updateIqStats()
+{
+    if (++m_statsTick < 5)
+        return;
+    m_statsTick = 0;
+    const bool logNow = (++m_statsLogTick % 5) == 0;
+    const quint64 inDelta = m_iqFramesIn - m_iqFramesInMark;
+    m_iqFramesInMark = m_iqFramesIn;
+    m_iqRadioFps = static_cast<double>(inDelta);
+    const qint64 now = m_tciPttTelemetryClock.elapsed();
+    for (ClientState& cs : m_clients) {
+        if (!cs.socket)
+            continue;
+        cs.iqFps = static_cast<double>(cs.iqFrames - cs.iqFramesMark);
+        cs.iqKsps = static_cast<double>(cs.iqSamples - cs.iqSamplesMark) / 1000.0;
+        cs.iqFramesMark = cs.iqFrames;
+        cs.iqSamplesMark = cs.iqSamples;
+        if (cs.iqReceivers.isEmpty())
+            continue;
+        QList<int> trx(cs.iqReceivers.cbegin(), cs.iqReceivers.cend());
+        std::sort(trx.begin(), trx.end());
+        QStringList trxText;
+        for (int t : trx)
+            trxText << QString::number(t);
+        const QString who = cs.processName.isEmpty() ? QStringLiteral("client") : cs.processName;
+        if (logNow) {
+            qCInfo(lcCat).noquote().nospace()
+                << "TCI I/Q stats: " << who << " receiver(s) " << trxText.join(QLatin1Char(','))
+                << ", requested " << m_iqSampleRate << " Hz, announced " << m_announcedIqSampleRate
+                << " Hz, sent " << cs.iqFrames << " frames (" << cs.iqFps << "/s, "
+                << QString::number(cs.iqKsps, 'f', 1) << " kS/s), refused " << cs.iqRefused
+                << "; from the radio " << (m_iqFramesIn - m_iqFramesIn5sMark) << " frames in 5 s";
+        }
+        if (cs.iqFps == 0.0 && !cs.iqNoDataWarned && cs.iqStartedAtMs >= 0 && now - cs.iqStartedAtMs > 3000) {
+            cs.iqNoDataWarned = true;
+            qCWarning(lcCat).noquote().nospace()
+                << "TCI: " << who << " has I/Q on (receiver(s) " << trxText.join(QLatin1Char(','))
+                << ") but no I/Q frame went out in the last second; frames from the radio in that second: "
+                << inDelta << ", refused by the socket so far: " << cs.iqRefused;
+        }
+    }
+    if (logNow)
+        m_iqFramesIn5sMark = m_iqFramesIn;
+    emit clientStatsChanged();
 }
 
 int TciServer::iqChannelForTrx(int trx) const

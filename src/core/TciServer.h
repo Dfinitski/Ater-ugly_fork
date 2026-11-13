@@ -59,6 +59,21 @@ struct TciClientInfo {
     bool    iq{false};
     bool    rxSensors{false};
     bool    txSensors{false};
+    // Build 321 (operator: "show in the applet which mode the client asked
+    // for, and anything else important"): the streams it asked for and
+    // whether its I/Q is actually going out.
+    QList<int> iqReceivers;        // TCI receivers (trx) with iq_start
+    int     iqSampleRate{0};       // rate in the frames sent (else the announced one)
+    quint64 iqFrames{0};           // I/Q frames handed to the socket
+    quint64 iqRefused{0};          // ... refused by it (closed / backlog)
+    double  iqFramesPerSec{0.0};   // over the last second
+    double  iqKSamplesPerSec{0.0}; // complex samples, thousands per second
+    double  iqRadioFramesPerSec{0.0}; // I/Q frames from the radio, all channels
+    int     audioSampleRate{0};
+    int     audioChannels{0};
+    int     audioFormat{-1};       // 0=int16, 1=int24, 2=int32, 3=float32
+    bool    spectrum{false};
+    QString lastCommand;           // last command name received (no arguments)
 };
 
 // TCI WebSocket server — exposes radio state and audio over the TCI protocol.
@@ -173,6 +188,9 @@ signals:
     // (connect, disconnect, audio start/stop). The TCI tab repopulates on
     // this signal.
     void clientsChanged();
+    // Build 321: once a second while clients are connected -- the stream
+    // counters in connectedClients() moved.
+    void clientStatsChanged();
     // Raw TCI text traffic for the embedded monitor. direction is
     // "rx" (received from a client) or "tx" (broadcast to clients).
     // One emission per logical message. Binary audio/IQ frames are
@@ -320,6 +338,17 @@ private:
         // receiver; a single scalar silently replaced the previous receiver
         // and left its radio-side DAX IQ stream orphaned.
         QSet<int>    iqReceivers;             // TCI TRX indexes (0..3)
+        // Build 321: I/Q frames actually handed to this client's socket.
+        quint64      iqFrames{0};
+        quint64      iqSamples{0};            // complex samples in them
+        quint64      iqRefused{0};
+        quint64      iqFramesMark{0};
+        quint64      iqSamplesMark{0};
+        double       iqFps{0.0};
+        double       iqKsps{0.0};
+        int          iqRateSent{0};
+        qint64       iqStartedAtMs{-1};
+        bool         iqNoDataWarned{false};
         bool         spectrumEnabled{false}; // client sent spectrum_event:on;
         // Payload-free lifecycle telemetry retained across disconnect. Command
         // names are stored without their arguments, so diagnostics can identify
@@ -410,6 +439,14 @@ private:
     QHash<QString,int> m_iqPanChannel;       // panId → TCI-owned DAX IQ channel
     QHash<int,int>     m_nativeIqSlice;      // build 222: channel → slice id (ANAN I/Q)
     int                m_announcedIqSampleRate{48000};
+    // Build 321: I/Q stream counters (see updateIqStats).
+    quint64            m_iqFramesIn{0};        // frames from the radio, all channels
+    quint64            m_iqFramesInMark{0};
+    quint64            m_iqFramesIn5sMark{0};
+    double             m_iqRadioFps{0.0};
+    int                m_statsTick{0};
+    int                m_statsLogTick{0};
+    void updateIqStats();
     int                m_iqSampleRate{48000};// shared requested rate, all TCI receivers
     QHash<QString, long long> m_lastDdsCenterHz; // panId → last broadcast dds center, gates zoom-only re-emits (#3910)
     TciRoutingState m_routingState;

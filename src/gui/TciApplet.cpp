@@ -201,6 +201,20 @@ void TciApplet::buildUI()
         outer->addLayout(row);
     }
 
+    // Build 321 (operator, 12.11: "add to the applet which mode the client
+    // asked for and anything else important"): one block per connected
+    // client -- program, I/Q (receivers, rate, frames and samples actually
+    // sent per second), audio format, the last command. Hidden without
+    // clients.
+    m_clientsInfo = new QLabel;
+    m_clientsInfo->setObjectName(QStringLiteral("tciClientsInfo"));
+    m_clientsInfo->setTextFormat(Qt::RichText);
+    m_clientsInfo->setWordWrap(true);
+    m_clientsInfo->setContentsMargins(4, 2, 4, 2);
+    m_clientsInfo->setStyleSheet(QStringLiteral("QLabel { color: #8090a0; font-size: 10px; }"));
+    m_clientsInfo->hide();
+    outer->addWidget(m_clientsInfo);
+
     // Port + Enable row (bottom)
     auto* enableRow = new QHBoxLayout;
     enableRow->setContentsMargins(4, 2, 4, 2);
@@ -288,8 +302,86 @@ void TciApplet::buildUI()
             }
             updateTciStatus();
         }
+        updateClientsInfo();
         emit tciToggled(on);
     });
+}
+
+void TciApplet::updateClientsInfo()
+{
+    if (!m_clientsInfo)
+        return;
+    if (!m_tciServer || !m_tciServer->isRunning()) {
+        m_clientsInfo->clear();
+        m_clientsInfo->hide();
+        return;
+    }
+    const QVector<TciClientInfo> clients = m_tciServer->connectedClients();
+    if (clients.isEmpty()) {
+        m_clientsInfo->clear();
+        m_clientsInfo->hide();
+        return;
+    }
+    auto khz = [](int hz) {
+        return hz % 1000 == 0 ? QString::number(hz / 1000) : QString::number(hz / 1000.0, 'f', 1);
+    };
+    auto rxList = [](const QList<int>& trx) {
+        QStringList s;
+        for (int t : trx)
+            s << QStringLiteral("RX%1").arg(t + 1);
+        return s.join(QLatin1Char(','));
+    };
+    static const char* kFormats[] = {"int16", "int24", "int32", "float32"};
+    QStringList blocks;
+    for (const TciClientInfo& c : clients) {
+        QStringList lines;
+        QString name = c.processName.isEmpty() ? c.peerAddress : c.processName;
+        if (!c.processVersion.isEmpty())
+            name += QLatin1Char(' ') + c.processVersion;
+        lines << QStringLiteral("<span style='color:#c8d8e8;font-weight:bold;'>%1</span>")
+                     .arg(name.toHtmlEscaped());
+        if (!c.iqReceivers.isEmpty()) {
+            QString iq = QStringLiteral("I/Q %1 at %2 kHz: ")
+                             .arg(rxList(c.iqReceivers), khz(c.iqSampleRate));
+            if (c.iqFramesPerSec > 0.0) {
+                iq += QStringLiteral("<span style='color:#00c080;'>%1 frames/s, %2 kS/s</span>")
+                          .arg(QString::number(c.iqFramesPerSec, 'f', 0),
+                               QString::number(c.iqKSamplesPerSec, 'f', 1));
+            } else {
+                iq += QStringLiteral("<span style='color:#e05050;'>no data sent</span>");
+                iq += c.iqRadioFramesPerSec > 0.0
+                          ? QStringLiteral(" (radio gives %1 frames/s)").arg(c.iqRadioFramesPerSec, 0, 'f', 0)
+                          : QStringLiteral(" (none from the radio)");
+            }
+            if (c.iqRefused > 0)
+                iq += QStringLiteral(", <span style='color:#e05050;'>%1 refused</span>").arg(c.iqRefused);
+            lines << iq;
+        } else {
+            lines << QStringLiteral("I/Q off");
+        }
+        if (c.audio) {
+            const QString fmt = c.audioFormat >= 0 && c.audioFormat <= 3
+                                    ? QString::fromLatin1(kFormats[c.audioFormat]) : QStringLiteral("?");
+            lines << QStringLiteral("Audio %1 at %2 kHz, %3, %4")
+                         .arg(c.audioReceiver < 0 ? QStringLiteral("all RX") : QStringLiteral("RX%1").arg(c.audioReceiver + 1),
+                              khz(c.audioSampleRate), fmt,
+                              c.audioChannels == 1 ? QStringLiteral("mono") : QStringLiteral("stereo"));
+        } else {
+            lines << QStringLiteral("Audio off");
+        }
+        QStringList extra;
+        if (c.spectrum)
+            extra << QStringLiteral("spectrum");
+        if (c.rxSensors || c.txSensors)
+            extra << QStringLiteral("sensors");
+        if (!c.lastCommand.isEmpty())
+            extra << QStringLiteral("last: %1").arg(c.lastCommand.toHtmlEscaped());
+        if (!extra.isEmpty())
+            lines << extra.join(QStringLiteral(" \u00b7 "));
+        blocks << lines.join(QStringLiteral("<br>"));
+    }
+    m_clientsInfo->setText(blocks.join(QStringLiteral("<br><br>")));
+    m_clientsInfo->show();
 }
 
 void TciApplet::updateTciStatus()
@@ -390,9 +482,13 @@ void TciApplet::setTciServer(TciServer* tci)
     m_tciServer = tci;
     if (tci) {
         connect(tci, &TciServer::clientCountChanged,
-                this, [this]() { updateTciStatus(); });
+                this, [this]() { updateTciStatus(); updateClientsInfo(); });
+        // Build 321: the per-client stream block.
+        connect(tci, &TciServer::clientsChanged, this, [this]() { updateClientsInfo(); });
+        connect(tci, &TciServer::clientStatsChanged, this, [this]() { updateClientsInfo(); });
     }
     updateTciStatus();
+    updateClientsInfo();
 #else
     (void)tci;
 #endif

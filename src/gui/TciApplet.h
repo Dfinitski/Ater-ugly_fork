@@ -51,6 +51,7 @@ private:
 #ifdef HAVE_WEBSOCKETS
     void buildUI();
     void updateTciStatus();
+    void updateClientsInfo();   // build 321
 
     RadioModel* m_model{nullptr};
     TciServer*  m_tciServer{nullptr};
@@ -59,6 +60,7 @@ private:
     QPushButton* m_tciEnable{nullptr};
     QLineEdit*   m_tciPort{nullptr};
     QLabel*      m_tciStatus{nullptr};
+    QLabel*      m_clientsInfo{nullptr};   // build 321: per-client streams
 
     QWidget*     m_rxRow[kChannels]{};  // per-channel row container — hidden to gate to maxSlices()
     MeterSlider* m_rxMeter[kChannels]{};
