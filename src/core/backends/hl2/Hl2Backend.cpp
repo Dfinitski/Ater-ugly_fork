@@ -5587,12 +5587,11 @@ void Hl2Backend::moveNcoForView(int ddc, Receiver& r, double newNcoHz, double vi
         // skip). A jump of more than half the span starts the average afresh.
         QMetaObject::invokeMethod(r.dsp, "setShift", Qt::QueuedConnection,
             Q_ARG(double, rxShiftHz(r)));
-        // Build 332 (operator, 12.11: dragging the panadapter, and the settle
-        // 400 ms after it, looked like the whole panadapter being recomputed
-        // -- the old picture for a moment). Any NCO move puts the averaged
-        // frames on a different axis, so the average starts afresh on every
-        // move, not only on a jump of more than half the span.
-        dropPanAverage(r);
+        // Build 334 (operator, 12.11): build 332 dropped the average on every
+        // NCO move -- visible as needless FFT restarts while dragging. Back to
+        // dropping it only on a jump of more than half the span.
+        if (std::abs(ncoDeltaHz) > static_cast<double>(m_sampleRateHz) / 2.0)
+            dropPanAverage(r);
         QMetaObject::invokeMethod(r.dsp, "ncoMoved", Qt::QueuedConnection,
                                   Q_ARG(double, ncoDeltaHz));
     }
