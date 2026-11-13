@@ -6079,7 +6079,9 @@ void MainWindow::buildUI()
         applyStatusBarCompactLabelStyle(utcTitle, QStringLiteral("{{color.text.secondary}}"));
         utcTitle->setAlignment(Qt::AlignCenter);
         auto* utcValue = new QLabel(QStringLiteral("00:00:00"));
-        applyStatusBarCompactLabelStyle(utcValue, QStringLiteral("{{color.text.primary}}"));
+        // Build 328 (operator, 12.11: the time line stood out on its own): the
+        // same colour as its "UTC Time:" title and the bar's other labels.
+        applyStatusBarCompactLabelStyle(utcValue, QStringLiteral("{{color.text.secondary}}"));
         utcValue->setAlignment(Qt::AlignCenter);
         // Fixed width for "00:00:00", so the bar does not shift each second.
         {
