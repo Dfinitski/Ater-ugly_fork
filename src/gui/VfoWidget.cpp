@@ -36,7 +36,6 @@
 #include "models/TransmitModel.h"
 #include "Theme.h"
 #include "core/AppSettings.h"
-#include "core/SsbSideband.h"   // build 330
 #include "InteractionSettings.h"
 
 #include <QDateTime>
@@ -3017,8 +3016,9 @@ void VfoWidget::buildTabContent()
         // ANAN fork build 329 (operator, 12.11): the dropdown became an
         // ordinary button like the others, and a second row was added -- two
         // rows of four mode buttons. Right-click any button to choose its
-        // mode (the radio's own mode list); SSB toggles USB<->LSB, DIG
-        // toggles DIGU<->DIGL. The combo stays as a hidden model mirror.
+            // mode (the radio's own mode list). A second press on the active
+        // sideband mode swaps the sideband (build 336). The combo stays as a
+        // hidden model mirror.
         m_modeCombo->setParent(modeTab);
         m_modeCombo->hide();
         auto& settings = AppSettings::instance();
@@ -3030,6 +3030,12 @@ void VfoWidget::buildTabContent()
             // ANAN-100D port: the RADE pseudo-mode is now "FDV" (FreeDV).
             if (a == QLatin1String("RADE"))
                 a = QStringLiteral("FDV");
+            // Build 336: the neutral SSB / DIG entries are gone; a saved one
+            // becomes the upper-sideband mode.
+            if (a == QLatin1String("SSB"))
+                a = QStringLiteral("USB");
+            else if (a == QLatin1String("DIG"))
+                a = QStringLiteral("DIGU");
             m_quickModeAssign[i] = a;
         }
 
@@ -3041,7 +3047,10 @@ void VfoWidget::buildTabContent()
             btn->setCheckable(true);
             btn->setFixedHeight(26);
             btn->setStyleSheet(kModeBtn);
-            btn->setToolTip(tr("Click: this mode. Right-click: choose the button's mode."));
+            btn->setToolTip(sidebandPartner(m_quickModeAssign[i]).isEmpty()
+                ? tr("Click: this mode. Right-click: choose the button's mode.")
+                : tr("Click: this mode; click again: the other sideband. "
+                     "Right-click: choose the button's mode."));
             m_quickModeBtns[i] = btn;
 
             connect(btn, &QPushButton::clicked, this, [this, i](bool checked) {
@@ -3050,13 +3059,21 @@ void VfoWidget::buildTabContent()
                     // Don't let the user uncheck the active mode — re-check.
                     QSignalBlocker b(m_quickModeBtns[i]);
                     m_quickModeBtns[i]->setChecked(true);
-                    // Build 331 (operator, 12.11: a second press did not swap
-                    // the sideband): a press on an ACTIVE button arrives as an
-                    // uncheck, and returning here meant SSB / DIG could never
-                    // reach their toggle below. Those two go on; every other
-                    // mode button stays as it was.
-                    if (assign != "SSB" && assign != "DIG")
+                    // Build 336 (operator, 12.11: "remove the neutral values
+                    // and do the toggle on the ordinary buttons with the
+                    // sideband given"): a press on the ACTIVE button arrives
+                    // as an uncheck. On a sideband mode (USB/LSB, DIGU/DIGL,
+                    // CW/CWL) it swaps to the other sideband; any other mode
+                    // stays as it is.
+                    if (!m_slice)
                         return;
+                    const QString other = sidebandPartner(m_slice->mode());
+                    const QStringList offered = m_slice->modeList();
+                    if (other.isEmpty() || (!offered.isEmpty() && !offered.contains(other)))
+                        return;
+                    m_slice->setMode(other);
+                    updateQuickModeButtons();
+                    return;
                 }
                 if (!m_slice) return;
 #ifdef HAVE_RADE
@@ -3068,23 +3085,7 @@ void VfoWidget::buildTabContent()
                 if (m_radeActive)
                     emit radeActivated(false, m_slice->sliceId());
 #endif
-                if (assign == "SSB") {
-                    // Build 330: inside SSB the button swaps the sideband;
-                    // entering SSB from another mode it takes the band's
-                    // convention at the receiver's frequency (ssbSidebandFor).
-                    const QString cur = m_slice->mode();
-                    if (cur == "USB")
-                        m_slice->setMode("LSB");
-                    else if (cur == "LSB")
-                        m_slice->setMode("USB");
-                    else
-                        m_slice->setMode(ssbSidebandFor(m_slice->frequency()));
-                } else if (assign == "DIG") {
-                    // Digital data modes are USB on every band: DIGU on entry.
-                    m_slice->setMode(m_slice->mode() == "DIGU" ? "DIGL" : "DIGU");
-                } else {
-                    m_slice->setMode(assign);
-                }
+                m_slice->setMode(assign);
                 // The highlight follows the model (its mode echo), never the
                 // press alone: two buttons are not left lit at once.
                 updateQuickModeButtons();
@@ -6231,29 +6232,31 @@ void VfoWidget::updateQuickModeButtons()
 
         // Determine label and active state
         QString label = assign;
-        bool active = false;
-        if (assign == "SSB") {
-            // Build 330: outside SSB the label is the sideband a press selects.
-            active = (cur == "USB" || cur == "LSB");
-            label = active ? cur : (m_slice ? ssbSidebandFor(m_slice->frequency()) : QStringLiteral("USB"));
-        } else if (assign == "DIG") {
-            label = (cur == "DIGL") ? "DIGL" : "DIGU";
-            active = (cur == "DIGU" || cur == "DIGL");
-        } else {
-            active = (cur == assign);
+        bool active = (cur == assign);
+        // Build 336: after a sideband swap with no button of its own (e.g.
+        // only a USB button), the swapped button stays lit and shows the
+        // mode in use, so a click still swaps back.
+        if (!active && !cur.isEmpty() && sidebandPartner(assign) == cur) {
+            bool owned = false;
+            for (int j = 0; j < kQuickModeButtons; ++j)
+                owned = owned || (m_quickModeBtns[j] && m_quickModeAssign[j] == cur);
+            if (!owned) {
+                active = true;
+                label = cur;
+            }
         }
 
         m_quickModeBtns[i]->setText(label);
+        m_quickModeBtns[i]->setToolTip(sidebandPartner(assign).isEmpty()   // build 336
+            ? tr("Click: this mode. Right-click: choose the button's mode.")
+            : tr("Click: this mode; click again: the other sideband. "
+                 "Right-click: choose the button's mode."));
         QSignalBlocker sb(m_quickModeBtns[i]);
         m_quickModeBtns[i]->setChecked(active);
         bool available = true;
         if (!offered.isEmpty()) {
-            if (assign == "SSB")
-                available = offered.contains("USB") || offered.contains("LSB");
-            else if (assign == "DIG")
-                available = offered.contains("DIGU") || offered.contains("DIGL");
 #ifdef HAVE_RADE
-            else if (assign == "FDV")
+            if (assign == "FDV")
                 available = true;
 #endif
             else
@@ -6261,6 +6264,19 @@ void VfoWidget::updateQuickModeButtons()
         }
         m_quickModeBtns[i]->setEnabled(available);
     }
+}
+
+QString VfoWidget::sidebandPartner(const QString& mode)
+{
+    // Build 336: the mode on the other sideband, empty when there is none.
+    static const char* kPairs[][2] = {{"USB", "LSB"}, {"DIGU", "DIGL"}, {"CW", "CWL"}, {"CWU", "CWL"}};
+    for (const auto& pr : kPairs) {
+        if (mode == QLatin1String(pr[0]))
+            return QString::fromLatin1(pr[1]);
+        if (mode == QLatin1String(pr[1]))
+            return QString::fromLatin1(pr[0]);
+    }
+    return {};
 }
 
 QString VfoWidget::quickModeKey(int slot)
@@ -6281,10 +6297,6 @@ QStringList VfoWidget::quickModeChoices() const
         modes = {"USB", "LSB", "CW", "AM", "SAM", "FM", "NFM", "DFM", "DSTR",
                  "RTTY", "DIGU", "DIGL"};
     modes = filterUnavailableDigitalVoiceModes(modes);
-    if (modes.contains("USB") || modes.contains("LSB"))
-        modes << QStringLiteral("SSB");
-    if (modes.contains("DIGU") || modes.contains("DIGL"))
-        modes << QStringLiteral("DIG");
 #ifdef HAVE_RADE
     if (!modes.contains("FDV"))
         modes << QStringLiteral("FDV");

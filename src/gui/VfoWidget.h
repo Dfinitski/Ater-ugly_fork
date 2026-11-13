@@ -806,10 +806,11 @@ private:
     // gone); right-click any of them to choose its mode.
     static constexpr int kQuickModeButtons = 8;
     QPushButton* m_quickModeBtns[kQuickModeButtons]{};
-    QString      m_quickModeAssign[kQuickModeButtons];  // e.g. "USB", "CW", "SSB", "DIG"
+    QString      m_quickModeAssign[kQuickModeButtons];  // e.g. "USB", "CW", "DIGU"
     // The settings key for button `slot` (display order). Slots 1..3 keep the
     // old "ModeButton0..2" so earlier assignments survive.
     static QString quickModeKey(int slot);
+    static QString sidebandPartner(const QString& mode);   // build 336
     QStringList quickModeChoices() const;
     void updateQuickModeButtons();
     QGridLayout* m_filterGrid{nullptr};
