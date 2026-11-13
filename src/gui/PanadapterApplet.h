@@ -151,6 +151,9 @@ private:
     // Places the header's two pieces over the top of the spectrum: the grip
     // and title at the left, the buttons at the right.
     void layoutHeader();
+    // ANAN fork build 333: the CW decode panel lies over the bottom of the
+    // spectrum widget (the waterfall) instead of taking layout height.
+    void placeCwPanel();
     // Re-apply the decoded-text stylesheet at the current font size (#3628).
     void applyCwFont();
     // Change the decoded-text font size by `delta` px, clamp, and persist (#3628).

@@ -143,7 +143,9 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
     m_cwPanel = new QWidget(body);
     m_cwPanel->setObjectName("cwDecodePanel");  // addressable for automation (#3628/#3646)
     m_cwPanel->setCursor(Qt::ArrowCursor);  // prevent invisible cursor from native-window parent (#1096)
-    m_cwPanel->setFixedHeight(m_cwPanelHeight);
+    // Build 333 (operator, 12.11): placed by placeCwPanel() over the bottom
+    // of the waterfall, not in the layout -- entering or leaving CW no longer
+    // changes the panadapter's height (which rebuilt the waterfall).
     m_cwPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     AetherSDR::ThemeManager::instance().applyStyleSheet(m_cwPanel, "QWidget { background: {{color.background.0}}; border-top: 1px solid {{color.background.1}}; }");
 
@@ -360,7 +362,7 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
 
 
     m_cwPanel->hide();
-    layout->addWidget(m_cwPanel);
+    // Build 333: not added to the layout (see placeCwPanel).
 
     // ── RTTY decode panel (hidden by default, shown in RTTY/DIGL mode) ───
     m_rttyPanel = new QWidget(bodyWidget());
@@ -688,7 +690,24 @@ QString PanadapterApplet::sliceTitle() const
 
 void PanadapterApplet::setCwPanelVisible(bool visible)
 {
+    if (visible)
+        placeCwPanel();
     m_cwPanel->setVisible(visible);
+    if (visible)
+        m_cwPanel->raise();
+}
+
+void PanadapterApplet::placeCwPanel()
+{
+    // Build 333: the bottom of the spectrum widget, its width, the saved
+    // height (kept below the widget's height so the spectrum stays visible).
+    if (!m_cwPanel || !m_spectrum)
+        return;
+    const QRect s = m_spectrum->geometry();
+    const int h = std::clamp(m_cwPanelHeight, 0, std::max(0, s.height() - 60));
+    m_cwPanel->setGeometry(s.x(), s.y() + s.height() - h, s.width(), h);
+    if (m_cwPanel->isVisible())
+        m_cwPanel->raise();
 }
 
 #ifdef AETHER_ASR_ENABLED
@@ -795,7 +814,7 @@ void PanadapterApplet::setCwPanelHeight(int h)
     // Live apply only — persistence happens once on grip release to avoid
     // writing settings on every mouse-move during a drag.
     m_cwPanelHeight = std::clamp(h, 60, 600);
-    m_cwPanel->setFixedHeight(m_cwPanelHeight);
+    placeCwPanel();   // build 333: an overlay, not a layout height
 }
 
 int PanadapterApplet::speedRangeLow()  const
@@ -1032,6 +1051,9 @@ bool PanadapterApplet::eventFilter(QObject* obj, QEvent* ev)
             && ev->type() == QEvent::LayoutRequest)) {
         layoutHeader();
     }
+    // Build 333: the CW decode panel follows the spectrum's geometry.
+    if (obj == m_spectrum && (ev->type() == QEvent::Resize || ev->type() == QEvent::Move))
+        placeCwPanel();
     // A decoder range is saved once the drag or key press that set it ends.
     // Observe only: the slider still handles the event itself.
     if ((obj == m_pitchRangeSlider || obj == m_speedRangeSlider)
