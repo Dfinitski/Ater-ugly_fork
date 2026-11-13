@@ -11003,6 +11003,40 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
                 emit centerLockRequested(sliceId, m_centerLockSliceId != sliceId);
             });
         };
+        // ANAN fork build 329 (operator, 12.11): the VFO flag's Marker and
+        // Filter Edge buttons, moved here as their own group under Center
+        // Lock -- marker 1 px / 3 px / Off (a list like Waterfall Time
+        // Markers) and Filter Edge with its check mark. Per slice, as before.
+        auto addVfoMarkerControls = [this](QMenu& targetMenu, int sliceId) {
+            VfoWidget* w = vfoWidget(sliceId);
+            if (!w)
+                return;
+            const QPointer<VfoWidget> wp(w);
+            targetMenu.addSeparator();
+            QMenu* markerMenu = targetMenu.addMenu(tr("VFO Marker"));
+            markerMenu->setObjectName(QStringLiteral("vfoMarkerMenu"));
+            auto* markerGroup = new QActionGroup(markerMenu);
+            markerGroup->setExclusive(true);
+            for (const int px : {1, 3, 0}) {
+                QAction* a = markerMenu->addAction(px == 0 ? tr("Off") : tr("%1 px").arg(px));
+                a->setObjectName(QStringLiteral("vfoMarker%1").arg(px));
+                a->setCheckable(true);
+                a->setChecked(w->markerWidth() == px);
+                markerGroup->addAction(a);
+                connect(a, &QAction::triggered, this, [wp, px] {
+                    if (wp)
+                        wp->setMarkerWidth(px);
+                });
+            }
+            QAction* edges = targetMenu.addAction(tr("Filter Edge"));
+            edges->setObjectName(QStringLiteral("vfoFilterEdge"));
+            edges->setCheckable(true);
+            edges->setChecked(!w->filterEdgesHidden());
+            connect(edges, &QAction::toggled, this, [wp](bool on) {
+                if (wp)
+                    wp->setFilterEdgesHidden(!on);
+            });
+        };
         auto addCenterLockControls = [this, addCenterLockAction](QMenu& targetMenu) {
             if (m_sliceOverlays.isEmpty()) {
                 return;
@@ -11180,6 +11214,7 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
                     });
                 menu.addSeparator();
                 addCenterLockAction(&menu, so, true);
+                addVfoMarkerControls(menu, so.sliceId);   // build 329
                 addSliceLinkControls(menu);
                 ev->accept();
                 menu.exec(ev->globalPosition().toPoint());
@@ -11330,6 +11365,11 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
                 menu.addAction(m_capturePlacementAction);
             }
             addCenterLockControls(menu);
+            // Build 329: the active slice's marker / filter edge.
+            if (const SliceOverlay* active = activeOverlay())
+                addVfoMarkerControls(menu, active->sliceId);
+            else if (!m_sliceOverlays.isEmpty())
+                addVfoMarkerControls(menu, m_sliceOverlays.first().sliceId);
             addSliceLinkControls(menu);
 
             // Close Slice option (only when multiple slices exist)

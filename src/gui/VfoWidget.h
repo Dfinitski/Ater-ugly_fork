@@ -802,8 +802,15 @@ private:
     ScrollableLabel* m_shiftLabel{nullptr};
     // Mode tab
     QComboBox* m_modeCombo{nullptr};
-    QPushButton* m_quickModeBtns[3]{};
-    QString      m_quickModeAssign[3];  // e.g. "USB", "CW", "SSB", "DIG"
+    // ANAN fork build 329: two rows of four mode buttons (the dropdown is
+    // gone); right-click any of them to choose its mode.
+    static constexpr int kQuickModeButtons = 8;
+    QPushButton* m_quickModeBtns[kQuickModeButtons]{};
+    QString      m_quickModeAssign[kQuickModeButtons];  // e.g. "USB", "CW", "SSB", "DIG"
+    // The settings key for button `slot` (display order). Slots 1..3 keep the
+    // old "ModeButton0..2" so earlier assignments survive.
+    static QString quickModeKey(int slot);
+    QStringList quickModeChoices() const;
     void updateQuickModeButtons();
     QGridLayout* m_filterGrid{nullptr};
     QVector<QPushButton*> m_filterBtns;

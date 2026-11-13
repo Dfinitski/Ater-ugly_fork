@@ -3013,26 +3013,34 @@ void VfoWidget::buildTabContent()
                 m_slice->setMode(mode);
         });
 
-        // Top row: dropdown + 3 configurable quick-mode buttons
-        // Right-click any button to reassign its mode.
-        // SSB toggles USB↔LSB; DIG toggles DIGU↔DIGL.
+        // ANAN fork build 329 (operator, 12.11): the dropdown became an
+        // ordinary button like the others, and a second row was added -- two
+        // rows of four mode buttons. Right-click any button to choose its
+        // mode (the radio's own mode list); SSB toggles USB<->LSB, DIG
+        // toggles DIGU<->DIGL. The combo stays as a hidden model mirror.
+        m_modeCombo->setParent(modeTab);
+        m_modeCombo->hide();
         auto& settings = AppSettings::instance();
-        m_quickModeAssign[0] = settings.value("ModeButton0", "USB").toString();
-        m_quickModeAssign[1] = settings.value("ModeButton1", "CW").toString();
-        m_quickModeAssign[2] = settings.value("ModeButton2", "AM").toString();
-        // ANAN-100D port: the RADE pseudo-mode is now "FDV" (FreeDV).
-        for (QString& a : m_quickModeAssign)
+        static const char* kDefaults[kQuickModeButtons] = {
+            "LSB", "USB", "CW", "AM",      // row 1 (slots 1..3 = old buttons)
+            "CWL", "DIGL", "DIGU", "SAM"}; // row 2
+        for (int i = 0; i < kQuickModeButtons; ++i) {
+            QString a = settings.value(quickModeKey(i), QString::fromLatin1(kDefaults[i])).toString();
+            // ANAN-100D port: the RADE pseudo-mode is now "FDV" (FreeDV).
             if (a == QLatin1String("RADE"))
                 a = QStringLiteral("FDV");
+            m_quickModeAssign[i] = a;
+        }
 
-        auto* modeRow = new QHBoxLayout;
-        modeRow->setSpacing(2);
-        modeRow->addWidget(m_modeCombo, 1);
-        for (int i = 0; i < 3; ++i) {
+        QHBoxLayout* modeRows[2] = {new QHBoxLayout, new QHBoxLayout};
+        for (auto* r : modeRows)
+            r->setSpacing(2);
+        for (int i = 0; i < kQuickModeButtons; ++i) {
             auto* btn = new QPushButton(m_quickModeAssign[i]);
             btn->setCheckable(true);
             btn->setFixedHeight(26);
             btn->setStyleSheet(kModeBtn);
+            btn->setToolTip(tr("Click: this mode. Right-click: choose the button's mode."));
             m_quickModeBtns[i] = btn;
 
             connect(btn, &QPushButton::clicked, this, [this, i](bool checked) {
@@ -3060,44 +3068,36 @@ void VfoWidget::buildTabContent()
                 } else {
                     m_slice->setMode(assign);
                 }
+                // The highlight follows the model (its mode echo), never the
+                // press alone: two buttons are not left lit at once.
+                updateQuickModeButtons();
             });
 
-            // Right-click context menu to reassign
+            // Right-click: choose this button's mode.
             btn->setContextMenuPolicy(Qt::CustomContextMenu);
             connect(btn, &QPushButton::customContextMenuRequested, this, [this, i, btn](const QPoint& pos) {
                 QMenu menu;
-                const QStringList modes = filterUnavailableDigitalVoiceModes(
-                    {"USB", "LSB", "SSB", "CW", "AM", "SAM",
-                     "FM", "NFM", "DFM", "DSTR", "RTTY", "DIGU", "DIGL", "DIG"});
-                for (const QString& m : modes) {
-                    menu.addAction(m, [this, i, m] {
+                for (const QString& m : quickModeChoices()) {
+                    QAction* act = menu.addAction(m, [this, i, m] {
                         m_quickModeAssign[i] = m;
-                        AppSettings::instance().setValue(
-                            QString("ModeButton%1").arg(i), m);
+                        AppSettings::instance().setValue(quickModeKey(i), m);
                         AppSettings::instance().save();
                         updateQuickModeButtons();
                     });
+                    act->setCheckable(true);
+                    act->setChecked(m == m_quickModeAssign[i]);
                 }
-#ifdef HAVE_RADE
-                menu.addAction("FDV", [this, i] {
-                    m_quickModeAssign[i] = "FDV";
-                    AppSettings::instance().setValue(
-                        QString("ModeButton%1").arg(i), "FDV");
-                    AppSettings::instance().save();
-                    updateQuickModeButtons();
-                });
-#endif
                 menu.exec(btn->mapToGlobal(pos));
             });
 
-            modeRow->addWidget(btn, 1);
+            modeRows[i / 4]->addWidget(btn, 1);
         }
+        vb->addLayout(modeRows[0]);
+        vb->addLayout(modeRows[1]);
 
         // WFM software-demod toggle lives in the spectrum overlay DAX menu
         // (mode-independent, beside the IQ-channel selector it consumes); it is
         // no longer on the flag. (#3853)
-
-        vb->addLayout(modeRow);
 
         // Filter preset grid (4 columns, rebuilt on mode change)
         auto* filterContainer = new QWidget;
@@ -6202,8 +6202,10 @@ void VfoWidget::updateModeTab()
 void VfoWidget::updateQuickModeButtons()
 {
     const QString cur = m_slice ? m_slice->mode() : QString();
+    // Build 329: a button whose mode this radio does not offer is disabled.
+    const QStringList offered = m_slice ? m_slice->modeList() : QStringList{};
 
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < kQuickModeButtons; ++i) {
         if (!m_quickModeBtns[i]) continue;
         const QString& assign = m_quickModeAssign[i];
 
@@ -6223,7 +6225,50 @@ void VfoWidget::updateQuickModeButtons()
         m_quickModeBtns[i]->setText(label);
         QSignalBlocker sb(m_quickModeBtns[i]);
         m_quickModeBtns[i]->setChecked(active);
+        bool available = true;
+        if (!offered.isEmpty()) {
+            if (assign == "SSB")
+                available = offered.contains("USB") || offered.contains("LSB");
+            else if (assign == "DIG")
+                available = offered.contains("DIGU") || offered.contains("DIGL");
+#ifdef HAVE_RADE
+            else if (assign == "FDV")
+                available = true;
+#endif
+            else
+                available = offered.contains(assign);
+        }
+        m_quickModeBtns[i]->setEnabled(available);
     }
+}
+
+QString VfoWidget::quickModeKey(int slot)
+{
+    // Slot 0 is the button that replaced the dropdown; 1..3 are the old
+    // ModeButton0..2; the second row is ModeButton4..7.
+    if (slot == 0)
+        return QStringLiteral("ModeButton3");
+    if (slot <= 3)
+        return QStringLiteral("ModeButton%1").arg(slot - 1);
+    return QStringLiteral("ModeButton%1").arg(slot);
+}
+
+QStringList VfoWidget::quickModeChoices() const
+{
+    QStringList modes = m_slice ? m_slice->modeList() : QStringList{};
+    if (modes.isEmpty())
+        modes = {"USB", "LSB", "CW", "AM", "SAM", "FM", "NFM", "DFM", "DSTR",
+                 "RTTY", "DIGU", "DIGL"};
+    modes = filterUnavailableDigitalVoiceModes(modes);
+    if (modes.contains("USB") || modes.contains("LSB"))
+        modes << QStringLiteral("SSB");
+    if (modes.contains("DIGU") || modes.contains("DIGL"))
+        modes << QStringLiteral("DIG");
+#ifdef HAVE_RADE
+    if (!modes.contains("FDV"))
+        modes << QStringLiteral("FDV");
+#endif
+    return modes;
 }
 
 QString VfoWidget::formatFilterLabel(int hz)
@@ -6434,43 +6479,10 @@ void VfoWidget::rebuildFilterButtons()
         m_filterGrid->addWidget(btn, i / 4, i % 4);
     }
 
-    // Per-slice VFO marker style row: Thin/Thick line + Edges/Hide filter
-    // edges (#1526). Shown in every mode — narrow filters aren't CW-exclusive
-    // (narrow DIGL, RTTY, CWL, etc. all benefit from hiding the overlapping
-    // edge lines), and users who want a thicker center marker on any mode
-    // can set it. Cleanup in the rebuildFilterButtons header ensures we
-    // don't accumulate duplicate rows on mode change.
-    {
-        int row = (m_filterWidths.size() + 3) / 4;
-
-        // Marker: cycle through Off → 1 px → 3 px on each click.  Label
-        // reflects the current state.  Off removes the center line and the
-        // top triangle entirely so only the passband bracket is shown.
-        const QString markerLabel = (m_markerWidth == 0)
-            ? QStringLiteral("Marker: Off")
-            : QStringLiteral("Marker: %1px").arg(m_markerWidth);
-        m_markerThicknessBtn = new QPushButton(markerLabel);
-        m_markerThicknessBtn->setFixedHeight(26);
-        m_markerThicknessBtn->setStyleSheet(kModeBtn);
-        m_markerThicknessBtn->setToolTip("Cycle VFO marker: Off → 1 px → 3 px");
-        connect(m_markerThicknessBtn, &QPushButton::clicked, this, [this]() {
-            int next = (m_markerWidth == 0) ? 1 : (m_markerWidth == 1) ? 3 : 0;
-            setMarkerWidth(next);
-        });
-        m_filterGrid->addWidget(m_markerThicknessBtn, row, 0, 1, 2);
-
-        // Filter edge lines: checkable on/off.  Checked = edges shown.
-        m_edgesBtn = new QPushButton("Filter Edge");
-        m_edgesBtn->setCheckable(true);
-        m_edgesBtn->setChecked(!m_filterEdgesHidden);
-        m_edgesBtn->setFixedHeight(26);
-        m_edgesBtn->setStyleSheet(kModeBtn);
-        m_edgesBtn->setToolTip("Show filter edge lines");
-        connect(m_edgesBtn, &QPushButton::toggled, this, [this](bool on) {
-            setFilterEdgesHidden(!on);
-        });
-        m_filterGrid->addWidget(m_edgesBtn, row, 2, 1, 2);
-    }
+    // ANAN fork build 329 (operator, 12.11): the Marker and Filter Edge
+    // buttons moved to the panadapter's right-click menu ("VFO Marker" and
+    // "Filter Edge", under Center Lock); setMarkerWidth/setFilterEdgesHidden
+    // stay the per-slice state behind them.
 
     // ── Adaptive RX filter controls (SSB only) — RFC #3878 ───────────────
     // Built only for USB/LSB; the grid is rebuilt on every mode change, so
