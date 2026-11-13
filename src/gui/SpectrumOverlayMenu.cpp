@@ -4209,6 +4209,28 @@ bool SpectrumOverlayMenu::closeSubPanelsOnOutsidePress(QObject* obj, QEvent* eve
         if (p && p->isVisible() && p->rect().contains(p->mapFromGlobal(global)))
             return false;   // inside an open panel
     }
+    // Build 319 (operator, 12.11): a press on this menu's own panel buttons
+    // goes through to the button, whose toggle already does what is wanted --
+    // another button closes the open panel and opens its own, the same button
+    // closes it (toggleBandPanel & co.: hideAllSubPanels, then show if it was
+    // not the open one). The arrow goes through too: toggle() collapses the
+    // menu and closes everything. WB closes the open panel and opens or raises
+    // the Wideband Monitor; that window has its own closing and is never
+    // closed from here. +RX and any other spot keep the build 249 rule: the
+    // click only closes the panel.
+    auto hit = [&global](const QWidget* w) {
+        return w && w->isVisible() && w->rect().contains(w->mapFromGlobal(global));
+    };
+    if (hit(m_toggleBtn))
+        return false;
+    for (int idx : {kBtnBand, kBtnAnt, kBtnDisplay, kBtnMemoryBrowse, kBtnDax}) {
+        if (idx >= 0 && idx < m_menuBtns.size() && hit(m_menuBtns[idx]))
+            return false;
+    }
+    if (kBtnWideband < m_menuBtns.size() && hit(m_menuBtns[kBtnWideband])) {
+        hideAllSubPanels();
+        return false;
+    }
     hideAllSubPanels();
     return true;   // consumed: the click only closed the panel
 }
