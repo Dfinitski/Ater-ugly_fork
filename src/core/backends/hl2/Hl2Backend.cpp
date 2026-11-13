@@ -5534,30 +5534,13 @@ void Hl2Backend::setPanCenter(const QString& panId, double hz, PanCenterIntent i
     constexpr double kDragReach = 0.96;
     const double rate = static_cast<double>(m_sampleRateHz);
     const double view = panViewHz(*r);
-    // Build 325 (operator, 12.11: with Center Lock a click retunes the pan,
-    // then for a moment it shows the old picture). A centre that is not a
-    // drag -- Center Lock, a reveal, a zoom's centre -- took the drag path
-    // below: the NCO moved with a lead (the view ~25 kHz off it, in the DDC
-    // filter's roll-off), the spectrum average kept the old NCO's frames on
-    // the new axis, and 400 ms later settlePanViews() moved the NCO a second
-    // time, old average again. Now: inside the clean 80 % the view just
-    // moves; beyond it the NCO goes straight to the centre (no lead, nothing
-    // for the settle to do) and the average starts afresh.
-    if (intent != PanCenterIntent::Drag) {
-        const double slack = std::max(0.0, (rate * anan::kUsableSpanFraction - view) / 2.0);
-        if (std::abs(hz - r->ncoHz) <= slack) {
-            r->viewOffsetHz = hz - r->ncoHz;
-            r->viewForNcoHz = r->ncoHz;
-        } else {
-            moveNcoForView(ddc, *r, hz, hz);
-            dropPanAverage(*r);
-        }
-        applyBandFilter("pan");
-        publishWideState();
-        emitPanState(ddc);
-        notifyOperatingStateChanged();
-        return;
-    }
+    // Build 327 (operator, 12.11): build 325 sent every non-drag centre
+    // (Center Lock, a reveal, a zoom's centre) straight to an NCO move once
+    // past the clean 80 % -- at full span that is every click, a hard retune
+    // of the receiver with no TCI involved. Back to the build 209 behaviour
+    // for all intents: the view moves inside the captured band, the NCO only
+    // when it must. The TCI case has its own receiver CTUN OFF (build 326),
+    // which does not come through here.
     const double reach = std::max(0.0, (rate * kDragReach - view) / 2.0);
     if (std::abs(hz - r->ncoHz) <= reach) {
         r->viewOffsetHz = hz - r->ncoHz;
