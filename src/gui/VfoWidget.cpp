@@ -36,6 +36,7 @@
 #include "models/TransmitModel.h"
 #include "Theme.h"
 #include "core/AppSettings.h"
+#include "core/SsbSideband.h"   // build 330
 #include "InteractionSettings.h"
 
 #include <QDateTime>
@@ -3062,8 +3063,18 @@ void VfoWidget::buildTabContent()
                     emit radeActivated(false, m_slice->sliceId());
 #endif
                 if (assign == "SSB") {
-                    m_slice->setMode(m_slice->mode() == "USB" ? "LSB" : "USB");
+                    // Build 330: inside SSB the button swaps the sideband;
+                    // entering SSB from another mode it takes the band's
+                    // convention at the receiver's frequency (ssbSidebandFor).
+                    const QString cur = m_slice->mode();
+                    if (cur == "USB")
+                        m_slice->setMode("LSB");
+                    else if (cur == "LSB")
+                        m_slice->setMode("USB");
+                    else
+                        m_slice->setMode(ssbSidebandFor(m_slice->frequency()));
                 } else if (assign == "DIG") {
+                    // Digital data modes are USB on every band: DIGU on entry.
                     m_slice->setMode(m_slice->mode() == "DIGU" ? "DIGL" : "DIGU");
                 } else {
                     m_slice->setMode(assign);
@@ -5048,7 +5059,10 @@ void VfoWidget::setSlice(SliceModel* slice)
             this, &VfoWidget::updateDspParameterResetControls);
 
     // Frequency
-    connect(m_slice, &SliceModel::frequencyChanged, this, [this](double) { updateFreqLabel(); });
+    connect(m_slice, &SliceModel::frequencyChanged, this, [this](double) {
+        updateFreqLabel();
+        updateQuickModeButtons();   // build 330: an SSB button's label follows the band
+    });
     connect(m_slice, &SliceModel::inCaptureChanged, this, [this](bool) {
         updateCaptureStatus();
     });
@@ -6213,8 +6227,9 @@ void VfoWidget::updateQuickModeButtons()
         QString label = assign;
         bool active = false;
         if (assign == "SSB") {
-            label = (cur == "LSB") ? "LSB" : "USB";
+            // Build 330: outside SSB the label is the sideband a press selects.
             active = (cur == "USB" || cur == "LSB");
+            label = active ? cur : (m_slice ? ssbSidebandFor(m_slice->frequency()) : QStringLiteral("USB"));
         } else if (assign == "DIG") {
             label = (cur == "DIGL") ? "DIGL" : "DIGU";
             active = (cur == "DIGU" || cur == "DIGL");

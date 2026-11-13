@@ -64,6 +64,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "core/SsbSideband.h"
+
 namespace AetherSDR {
 
 namespace {
@@ -76,9 +78,7 @@ namespace {
 // 5.25-5.45 MHz span, which holds every country's 60 m allocation).
 QString freeDvSidebandFor(double mhz)
 {
-    if (mhz >= 5.25 && mhz <= 5.45)
-        return QStringLiteral("USB");
-    return mhz < 10.0 ? QStringLiteral("LSB") : QStringLiteral("USB");
+    return ssbSidebandFor(mhz);   // build 330: shared with the SSB mode button
 }
 
 struct DecoderInputHint {
