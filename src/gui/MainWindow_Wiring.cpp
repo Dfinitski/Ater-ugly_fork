@@ -917,6 +917,32 @@ void MainWindow::updateTciIqCenterLock()
         }
     }
 #endif
+    // Build 326: on an ANAN the receiver itself does it -- CTUN OFF in the
+    // backend (the NCO follows the tune, the filter stays in the middle; one
+    // step, no separate pan-centre request). The Center Lock emulation below
+    // stays for other radios; an operator's own Center Lock on such a pan
+    // still centres the filter (the pan stays in m_tciIqCenterLockPans).
+    const bool backendCtun = m_radioModel.backendDeclaresExtension(QStringLiteral("hl2"));
+    if (backendCtun) {
+        QSet<int> wantSlices;
+        for (auto it = want.cbegin(); it != want.cend(); ++it)
+            wantSlices.insert(it.value());
+        const QSet<int> previous = m_tciIqCtunSlices;
+        for (int id : previous) {
+            if (!wantSlices.contains(id)) {
+                m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.ctun"), 0,
+                    QVariantMap{{QStringLiteral("slice"), id}, {QStringLiteral("on"), false}});
+                m_tciIqCtunSlices.remove(id);
+            }
+        }
+        for (int id : std::as_const(wantSlices)) {
+            if (!m_tciIqCtunSlices.contains(id)) {
+                m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.ctun"), 0,
+                    QVariantMap{{QStringLiteral("slice"), id}, {QStringLiteral("on"), true}});
+                m_tciIqCtunSlices.insert(id);
+            }
+        }
+    }
     QList<QPair<QString, bool>> release;
     for (auto it = m_tciIqCenterLockPans.cbegin(); it != m_tciIqCenterLockPans.cend(); ++it) {
         if (!want.contains(it.key()))
@@ -934,10 +960,13 @@ void MainWindow::updateTciIqCenterLock()
         if (m_tciIqCenterLockPans.contains(it.key()))
             continue;
         const bool operatorLock = centerLockSliceForPan(it.key()) >= 0;
-        m_tciIqCenterLockPans.insert(it.key(), !operatorLock);
+        const bool engage = !operatorLock && !backendCtun;
+        m_tciIqCenterLockPans.insert(it.key(), engage);
         qCInfo(lcProtocol).noquote() << "MainWindow: Center Lock when I/Q on pan" << it.key()
-                                     << "slice" << it.value() << (operatorLock ? "(operator's lock kept)" : "");
-        if (!operatorLock)
+                                     << "slice" << it.value()
+                                     << (backendCtun ? "(receiver CTUN off)"
+                                                     : operatorLock ? "(operator's lock kept)" : "");
+        if (engage)
             setCenterLockForPan(it.key(), it.value(), true, /*persist=*/false);
         else
             recenterCenterLockForPan(it.key());

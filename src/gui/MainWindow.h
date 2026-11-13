@@ -2177,6 +2177,9 @@ private:
     // lock was switched on for it (false = the operator's own lock, kept).
     // On these pans Center Lock centres the filter, not the VFO.
     QHash<QString, bool> m_tciIqCenterLockPans;
+    // Build 326: on an ANAN the same checkbox puts these receivers in the
+    // backend's CTUN OFF ("anan.ctun") instead of a Center Lock.
+    QSet<int> m_tciIqCtunSlices;
     void updateTciIqCenterLock();
     // Persist the client-side intent by radio + display slot + slice letter.
     // Radio pan/slice IDs remain radio-authoritative and are never saved.

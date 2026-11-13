@@ -2798,6 +2798,11 @@ void MainWindow::wireCatPorts()
     connect(tciServer(), &TciServer::clientsChanged, this, [this] { updateTciIqCenterLock(); });
     connect(m_appletPanel->tciApplet(), &TciApplet::tciCenterLockWhenIqChanged,
             this, [this](bool) { updateTciIqCenterLock(); });
+    // Build 326: a reconnect builds the receivers afresh (CTUN on); send it again.
+    connect(&m_radioModel, &RadioModel::connectionStateChanged, this, [this](bool) {
+        m_tciIqCtunSlices.clear();
+        updateTciIqCenterLock();
+    });
     {
         auto wireFilter = [this](SliceModel* s) {
             if (!s)

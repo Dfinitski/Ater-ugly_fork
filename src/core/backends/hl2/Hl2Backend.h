@@ -983,6 +983,12 @@ private:
         // receive frequency out of the window (the dial alone fitted), so
         // clearing RIT re-centres it on the dial. A pan drag clears it.
         bool ncoMovedForRit = false;
+        // ANAN fork build 326: CTUN OFF ("anan.ctun", only while a TCI client
+        // takes this receiver's I/Q with "Center Lock when I/Q" ticked): every
+        // tune puts the NCO on the passband's middle, the view on the NCO --
+        // the filter stays in the centre and the hardware receiver retunes,
+        // as Thetis with CTUN off. See ctunCenter().
+        bool ctunOff = false;
         // ANAN-100D port: display zoom -- the span the pan shows, centred on
         // the NCO, 0 = the whole DDC rate. The DDC rate itself is chosen only
         // by the rate buttons ("anan.rate"); a pan bandwidth request zooms.
@@ -1183,6 +1189,10 @@ private:
     // Retune the DDC of `r` (a pan drag that left the captured band, or the
     // settle after one), keeping the view centre where it is.
     void moveNcoForView(int ddc, Receiver& r, double newNcoHz, double viewCenterHz);
+    // Build 326: CTUN OFF -- the NCO for the passband's middle (see Receiver::ctunOff).
+    [[nodiscard]] double ctunNcoHz(const Receiver& r) const noexcept;
+    // Re-centre a CTUN-off receiver after a filter / mode change; one pan state.
+    void ctunCenter(int ddc);
     void settlePanViews();
     void applyZoomFftSize(Receiver& r);
     // ANAN-100D port: every receiver's FFT history (average and partial

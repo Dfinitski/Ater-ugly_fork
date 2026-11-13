@@ -4532,7 +4532,19 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
     // receiver (cleared or zeroed) — the NCO comes back
     // to the dial, or the pan centre stays offset by the old RIT for good.
     const bool ritReturn = !outsideWindow && !ritApplies && r->ncoMovedForRit;
-    if (outsideWindow || ritReturn) {
+    if (r->ctunOff) {
+        // Build 326: CTUN OFF -- the hardware NCO follows the tune so the
+        // passband sits in the middle of the view; one register write, the
+        // view on the NCO, a fresh average. No window, no lead, no settle.
+        const double target = ctunNcoHz(*r);
+        if (target != r->ncoHz) {
+            moveNcoForView(ddc, *r, target, target);
+            dropPanAverage(*r);
+        }
+        r->ncoMovedForRit = false;
+        r->viewOffsetHz = 0.0;
+        r->viewForNcoHz = r->ncoHz;
+    } else if (outsideWindow || ritReturn) {
         // Judged against the NCO BEFORE it moves: did the dial alone fit?
         r->ncoMovedForRit = outsideWindow && ritApplies
             && std::abs(r->sliceFreqHz - r->ncoHz) <= usableHz;
@@ -4683,6 +4695,7 @@ void Hl2Backend::setSliceMode(int sliceId, const QString& requested)
     if (ddc == m_txDdc)
         ananPushCwKeyer();   // keyer + host-IQ gate follow the mode at once
     emitSliceState(ddc);
+    ctunCenter(ddc);   // build 326: the passband moved with the mode
     notifyOperatingStateChanged();
 }
 
@@ -4705,7 +4718,36 @@ void Hl2Backend::setSliceFilter(int sliceId, int lowHz, int highHz)
             Q_ARG(double, dspLo), Q_ARG(double, dspHi));
     }
     emitSliceState(ddc);
+    ctunCenter(ddc);   // build 326: keep the passband in the middle
     notifyOperatingStateChanged();
+}
+
+double Hl2Backend::ctunNcoHz(const Receiver& r) const noexcept
+{
+    return std::round(rxTunedHz(r) + (r.filterLowHz + r.filterHighHz) / 2.0);
+}
+
+void Hl2Backend::ctunCenter(int ddc)
+{
+    Receiver* r = rx(ddc);
+    if (!r || !r->ctunOff)
+        return;
+    const double target = ctunNcoHz(*r);
+    if (target == r->ncoHz && viewOffsetHz(*r) == 0.0)
+        return;
+    if (target != r->ncoHz) {
+        moveNcoForView(ddc, *r, target, target);
+        dropPanAverage(*r);
+    }
+    r->ncoMovedForRit = false;
+    r->viewOffsetHz = 0.0;
+    r->viewForNcoHz = r->ncoHz;
+    if (r->dsp)
+        QMetaObject::invokeMethod(r->dsp, "setShift", Qt::QueuedConnection,
+            Q_ARG(double, rxShiftHz(*r)));
+    applyBandFilter("tune");
+    publishWideState();
+    emitPanState(ddc);
 }
 
 void Hl2Backend::setSliceAgc(int sliceId, const QString& mode, int thresholdDb)
@@ -5464,6 +5506,16 @@ void Hl2Backend::setPanCenter(const QString& panId, double hz, PanCenterIntent i
     // A drag delivers a centre command every 33 ms.
     if (hz == panCenterHz(*r))
         return;
+    // Build 326: CTUN OFF -- dragging the panadapter tunes the receiver (the
+    // filter stays in the middle), as Thetis does with CTUN off.
+    if (r->ctunOff && intent == PanCenterIntent::Drag) {
+        if (const auto* ids = m_ids.byDdc(ddc)) {
+            const double ritHz = rxTunedHz(*r) - r->sliceFreqHz;
+            const double mid = (r->filterLowHz + r->filterHighHz) / 2.0;
+            setSliceFrequency(ids->uiNumber, std::round(hz - mid - ritHz));
+        }
+        return;
+    }
     // The operator placed the centre: it is theirs now, not RIT's to undo.
     r->ncoMovedForRit = false;
 
@@ -8327,6 +8379,29 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
             drmCommand(arg.toMap());
             if (requestId != 0)
                 emit extensionResult(requestId, QVariant(true));
+            return;
+        }
+        // Build 326: CTUN OFF for one receiver (TCI "Center Lock when I/Q").
+        if (verb == QLatin1String("anan.ctun")) {
+            const QVariantMap m = arg.toMap();
+            const int ddc = ddcForSlice(m.value(QStringLiteral("slice")).toInt());
+            Receiver* r = rx(ddc);
+            const bool on = m.value(QStringLiteral("on")).toBool();
+            if (r && r->ctunOff != on) {
+                r->ctunOff = on;
+                qCInfo(lcHl2) << "ANAN: CTUN" << (on ? "off (filter centred, the receiver NCO follows the tune)"
+                                                     : "on (normal)")
+                              << "for receiver" << ddc + 1;
+                if (on)
+                    ctunCenter(ddc);
+                notifyOperatingStateChanged();
+            }
+            if (requestId != 0) {
+                if (r)
+                    emit extensionResult(requestId, QVariant(true));
+                else
+                    emit extensionError(requestId, QStringLiteral("no such receiver"));
+            }
             return;
         }
         if (verb == QLatin1String("tci.iq")) {
