@@ -12022,7 +12022,15 @@ void Hl2Backend::tciIqTap(std::size_t ddc, const std::vector<std::complex<float>
         const float f = static_cast<float>(v);
         t.pending.append(reinterpret_cast<const char*>(&f), sizeof f);
     }
-    constexpr int kFrameBytes = 1024 * 2 * static_cast<int>(sizeof(float));
+    // Build 322 (operator, 12.11: TciCwSkimmer gets ~95 frames/s of I/Q at
+    // the right rate -- build 321's counters -- yet restarts the stream after
+    // 5 s and drops the connection after 6). The TCI specification declares
+    // the stream frame as a fixed struct, `float data[4096]` after the 64-byte
+    // header: 2048 I/Q pairs, 16448 bytes, which is what ExpertSDR3 sends and
+    // what upstream AetherSDR's HL2 tap cuts (2048 pairs). Build 222 sent 1024
+    // pairs (8256 bytes); a client that takes the frame as that struct, or
+    // checks its size, rejects every one. 2048 pairs: 43 ms at 48 kHz.
+    constexpr int kFrameBytes = 2048 * 2 * static_cast<int>(sizeof(float));
     while (t.pending.size() >= kFrameBytes) {
         emit tciIqReady(t.channel, t.pending.left(kFrameBytes), t.outRate);
         t.pending.remove(0, kFrameBytes);
