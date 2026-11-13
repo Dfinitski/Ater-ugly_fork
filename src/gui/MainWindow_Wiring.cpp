@@ -3757,11 +3757,23 @@ void MainWindow::selectBand(const QString& panId, const QString& bandName, doubl
             return;
         }
 
-        SliceModel* s = activeSlice();
+        // Build 318 (users: with two receivers open, a band button on the
+        // first one's panadapter could move the second receiver to another
+        // band). The button belongs to the panadapter it was pressed on, so it
+        // tunes that panadapter's receiver: the active slice only if it sits
+        // on this pan, otherwise the pan's title slice, otherwise the first
+        // slice on it. activeSlice() alone retuned whichever receiver was
+        // active, wherever it was, and recentred this pan on it.
+        const PanadapterApplet* bandApplet = m_panStack ? m_panStack->panadapter(panId) : nullptr;
+        SliceModel* s = DisplaySquelchRouting::displaySlice(
+            m_radioModel.slices(), panId, activeSlice(),
+            bandApplet ? bandApplet->titleSliceId() : -1);
         if (!s) {
-            statusBar()->showMessage(tr("No active slice to tune"), 4000);
+            statusBar()->showMessage(tr("No receiver on this panadapter to tune"), 4000);
             return;
         }
+        qCInfo(lcProtocol).noquote().nospace()
+            << "MainWindow: band button on pan " << panId << " -> slice " << s->sliceId();
         m_bandSettings.setCurrentBand(bandName);
         // Build 227 (users: the band buttons do not remember the frequency):
         // the band being left is stored as it is now, and the band asked for
