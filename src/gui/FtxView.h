@@ -31,6 +31,7 @@ public:
 
 signals:
     void exitRequested();
+    void addRxRequested();   // build 385: the "+RX" of the side menu (hidden in FTX)
 
 private:
     QVBoxLayout* m_layout = nullptr;

@@ -30,6 +30,15 @@ FtxView::FtxView(QWidget* parent) : QWidget(parent)
     m_dial->setStyleSheet(QStringLiteral("color:#c8c8c8;"));
     bar->addWidget(m_dial);
     bar->addStretch(1);
+    // Build 385 (operator, 14.11): the side menu with its "+RX" is hidden in
+    // FTX, so the button is here -- a second, independent receiver can still
+    // be opened beside the mode.
+    auto* addRxBtn = new QPushButton(QStringLiteral("+RX"));
+    addRxBtn->setFixedHeight(22);
+    addRxBtn->setFocusPolicy(Qt::NoFocus);
+    addRxBtn->setToolTip(QStringLiteral("Add a receiver (a second, independent panadapter)"));
+    connect(addRxBtn, &QPushButton::clicked, this, &FtxView::addRxRequested);
+    bar->addWidget(addRxBtn);
     auto* exitBtn = new QPushButton(QStringLiteral("Exit FTX"));
     exitBtn->setFixedHeight(22);
     exitBtn->setFocusPolicy(Qt::NoFocus);

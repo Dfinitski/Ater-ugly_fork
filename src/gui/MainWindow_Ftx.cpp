@@ -8,6 +8,8 @@
 #include "FtxView.h"
 #include "PanadapterApplet.h"
 #include "PanadapterStack.h"
+#include "SpectrumOverlayMenu.h"
+#include "SpectrumWidget.h"
 #include "Theme.h"
 #include "core/PcmFrame.h"
 #include "core/fdv/FdvEngine.h"   // HalfbandResampler: 24 -> 48 kHz
@@ -248,6 +250,14 @@ void MainWindow::activateFtx(int sliceId)
         unit->audio(a48->data(), static_cast<unsigned long>(a48->size()));
     });
     connect(view, &FtxView::exitRequested, this, [this] { deactivateFtx(); }, Qt::QueuedConnection);
+    // Build 385: "+RX" of the bar is the "+RX" of this panadapter's side menu
+    // (hidden with the panadapter) -- the same signal, so the same handler.
+    connect(view, &FtxView::addRxRequested, this, [applet = QPointer<PanadapterApplet>(applet)] {
+        if (!applet || !applet->spectrumWidget())
+            return;
+        if (SpectrumOverlayMenu* menu = applet->spectrumWidget()->overlayMenu())
+            emit menu->addRxClicked(applet->panId());
+    });
     // Any other mode set from elsewhere (CAT, TCI, a memory) ends FTX.
     m_ftxModeConn = connect(s, &SliceModel::modeChanged, this, [this](const QString& mode) {
         if (mode != QLatin1String("DIGU"))
