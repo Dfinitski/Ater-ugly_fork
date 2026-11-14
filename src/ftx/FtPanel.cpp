@@ -3,6 +3,7 @@
 #define _USE_MATH_DEFINES   // AetherSDR: M_PI under MSVC
 // FT8 / FT4 / WSPR receiver window (MicronSDR FTX Decoder): see FtPanel.h
 #include "FtPanel.h"
+#include "core/ForkName.h"
 #include "PskReporter.h"
 #include "FtWaterfall.h"
 #include <QtWidgets>
@@ -52,10 +53,10 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
 {
     setObjectName("FtPanel");
     setWindowFlags(Qt::Window);         // a window of its own (owned by the main window)
-    setWindowTitle("AetherSDR FTX");   // AetherSDR
+    setWindowTitle(AetherSDR::forkDisplayName() + " FTX");   // AetherSDR, build 402
     setMinimumSize(676, 260);   // AetherSDR, build 389: the operator's smallest width (14.11)
     setAttribute(Qt::WA_StyledBackground, true);
-    psk = new PskReporter("AetherSDR N7DDC", this);   // (396: the decoding software named in the spots)
+    psk = new PskReporter(AetherSDR::forkDisplayVersion(), this);   // (396: the decoding software named in the spots)
     for(int m = 0; m < 3; m++)
     {
         bandOf[m] = 5;                      // 20 m
@@ -475,9 +476,11 @@ void FtPanel::loadSettings()
     // default MicronSDR had saved is replaced once.
     {
         // (build 396: "AetherSDR N7DDC"; the earlier default replaced once)
-        QString rig = st.value("Rig", "AetherSDR N7DDC").toString();
-        if(rig.isEmpty() || rig == "SDR Micron (N7DDC)" || rig == "AetherSDR")
-            rig = "AetherSDR N7DDC";
+        // (build 402: the fork's name; the earlier defaults replaced once)
+        const QString forkRig = AetherSDR::forkDisplayName();
+        QString rig = st.value("Rig", forkRig).toString();
+        if(rig.isEmpty() || rig == "SDR Micron (N7DDC)" || rig == "AetherSDR" || rig == "AetherSDR N7DDC")
+            rig = forkRig;
         leRig->setText(rig);
     }
     cbDepth->setCurrentIndex(qBound(0, st.value("Depth", 2).toInt(), 2));

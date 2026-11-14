@@ -4,6 +4,7 @@
 // panFollowVfo()/revealFrequencyIfNeeded().
 
 #include "MainWindow.h"
+#include "core/ForkName.h"
 #include "ForkDisplayDefaults.h"
 #include "WidebandMonitorDialog.h"   // the panadapter WB button (03.11)
 #include "StatusIndicator.h"
@@ -5540,7 +5541,7 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 // nothing". Substitute a non-empty default so the spot is
                 // accepted; the operator's own comment passes through unchanged.
                 const QString remark = comment.isEmpty()
-                    ? QStringLiteral("Spotted via AetherSDR") : comment;
+                    ? QStringLiteral("Spotted via %1").arg(forkDisplayName()) : comment;
                 QString dxCmd = QString("DX %1 %2 %3")
                     .arg(freqMhz * 1000.0, 0, 'f', 1)
                     .arg(callsign)

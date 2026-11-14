@@ -1,4 +1,5 @@
 #include "BrandMark.h"
+#include "core/ForkName.h"
 
 #include "core/ThemeManager.h"
 
@@ -26,9 +27,9 @@ BrandMark::BrandMark(QWidget* parent)
     setObjectName(QStringLiteral("brandMark"));
     setAttribute(Qt::WA_TransparentForMouseEvents, false);
     setFocusPolicy(Qt::NoFocus);
-    setAccessibleName(QStringLiteral("AetherSDR"));
-    setAccessibleDescription(QStringLiteral("AetherSDR brand mark"));
-    setToolTip(QStringLiteral("AetherSDR"));
+    setAccessibleName(forkDisplayName());   // build 402
+    setAccessibleDescription(QStringLiteral("Brand mark"));
+    setToolTip(forkDisplayVersion());
 
     // Painter-driven widgets don't get ThemeManager's stylesheet re-apply for
     // free — repaint explicitly so a theme switch retints the wordmark and the

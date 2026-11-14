@@ -20,6 +20,7 @@
 #endif
 #include "AetherialAudioStrip.h"
 #include "AppletPanel.h"
+#include "core/ForkName.h"
 #ifdef HAVE_RADE
 #include "RadeApplet.h"   // build 400
 #endif
@@ -114,6 +115,10 @@
 #include <utility>
 
 namespace AetherSDR {
+
+// Build 402: see core/ForkName.h.
+QString forkDisplayName() { return QStringLiteral("Aether ugly fork"); }
+QString forkDisplayVersion() { return QStringLiteral("Aether ugly fork %1").arg(AETHER_FORK_BUILD); }
 
 namespace {
 

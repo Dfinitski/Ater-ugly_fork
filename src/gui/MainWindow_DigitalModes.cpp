@@ -38,6 +38,7 @@
 #include "WfmDeviceDialog.h"
 #ifdef HAVE_RADE
 #include "RadeApplet.h"
+#include "core/ForkName.h"
 #include "core/RADEEngine.h"
 #endif
 #include "core/fdv/FdvState.h"
@@ -1407,8 +1408,9 @@ void MainWindow::startFreeDvReporting(int sliceId)
     }
 
     const QString message = cs.value("FreeDvMyMessage", "").toString();
-    // Build 396 (operator, 14.11): this fork names itself.
-    const QString swVer   = QString("AetherSDR N7DDC %1").arg(QCoreApplication::applicationVersion());
+    // Build 402 (operator, 14.11): "Aether ugly fork" and the build number,
+    // not to be confused with the original program.
+    const QString swVer   = forkDisplayVersion();
     const double  freqMhz = m_radioModel.slice(sliceId)
                             ? m_radioModel.slice(sliceId)->frequency() : 0.0;
 

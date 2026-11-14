@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFile>
 #include <QTextStream>
+#include "core/ForkName.h"
 #include <QRegularExpression>
 #include <QDebug>
 #include <QFutureWatcher>
@@ -57,7 +58,7 @@ void WsprNet::post(const QString &myCall, const QString &myGrid, qint64 dialHz, 
     }
     // as WSJT-X: rqrg = the dial + 1500 Hz (the middle of the WSPR band), MHz
     const QString rqrg = QString::number((dialHz + 1500) / 1e6, 'f', 6);
-    const QString vers = "AetherSDR";
+    const QString vers = AetherSDR::forkDisplayName();   // AetherSDR, build 402
     const QDateTime t = QDateTime::fromMSecsSinceEpoch(periodStartMs, Qt::UTC);
     if(spots.isEmpty())
     {
@@ -326,7 +327,7 @@ void QrzLog::upload(const QString &apiKey)
 static bool winHttpsPost(const QString &host, const QString &path, const QByteArray &body, QByteArray &ans, QString &err)
 {
     bool ok = false;
-    HINTERNET ses = WinHttpOpen(L"AetherSDR/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+    HINTERNET ses = WinHttpOpen(L"AetherUglyFork/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                                 WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     HINTERNET con = ses ? WinHttpConnect(ses, (LPCWSTR)host.utf16(), INTERNET_DEFAULT_HTTPS_PORT, 0) : 0;
     HINTERNET req = con ? WinHttpOpenRequest(con, L"POST", (LPCWSTR)path.utf16(), 0, WINHTTP_NO_REFERER,
@@ -380,7 +381,7 @@ void QrzLog::post(const QByteArray &body, std::function<void(bool, QByteArray, Q
 #else
     QNetworkRequest req(QUrl("https://logbook.qrz.com/api"));
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-    req.setHeader(QNetworkRequest::UserAgentHeader, "AetherSDR/1.0");
+    req.setHeader(QNetworkRequest::UserAgentHeader, "AetherUglyFork/1.0");
     QNetworkReply *r = nam->post(req, body);
     connect(r, &QNetworkReply::finished, this, [r, done]() {
         r->deleteLater();
