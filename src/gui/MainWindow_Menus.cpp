@@ -1781,7 +1781,12 @@ void MainWindow::buildMenuBar()
             [this] { updateToolsMenuState(); });
     updateToolsMenuState();
 
-    auto* windowMenu = menuBar()->addMenu("&Window");
+    // ANAN fork build 356 (operator, 13.11: "remove the Window section from
+    // the menu, I see nothing useful in it"): Minimize, Full Screen and the
+    // list of open windows. Built but not added to the menu bar, as File and
+    // Help are; the keyboard shortcuts for minimize and full screen belong to
+    // ShortcutManager and keep working.
+    auto* windowMenu = new QMenu(QStringLiteral("&Window"), this);
     const auto refreshWindowMenu = [this, windowMenu] {
         const auto shortcutText = [this](const QString& id) {
             const ShortcutManager::Action* action = m_shortcutManager.action(id);
