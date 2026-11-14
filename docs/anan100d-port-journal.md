@@ -5697,6 +5697,55 @@ Auto AGC не менялся: он уже работал от полки плю�
 
 Файлы: ForkBuild.h, CMakeLists.txt, IRadioBackend.h, Hl2AudioMixer.h (новый), Hl2AudioMixer.cpp (новый), Hl2Backend.h, Hl2Backend.cpp, MainWindow.h, MainWindow.cpp, MainWindow_Session.cpp.
 
+## 341. Сборка 374 — остальной звук мимо потока интерфейса (FreeDV, MON, звук на передачу)
+
+Оператор, 14.11: «давай закончим с переносом остального в отдельный поток». В сборке 373 от потока
+интерфейса был отвязан только приёмный звук на динамик компьютера. Оставалось четыре пути, которые
+всё ещё шли через него:
+
+| Путь | Было | Стало |
+|---|---|---|
+| FreeDV, приём | поток `anan-audio` → GUI (`libfdv`) → `anan-audio` | декодер вызывается прямо в `anan-audio` |
+| FreeDV, передача с микрофона радио | `anan-tx` → GUI (компрессор, `libfdv`) → `anan-tx` | всё в `anan-tx` |
+| MON на динамик компьютера | `anan-tx` → GUI → `anan-audio` | `anan-tx` → `anan-audio` |
+| Звук на передачу с компьютера (микрофон, DAX, TCI) | AudioEngine → GUI → `anan-tx` | AudioEngine → `anan-audio` → `anan-tx` |
+
+**Что для этого сделано.**
+
+- `fdv::FdvEngine` стал потокобезопасным: один мьютекс на все вызовы `libfdv`, ресэмплеры и рабочие
+  буферы; `loaded()`, `rxReceiver()`, `txRunning()` — атомарные. Загрузка DLL идёт без мьютекса
+  (она долгая), объект публикуется в конце. До этого в заголовке стояло «все вызовы из одного
+  потока» — именно поэтому звук FreeDV и ходил через GUI.
+- `Hl2AudioMixer::setFdvEngine()`: блоки приёмника FreeDV декодируются в потоке микшера.
+- `Hl2Backend::fdvTxFromRadioMic()` — блок микрофона радио в FreeDV: обработка речи, кодер,
+  модулятор, всё в потоке передатчика. `m_fdvTxMutex` закрывает компрессор речи и измеритель MOD
+  (сброс компрессора при нажатии идёт под тем же мьютексом).
+- MON: стерео-блок собирается в колбэке `onMonitor` (поток передатчика) по атомарным
+  `m_monGainIo` / `m_keyedIo` и уходит прямо в микшер. `ananMonitorTx()` на GUI оставлен только
+  для записи и шины декодеров.
+- `Hl2Backend::submitTxAudio()` читает теперь только атомарные значения (`m_keyedIo`,
+  `m_micFromRadioIo`, `m_micGainIo`, флаги источника — `std::atomic<bool>`), поэтому его можно
+  вызывать не из GUI. Новый `submitTxAudioDirect()` ставит тот же «забор» диспетчеризации, что
+  `RadioModel::submitTxAudio()`, и вызывает его. `MainWindow::wireBackendSeam` подключает
+  `AudioEngine::txTransportPcmReady` к нему с объектом микшера как контекстом (лямбда выполняется
+  в `anan-audio`); общий обработчик в MainWindow при этом пропускает блок (`m_directTxFeed`).
+- Создание микшера перенесено перед запуском потока передатчика (его колбэки читают указатель).
+
+**Диагностика.** Во время передачи с компьютера раз в 5 с в журнале строка
+`TX audio diag (audio thread): N blocks from the computer, longest gap X ms`.
+
+**Что осталось на потоке интерфейса** (сознательно): копия смеси для записи и шины декодеров;
+звук по срезам для TCI / декодеров (`publishLegacySliceAudio`); динамик самого радио в режиме
+FreeDV (`forwardSpeakerAudioToCodec` — в остальных режимах он идёт из потока ввода-вывода).
+
+**Возврат.** `AnanAudioThread=False` в настройках возвращает все пять путей на прежние места.
+
+**Не проверено на радио:** всё перечисленное. Проверить: передача SSB с микрофона компьютера и
+через TCI/DAX (FT8), MON, FreeDV приём и передача (оба микрофона), конец передачи FreeDV (EOO).
+
+Файлы: `FdvEngine.h/.cpp`, `Hl2AudioMixer.h/.cpp`, `Hl2Backend.h/.cpp`, `AnanTxEngine.cpp` (текст
+журнала), `MainWindow.h/.cpp`, `ForkBuild.h`.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

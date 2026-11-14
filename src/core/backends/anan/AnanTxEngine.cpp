@@ -175,9 +175,9 @@ void AnanTxEngine::micChain(std::vector<float>& mono, bool keyed, const TxCoordi
     if (m_fdvTx.load(std::memory_order_relaxed) && onFdvTx) {
         if (!m_fdvWarned) {
             m_fdvWarned = true;
-            qCInfo(lcHl2) << "ANAN TX engine: FreeDV transmitting -- mic blocks through libfdv (GUI thread)";
+            qCInfo(lcHl2) << "ANAN TX engine: FreeDV transmitting -- mic blocks through libfdv";
         }
-        m_transport->setTxPrimeSamples(4096, true);   // through the GUI and back
+        m_transport->setTxPrimeSamples(4096, true);   // libfdv encodes in a thread of its own
         onFdvTx(mono, ctx);
         return;
     }

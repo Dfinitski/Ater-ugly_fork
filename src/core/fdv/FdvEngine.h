@@ -10,12 +10,23 @@
 //   RX: demodulated USB audio (24 kHz stereo) -> libfdv -> decoded speech
 //   TX: microphone (24 kHz mono) -> libfdv -> modem audio (USB, 0..3 kHz)
 //
-// All calls from one thread (the backend's). libfdv's own calls only move
-// samples through FIFOs, so they are cheap.
+// libfdv's own calls only move samples through FIFOs, so they are cheap.
+//
+// ANAN fork build 374: callable from several threads. Until now every call
+// came from the backend's (GUI) thread, which is why the FreeDV audio, both
+// ways, had to cross that thread. Now the receive side is driven by the audio
+// thread (Hl2AudioMixer), the transmit side by the transmit / audio thread,
+// and the control calls (mode, callsign, start / stop, status) still by the
+// backend. One mutex serialises everything that touches libfdv or the
+// resamplers; it is held for a block's worth of copying, never across the
+// DLL load. loaded(), rxReceiver(), txRunning() are atomics: the audio
+// threads read them without the lock.
 
 #include <QString>
 
 #include <array>
+#include <atomic>
+#include <mutex>
 #include <vector>
 
 namespace AetherSDR::fdv {
@@ -60,7 +71,7 @@ public:
 
     // Loads libfdv once; false with error() when it is not there.
     bool load();
-    [[nodiscard]] bool loaded() const { return m_obj != nullptr; }
+    [[nodiscard]] bool loaded() const { return m_obj.load(std::memory_order_acquire) != nullptr; }
     [[nodiscard]] QString error() const { return m_err; }
 
     void setLibMode(int libMode);              // FDV_MODE_* (FdvState::fdvLibMode)
@@ -70,13 +81,13 @@ public:
 
     // Receiver running FDV (index into Hl2Backend's receivers), -1 = none.
     void setRxReceiver(int rx);
-    [[nodiscard]] int rxReceiver() const { return m_rxReceiver; }
+    [[nodiscard]] int rxReceiver() const { return m_rxReceiver.load(std::memory_order_acquire); }
     // Interleaved 24 kHz stereo, replaced in place by the decoded speech.
     void processRx(std::vector<float>& stereo);
 
     void txStart();
     void txStop();                              // RADE: the end-of-over frame follows
-    [[nodiscard]] bool txRunning() const { return m_txRunning; }
+    [[nodiscard]] bool txRunning() const { return m_txRunning.load(std::memory_order_acquire); }
     // 24 kHz mono microphone, replaced in place by the modem audio.
     void processTx(std::vector<float>& mono);
     // Polls libfdv; clears txRunning() once the end-of-over has been read out.
@@ -85,13 +96,14 @@ public:
 private:
     struct Api;
     Api* m_api = nullptr;
-    void* m_obj = nullptr;
-    QString m_err;
+    std::atomic<void*> m_obj{nullptr};
+    std::mutex m_mutex;   // libfdv calls, the resamplers, the scratch buffers
+    QString m_err;        // backend thread only (load())
     bool m_tried = false;
     int m_mode = 1;
     QString m_callsign;
-    int m_rxReceiver = -1;
-    bool m_txRunning = false;
+    std::atomic<int> m_rxReceiver{-1};
+    std::atomic<bool> m_txRunning{false};
     HalfbandResampler m_rxUp, m_rxDown, m_txUp, m_txDown;
     std::vector<float> m_ra, m_rb, m_rc;   // receive scratch
     std::vector<float> m_tb, m_tc;         // transmit scratch

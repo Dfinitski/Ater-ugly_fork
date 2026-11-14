@@ -840,6 +840,22 @@ Hl2Backend::Hl2Backend(QObject* parent)
     });
     m_metis->moveToThread(m_ioThread);
 
+    // ANAN fork build 373: the receive-audio mixer on a thread of its own.
+    // No parent (moveToThread refuses one); deleted in the destructor after
+    // the thread is joined.
+    m_audioThread = new QThread(this);
+    m_audioThread->setObjectName(QStringLiteral("anan-audio"));
+    m_audioMixer = new Hl2AudioMixer;
+    // Build 374: before the transmit thread below starts -- its callbacks
+    // (MON, FreeDV) read these.
+    m_audioMixer->setFdvEngine(m_fdv);   // FreeDV receive decoded on that thread
+    m_audioMixer->moveToThread(m_audioThread);
+    m_audioThreadActive = AppSettings::instance()
+                              .value(QStringLiteral("AnanAudioThread"), QStringLiteral("True"))
+                              .toString() != QLatin1String("False");
+    qCInfo(lcHl2) << "ANAN: receive audio is mixed on"
+                  << (m_audioThreadActive ? "its own thread (anan-audio)"
+                                          : "the backend's thread (AnanAudioThread=False)");
     // ANAN-100D port (operator, 01.11: "the transmitter in its own thread at
     // the highest priority, synchronised with the device -- as Thetis"):
     // AnanTxEngine and the modulator on "anan-tx". The radio's mic packets
@@ -865,7 +881,13 @@ Hl2Backend::Hl2Backend(QObject* parent)
             }, Qt::QueuedConnection);
         };
         m_txEngine->onFdvTx = [this](std::vector<float> mono, TxCoordinator::Context ctx) {
-            // libfdv is called from the GUI thread only (FdvEngine.h).
+            // Build 374: here, on the transmit thread (FdvEngine is
+            // thread-safe now). The path below is the one before it, kept for
+            // AnanAudioThread=False.
+            if (m_audioThreadActive) {
+                fdvTxFromRadioMic(std::move(mono), ctx);
+                return;
+            }
             QMetaObject::invokeMethod(this, [this, mono = std::move(mono), ctx]() mutable {
                 if (!m_fdv || !m_fdv->txRunning() || !m_txDsp)
                     return;
@@ -883,6 +905,24 @@ Hl2Backend::Hl2Backend(QObject* parent)
         };
         m_txEngine->onMonitor = [this](const std::vector<float>& mon) {
             ananMonToCodec(mon);   // the codec: here, on the transmit thread
+            // Build 374: the PC loudspeaker from here as well, straight to
+            // the audio thread. The conditions of ananMonitorTx() as atomics:
+            // m_monGainIo is 0 unless MON is on, above 0 and the receivers
+            // are not playing instead (ananUpdateMonWanted).
+            if (m_audioThreadActive && m_audioMixer && !mon.empty()) {
+                const float g = m_monGainIo.load(std::memory_order_relaxed);
+                if (g > 0.0f && m_keyedIo.load(std::memory_order_relaxed)) {
+                    std::vector<float> stereo(mon.size() * 2);
+                    for (std::size_t i = 0; i < mon.size(); ++i) {
+                        const float v = std::clamp(mon[i] * g, -1.0f, 1.0f);
+                        stereo[2 * i] = v;
+                        stereo[2 * i + 1] = v;
+                    }
+                    QMetaObject::invokeMethod(m_audioMixer, [mixer = m_audioMixer, block = std::move(stereo)] {
+                        mixer->passthrough(block);
+                    }, Qt::QueuedConnection);
+                }
+            }
             QMetaObject::invokeMethod(this, [this, mono = mon] { ananMonitorTx(mono); },
                                       Qt::QueuedConnection);   // the PC speaker
         };
@@ -930,19 +970,6 @@ Hl2Backend::Hl2Backend(QObject* parent)
         m_txThread->setPriority(QThread::TimeCriticalPriority);
 #endif
     }
-    // ANAN fork build 373: the receive-audio mixer on a thread of its own.
-    // No parent (moveToThread refuses one); deleted in the destructor after
-    // the thread is joined.
-    m_audioThread = new QThread(this);
-    m_audioThread->setObjectName(QStringLiteral("anan-audio"));
-    m_audioMixer = new Hl2AudioMixer;
-    m_audioMixer->moveToThread(m_audioThread);
-    m_audioThreadActive = AppSettings::instance()
-                              .value(QStringLiteral("AnanAudioThread"), QStringLiteral("True"))
-                              .toString() != QLatin1String("False");
-    qCInfo(lcHl2) << "ANAN: receive audio is mixed on"
-                  << (m_audioThreadActive ? "its own thread (anan-audio)"
-                                          : "the backend's thread (AnanAudioThread=False)");
     // The copy of the mix for everything that is not the loudspeaker: the
     // recorder and decoders behind RadioModel (publishLegacyAudio) and the
     // radio's codec when its own mixer is off (FreeDV).
@@ -2600,6 +2627,7 @@ void Hl2Backend::ananApplyCodecSettings()
     const bool cdc = micSource == 1;
     if (fromRadio != m_ananMicFromRadio || testTone != m_ananTestTone || cdc != m_ananCodecToChain.load()) {
         m_ananMicFromRadio = fromRadio;
+        m_micFromRadioIo.store(fromRadio, std::memory_order_relaxed);
         m_ananTestTone = testTone;
         m_ananCodecToChain.store(cdc);
         if (m_txEngine) {
@@ -2956,6 +2984,9 @@ void Hl2Backend::ananPushCwKeyer()
 void Hl2Backend::fdvTick()
 {
     pushAudioMix();   // build 373: the safety net for any change not pushed at its source
+    // Build 374: what submitTxAudio() reads off the GUI thread.
+    m_micFromRadioIo.store(m_ananMicFromRadio, std::memory_order_relaxed);
+    m_micGainIo.store(static_cast<float>(micSliderToLinear(m_micLevel)), std::memory_order_relaxed);
 
     if (m_txEngine)
         m_txEngine->setFdvTxRunning(m_fdv && m_fdv->txRunning());
@@ -6608,8 +6639,11 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
             m_fdvStopSent = false;
             fdv::FdvState::instance().eooRequested = false;
             m_fdv->txStart();
-            if (m_codecComp)
+            if (m_codecComp) {
+                // Build 374: never while a block is in process() on another thread.
+                std::lock_guard<std::mutex> lock(m_fdvTxMutex);
                 m_codecComp->reset();   // build 343: each over from a clean envelope
+            }
         } else if (!key && m_fdv->txRunning() && !m_fdvStopSent) {
             m_fdvStopSent = true;
             m_fdv->txStop();
@@ -7556,8 +7590,8 @@ void Hl2Backend::fdvPublishMod(const std::vector<float>& mono)
     m_fdvModClock.start();
     const float dbfs = m_fdvModPeak > 1e-7f ? 20.0f * std::log10(m_fdvModPeak) : -140.0f;
     m_fdvModPeak = 0.0f;
-    if (m_keyed)
-        emit meterUpdate(QStringLiteral("TX:ALC"), dbfs);
+    if (m_keyedIo.load(std::memory_order_relaxed))
+        emit meterUpdate(QStringLiteral("TX:ALC"), dbfs);   // any thread: queued to the receivers
 }
 
 void Hl2Backend::pushTxCompressor()
@@ -7615,14 +7649,10 @@ void Hl2Backend::ananMonitorTx(const std::vector<float>& mono)
         m_monScratch[2 * i + 1] = s;
     }
     publishLegacyAudio(floatBytes(m_monScratch));
-    // Build 373: the loudspeaker takes its frames from the audio thread's
-    // stream (one producer per route in AudioEngine), so MON goes out through
-    // it; the call above feeds the other consumers.
-    if (m_audioMixer && m_audioThreadActive) {
-        QMetaObject::invokeMethod(m_audioMixer, [mixer = m_audioMixer, block = m_monScratch] {
-            mixer->passthrough(block);
-        }, Qt::QueuedConnection);
-    }
+    // Build 373/374: the loudspeaker takes its frames from the audio thread's
+    // stream (one producer per route in AudioEngine); MON reaches it straight
+    // from the transmit thread (the onMonitor callback), not from here. The
+    // call above feeds the other consumers (recorder, decoders' bus).
     // The codec gets MON from the transmit thread straight into the I/O
     // mixer's FIFO (ananMonToCodec); the direct path only when that mixer is
     // off (FDV).
@@ -7960,12 +7990,14 @@ void Hl2Backend::submitTxAudio(const QByteArray& int16Stereo, int sampleRateHz,
     // fill the transmit queue with audio that goes out the instant MOX asserts —
     // the operator would hear the last second of the shack on their first
     // syllable.
-    if (!m_txDsp || !m_keyed || int16Stereo.isEmpty())
+    // Build 374: this function reads atomics only -- it runs on the audio
+    // thread (submitTxAudioDirect) as well as on the backend's.
+    if (!m_txDsp || !m_keyedIo.load(std::memory_order_relaxed) || int16Stereo.isEmpty())
         return;
     // ANAN-100D port: with the radio's microphone selected the computer's is
     // not used (the codec path feeds the modulator itself). Other sources --
     // DAX / TCI clients, generated audio -- still come through here.
-    if (m_ananMicFromRadio && source == TxAudioSource::Microphone)
+    if (m_micFromRadioIo.load(std::memory_order_relaxed) && source == TxAudioSource::Microphone)
         return;
     // Sticky per transmission until #5647 gives it a job in TxAudioSource
     // (see Hl2Backend.h). Assumes sources never interleave within one
@@ -7975,13 +8007,13 @@ void Hl2Backend::submitTxAudio(const QByteArray& int16Stereo, int sampleRateHz,
     // is active). Hl2TxDsp::processAudioBlock also drops m_inBuffer residue on
     // a mid-transmission source change, with a warning. Anyone changing the
     // mic-capture gate or adding an engine feed must re-check these fences.
-    m_txAudioClientLeveled =
-        m_txAudioClientLeveled || (source == TxAudioSource::ClientLeveled);
+    if (source == TxAudioSource::ClientLeveled)
+        m_txAudioClientLeveled.store(true, std::memory_order_relaxed);
     // The unkey diagnostic must not tell a WSPR beacon to raise its mic gain.
     // Engine-generated audio has no mic slider in its path at all now, so
     // "raise mic gain" would point at a control that cannot move it.
-    m_txAudioEngineGenerated =
-        m_txAudioEngineGenerated || (source == TxAudioSource::EngineGenerated);
+    if (source == TxAudioSource::EngineGenerated)
+        m_txAudioEngineGenerated.store(true, std::memory_order_relaxed);
     if (sampleRateHz != 24000) {
         // Stated rather than silently resampled: the modulator's upsampler
         // assumes this rate, and a mismatch transmits at the wrong pitch.
@@ -8019,13 +8051,16 @@ void Hl2Backend::submitTxAudio(const QByteArray& int16Stereo, int sampleRateHz,
     // for it (fdv_engine.cpp RADE_TX_GAIN / C2_TX_GAIN), so no gain is added.
     if (m_fdv && m_fdv->txRunning()) {
         if (source != TxAudioSource::EngineGenerated) {
-            const float g = static_cast<float>(micSliderToLinear(m_micLevel));
+            const float g = m_micGainIo.load(std::memory_order_relaxed);
             for (float& v : mono)
                 v *= g;
         }
-        if (source == TxAudioSource::Microphone)
-            fdvSpeechProcess(mono);
-        fdvPublishMod(mono);   // build 350
+        {
+            std::lock_guard<std::mutex> lock(m_fdvTxMutex);
+            if (source == TxAudioSource::Microphone)
+                fdvSpeechProcess(mono);
+            fdvPublishMod(mono);   // build 350
+        }
         m_fdv->processTx(mono);
         source = TxAudioSource::EngineGenerated;
     }
@@ -8037,6 +8072,57 @@ void Hl2Backend::submitTxAudio(const QByteArray& int16Stereo, int sampleRateHz,
                               [dsp = m_txDsp, mono = std::move(mono), source, context] {
         dsp->processAudioBlock(mono, source, context);
     }, Qt::QueuedConnection);
+}
+
+void Hl2Backend::submitTxAudioDirect(const QByteArray& int16Stereo, int sampleRateHz, TxAudioSource source,
+                                     const TxCoordinator::Context& context)
+{
+    // The fence RadioModel::submitTxAudio() puts around the backend call: the
+    // dispatch stays counted until this returns, so a cancellation either
+    // wins the check or waits for the block to be handed on.
+    const TxCoordinator::Dispatch dispatch = context.beginDispatch(TxCoordinator::monotonicMs());
+    if (!dispatch)
+        return;
+    if (m_keyedIo.load(std::memory_order_relaxed)) {
+        if (m_txInGapClock.isValid())
+            m_txInMaxGapMs = std::max(m_txInMaxGapMs, m_txInGapClock.restart());
+        else
+            m_txInGapClock.start();
+        ++m_txInBlocks;
+        if (!m_txInDiagClock.isValid()) {
+            m_txInDiagClock.start();
+        } else if (m_txInDiagClock.elapsed() >= 5000) {
+            qCInfo(lcHl2).nospace() << "TX audio diag (audio thread): " << m_txInBlocks
+                                    << " blocks from the computer, longest gap " << m_txInMaxGapMs << " ms";
+            m_txInDiagClock.restart();
+            m_txInBlocks = 0;
+            m_txInMaxGapMs = 0;
+        }
+    } else {
+        // Between overs: the pause is not a gap.
+        m_txInGapClock.invalidate();
+        m_txInDiagClock.invalidate();
+        m_txInBlocks = 0;
+        m_txInMaxGapMs = 0;
+    }
+    submitTxAudio(int16Stereo, sampleRateHz, source, context);
+}
+
+void Hl2Backend::fdvTxFromRadioMic(std::vector<float> mono, const TxCoordinator::Context& ctx)
+{
+    // Transmit thread (AnanTxEngine's callback). `mono` is the radio
+    // microphone after MIC gain; its speech processing, then the encoder.
+    // What comes out is the modem signal: engine-generated, no microphone
+    // control acts on it. m_txDsp lives on this thread: a direct call.
+    if (!m_fdv || !m_fdv->txRunning() || !m_txDsp)
+        return;
+    {
+        std::lock_guard<std::mutex> lock(m_fdvTxMutex);
+        fdvSpeechProcess(mono);
+        fdvPublishMod(mono);
+    }
+    m_fdv->processTx(mono);
+    m_txDsp->processAudioBlock(mono, TxAudioSource::EngineGenerated, ctx);
 }
 
 void Hl2Backend::setTxTestTone(double offsetHz, double amplitude, const TxCoordinator::Operation& operation)
@@ -8409,6 +8495,7 @@ void Hl2Backend::setMicGain(int level)
     level = std::clamp(level, 0, 100);
     const bool moved = level != m_micLevel;
     m_micLevel = level;
+    m_micGainIo.store(static_cast<float>(micSliderToLinear(level)), std::memory_order_relaxed);
     if (m_txEngine)
         m_txEngine->setMicGainLinear(static_cast<float>(micSliderToLinear(level)));
 

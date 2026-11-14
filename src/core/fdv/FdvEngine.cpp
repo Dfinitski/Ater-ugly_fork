@@ -103,14 +103,17 @@ FdvEngine::FdvEngine() = default;
 
 FdvEngine::~FdvEngine()
 {
-    if (m_api && m_obj)
-        m_api->destroy(m_obj);
+    if (m_api && m_obj.load())
+        m_api->destroy(m_obj.load());
     delete m_api;   // the QLibrary stays loaded for the process (no unload)
 }
 
 bool FdvEngine::load()
 {
-    if (m_obj)
+    // Backend thread only. The DLL is loaded and the object created WITHOUT
+    // the mutex (it takes long, and the audio threads must not wait for it):
+    // until m_obj is published at the end they see "not loaded" and return.
+    if (m_obj.load())
         return true;
     if (m_tried)
         return false;
@@ -158,28 +161,36 @@ bool FdvEngine::load()
         return false;
     }
     a->setTextMode = reinterpret_cast<decltype(a->setTextMode)>(lib->resolve("fdv_set_text_mode"));
-    m_api = a;
-    m_obj = m_api->create(m_mode);
-    if (!m_obj) {
+    void* obj = a->create(m_mode);
+    if (!obj) {
         m_err = QStringLiteral("fdv_create failed");
+        delete a;
         return false;
     }
-    m_api->setCallsign(m_obj, m_callsign.toLatin1().constData());
+    a->setCallsign(obj, m_callsign.toLatin1().constData());
     // 1600 / 700D / 700E: send the callsign on the text channel the way
     // FreeDV-GUI does (reliable text), not a free message.
-    if (m_api->setTextMode)
-        m_api->setTextMode(m_obj, 1);
-    qCInfo(lcFdv) << "FreeDV: libfdv" << m_api->version() << "loaded, mode" << m_mode;
+    if (a->setTextMode)
+        a->setTextMode(obj, 1);
+    qCInfo(lcFdv) << "FreeDV: libfdv" << a->version() << "loaded, mode" << m_mode;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_api = a;
+        m_obj.store(obj, std::memory_order_release);
+    }
     return true;
 }
 
 void FdvEngine::setLibMode(int libMode)
 {
-    if (libMode == m_mode && m_obj)
+    void* obj = m_obj.load();
+    if (libMode == m_mode && obj)
         return;
     m_mode = libMode;
-    if (m_obj)
-        m_api->setMode(m_obj, m_mode);
+    if (obj) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_api->setMode(obj, m_mode);
+    }
 }
 
 void FdvEngine::setCallsign(const QString& callsign)
@@ -187,30 +198,35 @@ void FdvEngine::setCallsign(const QString& callsign)
     if (callsign.left(8) == m_callsign && m_tried)
         return;
     m_callsign = callsign.left(8);
-    if (m_obj)
-        m_api->setCallsign(m_obj, m_callsign.toLatin1().constData());
+    if (void* obj = m_obj.load()) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_api->setCallsign(obj, m_callsign.toLatin1().constData());
+    }
 }
 
 void FdvEngine::setRxReceiver(int rx)
 {
-    if (rx == m_rxReceiver)
+    if (rx == m_rxReceiver.load())
         return;
-    m_rxReceiver = rx;
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_rxReceiver.store(rx, std::memory_order_release);
     m_rxUp.reset();
     m_rxDown.reset();
 }
 
 void FdvEngine::processRx(std::vector<float>& stereo)
 {
-    if (!m_obj || stereo.size() < 2)
+    std::lock_guard<std::mutex> lock(m_mutex);
+    void* const obj = m_obj.load(std::memory_order_acquire);
+    if (!obj || stereo.size() < 2)
         return;
     const std::size_t frames = stereo.size() / 2;
     m_ra.resize(frames);
     for (std::size_t i = 0; i < frames; ++i)
         m_ra[i] = 0.5f * (stereo[2 * i] + stereo[2 * i + 1]);
     m_rxUp.up(m_ra.data(), frames, m_rb);                     // 48 kHz
-    m_api->rxWrite(m_obj, m_rb.data(), static_cast<int>(m_rb.size()));
-    m_api->rxRead(m_obj, m_rb.data(), static_cast<int>(m_rb.size()));
+    m_api->rxWrite(obj, m_rb.data(), static_cast<int>(m_rb.size()));
+    m_api->rxRead(obj, m_rb.data(), static_cast<int>(m_rb.size()));
     m_rxDown.down(m_rb.data(), m_rb.size(), m_rc);             // 24 kHz
     for (std::size_t i = 0; i < frames && i < m_rc.size(); ++i) {
         const float s = std::clamp(m_rc[i] * kRxSpeechGain, -1.0f, 1.0f);
@@ -221,27 +237,33 @@ void FdvEngine::processRx(std::vector<float>& stereo)
 
 void FdvEngine::txStart()
 {
-    if (!m_obj)
+    std::lock_guard<std::mutex> lock(m_mutex);
+    void* const obj = m_obj.load();
+    if (!obj)
         return;
     m_txUp.reset();
     m_txDown.reset();
-    m_api->txStart(m_obj);
-    m_txRunning = true;
+    m_api->txStart(obj);
+    m_txRunning.store(true, std::memory_order_release);
 }
 
 void FdvEngine::txStop()
 {
-    if (m_obj && m_txRunning)
-        m_api->txStop(m_obj);
+    std::lock_guard<std::mutex> lock(m_mutex);
+    void* const obj = m_obj.load();
+    if (obj && m_txRunning.load())
+        m_api->txStop(obj);
 }
 
 void FdvEngine::processTx(std::vector<float>& mono)
 {
-    if (!m_obj || !m_txRunning || mono.empty())
+    std::lock_guard<std::mutex> lock(m_mutex);
+    void* const obj = m_obj.load(std::memory_order_acquire);
+    if (!obj || !m_txRunning.load() || mono.empty())
         return;
     m_txUp.up(mono.data(), mono.size(), m_tb);               // 48 kHz
-    m_api->txWrite(m_obj, m_tb.data(), static_cast<int>(m_tb.size()));
-    m_api->txRead(m_obj, m_tb.data(), static_cast<int>(m_tb.size()));
+    m_api->txWrite(obj, m_tb.data(), static_cast<int>(m_tb.size()));
+    m_api->txRead(obj, m_tb.data(), static_cast<int>(m_tb.size()));
     m_txDown.down(m_tb.data(), m_tb.size(), m_tc);             // 24 kHz
     for (std::size_t i = 0; i < mono.size() && i < m_tc.size(); ++i)
         mono[i] = m_tc[i];
@@ -249,11 +271,13 @@ void FdvEngine::processTx(std::vector<float>& mono)
 
 bool FdvEngine::status(Status* st)
 {
-    if (!m_obj)
+    std::lock_guard<std::mutex> lock(m_mutex);
+    void* const obj = m_obj.load();
+    if (!obj)
         return false;
-    m_api->status(m_obj, st);
+    m_api->status(obj, st);
     if (!st->txActive)
-        m_txRunning = false;
+        m_txRunning.store(false, std::memory_order_release);
     return true;
 }
 

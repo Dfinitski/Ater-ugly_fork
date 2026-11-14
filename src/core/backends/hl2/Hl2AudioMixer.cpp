@@ -1,6 +1,7 @@
 #include "core/backends/hl2/Hl2AudioMixer.h"
 
 #include "core/LogManager.h"
+#include "core/fdv/FdvEngine.h"
 
 #include <QVector>
 
@@ -106,9 +107,19 @@ void Hl2AudioMixer::receiverAudio(const void* dsp, const std::vector<float>& pcm
         return;
     }
     if (receiver == p.fdvReceiver) {
-        // The modem signal: decoded by the owner whether or not the audio is
-        // held (the decoder has to keep its sync), back through decodedAudio().
-        emit fdvInput(receiver, pcm);
+        // The modem signal: decoded whether or not the audio is held (the
+        // decoder has to keep its sync). libfdv's speech replaces it; without
+        // libfdv the receiver is silent rather than hissing.
+        if (!m_fdv) {
+            emit fdvInput(receiver, pcm);   // the owner decodes: decodedAudio()
+            return;
+        }
+        m_speech = pcm;
+        if (m_fdv->loaded())
+            m_fdv->processRx(m_speech);
+        else
+            std::fill(m_speech.begin(), m_speech.end(), 0.0f);
+        mixIn(receiver, m_speech, p);
         return;
     }
     mixIn(receiver, pcm, p);

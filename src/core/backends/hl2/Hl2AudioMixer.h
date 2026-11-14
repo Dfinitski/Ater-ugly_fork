@@ -31,10 +31,14 @@
 //  - it receives a COPY of each mixed block for the consumers that are not
 //    the loudspeaker (the recorder, the decoders' audio bus, the radio's codec
 //    in FreeDV) -- late there is harmless, and it cannot hold this thread up;
-//  - FreeDV: the modem signal of the FreeDV receiver is handed to it for
-//    decoding (libfdv is driven from the GUI thread) and comes back as speech.
-//    That one path still passes through the GUI thread; moving the decoder is
-//    a separate step.
+//
+// Build 374: FreeDV receive is decoded HERE as well. In 373 the modem signal
+// of the FreeDV receiver went to the GUI thread for libfdv and came back as
+// speech; FdvEngine is thread-safe now (FdvEngine.h), so this thread calls
+// the decoder itself and the FreeDV audio no longer waits for the interface
+// either. This thread also carries the computer's transmit audio (microphone,
+// DAX, TCI) from the AudioEngine thread to the modulator's thread -- see
+// Hl2Backend::submitTxAudioDirect().
 
 #include "core/PcmFrame.h"
 
@@ -47,6 +51,10 @@
 #include <deque>
 #include <mutex>
 #include <vector>
+
+namespace AetherSDR::fdv {
+class FdvEngine;
+}
 
 namespace AetherSDR::hl2 {
 
@@ -64,7 +72,7 @@ public:
         std::array<float, kMaxReceivers> gain{};      // the receiver's fader
         std::array<int, kMaxReceivers> pan{};         // 0..100, 50 = centre
         // The receiver whose audio is the FreeDV modem signal (-1 = none): its
-        // blocks go to the owner (fdvInput) and return through decodedAudio().
+        // blocks pass through the decoder (setFdvEngine) before the mix.
         int fdvReceiver = -1;
         // The connection is up and the speaker stream may be produced.
         bool live = false;
@@ -72,6 +80,10 @@ public:
 
     explicit Hl2AudioMixer(QObject* parent = nullptr);
 
+    // The FreeDV engine (thread-safe), set once before the thread starts and
+    // outliving it. Without one the modem blocks go to the owner (fdvInput)
+    // and come back through decodedAudio(), as in build 373.
+    void setFdvEngine(fdv::FdvEngine* engine) noexcept { m_fdv = engine; }
     void setParams(const Params& params);
     // The receive-audio hold (transmit, the hold after it). Takes effect on
     // the next block: an atomic, not a queued call.
@@ -104,6 +116,8 @@ private:
     void emitOut(const std::vector<float>& pcm, const Params& p);
     void diag(const std::vector<float>& pcm, bool dropped);
 
+    fdv::FdvEngine* m_fdv = nullptr;
+    std::vector<float> m_speech;   // mixer thread only
     std::mutex m_paramsMutex;
     Params m_params;
     std::atomic<bool> m_muted{false};

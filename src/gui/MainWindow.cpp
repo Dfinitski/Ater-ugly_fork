@@ -1604,6 +1604,9 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_audio, &AudioEngine::txTransportPcmReady,
             this, [this](const QByteArray& pcm, TxAudioSource source,
                          const TxCoordinator::Context& context) {
+        // Build 374: an ANAN backend with its audio thread takes this signal
+        // itself, off this thread (wireBackendSeam) -- not twice.
+        if (m_directTxFeed.load(std::memory_order_acquire)) return;
         m_radioModel.submitTxAudio(pcm, AudioEngine::DEFAULT_SAMPLE_RATE,
                                    source, context);
     });
@@ -7604,6 +7607,7 @@ void MainWindow::wireBackendSeam(IRadioBackend* backend)
     // and Qt::UniqueConnection cannot protect the lambda connects at all.
     disconnect(backend, &IRadioBackend::audioFrameReady, m_audio, nullptr);
     m_directSpeakerFeed.store(false, std::memory_order_release);
+    m_directTxFeed.store(false, std::memory_order_release);
 
     // HL2 only: opening its client-side WDSP chains measures FFTW plans, ~20 s
     // without cached wisdom, so the operator needs a visible explanation. The
@@ -7636,6 +7640,19 @@ void MainWindow::wireBackendSeam(IRadioBackend* backend)
                 m_audio->feedPcmFrame(pcm);
             });
             m_directSpeakerFeed.store(true, std::memory_order_release);
+            // Build 374: and the other direction. The transmit audio of the
+            // computer (microphone, DAX, TCI) went AudioEngine -> this thread
+            // -> the modulator's thread; a busy interface starved the
+            // modulator (a gap on the air). The mixer object is the context,
+            // so the lambda runs on the backend's audio thread, which is
+            // joined before the backend's members go.
+            disconnect(m_audio, &AudioEngine::txTransportPcmReady, mixer, nullptr);
+            connect(m_audio, &AudioEngine::txTransportPcmReady, mixer,
+                    [hl2Backend](const QByteArray& pcm, TxAudioSource source,
+                                 const TxCoordinator::Context& context) {
+                hl2Backend->submitTxAudioDirect(pcm, AudioEngine::DEFAULT_SAMPLE_RATE, source, context);
+            });
+            m_directTxFeed.store(true, std::memory_order_release);
         }
     }
 

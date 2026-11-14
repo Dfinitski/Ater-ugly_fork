@@ -96,6 +96,14 @@ public:
     // "AnanAudioThread" = False, read once at start): the mix then runs on the
     // backend's thread as before build 373 -- a way back without a rebuild.
     [[nodiscard]] bool audioThreadActive() const noexcept { return m_audioThreadActive; }
+    // Build 374: the computer's transmit audio (microphone, DAX, TCI) without
+    // the GUI thread. MainWindow connects AudioEngine::txTransportPcmReady to
+    // this with audioMixer() as the context object, so it runs on the
+    // "anan-audio" thread; from there the block is queued to the modulator's
+    // thread. Does what RadioModel::submitTxAudio() does (the dispatch fence)
+    // and then submitTxAudio(), which reads only atomics. Thread-safe.
+    void submitTxAudioDirect(const QByteArray& int16Stereo, int sampleRateHz, TxAudioSource source,
+                             const TxCoordinator::Context& context);
 
     // ANAN-100D port: the Protocol 2 transport (radio I/O thread), for the
     // Wideband Monitor's widebandFrame signal and setWideband().
@@ -685,8 +693,25 @@ private:
     bool m_fdvStopSent = false;
     int m_fdvTxBandKey = -1;   // build 339: sub-mode whose TX filter is pushed, -1 = not FreeDV
     // Build 343: the speech processing of the microphone ahead of the FreeDV
-    // encoder (the compressor PROC uses, with its limiter). GUI thread.
+    // encoder (the compressor PROC uses, with its limiter).
+    // Build 374: called on the thread that carries the microphone (anan-tx for
+    // the radio's, anan-audio for the computer's), under m_fdvTxMutex -- as
+    // are fdvPublishMod() and the encoder call that follows them.
     void fdvSpeechProcess(std::vector<float>& mono);
+    std::mutex m_fdvTxMutex;
+    // The radio microphone's FreeDV block: process, encode, modulate. On the
+    // transmit thread (build 374; it crossed the GUI thread before).
+    void fdvTxFromRadioMic(std::vector<float> mono, const TxCoordinator::Context& ctx);
+    // What submitTxAudio() needs of the GUI's state, for any thread.
+    std::atomic<bool> m_micFromRadioIo{false};
+    std::atomic<float> m_micGainIo{1.0f};
+    // Diagnostics of submitTxAudioDirect() (audio thread only): one log line
+    // per 5 s of transmission -- the longest time between two blocks of
+    // transmit audio is the figure that path exists to keep small.
+    QElapsedTimer m_txInDiagClock;
+    QElapsedTimer m_txInGapClock;
+    int m_txInBlocks = 0;
+    qint64 m_txInMaxGapMs = 0;
     bool m_fdvSpeechPrimed = false;
     // Build 350: the level of the speech going into the FreeDV encoder, shown
     // on the ALC gauge (labelled MOD then). Peak since the last publication.
@@ -1737,11 +1762,11 @@ private:
     // True once this transmission carried client-leveled (TCI/DAX) audio. Gates the
     // unkey mic-gain diagnostic off and is reported in healthSnapshot(). Set in
     // submitTxAudio(), cleared on each key edge in setKeying().
-    bool m_txAudioClientLeveled = false;
+    std::atomic<bool> m_txAudioClientLeveled{false};   // build 374: set off the GUI thread
     // True once this transmission carried EngineGenerated audio (the WSPR pump).
     // Gates the unkey mic-gain diagnostic off: no mic slider is in that path. The
     // AX.25 modem is tagged Microphone, since the slider is its only control.
-    bool m_txAudioEngineGenerated = false;
+    std::atomic<bool> m_txAudioEngineGenerated{false};
 
     // The passband to push at the modulator for `mode`: the operator's if they
     // have chosen one, otherwise that mode's default.

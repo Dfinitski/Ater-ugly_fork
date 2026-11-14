@@ -674,6 +674,9 @@ private:
     // relay through RadioModel (this thread) must then not feed it a second
     // time. Read on the AudioEngine thread.
     std::atomic<bool> m_directSpeakerFeed{false};
+    // Build 374: the backend takes the transmit audio from the AudioEngine
+    // itself (wireBackendSeam); the relay through this thread stands down.
+    std::atomic<bool> m_directTxFeed{false};
     // Who is asking; see RxPlaybackMuteOwners.h. A plain bool would let
     // whichever producer finished first unmute under the others.
     RxPlaybackMuteOwners m_rxPlaybackMuters;
