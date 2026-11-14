@@ -163,7 +163,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     g->setVerticalSpacing(4);
     g->addWidget(new QLabel("My call:"), 0, 0);
     leCall = new QLineEdit;
-    leCall->setFixedWidth(200);   // AetherSDR: one width for the fields of Settings
+    leCall->setFixedWidth(156);   // AetherSDR, 394: to the right edge of "Search, Hz" (70 + 4 + 8 + 4 + 70)
     leCall->setMaxLength(12);
     leCall->setObjectName("MyCall");
     leCall->setValidator(new FtLatinValidator("[A-Za-z0-9/]{0,12}", leCall));   // AetherSDR, 392
@@ -178,7 +178,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     g->addWidget(new QLabel("Decoding:"), 1, 0);
     cbDepth = new QComboBox;
     cbDepth->addItems(QStringList() << "Fast" << "Normal" << "Deep");
-    cbDepth->setFixedWidth(200);   // AetherSDR: one width for the fields of Settings
+    cbDepth->setFixedWidth(156);   // AetherSDR, 394: as My call
     g->addWidget(cbDepth, 1, 1);
     chbAp = new QCheckBox("AP decoding");
     chbAp->setToolTip("A priori decoding (as WSJT-X): weaker signals with the known parts of the\n"
@@ -195,8 +195,12 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     sbFb->setSingleStep(50);
     sbFa->setFixedWidth(70);
     sbFb->setFixedWidth(70);
+    hr->setSpacing(4);                 // AetherSDR, 394: a known width of the pair (156)
+    QLabel *dashR = new QLabel("-");
+    dashR->setFixedWidth(8);
+    dashR->setAlignment(Qt::AlignCenter);
     hr->addWidget(sbFa);
-    hr->addWidget(new QLabel("-"));
+    hr->addWidget(dashR);
     hr->addWidget(sbFb);
     hr->addStretch(1);
     g->addLayout(hr, 2, 1);
@@ -249,8 +253,12 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     sbWf1->setSingleStep(100);
     sbWf0->setFixedWidth(70);
     sbWf1->setFixedWidth(70);
+    hw->setSpacing(4);                 // AetherSDR, 394: as the Search pair
+    QLabel *dashW = new QLabel("-");
+    dashW->setFixedWidth(8);
+    dashW->setAlignment(Qt::AlignCenter);
     hw->addWidget(sbWf0);
-    hw->addWidget(new QLabel("-"));
+    hw->addWidget(dashW);
     hw->addWidget(sbWf1);
     hw->addStretch(1);
     g->addLayout(hw, 6, 1);

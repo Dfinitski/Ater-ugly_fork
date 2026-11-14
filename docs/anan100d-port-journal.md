@@ -6392,6 +6392,24 @@ for 15008 ms, restarting RX` каждые 15 с — блоки исключён�
 
 Проверено компиляцией; на экране не проверялось.
 
+## 361. Сборка 394 — FTX: передача отклонялась до бэкенда; ширина полей My call / Decoding
+
+Оператор, 14.11: «настроился на передачу, но она не идёт, что-то сбрасывает».
+
+Лог `aethersdr-20261114-163710.log` (сборка 393): три попытки, каждая —
+`FT: TX FT8 ... / MainWindow: FTX TX on / (400 мс) FTX TX refused by the transmitter`, от бэкенда ни
+строки. Причина: `ftxPtt` ключевал как MOX (`setTransmit(true)`), а
+`RadioModel::localPttInterlockMessage` на MOX в DIGU отвечает «You cannot transmit voice in DIGU/DIGL
+mode» и возвращается до оптимистичного состояния и до `setKeying`. Исправление: ключ как источник
+цифрового звука — `setTransmit(tx, TransmitModel::PttSource::Dax)`, как rigctl и голосовой манипулятор.
+
+В том же логе: декодеры на I/Q работают (`FT: FT8 ... 8 decodes (early 16)`), строка
+`ANAN TX engine: FTX waveform to the modulator (TX thread)` есть — подстановка формы в потоке
+передатчика действует; сама передача на радио ещё не проверена.
+
+Окно: My call и Decoding — 156 px, по правому краю пары «Search, Hz» (70 + 4 + 8 + 4 + 70; ширина
+тире и промежутки теперь заданы явно, то же в паре Waterfall).
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

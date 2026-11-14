@@ -391,7 +391,13 @@ void MainWindow::ftxPtt(bool on)
         if (why.isEmpty()) {
             m_ftxKeying = true;
             st.ownTx = true;
-            m_radioModel.setTransmit(true);
+            // Build 394: as a digital-audio source, not as MOX. Log 14.11
+            // 16:39: every transmission of the mode was refused before it
+            // reached the backend -- RadioModel::localPttInterlockMessage
+            // answers a MOX in DIGU with "You cannot transmit voice in
+            // DIGU/DIGL mode". PttSource::Dax is what the other generated
+            // audio of the program keys with (rigctl, the voice keyer).
+            m_radioModel.setTransmit(true, TransmitModel::PttSource::Dax);
             m_ftxKeying = false;
             // A refusal (the band, the transmit limits, an interlock) leaves
             // the model unkeyed; looked at a moment later, not here -- the
@@ -425,7 +431,7 @@ void MainWindow::ftxPtt(bool on)
         return;
     m_ftxTxOn = false;
     m_ftxKeying = true;
-    m_radioModel.setTransmit(false);
+    m_radioModel.setTransmit(false, TransmitModel::PttSource::Dax);
     m_ftxKeying = false;
     st.ownTx = false;
     qInfo() << "MainWindow: FTX TX off";
