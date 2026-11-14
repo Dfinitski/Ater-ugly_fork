@@ -6051,6 +6051,11 @@ QRZ), `PskReporter.h/.cpp`. В начале каждого файла помет
 **Не проверено:** сборка под MSVC (у меня проверка только gcc + Qt 6), вид окна в нашей теме,
 декодирование.
 
+**После первой сборки 381:** «не находятся dll после старта». Программа запускается из
+`Desktop\AetherSDR-Release`, а CMake кладёт `libftx.dll` и `cty.dat` только в каталог сборки.
+Оба файла записаны в `Desktop\AetherSDR-Release` (как раньше `libfdv.dll`). В следующий архив
+релиза их нужно включить.
+
 Файлы: новые `src/ftx/*` (13), `third_party/libftx/*` (6); `CMakeLists.txt`, `FtxView.h/.cpp`,
 `MainWindow.h`, `MainWindow_Ftx.cpp`, `ForkBuild.h`.
 
