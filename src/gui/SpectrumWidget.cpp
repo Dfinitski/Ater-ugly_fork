@@ -4989,6 +4989,37 @@ int SpectrumWidget::ananAgcLineY(int specH, int* rxOut) const
     return static_cast<int>(std::clamp(norm, 0.0f, 1.0f) * specH);
 }
 
+// ANAN fork build 346 (operator, 13.11: "a tool that shows how far the
+// transmitter is driven -- it must always be driven to the maximum, the power
+// is set by another means"). The spectrum cannot show that: a wideband signal
+// spreads over hundreds of bins and reads far below full scale per bin. This
+// line is the envelope peak of the samples sent to the radio, on the same
+// scale: at the top edge (0 dB) the transmitter is driven fully -- what TUNE
+// sends, and the most the ALC lets through. Green within 1 dB of full scale,
+// amber below.
+void SpectrumWidget::drawTxPeakLine(QPainter& p, const QRect& specRect)
+{
+    if (!m_txZoomActive || m_dynamicRange <= 0.0f || m_txPeakHoldDb < -150.0f)
+        return;
+    const float norm = (m_refLevel - m_txPeakHoldDb) / m_dynamicRange;
+    const int y = specRect.top() + static_cast<int>(std::clamp(norm, 0.0f, 1.0f) * specRect.height());
+    const bool full = m_txPeakHoldDb >= -1.0f;
+    const QColor c = full ? QColor(0x00, 0xff, 0x88, 220) : QColor(0xff, 0xb0, 0x20, 220);
+    p.save();
+    p.setPen(QPen(c, 1, Qt::DashLine));
+    p.drawLine(specRect.left(), y, specRect.right() - DBM_STRIP_W, y);
+    QFont f = p.font();
+    f.setPointSize(9);
+    f.setBold(true);
+    p.setFont(f);
+    p.setPen(c);
+    const QString text = QStringLiteral("TX drive peak %1 dB").arg(
+        QString::number(static_cast<double>(m_txPeakHoldDb), 'f', 1));
+    const int ty = (y - specRect.top() < 16) ? y + 14 : y - 4;
+    p.drawText(specRect.left() + 6, ty, text);
+    p.restore();
+}
+
 void SpectrumWidget::drawAnanNoiseFloor(QPainter& p, const QRect& specRect)
 {
     if (!m_overlayMenu || m_dynamicRange <= 0.0f)
@@ -8853,6 +8884,9 @@ void SpectrumWidget::enterTxZoom()
     m_txZoomActive = true;
     m_centerMhz = txMhz;
     m_bandwidthMhz = kTxZoomSpanMhz;
+    m_txPeakHoldDb = -200.0f;         // build 346: a new over
+    m_txPeakHoldAtMs = 0;
+    m_txPeakShownTenths = -100000;
     m_txZoomRxBins = m_bins;          // the receiver's trace carries on here
     m_txZoomRxSmoothed = m_smoothed;
     m_bins.clear();
@@ -8888,8 +8922,27 @@ void SpectrumWidget::setTxScopeFrame(const QList<float>& dbfs, double centreMhz)
         m_centerMhz = centreMhz;   // the frequency the samples were sent at
         markOverlayDirty();
     }
+    // Build 346: an even count = the bins (an odd number) and then the
+    // envelope peak (anan::TxScope). Held: the largest of the last second,
+    // then falling 1 dB per frame.
+    QList<float> bins = dbfs;
+    if (bins.size() % 2 == 0) {
+        const float peak = bins.takeLast();
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (peak >= m_txPeakHoldDb) {
+            m_txPeakHoldDb = peak;
+            m_txPeakHoldAtMs = now;
+        } else if (now - m_txPeakHoldAtMs > 1000) {
+            m_txPeakHoldDb = std::max(peak, m_txPeakHoldDb - 1.0f);
+        }
+        const int tenths = static_cast<int>(std::lround(m_txPeakHoldDb * 10.0f));
+        if (tenths != m_txPeakShownTenths) {
+            m_txPeakShownTenths = tenths;
+            markOverlayDirty();
+        }
+    }
     m_txZoomFeeding = true;
-    updateSpectrum(dbfs, SpectrumDecodeScale{});
+    updateSpectrum(bins, SpectrumDecodeScale{});
     m_txZoomFeeding = false;
 }
 
@@ -15985,6 +16038,7 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
             if (!is3D) {
                 drawAutoSqlFloor(p, specRect);
                 drawAnanNoiseFloor(p, specRect);
+                drawTxPeakLine(p, specRect);   // build 346
                 drawAnanAdcOverload(p, specRect);
                 drawSquelchLine(p, specRect);
             }
@@ -17165,6 +17219,7 @@ void SpectrumWidget::paintEvent(QPaintEvent* ev)
     if (!is3D) {
         drawAutoSqlFloor(p, specRect);
         drawAnanNoiseFloor(p, specRect);
+        drawTxPeakLine(p, specRect);   // build 346
         drawAnanAdcOverload(p, specRect);
         drawSquelchLine(p, specRect);
     }

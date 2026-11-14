@@ -139,6 +139,8 @@ public:
     // pcClock: audio on the PC's clock fed the modulator (DAX, TCI, the
     // computer mic, FreeDV through the GUI): its larger prime holds for 1 s
     // against the radio-mic setting.
+    // Build 346: the TX panadapter averages as the receiver's does (FFT AVG).
+    void setTxScopeAverageMs(int ms) { m_txScopeAvgMs.store(ms, std::memory_order_relaxed); }
     void setTxPrimeSamples(int samples, bool pcClock = false)
     {
         const qint64 now = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -625,6 +627,7 @@ private:
     // Spectrum of what is actually sent (txScopeFrameReady).
     TxScope m_txScope;
     std::vector<float> m_txScopeBins;
+    std::atomic<int> m_txScopeAvgMs{0};   // build 346: the receiver's FFT AVG, ms
     // Fwd / rev / exciter power from the status packet (raw ADC counts).
     int m_fwdRaw = 0;
     int m_revRaw = 0;

@@ -2475,6 +2475,7 @@ void P2Transport::accountTxSamples(const std::complex<float>* buf, int n)
     if (m_scopeFromFb.load(std::memory_order_relaxed)
         && (!m_psEnabled || steadyMs() - m_scopeFbMs.load(std::memory_order_relaxed) > 200))
         m_scopeFromFb.store(false, std::memory_order_relaxed);   // the feedback stopped: back to the DUC IQ
+    m_txScope.setAverageMs(m_txScopeAvgMs.load(std::memory_order_relaxed));   // build 346
     if (!m_scopeFromFb.load(std::memory_order_relaxed)
         && m_txScope.push(buf, n, m_txScopeBins)) {
         emit txScopeFrameReady(QList<float>(m_txScopeBins.begin(), m_txScopeBins.end()),

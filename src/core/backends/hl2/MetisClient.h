@@ -294,6 +294,8 @@ signals:
     // first, spanning centreHz +-12 kHz, where centreHz is the TX (DUC)
     // frequency the samples were sent at. 0 dBFS = full scale of the wire
     // samples. ~23 per second, from the transport's thread.
+    // Build 346: one more value after the bins -- the envelope peak of the
+    // samples sent since the previous frame, dBFS (kBins + 1 values in all).
     void txScopeFrameReady(const QList<float>& dbfs, double centreHz);
     // ANAN-100D port: peak |IQ| of what goes to the DUC, dBFS, every 50 ms
     // while transmitting (the TX:ALC meter: the envelope after the whole

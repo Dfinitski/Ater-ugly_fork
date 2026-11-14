@@ -2886,6 +2886,14 @@ void Hl2Backend::fdvTick()
 {
     if (m_txEngine)
         m_txEngine->setFdvTxRunning(m_fdv && m_fdv->txRunning());
+    // Build 346: the TX panadapter takes the FFT AVG of the transmitting
+    // receiver's panadapter (this 50 ms tick is a convenient place: an atomic
+    // store, whatever changed it -- the slider, the TX receiver, a reconnect).
+    if (m_metis) {
+        const Receiver* txRx = rx(m_txDdc);
+        static_cast<anan::P2Transport*>(m_metis)->setTxScopeAverageMs(
+            txRx ? averageTimeMsForStep(txRx->panAverage) : 0);
+    }
     auto& st = fdv::FdvState::instance();
     // Build 339: FreeDV on / off on the transmitting receiver, or another
     // sub-mode -- push the transmit filter that now applies.

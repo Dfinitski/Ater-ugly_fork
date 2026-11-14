@@ -2253,6 +2253,13 @@ private:
     // and the latest one the model pushed meanwhile (applied at unkey).
     bool m_txZoomActive{false};
     bool m_txZoomFeeding{false};
+    // Build 346: the transmitter's drive -- the envelope peak of the samples
+    // sent, held for a second, drawn as a line on the TX panadapter's scale
+    // (0 dB, the top, = full scale).
+    float  m_txPeakHoldDb{-200.0f};
+    qint64 m_txPeakHoldAtMs{0};
+    int    m_txPeakShownTenths{-100000};
+    void drawTxPeakLine(QPainter& p, const QRect& specRect);
     double m_txZoomSavedCenterMhz{0.0};
     double m_txZoomSavedBandwidthMhz{0.0};
     // ANAN-100D port (operator, 31.10: "the FFT must never be interrupted,
