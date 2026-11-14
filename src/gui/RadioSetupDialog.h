@@ -30,6 +30,7 @@ class QTreeWidgetItem;
 namespace AetherSDR {
 
 class RadioModel;
+class BandPlanManager;
 class AudioEngine;
 class TgxlConnection;
 class PgxlConnection;
@@ -231,8 +232,15 @@ public:
     // cache. No-op if the SmartLink tab hasn't been built yet
     // (m_pinnedCertsTable == nullptr).
     void     refreshPinnedCertsTable();
+    // Build 378: the band plan manager, for the "Transmit band limits"
+    // selector on the TX page (the region whose amateur bands the ANAN
+    // backend transmits in). Fills the selector; safe to call once.
+    void     setBandPlanManager(BandPlanManager* manager);
 
 private:
+    QComboBox* m_txRegionCombo{nullptr};   // build 378, TX page (built on first use)
+    BandPlanManager* m_bandPlanMgr{nullptr};   // owned by MainWindow, outlives this window
+    void wireTxRegionCombo();
 #ifdef HAVE_SERIALPORT
     QWidget* buildSerialTab();
 #endif

@@ -1350,6 +1350,7 @@ public:
     [[nodiscard]] QString transmitRefusalMessage() const override;
 private:
     void warnTxOutOfBand(double hz);
+    [[nodiscard]] QString transmitRefusalText(double txHz) const;   // build 378
 
     // The four index spaces, never derived from one another (Hl2Receivers.h). GUI
     // thread only; the signal handlers that use it are queued onto this thread.

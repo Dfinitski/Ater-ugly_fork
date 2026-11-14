@@ -3519,6 +3519,7 @@ RadioSetupDialog* MainWindow::openRadioSetupPage(const QString& page)
                                          &m_vkampConn, &m_lpMeterConn, &m_kpa1500Conn, &m_kpa500Conn,
                                          this, &m_kat500Model, &m_kxpa100Model, &m_rfkitConn);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setBandPlanManager(m_bandPlanMgr);   // build 378: the transmit region selector
         m_radioSetupDialog = dlg;
     }
     m_radioSetupDialog->show();

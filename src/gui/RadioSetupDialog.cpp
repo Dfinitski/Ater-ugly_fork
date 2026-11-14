@@ -5,6 +5,7 @@
 // EB3 ratchet refuses it), which is why the rate list is reached through this
 // header rather than from the wire code.
 #include "RadioSetupDialog.h"
+#include "models/BandPlanManager.h"
 #include "SerialPortCombo.h"
 #include "models/CwDecodeSettings.h"
 #include "core/backends/anan/P2Protocol.h"
@@ -3327,9 +3328,71 @@ QWidget* RadioSetupDialog::buildTxTab()
         vbox->addWidget(group);
     }
 
+    // Build 378 (a user in Russia was refused transmit "by the US rules"):
+    // the region whose amateur bands the transmitter is allowed in. It is
+    // the band plan of View -> Band Plan, which is where it could only be
+    // chosen until now; filled by setBandPlanManager().
+    {
+        auto* group = new QGroupBox("Transmit band limits");
+        auto* gvb = new QVBoxLayout(group);
+        gvb->setSpacing(6);
+        auto* row = new QHBoxLayout;
+        row->setSpacing(6);
+        auto* lbl = new QLabel("Region (band plan):");
+        applyLabelStyle(lbl);
+        row->addWidget(lbl);
+        m_txRegionCombo = new QComboBox;
+        AetherSDR::applyComboStyle(m_txRegionCombo);
+        m_txRegionCombo->setMinimumWidth(180);
+        m_txRegionCombo->setAccessibleName(QStringLiteral("Transmit region"));
+        row->addWidget(m_txRegionCombo);
+        row->addStretch(1);
+        gvb->addLayout(row);
+        auto* hint = new QLabel(
+            "The transmitter keys only inside the amateur bands of this band plan (the same plan "
+            "the panadapter shows: View -> Band Plan). Choose the plan of your region -- IARU "
+            "Region 1 for Europe, Russia and Africa, Region 2 for the Americas, Region 3 for Asia "
+            "and the Pacific. Through a transverter the plan is not applied: the transverter set "
+            "up on the XVTR page is the limit (and its RX Only switch).");
+        setTone(hint, Tone::Hint);
+        hint->setWordWrap(true);
+        gvb->addWidget(hint);
+        vbox->addWidget(group);
+        wireTxRegionCombo();
+    }
+
     vbox->addWidget(buildAnanUserOutGroup(this, /*tx=*/true));
     vbox->addStretch(1);
     return page;
+}
+
+void RadioSetupDialog::setBandPlanManager(BandPlanManager* manager)
+{
+    m_bandPlanMgr = manager;
+    wireTxRegionCombo();
+}
+
+// The pages are built on first use, so either of the two may come first: the
+// manager (from MainWindow, right after construction) or the TX page.
+void RadioSetupDialog::wireTxRegionCombo()
+{
+    if (!m_txRegionCombo || !m_bandPlanMgr || m_txRegionCombo->count() > 0)
+        return;
+    auto* combo = m_txRegionCombo;
+    BandPlanManager* const manager = m_bandPlanMgr;
+    auto sync = [combo, manager] {
+        const QSignalBlocker b(combo);
+        if (combo->count() == 0)
+            combo->addItems(manager->availablePlans());
+        combo->setCurrentIndex(combo->findText(manager->activePlanName()));
+    };
+    sync();
+    // The menu may change it while this window is open, and the other way.
+    connect(manager, &BandPlanManager::planChanged, combo, sync);
+    connect(combo, &QComboBox::currentTextChanged, manager, [manager](const QString& name) {
+        if (!name.isEmpty() && name != manager->activePlanName())
+            manager->setActivePlan(name);
+    });
 }
 
 QWidget* RadioSetupDialog::buildRxTab()

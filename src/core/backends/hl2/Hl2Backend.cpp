@@ -7023,24 +7023,17 @@ bool Hl2Backend::hzInAmateurBand(double lo, double hi) const
 {
     if (lo <= 0.0)
         return false;
-    // Build 317: on a transverter, the VHF/UHF/SHF allocations (any region),
-    // and never through one set RX only.
-    if (const anan::Xvtr* x = anan::AnanXvtrStore::instance().forRf(lo, m_tuningMinHz, m_tuningMaxHz)) {
-        if (x->rxOnly)
-            return false;
-        static const std::vector<std::pair<double, double>> kVhfUp = {
-            {69'900'000, 70'500'000},       {144'000'000, 148'000'000},
-            {219'000'000, 225'000'000},     {420'000'000, 450'000'000},
-            {902'000'000, 928'000'000},     {1'240'000'000, 1'300'000'000},
-            {2'300'000'000, 2'450'000'000}, {3'300'000'000, 3'500'000'000},
-            {5'650'000'000, 5'925'000'000}, {10'000'000'000, 10'500'000'000},
-            {24'000'000'000, 24'250'000'000}};
-        for (const auto& [bLo, bHi] : kVhfUp) {
-            if (lo >= bLo - 0.5 && hi <= bHi + 0.5)
-                return true;
-        }
-        return false;
-    }
+    // Through a transverter: as Thetis does (console.cs CheckValidTXFreq:
+    // "if (extended || tx_xvtr_index > -1) return true"), the region's band
+    // limits are NOT applied -- the transverter the operator configured is
+    // the limit: it has to be valid, to carry this frequency on an IF inside
+    // the radio's coverage (forRf), and not to be set RX Only.
+    // Build 378 (a user in Russia, 14.11: refused on his transverter "because
+    // it is forbidden in the USA"). Until now a built-in list of VHF/UHF/SHF
+    // allocations was checked here (build 317), and the refusal named the HF
+    // band plan whatever its real reason was (transmitRefusalText()).
+    if (const anan::Xvtr* x = anan::AnanXvtrStore::instance().forRf(lo, m_tuningMinHz, m_tuningMaxHz))
+        return !x->rxOnly;
     // Built-in until the band plan arrives: every amateur allocation of the
     // three IARU regions (the ANAN tunes to 55 MHz).
     static const std::vector<std::pair<double, double>> kAllRegions = {
@@ -7084,7 +7077,20 @@ QString Hl2Backend::transmitRefusalMessage() const
     const double txHz = m_txWantedHz > 0.0 ? m_txWantedHz : (txRx ? txRx->sliceFreqHz : 0.0);
     if (txHz <= 0.0 || txInAmateurBand(txHz))
         return {};
-    return QStringLiteral("Transmit refused: %1 MHz is outside the amateur bands%2.")
+    return transmitRefusalText(txHz);
+}
+
+// Build 378: the refusal with its REAL reason. Through a transverter the only
+// reason left is "RX Only"; the band plan is named only when it was the test.
+QString Hl2Backend::transmitRefusalText(double txHz) const
+{
+    if (const anan::Xvtr* x = anan::AnanXvtrStore::instance().forRf(txHz, m_tuningMinHz, m_tuningMaxHz)) {
+        if (x->rxOnly)
+            return QStringLiteral("Transmit refused: transverter \"%1\" is set RX Only "
+                                  "(Radio Setup, XVTR: RX Only -> Disabled).").arg(x->name);
+    }
+    return QStringLiteral("Transmit refused: %1 MHz is outside the amateur bands%2 "
+                          "(the region: Radio Setup, TX, Transmit band limits).")
         .arg(txHz / 1e6, 0, 'f', 3)
         .arg(m_txBandsHz.empty() ? QString()
                                  : QStringLiteral(" of the band plan \"%1\"").arg(m_txBandPlanName));
@@ -7093,6 +7099,7 @@ QString Hl2Backend::transmitRefusalMessage() const
 void Hl2Backend::warnTxOutOfBand(double hz)
 {
     const auto [lo, hi] = txSpanHz(hz);
+    qCWarning(lcHl2).noquote() << "ANAN:" << transmitRefusalText(hz);
     qCWarning(lcHl2).noquote() << QStringLiteral("ANAN: transmit refused at %1 MHz (signal %2 .. %3 MHz): "
                                                  "outside the amateur bands of %4")
                                       .arg(hz / 1e6, 0, 'f', 6).arg(lo / 1e6, 0, 'f', 6).arg(hi / 1e6, 0, 'f', 6)
@@ -7102,10 +7109,7 @@ void Hl2Backend::warnTxOutOfBand(double hz)
     if (now - m_txBandWarnMs < 3000)
         return;
     m_txBandWarnMs = now;
-    emit configurationWarning(QStringLiteral("Transmit refused: %1 MHz is outside the amateur bands%2.")
-                                  .arg(hz / 1e6, 0, 'f', 3)
-                                  .arg(m_txBandsHz.empty() ? QString()
-                                                           : QStringLiteral(" of the band plan \"%1\"").arg(m_txBandPlanName)));
+    emit configurationWarning(transmitRefusalText(hz));
 }
 
 void Hl2Backend::setTxFrequency(double hz)

@@ -1324,6 +1324,12 @@ void MainWindow::buildMenuBar()
             m_bandPlanMgr->setActivePlan(name);
         });
     }
+    // Build 378: the plan can be chosen in Radio Setup (TX) as well -- the
+    // check mark follows.
+    connect(m_bandPlanMgr, &BandPlanManager::planChanged, planGroup, [this, planGroup] {
+        for (QAction* a : planGroup->actions())
+            a->setChecked(a->text() == m_bandPlanMgr->activePlanName());
+    });
 
     // Theme submenu — list every theme ThemeManager discovered in
     // :/themes/ (built-ins) + ~/.config/AetherSDR/themes/ (user themes).
