@@ -8785,15 +8785,12 @@ void MainWindow::applyPanRangeRequest(const QString& panId, double centerMhz,
 
     centerMhz = std::max(centerMhz, bandwidthMhz / 2.0);
 
-    // ANAN fork build 366: under Center Lock a range request (a zoom) changes
-    // the width only -- the centre stays where the lock holds it. A centre of
-    // its own would be undone by the lock at once, and on this radio the
-    // bandwidth of the same request was dropped in that exchange.
-    if (const int lockId = centerLockSliceForPan(panId); lockId >= 0 && !m_sliceDragInProgress) {
-        const double held = m_radioModel.effectivePanCenterMhz(panId);
-        if (held > 0.0)
-            centerMhz = std::max(held, bandwidthMhz / 2.0);
-    }
+    // ANAN fork build 367: build 366 replaced the centre of every range
+    // request under Center Lock with the centre the model held -- but the
+    // lock's own follow (the pan moving so the filter stays in the middle)
+    // comes through here too, and was pinned to the old centre. Removed: the
+    // zoom gestures keep the centre themselves (SpectrumWidget), and the
+    // bandwidth of a request is no longer lost (IRadioBackend).
 
     auto* pan = m_radioModel.panadapter(panId);
     // A fixed span takes the center only, silently: no zoom route can change

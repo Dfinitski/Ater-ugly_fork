@@ -219,7 +219,12 @@ public:
             // not a refusal (it read as "Backend refused operation pan display"
             // and Center Lock took the centre as deferred). Stop before the
             // bandwidth only.
-            if (current && !current()) { return ReceiveDispatch::Dispatched; }
+            // ANAN fork build 367: ...and build 325 stopped here before the
+            // bandwidth, so a zoom whose centre changed the pan state lost its
+            // width (with Center Lock: every step -- "the zoom jerks and comes
+            // back"). The fence was current when this request was accepted
+            // (checked on entry) and both halves are ONE request: the
+            // bandwidth is applied with its centre.
             if (geometry.bandwidthMhz) { alive->setPanBandwidth(panId, *geometry.bandwidthMhz * 1.0e6); }
             break;
         }

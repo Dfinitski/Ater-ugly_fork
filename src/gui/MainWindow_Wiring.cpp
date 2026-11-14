@@ -4431,7 +4431,27 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         // display status back (TCI dds follows it) and defers during profile
         // load (#4142). Intent Drag: on a VFO-slaved scope that is a retune;
         // other centre-only callers use the default Range.
-        m_radioModel.requestPanCenter(applet->panId(), center, -1.0,
+        //
+        // ANAN fork build 367 (operator, 13.11: "with Center Lock the filter
+        // must stay in the middle and the panorama move under it"). Dragging
+        // the panorama under Center Lock only moved the view; the lock then
+        // pulled it back (the build 359 log: pairs of NCO moves, away and
+        // back). The drag now TUNES the locked receiver to the new centre, so
+        // the filter stays in the middle of the view and the band moves under
+        // it -- the lock and the drag ask for the same thing.
+        const QString dragPanId = applet->panId();
+        if (const int lockId = centerLockSliceForPan(dragPanId); lockId >= 0) {
+            SliceModel* locked = m_radioModel.slice(lockId);
+            if (locked && locked->panId() == dragPanId) {
+                double tuneMhz = center;
+                if (m_tciIqCenterLockPans.contains(dragPanId))   // the lock centres the passband there
+                    tuneMhz -= (locked->filterLow() + locked->filterHigh()) / 2.0e6;
+                tuneMhz = std::round(tuneMhz * 1.0e6) / 1.0e6;
+                if (tuneMhz > 0.0 && !qFuzzyCompare(tuneMhz, locked->frequency()))
+                    applyTuneRequest(locked, tuneMhz, TuneIntent::IncrementalTune, "center-lock-drag");
+            }
+        }
+        m_radioModel.requestPanCenter(dragPanId, center, -1.0,
                                       IRadioBackend::PanCenterIntent::Drag);
     });
     // Band/Segment Zoom toggle off the pan's radio-authoritative model state

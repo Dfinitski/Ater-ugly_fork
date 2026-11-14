@@ -6989,8 +6989,10 @@ void Hl2Backend::setTxFrequency(double hz)
     m_txTrueHz = txHz;
     QMetaObject::invokeMethod(m_metis, "setTxFrequencyHz", Qt::QueuedConnection,
         Q_ARG(std::uint32_t, ncoCommandHz(txHz)));
+    // Build 367: through a transverter the PA works on the IF -- its band's
+    // delay, as the filters and the PA calibration already take the IF.
     if (m_ps)   // PureSignal: the band's amp delay
-        m_ps->setTxFrequency(txHz);
+        m_ps->setTxFrequency(txHz - xvtrOffsetHz(txHz));
 }
 
 // ANAN fork build 317: RF - IF of the transverter that carries `rfHz`, 0 for
