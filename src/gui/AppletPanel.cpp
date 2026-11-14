@@ -704,6 +704,18 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
             if (!m_sMeterContainer) return;
             // When floating, toggle the floating window visibility
             // instead of the (empty) panel slot.
+            // Build 352: off on a floating S-Meter was only a hidden window,
+            // nothing saved -- it came back floating at the next start (the
+            // same fault as the other tiles, build 351). Off = back to its
+            // place, hidden, saved.
+            if (m_sMeterContainer->isFloating() && !on
+                && !m_sMeterContainer->isPresentationManaged() && m_containerMgr) {
+                m_containerMgr->dockContainer(m_sMeterContainer->id());
+                m_sMeterContainer->setContainerVisible(false);
+                AppSettings::instance().setValue("Applet_VU", "False");
+                AppSettings::instance().save();
+                return;
+            }
             if (m_sMeterContainer->isFloating()) {
                 if (auto* w = m_sMeterContainer->window())
                     w->setVisible(on);
