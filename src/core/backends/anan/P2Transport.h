@@ -85,6 +85,10 @@ public:
     // panadapter centre. The User Out RX row follows this band (operator,
     // 09.11), as Thetis follows the VFO. 0 = not known, the NCO is used.
     Q_INVOKABLE void setRxTunedHz(int rxIndex, std::uint32_t hz);
+    // Build 388: the receiver whose band decides its filter bank outright
+    // (-1 = none: the receivers of a bank agree or the bank is bypassed).
+    // The FTX mode's receiver: it "keeps its filter" whatever the others do.
+    Q_INVOKABLE void setFilterOwnerRx(int rxIndex);
     Q_INVOKABLE void setSampleRate(hl2::SampleRate rate) override;
     Q_INVOKABLE void setReceiverCount(int count) override;
     Q_INVOKABLE void setLnaGainDb(int db) override;
@@ -478,6 +482,7 @@ private:
         bool used = false;      // a receiver listens to this ADC
     };
     [[nodiscard]] BankChoice bankFor(int adc) const;
+    int m_filterOwnerRx = -1;   // build 388, I/O thread
     int m_rxAnt = 0;   // 0..2 = ANT1..ANT3
     bool m_tunerStart = false;
     bool m_lna = false;

@@ -4079,6 +4079,11 @@ void MainWindow::changeEvent(QEvent* event)
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
+    // Build 388: leave the FTX mode FIRST, so that what is saved below is the
+    // receiver as it was before the mode. Log 20261114-151751: the program
+    // had been closed in FTX and came up with RX1 in "DIGU, 100 .. 4000 Hz"
+    // as its ordinary state -- "receiver 1 gives no sound in normal mode".
+    deactivateFtx();
     m_pendingDisplayWrites.flush();
     // Build 227: the band the program closes on is remembered as it is.
     ananBandMemFlush();
@@ -8890,6 +8895,14 @@ void MainWindow::setActiveSliceInternal(int sliceId, bool revealOffscreen)
 {
     auto* s = m_radioModel.slice(sliceId);
     if (!s) return;
+    // Build 388 (operator, 14.11: "the A and B buttons of the applet let one
+    // take the control over"): the receiver the FTX mode has is not made the
+    // active one while another receiver is open -- the applets would steer
+    // it. Alone, it stays selectable (there is nothing else to show).
+    if (sliceId == m_ftxSliceId && m_radioModel.slices().size() > 1 && m_activeSliceId != sliceId
+        && m_radioModel.slice(m_activeSliceId)) {
+        return;
+    }
 
     // Auto-activate the panadapter that owns this slice
     if (m_panStack && !s->panId().isEmpty())

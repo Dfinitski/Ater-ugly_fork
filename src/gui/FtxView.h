@@ -28,6 +28,7 @@ public:
     void setWaterfall(QWidget* waterfall, int height);
     QWidget* takeWaterfall();
     void setDialText(const QString& text);
+    void setAddRxVisible(bool visible);   // build 388: hidden while a second receiver is open
 
 signals:
     void exitRequested();
@@ -36,6 +37,7 @@ signals:
 private:
     QVBoxLayout* m_layout = nullptr;
     QLabel* m_dial = nullptr;
+    QWidget* m_addRx = nullptr;
     QPointer<QWidget> m_waterfall;
 };
 

@@ -24,6 +24,7 @@
 #include <QImage>
 #include <QDateTime>
 #include <QMessageBox>
+#include <QTimer>
 #include <QPainter>
 #include <cmath>
 
@@ -327,16 +328,43 @@ void MainWindow::activateFtx(int sliceId)
             added->setFilterWidth(m_ftxSavedFilterLo, m_ftxSavedFilterHi);
         if (m_ftxSavedFreqMhz > 0.0 && !added->isLocked())
             added->setFrequency(m_ftxSavedFreqMhz);
+        ftxUpdateAddRx();
+        QTimer::singleShot(0, this, [this, id = added->sliceId()] {
+            if (m_ftxSliceId >= 0 && m_radioModel.slice(id))
+                setActiveSlice(id);   // the applets to the ordinary receiver
+        });
         qInfo() << "MainWindow: FTX is on -- the new receiver" << added->sliceId() << "starts as"
                 << m_ftxSavedMode << m_ftxSavedFreqMhz << "MHz, not as a copy of the FTX receiver";
     });
 
+    // Build 388: "+RX" only while there is no second receiver; back when it
+    // is closed.
+    m_ftxSliceGoneConn = connect(&m_radioModel, &RadioModel::sliceRemoved, this,
+                                 [this](int) { QTimer::singleShot(0, this, [this] { ftxUpdateAddRx(); }); });
+    ftxUpdateAddRx();
+    // The applets follow the ACTIVE receiver (its A / B buttons): with a
+    // second receiver open they belong to that one, not to the FTX receiver
+    // (MainWindow::setActiveSliceInternal refuses the FTX one then).
+    if (m_activeSliceId == sliceId) {
+        for (SliceModel* other : m_radioModel.slices()) {
+            if (other && other->sliceId() != sliceId) {
+                setActiveSlice(other->sliceId());
+                break;
+            }
+        }
+    }
     m_ftPanel->showWindow(geometry());
     m_ftPanel->start();   // -> tuneRequest: the receiver to the band's frequency
     dial();
     qInfo() << "MainWindow: FTX on, slice" << sliceId << "- was" << m_ftxSavedMode << m_ftxSavedFreqMhz
             << "MHz, filter" << m_ftxSavedFilterLo << ".." << m_ftxSavedFilterHi << "pan"
             << m_ftxSavedPanBandwidthMhz * 1000.0 << "kHz";
+}
+
+void MainWindow::ftxUpdateAddRx()
+{
+    if (auto* view = qobject_cast<FtxView*>(m_ftxView.data()))
+        view->setAddRxVisible(m_radioModel.slices().size() < 2);
 }
 
 void MainWindow::ftxTune(double mhz)
@@ -366,6 +394,7 @@ void MainWindow::deactivateFtx(bool restoreMode)
     disconnect(m_ftxLockConn);
     disconnect(m_ftxNewSliceConn);
     disconnect(m_ftxTxSliceConn);
+    disconnect(m_ftxSliceGoneConn);
     ftx::FtxState::instance().levelGap = nullptr;
     // The mode's lock off, so the frequency below can go back; the lock the
     // operator had before the mode is put back at the end.

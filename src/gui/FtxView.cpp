@@ -39,6 +39,7 @@ FtxView::FtxView(QWidget* parent) : QWidget(parent)
     addRxBtn->setToolTip(QStringLiteral("Add a receiver (a second, independent panadapter)"));
     connect(addRxBtn, &QPushButton::clicked, this, &FtxView::addRxRequested);
     bar->addWidget(addRxBtn);
+    m_addRx = addRxBtn;
     auto* exitBtn = new QPushButton(QStringLiteral("Exit FTX"));
     exitBtn->setFixedHeight(22);
     exitBtn->setFocusPolicy(Qt::NoFocus);
@@ -77,6 +78,12 @@ QWidget* FtxView::takeWaterfall()
         w->setParent(nullptr);
     }
     return w;
+}
+
+void FtxView::setAddRxVisible(bool visible)
+{
+    if (m_addRx)
+        m_addRx->setVisible(visible);
 }
 
 void FtxView::setDialText(const QString& text)

@@ -2167,7 +2167,8 @@ private:
     void ftxTune(double mhz);
     bool m_ftxSavedLocked{false};
     int m_ftxSavedTxSliceId{-1};   // build 387: the transmitting receiver before the mode
-    QMetaObject::Connection m_ftxTxSliceConn;
+    QMetaObject::Connection m_ftxTxSliceConn, m_ftxSliceGoneConn;
+    void ftxUpdateAddRx();   // build 388
     bool m_ftxTuning{false};
     QMetaObject::Connection m_ftxLockConn, m_ftxNewSliceConn;
     QString m_ftxSavedMode;

@@ -1563,6 +1563,17 @@ void P2Transport::setRxTunedHz(int rxIndex, std::uint32_t hz)
         sendHighPriority(true);
 }
 
+void P2Transport::setFilterOwnerRx(int rxIndex)
+{
+    if (rxIndex == m_filterOwnerRx)
+        return;
+    m_filterOwnerRx = rxIndex;
+    qCInfo(lcAnanP2T) << "ANAN: receive filter bank" << (rxIndex >= 0 ? "held by receiver" : "shared again")
+                      << (rxIndex >= 0 ? rxIndex + 1 : 0);
+    if (m_run && m_configured)
+        sendHighPriority(true);
+}
+
 void P2Transport::setSampleRate(hl2::SampleRate rate)
 {
     m_p.sampleRate = rate;
@@ -1657,6 +1668,15 @@ P2Transport::BankChoice P2Transport::bankFor(int adc) const
         return static_cast<int>(filterOf(hz)) * 256
             + (legacy ? static_cast<int>(p1AlexLpfBitsFor(hz)) : 0);
     };
+    // Build 388: the owner of the bank (the FTX receiver) decides it alone.
+    if (m_filterOwnerRx >= 0 && m_filterOwnerRx < m_numRx
+        && (shared || effectiveAdc(m_filterOwnerRx) == adc)) {
+        const double hz = ocRxHz(static_cast<std::size_t>(m_filterOwnerRx));
+        b.used = true;
+        b.filter = filterOf(hz);
+        b.lpfHz = hz;
+        return b;
+    }
     int key = -1;
     for (int i = 0; i < m_numRx; ++i) {
         if (!shared && effectiveAdc(i) != adc)

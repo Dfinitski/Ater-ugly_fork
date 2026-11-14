@@ -2506,6 +2506,13 @@ void Hl2Backend::publishWideState()
         else if (key != bankKey[bank])
             bankSpanned[bank] = true;
     }
+    // Build 388: a bank the FTX receiver sits behind is that receiver's --
+    // never bypassed (P2Transport::bankFor, m_filterOwnerRx).
+    if (m_ftxDdc >= 0 && m_ftxDdc < static_cast<int>(m_rx.size())) {
+        const int ownerBank = bankOf(m_ftxDdc);
+        if (ownerBank >= 0)
+            bankSpanned[ownerBank] = false;
+    }
     for (const auto& ids : m_ids.all()) {
         const int ddc = ids.ddcIndex;
         const int bank = (ddc >= 0 && ddc < static_cast<int>(m_rx.size())) ? bankOf(ddc) : -1;
@@ -3005,6 +3012,14 @@ void Hl2Backend::fdvTick()
             m_ftxDdc = ftxDdc;
             ananPushCodecMix();
             applyBandFilter("ftx");   // build 387: the FTX receiver's filter holds
+            // Build 388: on an ANAN the filters are the transport's banks
+            // (P2Transport::bankFor), not that byte -- 387 changed the wrong
+            // place and the pan showed WIDE (bypass). The owner goes there,
+            // and the WIDE indicator follows the same rule.
+            if (m_metis && m_metis->metaObject()->indexOfMethod("setFilterOwnerRx(int)") >= 0)
+                QMetaObject::invokeMethod(m_metis, "setFilterOwnerRx", Qt::QueuedConnection,
+                                          Q_ARG(int, ftxDdc));
+            publishWideState();
             qCInfo(lcHl2) << "ANAN: FTX" << (ftxDdc >= 0 ? "has taken over receiver" : "released the receiver")
                           << (ftxDdc >= 0 ? ftxDdc + 1 : 0);
         }
