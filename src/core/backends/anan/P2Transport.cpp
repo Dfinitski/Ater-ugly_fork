@@ -338,6 +338,7 @@ bool P2Transport::start(const hl2::MetisClient::Params& params)
     m_p1CcIdx = 0;
     m_p1AudioAcc = 0;
     m_p1StartTries = 0;
+    m_p1DiagSeen = m_p1DiagBadSize = m_p1DiagNoSync = m_p1DiagOneFrame = 0;
     m_p1RateLogged = false;
     m_p1Firmware.reset();
     m_p1WbOrder = 0;
@@ -1197,7 +1198,11 @@ void P2Transport::onWatchdogTick()
         // Like MetisClient: the session stays running, and linkUp is emitted
         // again when IQ resumes.
         m_up = false;
-        qCWarning(lcAnanP2T) << "ANAN P2 transport: no IQ for" << kSilenceTimeoutMs << "ms";
+        qCWarning(lcAnanP2T).nospace()
+            << "ANAN P2 transport: no IQ for " << kSilenceTimeoutMs << " ms"
+            << " (this session: " << m_counters.rxPackets << " datagrams received; Protocol 1 packets: "
+            << m_p1DiagSeen << " seen, " << m_p1DiagBadSize << " not I/Q or of another size, "
+            << m_p1DiagNoSync << " without a valid frame, " << m_p1DiagOneFrame << " with one frame of two)";
         // 03.11 (log 20:40:52): the host's unkey at the link loss is refused by
         // the TX coordinator (a connection reset ends the operation, cleanup
         // included), so MOX stayed set here and the radio transmitted again
@@ -1212,7 +1217,22 @@ void P2Transport::onWatchdogTick()
 
 void P2Transport::onReadyRead()
 {
+    // Build 376: a bounded stay. When this thread cannot keep up with the
+    // radio (log 20261114-185644: 71 of 192 kS/s processed), the socket never
+    // runs empty and this loop never returned to the event loop -- so the
+    // queued stop() of a disconnect was never run, and the destructor, which
+    // waits for it, hung the program ("main thread not responding"). After
+    // 20 ms the rest is left to a queued call of this function: whatever was
+    // posted to this thread meanwhile (stop, a retune) runs first.
+    QElapsedTimer budget;
+    budget.start();
+    int taken = 0;
     while (m_sock && m_sock->hasPendingDatagrams()) {
+        if ((++taken & 31) == 0 && budget.elapsed() > 20) {
+            ++m_diagReadYields;
+            QMetaObject::invokeMethod(this, &P2Transport::onReadyRead, Qt::QueuedConnection);
+            return;
+        }
         const QNetworkDatagram dg = m_sock->receiveDatagram();
         if (!dg.senderAddress().isEqual(m_p.host, QHostAddress::TolerantConversion)) {
             if (!m_warnedPorts.contains(0)) {
@@ -1441,6 +1461,7 @@ void P2Transport::diagTick()
                std::lock_guard<std::mutex> lock(m_spkMutex);
                return m_spkQueue.size();
            }()
+        << ", read loop yields " << std::exchange(m_diagReadYields, 0)
         << (m_wb.enableMask || m_diagWbPkts[0] || m_diagWbPkts[1] || m_diagWbOther
                 ? QStringLiteral("; wideband mask %1: port 1027 (ADC1) %2 pkts / %3 frames, "
                                  "port 1028 (ADC2) %4 pkts / %5 frames, other ports %6 (last %7)")
@@ -2918,8 +2939,11 @@ void P2Transport::deliverPsPairs()
 
 void P2Transport::handleP1Ep6(std::span<const std::uint8_t> bytes)
 {
-    if (bytes.size() != hl2::kUsbPacketSize || bytes[3] != 0x06)
+    ++m_p1DiagSeen;
+    if (bytes.size() != hl2::kUsbPacketSize || bytes[3] != 0x06) {
+        ++m_p1DiagBadSize;
         return;   // EP4 (wideband) and anything else: not yet
+    }
     const std::uint32_t seq = (std::uint32_t(bytes[4]) << 24) | (std::uint32_t(bytes[5]) << 16)
                               | (std::uint32_t(bytes[6]) << 8) | std::uint32_t(bytes[7]);
     if (m_expectedSeq[0] && seq != *m_expectedSeq[0]) {
@@ -2937,8 +2961,12 @@ void P2Transport::handleP1Ep6(std::span<const std::uint8_t> bytes)
         v.clear();
     const int rounds = hl2::ep6SamplesMulti(
         bytes, std::span<std::vector<std::complex<float>>>(m_p1Ddc.data(), m_p1Ddc.size()));
-    if (rounds <= 0)
+    if (rounds <= 0) {
+        ++m_p1DiagNoSync;
         return;
+    }
+    if (bytes[8 + hl2::kFrameSize] != 0x7f || bytes[8] != 0x7f)
+        ++m_p1DiagOneFrame;
 
     // Status in the C&C bytes of both frames (Thetis MetisReadThreadMainLoop).
     for (const std::size_t fs : {std::size_t{8}, std::size_t{8} + hl2::kFrameSize}) {

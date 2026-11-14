@@ -1134,6 +1134,11 @@ private:
         // panAverage is the operator's 0..100; see averageTimeMsForStep().
         int  panAverage = 0;
         bool panWeightedAverage = false;
+        // Build 376: and the panadapter frame rate. It was NOT held: the GUI
+        // pushes it once per panadapter, and a chain rebuilt for a reconnect
+        // (the panadapter is "reclaimed", nothing is pushed again) ran
+        // uncapped -- a spectrum frame per I/Q packet, some 1400 a second.
+        int  panFps = 25;
 
         // Authoritative squelch state, for the blanker's reasons: nothing on
         // this radio echoes it and every rebuilt chain opens with it off.

@@ -6461,12 +6461,22 @@ void Hl2Backend::setPanFrameRate(const QString& panId, int fps)
     // register, so a background receiver can be paced slowly while the one the
     // operator is watching runs fast. That is worth having at four receivers —
     // four full-rate FFTs is four times the render cost of one.
+    //
+    // Build 376: STORED first, like the averaging, so that a chain which does
+    // not exist yet or is rebuilt on a reconnect gets it (pushPanAveraging).
+    // Log aethersdr-20261114-185644 (Protocol 1, build 372): after an
+    // automatic reconnect the panadapter received 110..151 frames per 100 ms
+    // instead of 2..3; the I/O thread fell behind the radio (71 of 192 kS/s),
+    // never left its read loop, and closing the program hung on it.
     const int ddc = ddcForPan(panId);
     Receiver* r = rx(ddc);
-    if (!r || !r->dsp)
+    if (!r)
+        return;
+    r->panFps = std::clamp(fps, 1, 120);
+    if (!r->dsp)
         return;
     QMetaObject::invokeMethod(r->dsp, "setSpectrumRateFps", Qt::QueuedConnection,
-        Q_ARG(int, fps));
+        Q_ARG(int, r->panFps));
 }
 
 void Hl2Backend::setPanAverage(const QString& panId, int average)
@@ -6502,6 +6512,10 @@ void Hl2Backend::pushPanAveraging(const Receiver& r)
         Q_ARG(int, averageTimeMsForStep(r.panAverage)));
     QMetaObject::invokeMethod(r.dsp, "setSpectrumLogAverage", Qt::QueuedConnection,
         Q_ARG(bool, r.panWeightedAverage));
+    // Build 376: the frame-rate cap with them -- every place that brings a
+    // new chain up to date calls this function. A no-op when unchanged.
+    QMetaObject::invokeMethod(r.dsp, "setSpectrumRateFps", Qt::QueuedConnection,
+        Q_ARG(int, std::clamp(r.panFps, 1, 120)));
 }
 
 void Hl2Backend::dropAllPanHistory()
