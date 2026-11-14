@@ -658,6 +658,22 @@ void PanadapterApplet::setSliceId(int id, const QString& perClientLetter)
     }
 }
 
+void PanadapterApplet::setFtxView(QWidget* view)
+{
+    if (view == m_ftxView)
+        return;
+    if (m_ftxView && m_mainLayout)
+        m_mainLayout->removeWidget(m_ftxView);
+    m_ftxView = view;
+    if (view && m_mainLayout) {
+        const int at = std::max(0, m_mainLayout->indexOf(m_spectrum));
+        m_mainLayout->insertWidget(at, view, 1);
+        view->show();
+    }
+    if (m_spectrum)
+        m_spectrum->setVisible(view == nullptr);
+}
+
 void PanadapterApplet::setPanId(const QString& id)
 {
     if (id == m_panId)

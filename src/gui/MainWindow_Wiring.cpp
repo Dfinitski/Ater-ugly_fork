@@ -6271,6 +6271,9 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
     // favour of the spectrum overlay menu and the AetherDSP applet, so
     // the per-VFO connect block that handled them is gone.
 
+    // Build 380: queued -- entering FTX hides the flag whose button emitted this.
+    connect(w, &VfoWidget::ftxActivated, this, [this](int sliceId) { activateFtx(sliceId); },
+            Qt::QueuedConnection);
 #ifdef HAVE_RADE
     connect(w, &VfoWidget::radeActivated, this, [this](bool on, int sliceId) {
         if (on) activateRADE(sliceId);

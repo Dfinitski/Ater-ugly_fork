@@ -2149,6 +2149,17 @@ private:
     // runs inside Hl2Backend's audio paths (fdv::FdvState / FdvEngine), so the
     // Flex RADE engine, DAX channels and dax_tx are not involved.
     void activateLocalFdv(int sliceId);
+    // Build 380: the FTX mode (MainWindow_Ftx.cpp).
+    void activateFtx(int sliceId);
+    void deactivateFtx(bool restoreMode = true);
+    int m_ftxSliceId{-1};
+    QPointer<QWidget> m_ftxView;
+    QString m_ftxSavedMode;
+    int m_ftxSavedFilterLo{0};
+    int m_ftxSavedFilterHi{0};
+    QString m_ftxSavedPanId;
+    double m_ftxSavedPanBandwidthMhz{0.0};
+    QMetaObject::Connection m_ftxAudioConn, m_ftxModeConn, m_ftxFreqConn, m_ftxGoneConn;
     void deactivateLocalFdv();
     void localFdvTick();
     bool m_localFdv{false};

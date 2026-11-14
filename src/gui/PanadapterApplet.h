@@ -37,6 +37,11 @@ public:
     explicit PanadapterApplet(QWidget* parent = nullptr);
 
     SpectrumWidget* spectrumWidget() const { return m_spectrum; }
+    // Build 380: the FTX mode takes the panadapter's place -- `view` is shown
+    // where the spectrum widget is (which is hidden with its header, flag,
+    // filter and side buttons); nullptr brings the panadapter back. The view
+    // is the caller's to delete.
+    void setFtxView(QWidget* view);
 
     QString panId() const { return m_panId; }
     void setPanId(const QString& id);
@@ -181,6 +186,7 @@ private:
     // Main vertical layout (SpectrumWidget + docks); kept so the Copy Assist
     // dock can be inserted at the bottom on demand.
     QVBoxLayout*  m_mainLayout{nullptr};
+    QWidget*      m_ftxView{nullptr};   // build 380: shown in place of the panadapter
 
 #ifdef AETHER_ASR_ENABLED
     // Copy Assist (ASR) dock — mirrors the CW decode panel's grip/resize.

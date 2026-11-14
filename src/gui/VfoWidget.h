@@ -331,6 +331,8 @@ Q_SIGNALS:
     // and AetherDSP applet handle those toggles directly now.
 #ifdef HAVE_RADE
     void radeActivated(bool on, int sliceId);
+    // Build 380: the FTX mode asked for on this receiver (a mode button).
+    void ftxActivated(int sliceId);
 #endif
     void recordToggled(bool on);
     void playToggled(bool on);

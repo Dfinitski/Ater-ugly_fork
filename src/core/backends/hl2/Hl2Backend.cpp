@@ -45,6 +45,7 @@
 #include "core/backends/hl2/Hl2Settings.h"
 #include "core/fdv/FdvEngine.h"
 #include "core/fdv/FdvState.h"
+#include "core/ftx/FtxState.h"
 #include "core/ClientComp.h"
 #ifdef Q_OS_WIN
 // Two kernel32 calls, declared here rather than pulling <windows.h> (its
@@ -2994,6 +2995,20 @@ void Hl2Backend::fdvTick()
     // Build 375: likewise for the codec feed of the audio thread.
     m_codecFwdGainIo.store(codecSpeakerGain(), std::memory_order_relaxed);
     m_codecFwdActiveIo.store(m_metis && m_hw.hasLocalCodec() && !m_codecIoMixActive, std::memory_order_relaxed);
+    // Build 380: the receiver the FTX mode has taken over (FtxState is the
+    // GUI's): out of the loudspeaker mixes, and no microphone to the
+    // transmitter while it is the transmitting receiver.
+    {
+        const int ftxSlice = ftx::FtxState::instance().sliceId;
+        const int ftxDdc = ftxSlice >= 0 ? ddcForSlice(ftxSlice) : -1;
+        if (ftxDdc != m_ftxDdc) {
+            m_ftxDdc = ftxDdc;
+            ananPushCodecMix();
+            qCInfo(lcHl2) << "ANAN: FTX" << (ftxDdc >= 0 ? "has taken over receiver" : "released the receiver")
+                          << (ftxDdc >= 0 ? ftxDdc + 1 : 0);
+        }
+        m_ftxMicHoldIo.store(ftxDdc >= 0 && ftxDdc == m_txDdc, std::memory_order_relaxed);
+    }
     // Build 374: what submitTxAudio() reads off the GUI thread.
     m_micFromRadioIo.store(m_ananMicFromRadio, std::memory_order_relaxed);
     m_micGainIo.store(static_cast<float>(micSliderToLinear(m_micLevel)), std::memory_order_relaxed);
@@ -3139,7 +3154,9 @@ void Hl2Backend::pushAudioMix()
     Hl2AudioMixer::Params p;
     for (std::size_t i = 0; i < m_rx.size() && i < static_cast<std::size_t>(Hl2AudioMixer::kMaxReceivers); ++i) {
         const Receiver& r = m_rx[i];
-        if (!r.dsp || r.audioMuted)
+        // Build 380: nor the receiver the FTX mode has taken over -- its
+        // audio is the decoders', not the loudspeaker's.
+        if (!r.dsp || r.audioMuted || static_cast<int>(i) == m_ftxDdc)
             continue;
         p.dsp[i] = r.dsp;
         p.gain[i] = r.audioGain;
@@ -3220,7 +3237,7 @@ void Hl2Backend::mixReceiverAudio(int ddc, const std::vector<float>& pcm)
         return;
     }
     const Receiver* r = rx(ddc);
-    if (!r || r->audioMuted)
+    if (!r || r->audioMuted || ddc == m_ftxDdc)   // build 380: FTX has this receiver
         return;   // not queued at all: a muted receiver must not accumulate
 
     if (m_mixPending.size() != m_rx.size())
@@ -7399,7 +7416,7 @@ void Hl2Backend::ananPushCodecMix()
             : 0.0f;
         for (std::size_t i = 0; i < m_rx.size() && i < static_cast<std::size_t>(kCodecMixMax); ++i) {
             const Receiver& r = m_rx[i];
-            if (!r.dsp || r.audioMuted)
+            if (!r.dsp || r.audioMuted || static_cast<int>(i) == m_ftxDdc)   // build 380
                 continue;
             const float g = r.audioGain;
             const int pan = r.audioPanPercent;
@@ -8135,6 +8152,10 @@ void Hl2Backend::submitTxAudio(const QByteArray& int16Stereo, int sampleRateHz,
     // not used (the codec path feeds the modulator itself). Other sources --
     // DAX / TCI clients, generated audio -- still come through here.
     if (m_micFromRadioIo.load(std::memory_order_relaxed) && source == TxAudioSource::Microphone)
+        return;
+    // Build 380: in the FTX mode the microphone does not reach the transmitter
+    // (either microphone: both arrive here tagged Microphone).
+    if (m_ftxMicHoldIo.load(std::memory_order_relaxed) && source == TxAudioSource::Microphone)
         return;
     // Sticky per transmission until #5647 gives it a job in TxAudioSource
     // (see Hl2Backend.h). Assumes sources never interleave within one

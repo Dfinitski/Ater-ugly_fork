@@ -1413,6 +1413,8 @@ set(GUI_SOURCES
     # src/gui/MeterApplet.cpp  -- ANAN-100D port: applet removed
     src/gui/ProfileSwitcherApplet.cpp
     src/gui/RadeApplet.cpp
+    src/gui/FtxView.cpp                      # ANAN fork build 380: the FTX mode's view
+    src/gui/MainWindow_Ftx.cpp
     # src/gui/HealthApplet.cpp  -- ANAN-100D port: applet removed
     src/gui/PersistentDialog.cpp
     src/gui/CanonWindow.cpp

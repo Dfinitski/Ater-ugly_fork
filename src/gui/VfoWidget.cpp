@@ -3095,6 +3095,14 @@ void VfoWidget::buildTabContent()
                     return;
                 }
                 if (!m_slice) return;
+                // Build 380: FTX is not a mode of the receiver -- it takes the
+                // receiver over (MainWindow::activateFtx); this flag is hidden
+                // then, so the button does not stay lit.
+                if (assign == QLatin1String("FTX")) {
+                    updateQuickModeButtons();
+                    emit ftxActivated(m_slice->sliceId());
+                    return;
+                }
 #ifdef HAVE_RADE
                 if (assign == "FDV") {
                     emit radeActivated(true, m_slice->sliceId());
@@ -6339,8 +6347,10 @@ void VfoWidget::updateQuickModeButtons()
         m_quickModeBtns[i]->setChecked(active);
         bool available = true;
         if (!offered.isEmpty()) {
+            if (assign == QLatin1String("FTX"))   // build 380: not a mode of the radio's list
+                available = true;
 #ifdef HAVE_RADE
-            if (assign == "FDV")
+            else if (assign == "FDV")
                 available = true;
 #endif
             else
@@ -6405,6 +6415,8 @@ QStringList VfoWidget::quickModeChoices() const
     if (!modes.contains("FDV"))
         modes << QStringLiteral("FDV");
 #endif
+    if (!modes.contains("FTX"))   // build 380
+        modes << QStringLiteral("FTX");
     return modes;
 }
 

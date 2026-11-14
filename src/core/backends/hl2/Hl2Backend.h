@@ -704,6 +704,8 @@ private:
     void fdvTxFromRadioMic(std::vector<float> mono, const TxCoordinator::Context& ctx);
     // What submitTxAudio() needs of the GUI's state, for any thread.
     std::atomic<bool> m_micFromRadioIo{false};
+    int m_ftxDdc = -1;                         // build 380, GUI thread
+    std::atomic<bool> m_ftxMicHoldIo{false};
     std::atomic<float> m_micGainIo{1.0f};
     // Diagnostics of submitTxAudioDirect() (audio thread only): one log line
     // per 5 s of transmission -- the longest time between two blocks of
