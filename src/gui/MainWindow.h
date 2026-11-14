@@ -129,6 +129,9 @@ class QSystemTrayIcon;
 #include "gui/PersistentDialog.h" // showOrRaisePersistent template needs
                                    // PersistentDialog visible at point of use.
 
+class FtUnit;    // build 381: src/ftx (MicronSDR's, global namespace)
+class FtPanel;
+
 namespace AetherSDR {
 
 enum class RadioSliceSelectionSource;
@@ -2154,6 +2157,9 @@ private:
     void deactivateFtx(bool restoreMode = true);
     int m_ftxSliceId{-1};
     QPointer<QWidget> m_ftxView;
+    FtUnit* m_ftUnit{nullptr};     // build 381: MicronSDR's decoders (src/ftx)
+    FtPanel* m_ftPanel{nullptr};   // and the window of the mode
+    double m_ftxSavedFreqMhz{0.0};
     QString m_ftxSavedMode;
     int m_ftxSavedFilterLo{0};
     int m_ftxSavedFilterHi{0};

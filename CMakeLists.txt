@@ -1415,6 +1415,14 @@ set(GUI_SOURCES
     src/gui/RadeApplet.cpp
     src/gui/FtxView.cpp                      # ANAN fork build 380: the FTX mode's view
     src/gui/MainWindow_Ftx.cpp
+    # Build 381: the FTX mode's window and decoders, MicronSDR's own files.
+    src/ftx/FtUnit.cpp
+    src/ftx/FtTx.cpp
+    src/ftx/FtNet.cpp
+    src/ftx/PskReporter.cpp
+    src/ftx/FtWaterfall.cpp
+    src/ftx/FtPanel.cpp
+    src/ftx/FtPanelTx.cpp
     # src/gui/HealthApplet.cpp  -- ANAN-100D port: applet removed
     src/gui/PersistentDialog.cpp
     src/gui/CanonWindow.cpp
@@ -3213,6 +3221,20 @@ if(WIN32 AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/libfdv/win64/libfdv.dll")
             "${CMAKE_SOURCE_DIR}/third_party/libfdv/win64/libcodec2.dll"
             "$<TARGET_FILE_DIR:AetherSDR>"
         COMMENT "Copying libfdv.dll / libcodec2.dll (FreeDV) to build directory"
+    )
+endif()
+
+# ANAN fork build 381: the FTX mode -- libftx.dll (the FT8 / FT4 / WSPR
+# decoders and encoders of WSJT-X, built by MicronSDR's FT_src with MinGW,
+# everything static inside, C API only) and cty.dat (countries), loaded at run
+# time by src/ftx/FtUnit and FtPanel from the executable's directory.
+if(WIN32 AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/libftx/win64/libftx.dll")
+    add_custom_command(TARGET AetherSDR POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/third_party/libftx/win64/libftx.dll"
+            "${CMAKE_SOURCE_DIR}/third_party/libftx/win64/cty.dat"
+            "$<TARGET_FILE_DIR:AetherSDR>"
+        COMMENT "Copying libftx.dll / cty.dat (FTX) to build directory"
     )
 endif()
 
