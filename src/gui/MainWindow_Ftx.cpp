@@ -15,6 +15,7 @@
 #include "core/ftx/FtxState.h"
 #include "core/ftx/FtxBridge.h"
 #include "models/TransmitModel.h"
+#include "models/MeterModel.h"
 #include "ftx/FtPanel.h"
 #include "ftx/FtUnit.h"
 #include "ftx/FtWaterfall.h"
@@ -199,6 +200,23 @@ void MainWindow::activateFtx(int sliceId)
                 m_ftPanel->txAborted();
                 m_ftPanel->txNote(QStringLiteral("The transmitter was released"));
             }
+        });
+        // Build 395 (operator, 14.11: "stop the waterfall while
+        // transmitting"): any transmission -- the mode's own, TUNE.
+        auto wfHold = [this] {
+            if (!m_ftPanel || !m_ftPanel->waterfall())
+                return;
+            const TransmitModel& model = m_radioModel.transmitModel();
+            m_ftPanel->waterfall()->setPaused(model.isTransmitting() || model.isMox() || model.isTuning());
+        };
+        connect(&m_radioModel.transmitModel(), &TransmitModel::transmittingChanged, this, [wfHold](bool) { wfHold(); });
+        connect(&m_radioModel.transmitModel(), &TransmitModel::moxChanged, this, [wfHold](bool) { wfHold(); });
+        connect(&m_radioModel.transmitModel(), &TransmitModel::tuneChanged, this, [wfHold](bool) { wfHold(); });
+        // The forward power while the mode transmits: the QSO's power in the
+        // log (MicronSDR: notePower from its power meter).
+        connect(&m_radioModel.meterModel(), &MeterModel::txMetersChanged, this, [this](float fwdW, float, bool) {
+            if (m_ftxTxOn && m_ftPanel && fwdW > 0.0f)
+                m_ftPanel->notePower(static_cast<double>(fwdW));
         });
         m_ftPanel->setTxAllowed(true);
     }

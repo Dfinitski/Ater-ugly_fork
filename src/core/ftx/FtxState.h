@@ -69,6 +69,11 @@ public:
     // program, the PTT of the radio -- is refused while FTX has the
     // transmitting receiver (Hl2Backend::applyKeying).
     bool ownTx = false;
+    // Build 395 (operator, 14.11: "allow the Tune button in the FTX mode"):
+    // the key being asked about is TUNE (set by RadioModel for the time of
+    // its question to the backend; the carrier itself is known to the
+    // backend as m_tuning).
+    bool tuneAsking = false;
     // Build 387: true when a step of the receiver's level (the attenuator)
     // does no harm -- the decoding point of the period has passed and the
     // next period has not begun (MicronSDR: FtUnit::levelGap). Set by the

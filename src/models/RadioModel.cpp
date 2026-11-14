@@ -1,4 +1,5 @@
 #include "RadioModel.h"
+#include "core/ftx/FtxState.h"
 #include "core/backends/anan/AnanUiState.h"
 #include "core/backends/TuneOutputPolicy.h"
 #include <QScopedValueRollback>
@@ -3484,7 +3485,13 @@ QString RadioModel::localPttInterlockMessage(TransmitModel::PttSource source) co
     // ANAN port, build 264: the backend's own refusal (TX frequency outside
     // the amateur bands), asked before anything optimistic happens.
     if (m_backend) {
-        if (const QString refused = m_backend->transmitRefusalMessage(); !refused.isEmpty())
+        // Build 395: the FTX mode refuses every key but its own -- and TUNE.
+        auto& ftxState = ftx::FtxState::instance();
+        ftxState.tuneAsking = (source == TransmitModel::PttSource::Tune
+                               || source == TransmitModel::PttSource::Atu);
+        const QString refused = m_backend->transmitRefusalMessage();
+        ftxState.tuneAsking = false;
+        if (!refused.isEmpty())
             return refused;
     }
 

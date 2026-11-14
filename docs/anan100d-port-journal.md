@@ -6410,6 +6410,27 @@ mode» и возвращается до оптимистичного состо�
 Окно: My call и Decoding — 156 px, по правому краю пары «Search, Hz» (70 + 4 + 8 + 4 + 70; ширина
 тире и промежутки теперь заданы явно, то же в паре Waterfall).
 
+## 362. Сборка 395 — FTX: TUNE разрешён, водопад стоит на передаче, мощность в журнал
+
+Оператор, 14.11 (передача в 394 заработала): «разреши кнопку Tune для режима FTX; останавливай
+водопад во время передачи; в журнале должна стоять мощность».
+
+- **TUNE.** `Hl2Backend::ftxKeyRefused()` = `sliceId >= 0 && !ownTx && !tuneAsking && !m_tuning`.
+  `FtxState::tuneAsking` ставит `RadioModel::localPttInterlockMessage` на время вопроса бэкенду, когда
+  источник — Tune или Atu; саму несущую бэкенд знает по `m_tuning` (ставится до ключа). MOX, PTT и
+  PTT радио по-прежнему отклоняются.
+- **Водопад.** `FtWaterfall::setPaused` (рядом с `setRunning`; строки, накопленные за паузу,
+  выбрасываются). `MainWindow_Ftx` держит паузу, пока `isTransmitting() || isMox() || isTuning()`.
+- **Мощность.** `MeterModel::txMetersChanged` → `FtPanel::notePower` во время собственной передачи
+  режима: в запись идёт наибольшая прямая мощность за QSO (поле `tx_pwr`), как в MicronSDR.
+
+Справка оператору. Окна журнала нет (и в MicronSDR нет): QSO пишется само в
+`%USERPROFILE%\AetherSDR-FTX\wsjtx_log.adi` после передачи RR73 / 73, в строке состояния —
+«QSO with … logged (…)»; кнопка QRZ отправляет неотправленные записи на QRZ.com. Кнопка Gen
+пересобирает Tx1…Tx6 из DX, Grid, Rpt, My call и My locator; при пустом DX заполняется только Tx6 (CQ).
+
+Проверено компиляцией.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

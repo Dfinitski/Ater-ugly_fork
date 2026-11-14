@@ -7228,7 +7228,9 @@ bool Hl2Backend::ftxKeyRefused() const
     // Build 387: whichever receiver transmits -- with FTX on, the transmitter
     // is the mode's alone (its receiver is made the transmitting one, and
     // the second receiver never transmits).
-    return st.sliceId >= 0 && !st.ownTx;
+    // Build 395: and TUNE (the carrier for the tuner / the amplifier) -- asked
+    // about (tuneAsking) or already up (m_tuning, set before its key).
+    return st.sliceId >= 0 && !st.ownTx && !st.tuneAsking && !m_tuning;
 }
 
 QString Hl2Backend::ftxKeyRefusalText() const

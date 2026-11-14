@@ -39,6 +39,8 @@ public:
     void setSearch(int fa, int fb) { sa = fa; sb = fb; update(); }
     void setMode(int mode);             // FtUnit::FT8 / FT4 / WSPR: the band of the signal, the period
     void setRunning(bool on);           // takes the lines of the unit
+    // AetherSDR, build 395: held while the transmitter is on (no lines of the own signal)
+    void setPaused(bool on);
     void clear();
 
 signals:
@@ -57,6 +59,8 @@ protected:
 private:
     FtUnit *unit;
     QTimer *timer;
+    bool runWanted = false, paused = false;   // AetherSDR, 395
+    void applyRun();
     QImage img;                         // the waterfall (without the scale)
     int f0 = 0, f1 = 4000;
     int rx = 1500, tx = 1500, sa = 200, sb = 3500;

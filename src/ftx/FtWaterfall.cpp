@@ -59,6 +59,21 @@ void FtWaterfall::setMode(int m)
 
 void FtWaterfall::setRunning(bool on)
 {
+    runWanted = on;     // AetherSDR, 395
+    applyRun();
+}
+
+void FtWaterfall::setPaused(bool on)
+{
+    if(on == paused)
+        return;
+    paused = on;
+    applyRun();
+}
+
+void FtWaterfall::applyRun()
+{
+    const bool on = runWanted && !paused;
     unit->setSpectrumOn(on);
     if(on)
     {
