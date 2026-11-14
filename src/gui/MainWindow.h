@@ -2197,6 +2197,12 @@ private:
     QElapsedTimer m_localFdvEooClock;
     bool m_localFdvLastSync{false};
     int  m_localFdvLastCallSerial{-1};
+    // Build 401: what the local FDV last told FreeDV Reporter.
+    int  m_fdvRepSync{-1};
+    int  m_fdvRepCallSerial{-1};
+    int  m_fdvRepMode{-1};
+    int  m_fdvRepSnrTick{0};
+    void localFdvReport();
     QString m_localFdvLastLabel;
     // Build 337: the receive filter is the band of the FreeDV sub-mode.
     void applyLocalFdvPassband();

@@ -1118,6 +1118,46 @@ void MainWindow::localFdvTick()
         if (vfo)
             vfo->setRadeCallsign(st.rxCallsign);
     }
+    localFdvReport();
+}
+
+// Build 401: the local FDV's reception to FreeDV Reporter -- the mode, the
+// sync, the SNR while in sync and the callsign received -- what the Flex RADE
+// path sends from its engine's signals (startFreeDvReporting). The client
+// sends an rx report once a second while in sync, and at once on a callsign.
+void MainWindow::localFdvReport()
+{
+#ifdef HAVE_WEBSOCKETS
+    if (!m_freedvClient || m_freedvReportingSliceId < 0 || m_freedvReportingSliceId != m_radeSliceId) {
+        m_fdvRepSync = m_fdvRepCallSerial = m_fdvRepMode = -1;   // sent again when reporting starts
+        return;
+    }
+    const auto& st = fdv::FdvState::instance();
+    if (st.subMode != m_fdvRepMode) {
+        m_fdvRepMode = st.subMode;
+        const QString mode = st.subMode == static_cast<int>(fdv::FdvSubMode::RADE)
+            ? QStringLiteral("RADEV1") : QString::fromLatin1(fdv::fdvSubModeName(st.subMode));
+        QMetaObject::invokeMethod(m_freedvClient, [this, mode] { m_freedvClient->setReportMode(mode); });
+    }
+    const int sync = st.sync ? 1 : 0;
+    if (sync != m_fdvRepSync) {
+        m_fdvRepSync = sync;
+        QMetaObject::invokeMethod(m_freedvClient, [this, sync] { m_freedvClient->updateRxSynced(sync != 0); });
+    }
+    // (the timer is 50 ms; the client reports once a second)
+    if (st.sync && ++m_fdvRepSnrTick >= 10) {
+        m_fdvRepSnrTick = 0;
+        const float snr = st.snrDb;
+        QMetaObject::invokeMethod(m_freedvClient, [this, snr] { m_freedvClient->updateRxSnr(snr); });
+    }
+    if (st.rxCallsignSerial != m_fdvRepCallSerial) {
+        const bool first = m_fdvRepCallSerial < 0;
+        m_fdvRepCallSerial = st.rxCallsignSerial;
+        const QString call = st.rxCallsign.trimmed();
+        if (!first && !call.isEmpty())
+            QMetaObject::invokeMethod(m_freedvClient, [this, call] { m_freedvClient->updateRxCallsign(call); });
+    }
+#endif
 }
 
 void MainWindow::deactivateLocalFdv()

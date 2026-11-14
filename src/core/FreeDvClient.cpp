@@ -582,9 +582,15 @@ void FreeDvClient::reportTxState(bool transmitting)
 {
     if (!m_reportingEnabled || !m_connected.load()) return;
     sendEvent("tx_report", QJsonObject{
-        {"mode",         QString("RADEV1")},
+        {"mode",         m_reportMode},
         {"transmitting", transmitting}
     });
+}
+
+void FreeDvClient::setReportMode(const QString& mode)
+{
+    if (!mode.isEmpty())
+        m_reportMode = mode;
 }
 
 void FreeDvClient::updateRxSnr(float snrDb)
@@ -623,7 +629,7 @@ void FreeDvClient::updateRxCallsign(const QString& callsign)
     qCDebug(lcDxCluster) << "FreeDvClient: sending immediate rx_report for EOO callsign" << callsign;
     sendEvent("rx_report", QJsonObject{
         {"callsign", m_rxCallsign},
-        {"mode",     QString("RADEV1")},
+        {"mode",     m_reportMode},
         {"snr",      static_cast<int>(m_lastSnr)}
     });
 }
@@ -636,7 +642,7 @@ void FreeDvClient::onSnrTimer()
                          << m_rxCallsign << "' snr=" << m_lastSnr;
     sendEvent("rx_report", QJsonObject{
         {"callsign", m_rxCallsign},
-        {"mode",     QString("RADEV1")},
+        {"mode",     m_reportMode},
         {"snr",      static_cast<int>(m_lastSnr)}
     });
 }

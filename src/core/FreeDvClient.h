@@ -95,6 +95,10 @@ public slots:
     // Feed decoded far-end callsign from RADEEngine::eooCallsignReceived.
     // Included in the next rx_report sent to qso.freedv.org.
     void updateRxCallsign(const QString& callsign);
+    // Build 401: the FreeDV mode named in the rx / tx reports ("RADEV1",
+    // "1600", "700D", "700E"). It was fixed to RADEV1 -- the only mode of the
+    // Flex RADE path; the local FDV has four.
+    void setReportMode(const QString& mode);
 
 private slots:
     void onWsConnected();
@@ -134,6 +138,7 @@ private:
     QString m_myGrid;
     QString m_mySoftwareVersion;
     QString m_myMessage;
+    QString m_reportMode{QStringLiteral("RADEV1")};   // build 401
     double  m_myFreqMhz{0.0};
     float   m_lastSnr{-99.0f};
     bool    m_radeSynced{false};
