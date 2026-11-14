@@ -1747,6 +1747,15 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
             ananNoiseLineStep(ids->ddcIndex, bins, rate, first, keep, ulo, uhi,
                               raw.size() == n ? &raw : nullptr);
             panMoveDiagFrame(ids->ddcIndex, bins, first, keep, dispOff, ulo, uhi);   // build 359
+            // Build 363: the same range, as a part of the view, for whatever
+            // the widget computes from the trace (its Auto Floor).
+            auto& uiState = anan::AnanUiState::instance();
+            const double k = static_cast<double>(std::max<std::size_t>(keep, 1));
+            const double a = std::clamp((static_cast<double>(ulo) - static_cast<double>(first)) / k, 0.0, 1.0);
+            const double b = std::clamp((static_cast<double>(uhi) - static_cast<double>(first)) / k, 0.0, 1.0);
+            uiState.unsettledViewLo[ids->ddcIndex] = uhi > ulo ? a : 0.0;
+            uiState.unsettledViewHi[ids->ddcIndex] = uhi > ulo ? b : 0.0;
+            uiState.unsettledViewAtMs[ids->ddcIndex] = QDateTime::currentMSecsSinceEpoch();
         }
         emit spectrumFrameReady(ui, floatBytes(dbm), wf);
     });

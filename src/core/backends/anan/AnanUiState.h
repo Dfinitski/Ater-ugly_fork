@@ -117,6 +117,13 @@ public:
     // referral of a bin to 500 Hz plus the meter's calibration); lines that
     // are mapped on the per-bin scale (the amsq squelch line) add it too.
     double panShiftDb[2] = {0.0, 0.0};
+    // Build 363, written by the backend with every spectrum frame: the part
+    // of the VIEW (0..1, left to right) whose bins hold no built-up average
+    // yet after a pan move (Hl2Spectrum::unsettledBins). Nothing computed from
+    // the trace may count them -- the panadapter's Auto Floor reads this.
+    double unsettledViewLo[2] = {0.0, 0.0};
+    double unsettledViewHi[2] = {0.0, 0.0};
+    qint64 unsettledViewAtMs[2] = {0, 0};
     double agcAutoFloorDbm[2] = {std::numeric_limits<double>::quiet_NaN(),
                                  std::numeric_limits<double>::quiet_NaN()};
     // Build 301, written by the backend: the AGC gate as WDSP holds it, in

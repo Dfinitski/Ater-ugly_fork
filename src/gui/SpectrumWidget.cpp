@@ -3724,8 +3724,33 @@ float SpectrumWidget::estimateNoiseFloorDbm(const QVector<float>& bins) const
     // it without a QApplication -- same reason the gate it feeds lives in
     // NoiseFloorAutoAdjustGate.h. This stays as the QVector-shaped seam every
     // call site here already uses.
-    return AetherSDR::estimateNoiseFloorDbm(
-        std::span<const float>(bins.constData(), static_cast<std::size_t>(bins.size())));
+    //
+    // ANAN fork build 363 (operator, 13.11: "newly revealed bins that are not
+    // averaged yet are not to be counted -- I have said so three times").
+    // Build 335 kept them out of the backend's noise line and AUTO attenuator
+    // only; this estimate -- Auto Floor's scale, the measured floor -- still
+    // took the whole trace. The backend publishes which part of the view is
+    // unsettled (AnanUiState::unsettledView*); it is at one side of the view,
+    // and the estimate is made from the rest.
+    std::span<const float> all(bins.constData(), static_cast<std::size_t>(bins.size()));
+    if (m_overlayMenu && !m_kiwiSdrWaterfallActive && all.size() >= 256) {
+        const auto& ui = AetherSDR::anan::AnanUiState::instance();
+        const int rx = ui.rxForPan(m_overlayMenu->panId());
+        if (rx >= 0 && rx < 2 && ui.unsettledViewHi[rx] > ui.unsettledViewLo[rx]
+            && QDateTime::currentMSecsSinceEpoch() - ui.unsettledViewAtMs[rx] < 500) {
+            const std::size_t n = all.size();
+            const std::size_t a = std::min(n, static_cast<std::size_t>(std::floor(ui.unsettledViewLo[rx] * n)));
+            const std::size_t b = std::min(n, static_cast<std::size_t>(std::ceil(ui.unsettledViewHi[rx] * n)));
+            // The larger settled side; if next to nothing is settled, the
+            // whole trace as before (no estimate would stall the callers).
+            const std::span<const float> left = all.first(a);
+            const std::span<const float> right = all.subspan(b);
+            const std::span<const float> settled = left.size() >= right.size() ? left : right;
+            if (settled.size() >= 128)
+                return AetherSDR::estimateNoiseFloorDbm(settled);
+        }
+    }
+    return AetherSDR::estimateNoiseFloorDbm(all);
 }
 
 float SpectrumWidget::estimateKiwiSdrVisualNoiseFloorDbm(
