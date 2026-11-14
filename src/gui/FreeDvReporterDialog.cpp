@@ -428,6 +428,17 @@ void FreeDvReporterDialog::reloadMessage()
         m_msgEdit->setText(stored);
 }
 
+bool FreeDvReporterDialog::tracking() const
+{
+    return m_trackCheck && m_trackCheck->isChecked();
+}
+
+void FreeDvReporterDialog::setTracking(bool on)
+{
+    if (m_trackCheck && m_trackCheck->isChecked() != on)
+        m_trackCheck->setChecked(on);   // -> onTrackToggled: applied and saved
+}
+
 void FreeDvReporterDialog::setConnectionActive(bool connected)
 {
     if (m_enableBtn)
@@ -542,6 +553,7 @@ void FreeDvReporterDialog::applyFreqFilter(double hz)
 
 void FreeDvReporterDialog::onTrackToggled(bool checked)
 {
+    emit trackingChanged(checked);   // build 399
     if (checked && m_slice)
         onSliceFrequencyChanged(m_slice->frequency());
     persistSettings();

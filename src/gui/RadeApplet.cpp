@@ -72,7 +72,7 @@ RadeApplet::RadeApplet(QWidget* parent)
         // Build 396 (operator, 14.11): FreeDV Reporter one click away.
         auto* reporterBtn = new QPushButton(tr("Reporter"));
         reporterBtn->setObjectName(QStringLiteral("fdvReporterButton"));
-        reporterBtn->setFixedHeight(20);
+        reporterBtn->setFixedSize(72, 20);   // build 399: one width with "Visible" under it
         reporterBtn->setFocusPolicy(Qt::NoFocus);
         reporterBtn->setToolTip(tr("Open FreeDV Reporter (the stations on FreeDV now)"));
         ThemeManager::instance().applyStyleSheet(reporterBtn, QStringLiteral(
@@ -87,7 +87,9 @@ RadeApplet::RadeApplet(QWidget* parent)
         auto* callRow = new QHBoxLayout;
         callRow->setContentsMargins(0, 0, 0, 0);
         callRow->setSpacing(4);
-        auto* callLbl = new QLabel(tr("Call:"));
+        // Build 399 (operator, 14.11): "Text:" -- it is the text sent, not
+        // necessarily a callsign.
+        auto* callLbl = new QLabel(tr("Text:"));
         callLbl->setStyleSheet(kMutedStyle);
         callLbl->setFixedWidth(34);
         callRow->addWidget(callLbl);
@@ -97,10 +99,10 @@ RadeApplet::RadeApplet(QWidget* parent)
         m_callsignEdit->setFixedHeight(20);
         m_callsignEdit->setMaxLength(8);
         m_callsignEdit->setStyleSheet(fieldStyle);
-        m_callsignEdit->setPlaceholderText(tr("CALLSIGN"));
+        m_callsignEdit->setPlaceholderText(tr("TEXT"));
         m_callsignEdit->setValidator(new QRegularExpressionValidator(
             QRegularExpression(QStringLiteral("[A-Z0-9]{0,8}")), m_callsignEdit));
-        m_callsignEdit->setToolTip(tr("Callsign sent with FreeDV: up to 8 characters, A-Z and 0-9.\n"
+        m_callsignEdit->setToolTip(tr("Text sent with FreeDV (usually the callsign): up to 8 characters, A-Z and 0-9.\n"
                                       "RADE: at the end of each over; 1600 / 700D / 700E: on the text channel"));
         // Lower case is accepted as typed and shown upper case (the validator
         // alone would refuse it).
@@ -115,6 +117,24 @@ RadeApplet::RadeApplet(QWidget* parent)
         });
         connect(m_callsignEdit, &QLineEdit::returnPressed, m_callsignEdit, &QLineEdit::clearFocus);
         callRow->addWidget(m_callsignEdit, 1);
+        // Build 399 (operator, 14.11): "Visible" under "Reporter", the same
+        // size -- so the Text field is exactly as wide as the Mode box.
+        m_visibleBtn = new QPushButton(tr("Visible"));
+        m_visibleBtn->setObjectName(QStringLiteral("fdvVisibleButton"));
+        m_visibleBtn->setCheckable(true);
+        m_visibleBtn->setFixedSize(72, 20);
+        m_visibleBtn->setFocusPolicy(Qt::NoFocus);
+        m_visibleBtn->setToolTip(tr("On: FreeDV Reporter is connected (if it was not) and its Track is on;\n"
+                                    "off: Track off. The same as the Track box of the Reporter window"));
+        ThemeManager::instance().applyStyleSheet(m_visibleBtn, QStringLiteral(
+            "QPushButton { background: {{color.background.1}}; border: 1px solid {{color.background.2}};"
+            " border-radius: 3px; padding: 0px 8px; font-size: 11px; font-weight: bold;"
+            " color: {{color.text.primary}}; }"
+            "QPushButton:hover { background: {{color.background.2}}; }"
+            "QPushButton:checked { background: {{color.accent.dim}}; color: {{color.text.primary}};"
+            " border: 1px solid {{color.accent.bright}}; }"));
+        connect(m_visibleBtn, &QPushButton::clicked, this, &RadeApplet::visibleToggled);
+        callRow->addWidget(m_visibleBtn);
         vbox->addLayout(callRow);
 
         m_errorLabel = new QLabel;
@@ -183,6 +203,12 @@ RadeApplet::RadeApplet(QWidget* parent)
     m_dataRows->hide();
     vbox->addWidget(m_dataRows);
     vbox->addStretch();
+}
+
+void RadeApplet::setVisibleChecked(bool on)
+{
+    if (m_visibleBtn && m_visibleBtn->isChecked() != on)
+        m_visibleBtn->setChecked(on);
 }
 
 void RadeApplet::setRadeActive(bool on, const QString& label)

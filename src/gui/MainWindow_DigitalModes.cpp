@@ -1409,6 +1409,30 @@ void MainWindow::stopFreeDvReporting(int sliceId)
 #endif  // HAVE_RADE
 
 #ifdef HAVE_WEBSOCKETS
+// Build 399 (operator, 14.11): the FDV applet's "Visible" button. On: the
+// reporter is connected if it was not (as its Enable button) and its Track
+// box is set; off: Track cleared. The window is made if it does not exist
+// yet (the Track box and its settings live there) but not shown.
+void MainWindow::setFreeDvVisible(bool on)
+{
+    if (!m_freedvClient)
+        return;
+    if (!m_freedvReporterDialog) {
+        m_freedvReporterCreateOnly = true;
+        showFreeDvReporter();
+        m_freedvReporterCreateOnly = false;
+    }
+    if (!m_freedvReporterDialog)
+        return;
+    if (on && !m_freedvClient->isConnected()) {
+        auto& as = AppSettings::instance();
+        as.setValue("FreeDvAutoStart", "True");
+        as.save();
+        QMetaObject::invokeMethod(m_freedvClient, [this] { m_freedvClient->startConnection(); });
+    }
+    m_freedvReporterDialog->setTracking(on);
+}
+
 void MainWindow::showFreeDvReporter()
 {
     if (!m_freedvReporterDialog) {
@@ -1470,6 +1494,13 @@ void MainWindow::showFreeDvReporter()
         connect(m_freedvClient, &FreeDvClient::stopped, m_freedvReporterDialog,
                 [dlg = m_freedvReporterDialog] { dlg->setConnectionActive(false); }, Qt::QueuedConnection);
         m_freedvReporterDialog->setConnectionActive(m_freedvClient->isConnected());
+#ifdef HAVE_RADE
+        // Build 399: the FDV applet's "Visible" follows the Track box.
+        if (auto* fdvApplet = m_appletPanel ? m_appletPanel->radeApplet() : nullptr) {
+            connect(m_freedvReporterDialog, &FreeDvReporterDialog::trackingChanged,
+                    fdvApplet, &RadeApplet::setVisibleChecked);
+        }
+#endif
         // Seed: reporting may already be on when the dialog is first opened.
         m_freedvReporterDialog->setReportingActive(
             m_freedvClient->isReportingEnabled());
@@ -1499,6 +1530,12 @@ void MainWindow::showFreeDvReporter()
     // Re-read the message every open so an edit made in SpotHub's FreeDV tab
     // (same FreeDvMyMessage setting) doesn't leave this field stale (#4231).
     m_freedvReporterDialog->reloadMessage();
+#ifdef HAVE_RADE
+    if (auto* fdvApplet = m_appletPanel ? m_appletPanel->radeApplet() : nullptr)
+        fdvApplet->setVisibleChecked(m_freedvReporterDialog->tracking());
+#endif
+    if (m_freedvReporterCreateOnly)
+        return;   // build 399: made for the applet's "Visible", not asked to show
     m_freedvReporterDialog->show();
     m_freedvReporterDialog->raise();
     m_freedvReporterDialog->activateWindow();

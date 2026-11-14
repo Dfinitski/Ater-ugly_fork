@@ -30,6 +30,7 @@ public:
 
     // Called from MainWindow when the active slice changes.
     void setActiveSlice(SliceModel* slice);
+    [[nodiscard]] bool tracking() const;   // build 399
 
 public slots:
     void onStationsCleared();
@@ -47,8 +48,11 @@ public slots:
     // Build 398: the connection to FreeDV Reporter is up / down -- the state
     // of the "Enable" button.
     void setConnectionActive(bool connected);
+    // Build 399: the Track box from outside (the FDV applet's "Visible").
+    void setTracking(bool on);
 
 signals:
+    void trackingChanged(bool on);   // build 399: the Track box, however changed
     // Build 398: the "Enable" button -- connect to / disconnect from FreeDV
     // Reporter (the same start / stop as SpotHub's FreeDV tab).
     void enableRequested(bool on);

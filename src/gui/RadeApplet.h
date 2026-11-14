@@ -7,6 +7,7 @@
 class QComboBox;
 class QLabel;
 class QLineEdit;
+class QPushButton;
 
 namespace AetherSDR {
 
@@ -21,8 +22,12 @@ public:
 
 signals:
     void reporterRequested();   // build 396: the "Reporter" button -- FreeDV Reporter
+    // Build 399: the "Visible" button clicked -- on: FreeDV Reporter connected
+    // (if it was not) and its Track on; off: Track off.
+    void visibleToggled(bool on);
 
 public slots:
+    void setVisibleChecked(bool on);   // build 399: follows the reporter window's Track box
     void setRadeActive(bool on, const QString& label = {});
 
     void setRadeSynced(bool synced);
@@ -43,6 +48,7 @@ private:
 
     QComboBox* m_modeCombo{nullptr};
     QLineEdit* m_callsignEdit{nullptr};
+    QPushButton* m_visibleBtn{nullptr};   // build 399
     QLabel*    m_errorLabel{nullptr};
     bool       m_lastSync{false};
     int        m_lastCallSerial{-1};

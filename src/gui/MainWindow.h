@@ -1009,6 +1009,8 @@ private:
     QString netScheduleFilePath() const;
 #ifdef HAVE_WEBSOCKETS
     void showFreeDvReporter();
+    void setFreeDvVisible(bool on);          // build 399
+    bool m_freedvReporterCreateOnly = false;
 #endif
     void updateKeyerAvailability();
     // Client-side voice keyer (MainWindow_DigitalModes.cpp).
