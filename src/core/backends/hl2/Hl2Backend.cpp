@@ -5593,10 +5593,24 @@ void Hl2Backend::setPanCenter(const QString& panId, double hz, PanCenterIntent i
     if (std::abs(hz - r->ncoHz) <= reach) {
         r->viewOffsetHz = hz - r->ncoHz;
         r->viewForNcoHz = r->ncoHz;
-    } else {
+    } else if (intent == PanCenterIntent::Drag) {
         const double dir = hz > panCenterHz(*r) ? 1.0 : -1.0;
         // The view lands near the trailing side of the new band.
         moveNcoForView(ddc, *r, hz + dir * reach * 0.8, hz);
+    } else {
+        // ANAN fork build 364 (operator, 13.11: "while I zoom the picture is
+        // redrawn many times a second and the audio clicks"; the build 359 log
+        // counted 92 NCO moves adding up to 0 Hz). A zoom sends its centre
+        // with every step, and the lead above is made for a DRAG: it parks
+        // the view at the edge of the captured band, on the side the centre
+        // last moved to. In a zoom the centre barely moves, so that side was
+        // arbitrary, and each step that widened the view pushed it out of the
+        // band again -- the receiver was retuned to and fro on every other
+        // step, each time with the audio dip and a restart of the spectrum
+        // window that go with a retune. A centre that came with a zoom puts
+        // the NCO ON the view: a view centred on the NCO fits at any width,
+        // so the steps that follow need no further move.
+        moveNcoForView(ddc, *r, hz, hz);
     }
     if (!m_panSettleTimer) {
         m_panSettleTimer = new QTimer(this);
@@ -5752,6 +5766,18 @@ void Hl2Backend::setPanBandwidth(const QString& panId, double hz)
     const double next = view >= maxView * 0.999 ? 0.0 : view;
     if (next != r->zoomViewHz) {
         r->zoomViewHz = next;
+        // Build 364: the centre of this step was applied (setPanCenter, just
+        // before) against the OLD width. If the wider view no longer fits the
+        // band the DDC captures, centre the NCO on it now -- once -- rather
+        // than show a view the spectrum cannot fill until the next step.
+        {
+            constexpr double kCaptureReach = 0.96;   // setPanCenter's kDragReach
+            const double reach = std::max(0.0, (rate * kCaptureReach - panViewHz(*r)) / 2.0);
+            if (std::abs(viewOffsetHz(*r)) > reach) {
+                const double centre = panCenterHz(*r);
+                moveNcoForView(ddc, *r, centre, centre);
+            }
+        }
         // Not dropped and not rebuilt per drag step (that restarted the
         // trace): the FFT is unchanged by a crop, and its size follows the
         // zoom once the gesture has settled.
