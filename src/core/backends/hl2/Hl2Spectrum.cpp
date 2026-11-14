@@ -162,6 +162,23 @@ void Hl2Spectrum::shiftBins(int k) noexcept
         else if (m_averageFrames > 1)
             settleS = std::max(settleS, 3.0 * m_averageFrames * m_fftSize / rate);
         m_freshUntil = m_clockSamples + static_cast<std::uint64_t>(rate * settleS);
+        // ANAN fork build 362 (operator, 13.11: "on a fast pan drag the floor
+        // and the spectrum jump up ~15 dB and stay there"; the build 359 log
+        // showed the frames: after a move the 20th percentile of the view fell
+        // 9 dB while a third of it was newly revealed). The revealed bins were
+        // filled with the band-edge bin -- deep in the DDC filter's stopband --
+        // and then BLENDED up from there: a hole in the trace for several
+        // time constants, in the log average longest of all. The panadapter's
+        // Auto Floor took the hole for a lower noise floor and moved its scale
+        // down at once (everything on screen jumps up), and moves back only
+        // slowly. They hold no average, so they are treated as bins without
+        // one: the next frame is taken whole there (as after dropAverage()),
+        // and averaging goes on from real data.
+        const bool seeded = m_seedHi > m_seedLo;
+        const int sLo = seeded ? std::clamp(m_seedLo - k, 0, n) : n;
+        const int sHi = seeded ? std::clamp(m_seedHi - k, 0, n) : 0;
+        m_seedLo = sHi > sLo ? std::min(sLo, eLo) : eLo;
+        m_seedHi = sHi > sLo ? std::max(sHi, eHi) : eHi;
     }
     // A signal at a fixed RF frequency moves DOWN k bins when the NCO goes up
     // k bins: new[i] = old[i + k].
@@ -218,6 +235,7 @@ bool Hl2Spectrum::unsettledBins(int& lo, int& hi) const noexcept
 void Hl2Spectrum::dropAverage() noexcept
 {
     m_freshLo = m_freshHi = 0;   // build 335: nothing averaged, nothing unsettled
+    m_seedLo = m_seedHi = 0;     // build 362
     // Assign rather than resize — the vector was sized at construction, so
     // this touches no allocator.
     m_avgPower.assign(static_cast<std::size_t>(m_fftSize), 0.0);
@@ -366,7 +384,8 @@ void Hl2Spectrum::computeFrame(std::vector<float>& binsDbfs)
             // state is dBFS and the blend is of logarithms. Emitted as-is.
             const double db = rawDb;
             double& state = m_avgPower[static_cast<std::size_t>(k)];
-            state = m_haveAverage ? state + alpha * (db - state) : db;
+            const bool held = m_haveAverage && !(k >= m_seedLo && k < m_seedHi);   // build 362
+            state = held ? state + alpha * (db - state) : db;
             binsDbfs[static_cast<std::size_t>(k)] = static_cast<float>(state);
             continue;
         }
@@ -379,7 +398,8 @@ void Hl2Spectrum::computeFrame(std::vector<float>& binsDbfs)
             // Take the first frame whole rather than blending it into a zero
             // state, which would open every average with a ramp from the
             // floor. After that it is an ordinary exponential blend.
-            state = m_haveAverage ? state + alpha * (power - state) : power;
+            const bool held = m_haveAverage && !(k >= m_seedLo && k < m_seedHi);   // build 362
+            state = held ? state + alpha * (power - state) : power;
             power = state;
         }
         // IQ is normalized to full scale 1.0, so this is dBFS directly. The
@@ -390,6 +410,7 @@ void Hl2Spectrum::computeFrame(std::vector<float>& binsDbfs)
     // Set after the loop and only while blending, so a pass with averaging off
     // cannot leave a stale "we have a state" behind for the next one to blend
     // into. setAverageFrames() clears it on every depth change.
+    m_seedLo = m_seedHi = 0;   // build 362: taken (or nothing is averaged)
     if (blending) {
         m_haveAverage = true;
         const double rate = m_sampleRateHz > 0.0 ? m_sampleRateHz : 192000.0;

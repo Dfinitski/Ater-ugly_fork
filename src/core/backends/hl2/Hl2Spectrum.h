@@ -214,6 +214,10 @@ private:
     int m_freshLo = 0;
     int m_freshHi = 0;
     std::uint64_t m_freshUntil = 0;   // m_clockSamples at which they are settled
+    // Build 362: the bins shiftBins() could only fill from the edge take the
+    // next frame whole, [m_seedLo, m_seedHi) -- see shiftBins().
+    int m_seedLo = 0;
+    int m_seedHi = 0;
 };
 
 }  // namespace AetherSDR::hl2
