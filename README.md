@@ -65,21 +65,21 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 336
+## Build 372
 
-Full notes: [docs/release-notes-build-336.md](docs/release-notes-build-336.md).
+Full notes: [docs/release-notes-build-372.md](docs/release-notes-build-372.md).
 
-- **TCI / CW Skimmer:** I/Q works with CW Skimmer (protocol 2.0, 2048-pair frames);
-  "Center Lock when I/Q" keeps the skimmer on the tuned frequency (CTUN off); client details in
-  the TCI applet.
-- **Mode buttons:** two rows, right-click to assign, second click swaps the sideband; Marker and
-  Filter Edge in the panadapter menu; FreeDV on the band's sideband.
-- **Panadapter:** CW decode panel over the waterfall; steady noise floor while dragging; band
-  buttons per panadapter; one-click switching of menu windows.
-- **Audio:** mono by default, BIN for binaural; DRM fixes.
-- **Transverters** for openHPSDR; **MIDI** VFO A / VFO B knobs; lower CPU and memory use.
+- **FreeDV:** a mode of its own with the modem's filter on the panadapter, received text, SNR and
+  offset on the flag, a MOD gauge, and the transmit chain put right.
+- **Transmit panadapter:** full resolution, 0 ... -80 dB scale with a TX drive peak line; drive
+  held just under the firmware's full scale.
+- **Panadapter:** no level jump after a drag; AUTO attenuator independent of the FFT average;
+  zoom without retuning; Center Lock zoom and drag-to-tune.
+- **Transverters:** LO entry, LO error in Hz, live validity, working RX Gain and Max Power,
+  PA calibration by the IF.
+- **Mode buttons:** SSB entry and new defaults; floating applet windows remember being closed.
 
-Earlier notes: [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Windows portable build
 

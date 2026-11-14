@@ -5654,6 +5654,13 @@ Auto AGC не менялся: он уже работал от полки плю�
 
 Файлы: ForkBuild.h, Hl2Backend.cpp, MainWindow_Wiring.cpp.
 
+## 339. Релиз сборки 372 подготовлен (14.11.2026)
+
+- docs/release-notes-build-372.md: сборки 337–372 по темам (FreeDV, панорама передачи, флаг VFO и окна, панорама и Center Lock, трансвертеры, TCI), с тем, что не проверено на радио. README.md: раздел «Build 336» заменён на «Build 372», build 336 добавлен в «Earlier notes».
+- Архив AetherSDR-ANAN-build372-win64-portable.zip: архив build 336 с exe сборки 372 (Desktop\AetherSDR-Release\AetherSDR.exe, 13.11 23:57 местного, 77815808 байт, содержит «anan.lockdrag», «center-lock-drag»), README-build372.md вместо README-build336.md; верхняя папка AetherSDR-ANAN-build372; 90 записей, 156078673 байт, SHA-256 3b6235c26908a39b94e1e13f6384e134d865607a2412e6e0cbd6d7971cbc1c05. Сохранён в Desktop\AetherSDR-Release.
+- Релиз (тег build-372 на main) создаёт оператор в веб-интерфейсе GitHub; тег должен указывать на коммит с ForkBuild 372 или позже.
+- Сборка 372 (перетаскивание под Center Lock одной командой в бэкенд) ушла в релиз без подтверждения оператора, что водопад достраивается по ходу жеста.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
