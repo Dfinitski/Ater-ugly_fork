@@ -8884,6 +8884,14 @@ void SpectrumWidget::enterTxZoom()
     m_txZoomActive = true;
     m_centerMhz = txMhz;
     m_bandwidthMhz = kTxZoomSpanMhz;
+    // Build 347 (operator, 13.11: "the drive text is covered by the buttons
+    // of the panadapter's left panel; hide them while transmitting, nobody
+    // uses them then"): the side menu and its open panel go for the over.
+    if (m_overlayMenu && m_overlayMenu->isVisible()) {
+        m_overlayMenu->closePanels();
+        m_overlayMenu->hide();
+        m_txZoomHidMenu = true;
+    }
     m_txPeakHoldDb = -200.0f;         // build 346: a new over
     m_txPeakHoldAtMs = 0;
     m_txPeakShownTenths = -100000;
@@ -8898,6 +8906,13 @@ void SpectrumWidget::enterTxZoom()
 void SpectrumWidget::exitTxZoom()
 {
     m_txZoomActive = false;
+    if (m_txZoomHidMenu) {            // build 347
+        m_txZoomHidMenu = false;
+        if (m_overlayMenu) {
+            m_overlayMenu->show();
+            m_overlayMenu->raiseAll();
+        }
+    }
     m_centerMhz = m_txZoomSavedCenterMhz;
     m_bandwidthMhz = m_txZoomSavedBandwidthMhz;
     // The receiver's trace, averaged right through the over: no restart.

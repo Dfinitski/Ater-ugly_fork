@@ -40,6 +40,8 @@ public:
 
     // Raise this widget and all floating panels above sibling widgets.
     void raiseAll();
+    // Build 347: close whichever panel is open (the menu is hidden for an over).
+    void closePanels() { hideAllSubPanels(); }
     void setMemories(const QMap<int, MemoryEntry>& memories, bool writable = true);
 
     // Set the antenna list (from RadioModel::antListChanged).

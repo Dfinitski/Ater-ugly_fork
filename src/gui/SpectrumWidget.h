@@ -2256,6 +2256,7 @@ private:
     // Build 346: the transmitter's drive -- the envelope peak of the samples
     // sent, held for a second, drawn as a line on the TX panadapter's scale
     // (0 dB, the top, = full scale).
+    bool   m_txZoomHidMenu{false};   // build 347: the side menu is hidden for the over
     float  m_txPeakHoldDb{-200.0f};
     qint64 m_txPeakHoldAtMs{0};
     int    m_txPeakShownTenths{-100000};
