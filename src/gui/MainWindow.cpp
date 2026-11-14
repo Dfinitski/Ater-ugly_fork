@@ -260,7 +260,6 @@
 #ifdef HAVE_RADE
 #include "core/RADEEngine.h"
 #include "RadeApplet.h"
-#include "core/ForkName.h"
 #endif
 #include "core/backends/flex/PanadapterStream.h"
 #include "core/backends/IRadioBackend.h"
@@ -979,7 +978,7 @@ void MainWindow::showForcedDisconnectDialog(bool wasWan,
     layout->setSpacing(14);
 
     auto* body = new QLabel(
-        tr("Another client requested this session to disconnect. "
+        tr("Another client requested this AetherSDR session to disconnect. "
            "Automatic reconnect has been paused so the other operator can use the radio safely."),
         content);
     body->setObjectName("body");
@@ -1087,7 +1086,7 @@ MainWindow::MainWindow(QWidget* parent)
     // call, so this is also the construction point.
     theme::setContainer(statusBar(), QStringLiteral("statusbar"));
 
-    setWindowTitle(forkDisplayVersion());   // build 402
+    setWindowTitle(QString("AetherSDR v%1").arg(QCoreApplication::applicationVersion()));
     setWindowIcon(QIcon(":/icon.png"));
     setMinimumSize(1024, 400);
     resize(1400, 800);
@@ -6237,16 +6236,16 @@ void MainWindow::buildUI()
         m_cpuLabel = new QLabel("CPU: \u2014");
         applyStatusBarCompactLabelStyle(m_cpuLabel, QStringLiteral("{{color.text.secondary}}"));
         m_cpuLabel->setAlignment(Qt::AlignCenter);
-        m_cpuLabel->setToolTip("This program's CPU usage");
+        m_cpuLabel->setToolTip("AetherSDR process CPU usage");
         m_memLabel = new QLabel("Mem: \u2014");
         applyStatusBarCompactLabelStyle(m_memLabel, QStringLiteral("{{color.text.label}}"));
         m_memLabel->setAlignment(Qt::AlignCenter);
 #if defined(Q_OS_WIN)
-        m_memLabel->setToolTip("This program's working set (matches Task Manager)");
+        m_memLabel->setToolTip("AetherSDR process working set (matches Task Manager)");
 #elif defined(Q_OS_MACOS)
-        m_memLabel->setToolTip("This program's physical footprint (matches Activity Monitor)");
+        m_memLabel->setToolTip("AetherSDR process physical footprint (matches Activity Monitor)");
 #else
-        m_memLabel->setToolTip("This program's resident set (VmRSS from /proc/self/status)");
+        m_memLabel->setToolTip("AetherSDR process resident set (VmRSS from /proc/self/status)");
 #endif
         cpuVbox->addWidget(m_cpuLabel);
         cpuVbox->addWidget(m_memLabel);
@@ -7300,7 +7299,7 @@ void MainWindow::onConnectionStateChanged(bool connected)
             title->setAlignment(Qt::AlignCenter);
             layout->addWidget(title);
 
-            auto* body = new QLabel(tr("The program is attempting to reconnect automatically."), content);
+            auto* body = new QLabel(tr("AetherSDR is attempting to reconnect automatically."), content);
             body->setObjectName(QStringLiteral("reconnectBody"));
             body->setAlignment(Qt::AlignCenter);
             body->setWordWrap(true);
@@ -7569,7 +7568,7 @@ void MainWindow::showWdspSetupDialog()
         // Linux/x86_64; a 4-receiver cold connect on macOS/arm64 measured 47 s.
         // Promising 20 s and taking 47 is how this earns a second "it hung"
         // report — the number has to cover the slow end, not the fast one.
-        tr("The program is tuning its signal processing for this computer. "
+        tr("AetherSDR is tuning its signal processing for this computer. "
            "This takes up to a minute and happens only once — future "
            "connections will be immediate."),
         content);
@@ -9847,7 +9846,7 @@ void MainWindow::applyUiScale(int pct)
     AppSettings::instance().save();
 
     auto answer = FramelessMessageBox::question(this, "UI Scale",
-        QString("UI scale changed to %1%. Restart the program now to apply?").arg(pct),
+        QString("UI scale changed to %1%. Restart AetherSDR now to apply?").arg(pct),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
     if (answer == QMessageBox::Yes) {
 #ifdef Q_OS_MACOS
@@ -11332,7 +11331,7 @@ void MainWindow::floatAppletPanel()
     if (frameless) flags |= Qt::FramelessWindowHint;
 
     m_appletPanelFloatWindow = new QWidget(nullptr, flags);
-    m_appletPanelFloatWindow->setWindowTitle(forkDisplayName() + QStringLiteral(" — Applet Panel"));
+    m_appletPanelFloatWindow->setWindowTitle("AetherSDR — Applet Panel");
     m_appletPanelFloatWindow->setAttribute(Qt::WA_DeleteOnClose, false);
     m_appletPanelFloatWindow->setAttribute(Qt::WA_QuitOnClose, false);
     m_appletPanelFloatWindow->setAttribute(Qt::WA_StyledBackground, true);
@@ -11346,7 +11345,7 @@ void MainWindow::floatAppletPanel()
     // frame supplies its own title bar in non-frameless mode.
     if (frameless) {
         auto* titleBar = new FramelessWindowTitleBar(
-            forkDisplayName() + QStringLiteral(" — Applet Panel"),
+            QStringLiteral("AetherSDR — Applet Panel"),
             m_appletPanelFloatWindow);
         layout->addWidget(titleBar);
     }

@@ -1,5 +1,4 @@
 #include "PanFloatingWindow.h"
-#include "core/ForkName.h"
 #include "PanSliceTitle.h"
 #include "FramelessResizer.h"
 #include "PanadapterApplet.h"
@@ -59,8 +58,8 @@ void PanFloatingWindow::refreshWindowTitle()
     if (!m_applet) return;
     const QString name =
         PanSliceTitle::displayName(m_applet->sliceTitle(), m_applet->panId());
-    setWindowTitle(name.isEmpty() ? forkDisplayName()
-                                  : QStringLiteral("%1 — %2").arg(forkDisplayName(), name));   // build 402
+    setWindowTitle(name.isEmpty() ? QStringLiteral("AetherSDR")
+                                  : QString("AetherSDR — %1").arg(name));
 }
 
 QString PanFloatingWindow::panId() const

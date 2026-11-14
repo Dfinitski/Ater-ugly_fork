@@ -53,7 +53,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
 {
     setObjectName("FtPanel");
     setWindowFlags(Qt::Window);         // a window of its own (owned by the main window)
-    setWindowTitle(AetherSDR::forkDisplayName() + " FTX");   // AetherSDR, build 402
+    setWindowTitle("AetherSDR FTX");   // AetherSDR
     setMinimumSize(676, 260);   // AetherSDR, build 389: the operator's smallest width (14.11)
     setAttribute(Qt::WA_StyledBackground, true);
     psk = new PskReporter(AetherSDR::forkDisplayVersion(), this);   // (396: the decoding software named in the spots)
