@@ -7017,6 +7017,7 @@ void SpectrumWidget::commitFrequencyPreview()
     // not destructively reproject the live rings. Keeping those native frames
     // also preserves the wider waterfall-tile fallback attached to 3D rows.
     m_frequencyPreviewActive = false;
+    endLockDragFreeze();   // build 369
     QElapsedTimer timer;
     timer.start();
 #ifdef AETHER_GPU_SPECTRUM
@@ -7067,6 +7068,7 @@ void SpectrumWidget::clearFrequencyPreview()
 {
     const bool paletteRefreshPending = m_waterfallPaletteRefreshPending;
     m_frequencyPreviewActive = false;
+    endLockDragFreeze();   // build 369
     m_frequencyPreviewBaseCenterMhz = m_centerMhz;
     m_frequencyPreviewBaseBandwidthMhz = m_bandwidthMhz;
     m_frequencyPreviewTargetCenterMhz = m_centerMhz;
@@ -9004,6 +9006,14 @@ void SpectrumWidget::setSliceOverlay(int sliceId, double freq, int fLow, int fHi
                                      bool diversityChild, int diversityIndex)
 {
     int idx = overlayIndex(sliceId);
+    // Build 369: during a panorama drag under Center Lock the locked receiver
+    // is drawn at the view's centre, where the drag is putting it; its reports
+    // arrive a step behind and would pull the drawing back and forth.
+    if (sliceId == m_centerLockSliceId) {
+        m_lockDragRealMhz = freq;
+        if (m_lockDragFreeze && idx >= 0)
+            freq = m_sliceOverlays[idx].freqMhz;
+    }
     if (idx < 0) {
         SliceOverlay o;
         o.sliceId = sliceId; o.freqMhz = freq;
@@ -9176,14 +9186,34 @@ void SpectrumWidget::setSliceLinkCandidates(
     updateAccessibleStateDescription();
 }
 
+void SpectrumWidget::endLockDragFreeze()
+{
+    if (!m_lockDragFreeze)
+        return;
+    m_lockDragFreeze = false;
+    // The last reports of the drag are still on their way: afterwards the
+    // overlay takes the receiver's real frequency (the same to the hertz when
+    // the tune was accepted; the old one if it was refused).
+    QTimer::singleShot(300, this, [this] {
+        if (m_lockDragFreeze || m_centerLockSliceId < 0 || m_lockDragRealMhz <= 0.0)
+            return;
+        setSliceOverlayFreq(m_centerLockSliceId, m_lockDragRealMhz);
+    });
+}
+
 void SpectrumWidget::setSliceOverlayFreq(int sliceId, double freqMhz)
 {
+    if (sliceId == m_centerLockSliceId) {   // build 369: see setSliceOverlay()
+        m_lockDragRealMhz = freqMhz;
+        if (m_lockDragFreeze)
+            return;
+    }
     for (auto& so : m_sliceOverlays) {
         if (so.sliceId == sliceId) {
             if (so.freqMhz == freqMhz) return;  // unchanged — no repaint needed
             so.freqMhz = freqMhz;
             if (m_frequencyPreviewActive)
-                m_previewSliceOverlayMoved = true;   // build 368
+                m_previewSliceOverlayMoved = true;   // build 368 (another receiver, or no Center Lock)
             markOverlayDirty();  // repaint so markers reflect the new frequency (#1272)
             return;
         }
@@ -11969,6 +11999,32 @@ void SpectrumWidget::applyPanDragCenter(double newCenterMhz, bool force)
                               newCenterMhz, m_bandwidthMhz);
         }
 
+        // ANAN fork build 369 (operator, 13.11: "why can the filter not simply
+        // stay drawn in its place, as it does in a zoom?"). It can: under
+        // Center Lock this drag tunes the receiver to the view's centre, so
+        // the filter belongs in the middle the whole time. The overlay entry
+        // moves with the centre here, at once -- not when the radio's report
+        // comes back -- and the frequency layer is not shifted with the band
+        // while the drag lasts (render()); it is repainted every 100 ms so
+        // the spots and the band plan follow. (Build 368 repainted on every
+        // report instead, a step behind the mouse: the filter wobbled.)
+        if (m_centerLockSliceId >= 0 && previewed) {
+            const double delta = newCenterMhz - m_centerMhz;
+            const int li = overlayIndex(m_centerLockSliceId);
+            if (li >= 0) {
+                if (!m_lockDragFreeze)
+                    m_lockDragRealMhz = m_sliceOverlays[li].freqMhz;
+                m_sliceOverlays[li].freqMhz += delta;
+            }
+            if (!m_lockDragFreeze) {
+                m_lockDragFreeze = true;
+                m_lockDragRepaintClock.start();
+                m_previewSliceOverlayMoved = true;
+            } else if (m_lockDragRepaintClock.elapsed() >= 100) {
+                m_lockDragRepaintClock.restart();
+                m_previewSliceOverlayMoved = true;
+            }
+        }
         m_centerMhz = newCenterMhz;
         if (previewed) {
             scheduleFrequencyPreviewFrame();
@@ -15870,7 +15926,8 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                 FrequencyFrame{m_frequencyPreviewTargetCenterMhz,
                                panDisplayBandwidthMhz(m_frequencyPreviewTargetBandwidthMhz,
                                                       panEdgeCropActive())});
-        if (m_frequencyPreviewActive && overlayTransform.valid) {
+        // Build 369: not while a Center Lock drag holds the layer in place.
+        if (m_frequencyPreviewActive && overlayTransform.valid && !m_lockDragFreeze) {
             overlayScale = static_cast<float>(overlayTransform.scale);
             overlayOffset = static_cast<float>(overlayTransform.offset);
             overlayPreview = 1.0f;

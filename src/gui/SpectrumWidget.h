@@ -2033,6 +2033,15 @@ private:
     // Build 368: a receiver's frequency or filter changed while the drag's
     // overlay texture is frozen -- repaint the frequency layer (see render()).
     bool m_previewSliceOverlayMoved{false};
+    // Build 369: a panorama drag under Center Lock. The frequency layer is not
+    // moved with the band (the locked filter stays drawn where it is, in the
+    // middle); it is repainted a few times a second so spots and the band
+    // plan catch up. m_lockDragRealMhz: the receiver's frequency as last
+    // reported, put back into the overlay once the drag is over.
+    bool m_lockDragFreeze{false};
+    QElapsedTimer m_lockDragRepaintClock;
+    double m_lockDragRealMhz{0.0};
+    void endLockDragFreeze();
     double m_frequencyPreviewOverlayBaseBandwidthMhz{0.0};
     quint64 m_frequencyPreviewUpdateCount{0};
     quint64 m_frequencyPreviewPresentCount{0};
