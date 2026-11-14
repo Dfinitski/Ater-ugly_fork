@@ -4447,6 +4447,23 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 if (m_tciIqCenterLockPans.contains(dragPanId))   // the lock centres the passband there
                     tuneMhz -= (locked->filterLow() + locked->filterHigh()) / 2.0e6;
                 tuneMhz = std::round(tuneMhz * 1.0e6) / 1.0e6;
+                // Build 372: on an openHPSDR radio both halves go to the
+                // backend as ONE step (extension "anan.lockdrag"). Sent as a
+                // tune and a separate pan centre, the pan centres of the drag
+                // never arrived there (log, 13.11): the receiver moved, the
+                // captured view did not, and the waterfall of the part dragged
+                // in appeared only when the lock re-centred after the release.
+                if (tuneMhz > 0.0 && m_radioModel.backendDeclaresExtension(QStringLiteral("hl2"))
+                    && !locked->isLocked()) {
+                    SpectrumWidget* dragSw = m_panStack ? m_panStack->spectrum(dragPanId) : nullptr;
+                    holdCenterLockTuneTarget(locked, tuneMhz);
+                    m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.lockdrag"), 0,
+                        QVariantMap{{QStringLiteral("slice"), lockId},
+                                    {QStringLiteral("tuneHz"), tuneMhz * 1.0e6},
+                                    {QStringLiteral("centerHz"), center * 1.0e6},
+                                    {QStringLiteral("final"), !(dragSw && dragSw->panDragActive())}});
+                    return;
+                }
                 if (tuneMhz > 0.0 && !qFuzzyCompare(tuneMhz, locked->frequency())) {
                     // Build 371: reports of the earlier steps arrive after this
                     // one is asked for; until they have passed, the overlay

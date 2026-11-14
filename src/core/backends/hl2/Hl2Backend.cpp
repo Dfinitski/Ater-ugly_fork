@@ -8612,6 +8612,45 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
                 emit extensionResult(requestId, QVariant(true));
             return;
         }
+        // ANAN fork build 372 (operator, 13.11: "after a drag the missing part
+        // of the waterfall is added ~300 ms after the button is released, and
+        // everything twitches then"). The log showed why: under Center Lock
+        // the drag tuned the receiver step by step, but NOT ONE of its pan
+        // centres reached this backend -- the view here stayed where the drag
+        // began (no spectrum or waterfall for the part dragged in), until the
+        // lock re-centred it a second after the release (one move of the whole
+        // distance). The two halves went by separate routes above the backend
+        // (tune; pan centre) and the second was lost there. One verb, one
+        // step: the receiver to its frequency and the view to its centre.
+        if (verb == QLatin1String("anan.lockdrag")) {
+            const QVariantMap m = arg.toMap();
+            const int ddc = ddcForSlice(m.value(QStringLiteral("slice")).toInt());
+            const double tuneHz = m.value(QStringLiteral("tuneHz")).toDouble();
+            const double centerHz = m.value(QStringLiteral("centerHz")).toDouble();
+            const auto* ids = m_ids.byDdc(ddc);
+            const bool ok = ids && rx(ddc) && tuneHz > 0.0 && centerHz > 0.0;
+            if (ok) {
+                const QString panId = ids->panId;
+                const int uiNumber = ids->uiNumber;
+                setSliceFrequency(uiNumber, std::round(tuneHz));
+                setPanCenter(panId, std::round(centerHz), PanCenterIntent::Drag);
+                // The last step of the drag: bring the view inside the clean
+                // part of the band now, not on the 400 ms timer -- the one
+                // retune a drag may need happens with the release.
+                if (m.value(QStringLiteral("final")).toBool()) {
+                    if (m_panSettleTimer)
+                        m_panSettleTimer->stop();
+                    settlePanViews();
+                }
+            }
+            if (requestId != 0) {
+                if (ok)
+                    emit extensionResult(requestId, QVariant(true));
+                else
+                    emit extensionError(requestId, QStringLiteral("no such receiver"));
+            }
+            return;
+        }
         // Build 326: CTUN OFF for one receiver (TCI "Center Lock when I/Q").
         if (verb == QLatin1String("anan.ctun")) {
             const QVariantMap m = arg.toMap();
