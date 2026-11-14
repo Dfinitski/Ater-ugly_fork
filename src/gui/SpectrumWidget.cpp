@@ -2864,6 +2864,16 @@ void SpectrumWidget::installVfoCursorEventFilter(VfoWidget* widget)
 
 void SpectrumWidget::setVfoCursorOverride(Qt::CursorShape shape)
 {
+    // ANAN fork build 341 (operator, 13.11: "through the flag the pointer
+    // sometimes lands on the filter's edges and turns into the left-right
+    // arrow -- a bug, in every mode"). The slice cursor (resize / hand) was
+    // pushed onto the flags and all their children whenever the pointer was
+    // over a filter edge or body, including an edge lying UNDER a flag: the
+    // flag then showed a cursor for something a click on it cannot do. A flag
+    // keeps its own cursor.
+    Q_UNUSED(shape);
+    clearVfoCursorOverride();
+    return;
     for (QMap<int, VfoWidget*>::const_iterator it = m_vfoWidgets.cbegin();
          it != m_vfoWidgets.cend(); ++it) {
         VfoWidget* widget = it.value();
@@ -10589,7 +10599,7 @@ bool SpectrumWidget::sliceCursorShapeAt(const QPoint& localPos,
         const int sliceX = mhzToX(so.freqMhz);
         const int loX = mhzToX(so.freqMhz + so.filterLowHz / 1.0e6);
         const int hiX = mhzToX(so.freqMhz + so.filterHighHz / 1.0e6);
-        if (filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx) != 0) {
+        if ((so.fdvCenterHz != 0 ? 0 : filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx)) != 0) {
             shape = Qt::SizeHorCursor;
             return true;
         }
@@ -10611,11 +10621,15 @@ bool SpectrumWidget::sliceCursorShapeAt(const QPoint& localPos,
     if (ao) {
         const int loX = mhzToX(ao->freqMhz + ao->filterLowHz / 1.0e6);
         const int hiX = mhzToX(ao->freqMhz + ao->filterHighHz / 1.0e6);
-        if (filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx) != 0) {
+        if ((ao->fdvCenterHz != 0 ? 0 : filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx)) != 0) {
             shape = Qt::SizeHorCursor;
             return true;
         }
-        if (filterPassbandBodyHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx)) {
+        // Build 341: in FreeDV the edges are not handles -- the whole
+        // passband is the body.
+        if (ao->fdvCenterHz != 0
+                ? (mx >= std::min(loX, hiX) && mx <= std::max(loX, hiX))
+                : filterPassbandBodyHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx)) {
             shape = Qt::OpenHandCursor;
             return true;
         }
@@ -11518,7 +11532,7 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
             const int hiX = mhzToX(so.freqMhz + so.filterHighHz / 1.0e6);
             const int left = std::min(loX, hiX);
             const int right = std::max(loX, hiX);
-            const int edgeHit = filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx);
+            const int edgeHit = (so.fdvCenterHz != 0 ? 0 : filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx));
             if (edgeHit != 0) {
                 const int edgeHz = edgeHit < 0 ? so.filterLowHz : so.filterHighHz;
                 emit sliceClicked(so.sliceId);
@@ -11568,7 +11582,7 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
         const int loX = mhzToX(ao->freqMhz + ao->filterLowHz / 1.0e6);
         const int hiX = mhzToX(ao->freqMhz + ao->filterHighHz / 1.0e6);
 
-        const int edgeHit = filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx);
+        const int edgeHit = (ao->fdvCenterHz != 0 ? 0 : filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx));
         if (edgeHit != 0) {
             m_draggingFilter = edgeHit < 0 ? FilterEdge::Low : FilterEdge::High;
             // Store anchor offset so the edge doesn't snap to cursor (#764)
@@ -11582,7 +11596,11 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
         }
 
         // Click inside the filter passband → start VFO drag (#404)
-        if (filterPassbandBodyHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx)) {
+        // Build 341: in FreeDV the edges are not handles -- the whole
+        // passband is the body.
+        if (ao->fdvCenterHz != 0
+                ? (mx >= std::min(loX, hiX) && mx <= std::max(loX, hiX))
+                : filterPassbandBodyHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx)) {
             m_draggingVfo = true;
             m_vfoDragPanEchoHoldUntilMs = 0;
             emit sliceDragActiveChanged(true);

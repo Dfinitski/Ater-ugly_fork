@@ -577,6 +577,11 @@ private:
     // so it stays at the flag's bottom edge whatever the flag's height.
     QPointer<QLabel> m_fdvTextLabel;
     bool    m_fdvTextOn{false};
+    // Build 341: FreeDV badge left of the frequency: sync dot + "SNR: 12.3 dB".
+    bool    m_fdvSynced{false};
+    bool    m_fdvSnrValid{false};
+    float   m_fdvSnrDb{0.0f};
+    void    updateFdvBadge();
     QString m_fdvText;
     void syncFdvTextGeometry();
 

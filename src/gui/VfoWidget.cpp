@@ -1213,7 +1213,7 @@ void VfoWidget::buildUI()
         m_radeStatusLabel = new QLabel;
         m_radeStatusLabel->setFixedHeight(16);
         m_radeStatusLabel->setTextFormat(Qt::RichText);
-        AetherSDR::ThemeManager::instance().applyStyleSheet(m_radeStatusLabel, "QLabel { color: {{color.accent}}; font-size: 10px; font-weight: bold;"
+        AetherSDR::ThemeManager::instance().applyStyleSheet(m_radeStatusLabel, "QLabel { color: {{color.accent}}; font-size: 11px; font-weight: bold;"
             " background: transparent; border: none; padding: 0; margin: 0; }");
         m_radeStatusLabel->hide();
         freqRow->addWidget(m_radeStatusLabel);
@@ -7848,7 +7848,9 @@ void VfoWidget::setRadeActive(bool on, const QString& label)
         }
     }
     if (m_radeInfoRow) {
-        m_radeInfoRow->setVisible(on);
+        // Build 341 (operator, 13.11): no row between the frequency and the
+        // meter in FreeDV -- the SNR is written left of the frequency.
+        m_radeInfoRow->setVisible(false);
         if (!on) {
             m_radeSnrLabel->setText("---");
             AetherSDR::ThemeManager::instance().applyStyleSheet(m_radeSnrLabel, "QLabel { color: {{color.text.secondary}}; font-size: 10px;"
@@ -7857,6 +7859,9 @@ void VfoWidget::setRadeActive(bool on, const QString& label)
             m_radeCallsignLabel->hide();
         }
     }
+    m_fdvSynced = false;
+    m_fdvSnrValid = false;
+    updateFdvBadge();   // build 341
     // Build 340: FDV shows as the mode -- tab label and mode buttons.
     if (m_slice && m_tabBtns.size() > 2 && m_tabBtns[2])
         m_tabBtns[2]->setText(on ? QStringLiteral("FDV") : m_slice->mode());
@@ -7872,9 +7877,10 @@ void VfoWidget::setRadeActive(bool on, const QString& label)
 void VfoWidget::setRadeSynced(bool synced)
 {
     if (!m_radeActive) return;
-    const QString led = synced ? "<font color='#00ff88'>\u25CF</font>"
-                               : "<font color='#505050'>\u25CB</font>";
-    m_radeStatusLabel->setText(m_radeLabel + " " + led);
+    m_fdvSynced = synced;
+    if (!synced)
+        m_fdvSnrValid = false;
+    updateFdvBadge();   // build 341
     if (!synced) {
         AetherSDR::ThemeManager::instance().applyStyleSheet(m_radeSnrLabel, "QLabel { color: {{color.text.secondary}}; font-size: 10px;"
             " background: transparent; border: none; padding: 0; margin: 0; }");
@@ -7898,6 +7904,32 @@ void VfoWidget::setRadeSnr(float snrDb)
                 " background: transparent; border: none; padding: 0; margin: 0; }")
             .arg(color));
     m_radeSnrLabel->setText(QString("%1dB").arg(static_cast<int>(snrDb)));
+    m_fdvSnrDb = snrDb;
+    m_fdvSnrValid = true;
+    updateFdvBadge();   // build 341
+}
+
+// Build 341: the badge left of the frequency -- sync dot and "SNR: 12.3 dB"
+// ("SNR: --.- dB" without sync).
+void VfoWidget::updateFdvBadge()
+{
+    if (!m_radeStatusLabel)
+        return;
+    if (!m_radeActive) {
+        m_radeStatusLabel->setText({});
+        return;
+    }
+    const QString led = m_fdvSynced ? QStringLiteral("<font color='#00ff88'>\u25CF</font>")
+                                    : QStringLiteral("<font color='#505050'>\u25CB</font>");
+    const bool have = m_fdvSynced && m_fdvSnrValid;
+    const QString color = !have ? QStringLiteral("#8090a0")
+                        : (m_fdvSnrDb < 5.0f ? QStringLiteral("#e0e040") : QStringLiteral("#00ff88"));
+    const QString val = have ? QString::number(static_cast<double>(m_fdvSnrDb), 'f', 1)
+                             : QStringLiteral("--.-");
+    const QString text = QStringLiteral("%1 <font color='%2'>SNR: %3 dB</font>").arg(led, color, val);
+    if (m_radeStatusLabel->text() != text)
+        m_radeStatusLabel->setText(text);
+    m_radeStatusLabel->setToolTip(m_radeLabel);
 }
 
 void VfoWidget::setRadeFreqOffset(float hz)
