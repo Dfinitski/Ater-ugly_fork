@@ -2081,19 +2081,9 @@ void P2Transport::setMicControl(int bits)
         sendTransmitSpecific();
 }
 
-void P2Transport::setPsBpfBypassOnTx(bool on)
-{
-    if (on == m_psBpfBypassOnTx)
-        return;
-    m_psBpfBypassOnTx = on;
-    qCInfo(lcAnanP2T) << "ANAN: band-pass filters bypassed on TX with PureSignal" << (on ? "on" : "off");
-    if (m_run && m_configured && m_mox && m_psEnabled)
-        sendHighPriority(true);
-}
-
 bool P2Transport::psBypassesBank(int adc) const
 {
-    return m_mox && m_psEnabled && m_psBpfBypassOnTx
+    return m_mox && m_psEnabled
         && m_profile.alexScheme == AlexScheme::Orion2BandPass && m_psAdc == adc;
 }
 

@@ -183,7 +183,9 @@ public:
     // then "corrects" (console.cs setBPF1ForOrionIISaturn, SetAlexHPFBits
     // 0x20). The boards with the high-pass / low-pass Alex have no such
     // option in Thetis and are not touched.
-    Q_INVOKABLE void setPsBpfBypassOnTx(bool on);
+    // Build 397 (operator, 14.11: "no check box, it must be always, otherwise
+    // it spoils PS; on the 100D / 200D it is impossible, there is no filter
+    // bypass there"): unconditional, no setting.
     // Build 267 (operator, 11.11, replaces build 245's 7000-style filter
     // option): "Forcedly assign the radio" -- a radio that reports board
     // `reportedBoardId` runs its session with board `forcedBoardId`'s profile
@@ -702,7 +704,6 @@ private:
     bool m_micBoost = false;
     std::uint8_t m_micControl = 0;
     bool m_adc1GndOnTx = true;
-    bool m_psBpfBypassOnTx = true;   // build 396
     [[nodiscard]] bool psBypassesBank(int adc) const;
     std::array<std::atomic<int>, 32> m_forcedBoardFor{};   // reported id -> forced id
     std::atomic<int> m_reportedBoardId{0};
