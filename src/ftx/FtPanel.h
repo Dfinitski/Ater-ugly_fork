@@ -22,6 +22,7 @@
 
 #include <QWidget>
 #include <QHash>
+#include <functional>
 #include <QSet>
 #include <QDateTime>
 #include <QPointer>
@@ -59,6 +60,9 @@ public:
     void setMode(int mode);             // FtUnit::FT8 / FT4 / WSPR
     qint64 dialHz() const { return dial; }
     void setDialShown(qint64 hz);       // the dial frequency the receiver is on
+    // AetherSDR, build 390: the bands above the radio's own are listed when this says a
+    // transverter carries their frequency (asked every time the list is filled)
+    void setBandReach(std::function<bool(qint64)> f) { bandReach = std::move(f); fillBands(); }
     void start();                       // the FT mode on: tune, decode
     void stop();
     void showWindow(const QRect &mainGeom);     // shown (its place kept; the first time: next to the main window)
@@ -166,7 +170,9 @@ private:
     QList<double> dtHist;              // DT of the last decodes (average)
     qint64 lastPeriodShown;
 
-    static const int BANDS = 11;
+    static const int BANDS = 16;               // AetherSDR, build 390: 11 of the radio + 5 of transverters
+    static const int HF_BANDS = 11;            // (the bands the radio has itself: always listed)
+    std::function<bool(qint64)> bandReach;     // a frequency beyond the radio: is there a transverter for it
     static const char *bandName[BANDS];
     static const qint64 defFreq[3][BANDS];     // FT8, FT4, WSPR (0 = none)
     qint64 freqs[3][BANDS];                    // the frequencies in use (edited ones saved)

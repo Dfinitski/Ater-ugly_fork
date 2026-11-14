@@ -12,13 +12,18 @@
 #include <QRegularExpression>
 #include <QDebug>
 #include <cmath>
+#include <QAbstractItemView>
 #include <algorithm>
 
-const char *FtPanel::bandName[FtPanel::BANDS] = { "160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m" };
+const char *FtPanel::bandName[FtPanel::BANDS] = { "160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m",
+                                                   "4m", "2m", "1.25m", "70cm", "23cm" };   // AetherSDR, 390: transverters
 const qint64 FtPanel::defFreq[3][FtPanel::BANDS] = {
-    { 1840000, 3573000, 5357000, 7074000, 10136000, 14074000, 18100000, 21074000, 24915000, 28074000, 50313000 },   // FT8
-    { 0,       3575000, 5357000, 7080000, 10140000, 14080000, 18104000, 21140000, 24919000, 28180000, 50318000 },   // FT4
-    { 1836600, 3568600, 5287200, 7038600, 10138700, 14095600, 18104600, 21094600, 24924600, 28124600, 50293000 } }; // WSPR
+    { 1840000, 3573000, 5357000, 7074000, 10136000, 14074000, 18100000, 21074000, 24915000, 28074000, 50313000,
+      70154000, 144174000, 222065000, 432174000, 1296174000 },   // FT8
+    { 0,       3575000, 5357000, 7080000, 10140000, 14080000, 18104000, 21140000, 24919000, 28180000, 50318000,
+      0,        144170000, 0,         432170000, 0 },   // FT4
+    { 1836600, 3568600, 5287200, 7038600, 10138700, 14095600, 18104600, 21094600, 24924600, 28124600, 50293000,
+      70091000, 144489000, 0,         432300000, 1296500000 } }; // WSPR
 
 // other frequencies in use (the list of the frequency box): mode index (FT8, FT4, WSPR), band, Hz, note
 static const struct { int mode, band; qint64 hz; const char *note; } ALT_FREQ[] = {
@@ -35,6 +40,7 @@ static const struct { int mode, band; qint64 hz; const char *note; } ALT_FREQ[] 
     { 1, 1,  3568000, "R3" },
     { 1, 3,  7047500, "WSJT-X" },
     { 2, 1,  3592600, "R2" },        { 2, 2,  5364700, "" },
+    { 0, 11, 70100000, "" },         { 0, 14, 432065000, "" },      // AetherSDR, 390
 };
 
 // AetherSDR: no stylesheet of its own -- the window takes the program's theme
@@ -78,11 +84,12 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     connect(bgMode, &QButtonGroup::idClicked, this, [this](int m) { setMode(m); });
     h1->addSpacing(10);
     cbBand = new QComboBox;
-    cbBand->setFixedWidth(68);
+    cbBand->setFixedWidth(74);   // AetherSDR, 390: room for the arrow
     h1->addWidget(cbBand);
     cbFreq = new QComboBox;
     cbFreq->setEditable(true);
-    cbFreq->setFixedWidth(104);
+    cbFreq->setFixedWidth(112);
+    cbFreq->view()->setMinimumWidth(200);   // AetherSDR, 390: the notes of the list
     cbFreq->setToolTip("The dial frequency, kHz (USB). Type another one and Enter: kept for this band and mode");
     h1->addWidget(cbFreq);
     h1->addWidget(new QLabel("kHz"));
@@ -613,13 +620,16 @@ void FtPanel::fillBands()
     cbBand->blockSignals(true);
     cbBand->clear();
     for(int b = 0; b < BANDS; b++)
-        if(freqs[mi][b] > 0)
-            cbBand->addItem(bandName[b], b);
+        if(freqs[mi][b] > 0 && (b < HF_BANDS || (bandReach && bandReach(freqs[mi][b]))))
+            cbBand->addItem(bandName[b], b);   // AetherSDR, 390: above the radio -- with a transverter only
     int idx = cbBand->findData(bandOf[mi]);
     if(idx < 0)
         idx = cbBand->findData(5);
     cbBand->setCurrentIndex(qMax(0, idx));
-    bandOf[mi] = cbBand->currentData().toInt();
+    // (AetherSDR, 390: a transverter band kept from the last time stays until setBandReach() has
+    // said whether its transverter is still there)
+    if(bandReach || bandOf[mi] < HF_BANDS)
+        bandOf[mi] = cbBand->currentData().toInt();
     cbBand->blockSignals(false);
     cbFreq->blockSignals(true);
     cbFreq->clear();
@@ -677,7 +687,7 @@ void FtPanel::onFreqEdited()
     bool ok = false;
     const double khz = t.toDouble(&ok);
     const int mi = modeIndex(curMode);
-    if(ok && khz >= 1000.0 && khz <= 35000.0)
+    if(ok && khz >= 1000.0 && khz <= 2000000.0)   // AetherSDR, 390: was 35 MHz (6 m and transverters refused)
     {
         const qint64 hz = qRound64(khz * 1000.0);
         if(hz != freqs[mi][bandOf[mi]])

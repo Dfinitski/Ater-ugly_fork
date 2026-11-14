@@ -24,6 +24,7 @@
 #include <QImage>
 #include <QDateTime>
 #include <QMessageBox>
+#include "core/backends/anan/AnanXvtr.h"
 #include <QTimer>
 #include <QPainter>
 #include <cmath>
@@ -68,7 +69,15 @@ QString ftxSpinArrowStyle()
         "QSpinBox::down-button { subcontrol-position: bottom right; }"
         "QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: {{color.background.2}}; }"
         "QSpinBox::up-arrow { image: url(\"%1\"); width: 8px; height: 5px; }"
-        "QSpinBox::down-arrow { image: url(\"%2\"); width: 8px; height: 5px; }")
+        "QSpinBox::down-arrow { image: url(\"%2\"); width: 8px; height: 5px; }"
+        // Build 390: the program's theme has "QComboBox::drop-down { border:
+        // none }" and no arrow image -- a styled combo box then shows nothing
+        // that says "a list" (operator, 14.11). The same triangle.
+        "QComboBox { padding-right: 20px; }"
+        "QComboBox::drop-down { subcontrol-origin: border; subcontrol-position: center right;"
+        " width: 18px; border: none; border-left: 1px solid {{color.border.strong}}; }"
+        "QComboBox::drop-down:hover { background: {{color.background.2}}; }"
+        "QComboBox::down-arrow { image: url(\"%2\"); width: 8px; height: 5px; }")
         .arg(up, down);
 }
 
@@ -353,6 +362,14 @@ void MainWindow::activateFtx(int sliceId)
             }
         }
     }
+    // Build 390: the bands above the radio's own coverage are offered when a
+    // transverter of Radio Setup carries them (asked each time the list is
+    // filled, so one set up later appears with the next change of mode/band).
+    m_ftPanel->setBandReach([this](qint64 hz) {
+        const RadioCapabilities caps = m_radioModel.backendCapabilities();
+        return anan::AnanXvtrStore::instance().forRf(static_cast<double>(hz), caps.tuningMinHz,
+                                                     caps.tuningMaxHz) != nullptr;
+    });
     m_ftPanel->showWindow(geometry());
     m_ftPanel->start();   // -> tuneRequest: the receiver to the band's frequency
     dial();
