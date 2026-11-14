@@ -2160,6 +2160,14 @@ private:
     FtUnit* m_ftUnit{nullptr};     // build 381: MicronSDR's decoders (src/ftx)
     FtPanel* m_ftPanel{nullptr};   // and the window of the mode
     double m_ftxSavedFreqMhz{0.0};
+    // Build 386: the FTX receiver's frequency belongs to the FTX window alone.
+    // The slice is locked (SliceModel's tune lock refuses every other caller:
+    // mouse, wheel, band buttons, MIDI, CAT, TCI, memories); ftxTune() is the
+    // one way through.
+    void ftxTune(double mhz);
+    bool m_ftxSavedLocked{false};
+    bool m_ftxTuning{false};
+    QMetaObject::Connection m_ftxLockConn, m_ftxNewSliceConn;
     QString m_ftxSavedMode;
     int m_ftxSavedFilterLo{0};
     int m_ftxSavedFilterHi{0};

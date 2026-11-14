@@ -164,8 +164,8 @@ void MainWindow::activateFtx(int sliceId)
         m_ftPanel->loadSettings();
         // The dial of the mode -> the receiver (USB dial frequency).
         connect(m_ftPanel, &FtPanel::tuneRequest, this, [this](qint64 dialHz) {
-            if (SliceModel* sl = m_radioModel.slice(m_ftxSliceId); sl && dialHz > 0)
-                sl->setFrequency(static_cast<double>(dialHz) / 1.0e6);
+            if (dialHz > 0)
+                ftxTune(static_cast<double>(dialHz) / 1.0e6);
         });
         connect(m_ftPanel, &FtPanel::modeChanged, this,
                 [](int mode) { ftx::FtxState::instance().setSubMode(mode); });
@@ -192,6 +192,7 @@ void MainWindow::activateFtx(int sliceId)
     // panadapter's width.
     m_ftxSavedMode = s->mode();
     m_ftxSavedFreqMhz = s->frequency();
+    m_ftxSavedLocked = s->isLocked();
     m_ftxSavedFilterLo = s->filterLow();
     m_ftxSavedFilterHi = s->filterHigh();
     m_ftxSavedPanId = s->panId();
@@ -264,6 +265,33 @@ void MainWindow::activateFtx(int sliceId)
             deactivateFtx(/*restoreMode=*/false);
     });
     m_ftxGoneConn = connect(s, &QObject::destroyed, this, [this] { deactivateFtx(false); });
+    // Build 386: the frequency of this receiver is the FTX window's alone.
+    // Locked now; should anything unlock it (a MIDI or TCI "lock off"), it is
+    // locked again -- only ftxTune() opens it, for its own call.
+    if (!s->isLocked())
+        s->setLocked(true);
+    m_ftxLockConn = connect(s, &SliceModel::lockedChanged, this, [this, sliceId](bool locked) {
+        if (locked || m_ftxTuning || m_ftxSliceId != sliceId)
+            return;
+        if (SliceModel* sl = m_radioModel.slice(sliceId))
+            sl->setLocked(true);
+    });
+    // A receiver opened while FTX is on (the bar's +RX) is built as a copy of
+    // the first one -- which is now the FTX receiver: DIGU, 100 .. 4000 Hz, on
+    // the FT frequency. It gets what that receiver was BEFORE the mode
+    // instead: an ordinary receiver, as if FTX were not there.
+    m_ftxNewSliceConn = connect(&m_radioModel, &RadioModel::sliceAdded, this, [this](SliceModel* added) {
+        if (!added || m_ftxSliceId < 0 || added->sliceId() == m_ftxSliceId)
+            return;
+        if (!m_ftxSavedMode.isEmpty() && added->mode() != m_ftxSavedMode)
+            added->setMode(m_ftxSavedMode);
+        if (m_ftxSavedFilterHi > m_ftxSavedFilterLo)
+            added->setFilterWidth(m_ftxSavedFilterLo, m_ftxSavedFilterHi);
+        if (m_ftxSavedFreqMhz > 0.0 && !added->isLocked())
+            added->setFrequency(m_ftxSavedFreqMhz);
+        qInfo() << "MainWindow: FTX is on -- the new receiver" << added->sliceId() << "starts as"
+                << m_ftxSavedMode << m_ftxSavedFreqMhz << "MHz, not as a copy of the FTX receiver";
+    });
 
     m_ftPanel->showWindow(geometry());
     m_ftPanel->start();   // -> tuneRequest: the receiver to the band's frequency
@@ -271,6 +299,19 @@ void MainWindow::activateFtx(int sliceId)
     qInfo() << "MainWindow: FTX on, slice" << sliceId << "- was" << m_ftxSavedMode << m_ftxSavedFreqMhz
             << "MHz, filter" << m_ftxSavedFilterLo << ".." << m_ftxSavedFilterHi << "pan"
             << m_ftxSavedPanBandwidthMhz * 1000.0 << "kHz";
+}
+
+void MainWindow::ftxTune(double mhz)
+{
+    SliceModel* s = m_radioModel.slice(m_ftxSliceId);
+    if (!s || mhz <= 0.0)
+        return;
+    m_ftxTuning = true;
+    if (s->isLocked())
+        s->setLocked(false);
+    s->setFrequency(mhz);
+    s->setLocked(true);
+    m_ftxTuning = false;
 }
 
 void MainWindow::deactivateFtx(bool restoreMode)
@@ -284,6 +325,12 @@ void MainWindow::deactivateFtx(bool restoreMode)
     disconnect(m_ftxModeConn);
     disconnect(m_ftxFreqConn);
     disconnect(m_ftxGoneConn);
+    disconnect(m_ftxLockConn);
+    disconnect(m_ftxNewSliceConn);
+    // The mode's lock off, so the frequency below can go back; the lock the
+    // operator had before the mode is put back at the end.
+    if (SliceModel* s = m_radioModel.slice(sliceId); s && s->isLocked())
+        s->setLocked(false);
 
     if (m_ftPanel) {
         m_ftPanel->stop();
@@ -310,9 +357,13 @@ void MainWindow::deactivateFtx(bool restoreMode)
                 s->setMode(m_ftxSavedMode);
             if (m_ftxSavedFilterHi > m_ftxSavedFilterLo)
                 s->setFilterWidth(m_ftxSavedFilterLo, m_ftxSavedFilterHi);
-            if (m_ftxSavedFreqMhz > 0.0)
+            if (m_ftxSavedFreqMhz > 0.0 && !s->isLocked())
                 s->setFrequency(m_ftxSavedFreqMhz);
         }
+    }
+    if (m_ftxSavedLocked) {
+        if (SliceModel* s = m_radioModel.slice(sliceId))
+            s->setLocked(true);
     }
     qInfo() << "MainWindow: FTX off, slice" << sliceId;
 }
