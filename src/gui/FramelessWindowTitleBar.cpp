@@ -16,49 +16,58 @@ constexpr const char* kBarStyle =
     "stop:0 #5a7494, stop:0.5 #384e68, stop:1 #1e2e3e); "
     "border-bottom: 1px solid #0a1a28; }";
 
-constexpr const char* kTitleStyle =
-    "QLabel { background: transparent; color: #e0ecf4;"
-    " font-size: 10px; font-weight: bold; }";
+// Build 404: the sizes follow the bar's scale (%1 = font size, px).
+QString titleStyle(int px)
+{
+    return QStringLiteral("QLabel { background: transparent; color: #e0ecf4;"
+                          " font-size: %1px; font-weight: bold; }").arg(px);
+}
 
-constexpr const char* kButtonStyle =
-    "QPushButton { background: transparent; border: none;"
-    " color: #c8d8e8; font-size: 11px; font-weight: bold;"
-    " padding: 0px 4px; }"
-    "QPushButton:hover { color: #ffffff; }";
+QString buttonStyle(int px)
+{
+    return QStringLiteral("QPushButton { background: transparent; border: none;"
+                          " color: #c8d8e8; font-size: %1px; font-weight: bold;"
+                          " padding: 0px 4px; }"
+                          "QPushButton:hover { color: #ffffff; }").arg(px);
+}
 
-constexpr const char* kCloseButtonStyle =
-    "QPushButton { background: transparent; border: none;"
-    " color: #c8d8e8; font-size: 11px; font-weight: bold;"
-    " padding: 0px 4px; }"
-    "QPushButton:hover { color: #ffffff; background: #cc2030; }";
+QString closeButtonStyle(int px)
+{
+    return QStringLiteral("QPushButton { background: transparent; border: none;"
+                          " color: #c8d8e8; font-size: %1px; font-weight: bold;"
+                          " padding: 0px 4px; }"
+                          "QPushButton:hover { color: #ffffff; background: #cc2030; }").arg(px);
+}
 
 }
 
-FramelessWindowTitleBar::FramelessWindowTitleBar(const QString& title, QWidget* parent)
+FramelessWindowTitleBar::FramelessWindowTitleBar(const QString& title, QWidget* parent, double scale)
     : QWidget(parent)
 {
+    const auto px = [scale](int base) { return static_cast<int>(base * scale + 0.5); };
+    const int btn = px(16);
     theme::setContainer(this, QStringLiteral("titlebar"));
-    setFixedHeight(18);
+    setFixedHeight(px(18));
     setAttribute(Qt::WA_StyledBackground, true);
     setStyleSheet(kBarStyle);
 
     auto* row = new QHBoxLayout(this);
-    row->setContentsMargins(6, 0, 2, 0);
+    row->setContentsMargins(px(6), 0, px(2), 0);
     row->setSpacing(4);
 
     auto* grip = new QLabel(QString::fromUtf8("\xe2\x8b\xae\xe2\x8b\xae"), this);
-    AetherSDR::ThemeManager::instance().applyStyleSheet(grip, "QLabel { background: transparent; color: {{color.text.secondary}}; font-size: 10px; }");
+    AetherSDR::ThemeManager::instance().applyStyleSheet(grip, QStringLiteral("QLabel { background: transparent; color: {{color.text.secondary}}; font-size: %1px; }").arg(px(10)));
     row->addWidget(grip);
 
     m_titleLabel = new QLabel(title, this);
-    m_titleLabel->setStyleSheet(kTitleStyle);
+    m_titleLabel->setStyleSheet(titleStyle(px(10)));
     row->addWidget(m_titleLabel);
     row->addStretch();
 
     auto* minButton = new QPushButton(QString::fromUtf8("\xe2\x80\x94"), this);
-    minButton->setFixedSize(16, 16);
+    minButton->setFixedSize(btn, btn);
     minButton->setCursor(Qt::ArrowCursor);
-    minButton->setStyleSheet(kButtonStyle);
+    minButton->setStyleSheet(buttonStyle(px(11)));
     minButton->setToolTip("Minimize");
     // Title-bar buttons must never become the dialog's default button, or
     // pressing Return in a text field would trigger them (on macOS this minimized
@@ -73,9 +82,9 @@ FramelessWindowTitleBar::FramelessWindowTitleBar(const QString& title, QWidget* 
     row->addWidget(minButton);
 
     auto* maxButton = new QPushButton(QString::fromUtf8("\xe2\x96\xa1"), this);
-    maxButton->setFixedSize(16, 16);
+    maxButton->setFixedSize(btn, btn);
     maxButton->setCursor(Qt::ArrowCursor);
-    maxButton->setStyleSheet(kButtonStyle);
+    maxButton->setStyleSheet(buttonStyle(px(11)));
     maxButton->setToolTip("Maximize");
     maxButton->setAutoDefault(false);
     maxButton->setDefault(false);
@@ -92,9 +101,9 @@ FramelessWindowTitleBar::FramelessWindowTitleBar(const QString& title, QWidget* 
     row->addWidget(maxButton);
 
     auto* closeButton = new QPushButton(QString::fromUtf8("\xc3\x97"), this);
-    closeButton->setFixedSize(16, 16);
+    closeButton->setFixedSize(btn, btn);
     closeButton->setCursor(Qt::ArrowCursor);
-    closeButton->setStyleSheet(kCloseButtonStyle);
+    closeButton->setStyleSheet(closeButtonStyle(px(11)));
     closeButton->setToolTip("Close");
     closeButton->setAutoDefault(false);
     closeButton->setDefault(false);

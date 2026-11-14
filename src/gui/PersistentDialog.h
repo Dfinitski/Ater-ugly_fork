@@ -52,6 +52,7 @@ private:
     void restoreGeometryFromSettings();
 
     void applyBodyLayoutMargins();
+    void applyNativeCorners();   // build 404
 
     QString                  m_geomKey;
     // Base window type ORed back in after every setWindowFlags() — Qt::Dialog by

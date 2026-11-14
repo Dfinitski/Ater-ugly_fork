@@ -9,6 +9,17 @@
 #include <QShowEvent>
 #include <QVBoxLayout>
 
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <QColor>
+#include <QLibrary>
+#include <QOperatingSystemVersion>
+#include "core/ThemeManager.h"
+#endif
+
 namespace AetherSDR {
 
 PersistentDialog::PersistentDialog(const QString& title,
@@ -24,7 +35,10 @@ PersistentDialog::PersistentDialog(const QString& title,
     outer->setContentsMargins(0, 0, 0, 0);
     outer->setSpacing(0);
 
-    m_titleBar = new FramelessWindowTitleBar(title, this);
+    // Build 404 (operator, 14.11: "the header one and a half times larger,
+    // with its text and controls; rounded corners as the main window -- for
+    // all such windows of the settings group"): every window on this base.
+    m_titleBar = new FramelessWindowTitleBar(title, this, 1.5);
     outer->addWidget(m_titleBar);
 
     // Body widget is created here, but its layout is owned by the subclass:
@@ -97,6 +111,36 @@ void PersistentDialog::showEvent(QShowEvent* event)
         applyBodyLayoutMargins();
     }
     QDialog::showEvent(event);
+    applyNativeCorners();   // build 404: each show -- a flags change makes a new native window
+}
+
+// Build 404: the main window has a native frame (expanded client area), so
+// Windows 11 rounds its corners itself; these windows are frameless and stay
+// square unless asked: DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND, and the
+// 1 px border DWM then draws in the theme's background (as
+// MainWindow::applyWindowsFrameColor). dwmapi.dll is resolved at run time, so
+// nothing new is linked. Windows 10 and other systems: no rounding exists.
+void PersistentDialog::applyNativeCorners()
+{
+#ifdef Q_OS_WIN
+    if (!m_framelessOn || QOperatingSystemVersion::current() < QOperatingSystemVersion::Windows11)
+        return;
+    using SetAttr = HRESULT (WINAPI*)(HWND, DWORD, LPCVOID, DWORD);
+    static const SetAttr setAttr = reinterpret_cast<SetAttr>(
+        QLibrary::resolve(QStringLiteral("dwmapi"), "DwmSetWindowAttribute"));
+    const HWND hwnd = reinterpret_cast<HWND>(winId());
+    if (!setAttr || !hwnd)
+        return;
+    constexpr DWORD kCornerPreference = 33;   // DWMWA_WINDOW_CORNER_PREFERENCE
+    constexpr DWORD kBorderColor = 34;        // DWMWA_BORDER_COLOR
+    const int round = 2;                      // DWMWCP_ROUND
+    setAttr(hwnd, kCornerPreference, &round, sizeof(round));
+    const QColor bg = ThemeManager::instance().color("color.background.app");
+    if (bg.isValid()) {
+        const COLORREF border = RGB(bg.red(), bg.green(), bg.blue());
+        setAttr(hwnd, kBorderColor, &border, sizeof(border));
+    }
+#endif
 }
 
 void PersistentDialog::closeEvent(QCloseEvent* event)

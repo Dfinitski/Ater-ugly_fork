@@ -10,7 +10,9 @@ class FramelessWindowTitleBar : public QWidget {
     Q_OBJECT
 
 public:
-    explicit FramelessWindowTitleBar(const QString& title, QWidget* parent = nullptr);
+    // Build 404: scale -- the bar's height, its text and its buttons, as a
+    // multiple of the original 18 px bar (the settings windows use 1.5).
+    explicit FramelessWindowTitleBar(const QString& title, QWidget* parent = nullptr, double scale = 1.0);
 
     void setTitleText(const QString& title);
 
