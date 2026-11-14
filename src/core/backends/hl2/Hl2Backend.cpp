@@ -4893,7 +4893,7 @@ ReceiveDispatch Hl2Backend::requestTransverter(const TransverterRequest& request
         if (!x)
             return ReceiveDispatch::Unsupported;
         switch (request.field) {
-        case Field::Name: x->name = std::get<QString>(request.value).left(4); break;
+        case Field::Name: x->name = std::get<QString>(request.value).left(6); break;   // build 358: what the band button holds
         case Field::RfFrequencyMhz: x->rfMhz = std::get<double>(request.value); break;
         case Field::IfFrequencyMhz: x->ifMhz = std::get<double>(request.value); break;
         case Field::LoErrorMhz: x->loErrorMhz = std::get<double>(request.value); break;

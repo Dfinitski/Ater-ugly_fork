@@ -310,6 +310,16 @@ static const QString kBandBtnStyle =
     "QPushButton:checked { background: {{color.background.2}}; "
     "color: {{color.text.primary}}; border: 2px solid {{color.text.primary}}; }";
 
+// Build 358: a transverter's name on its 48 px button. The inherited button
+// padding clipped anything past four characters; without it five fit at
+// 11 px bold and six at 10 px.
+static const QString kXvtrLongNameStyle = QStringLiteral("QPushButton { font-size: 10px; }");
+static QString xvtrNameStyle(const QString& base, const QString& name)
+{
+    return base + QStringLiteral("QPushButton { padding: 0px; }")
+         + (name.size() > 5 ? kXvtrLongNameStyle : QString());
+}
+
 static const QString kXvtrBtnStyle =
     "QPushButton { background: rgba(30, 40, 55, 220); "
     "border: 1px solid #304050; border-radius: 3px; "
@@ -3926,7 +3936,7 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
     for (int i = 0; i < xvtrBandCount; ++i) {
         auto* btn = new QPushButton(bands[i].name, m_bandPanel);
         btn->setFixedSize(BAND_BTN_W, BAND_BTN_H);
-        ThemeManager::instance().applyStyleSheet(btn, kXvtrBtnStyle);
+        ThemeManager::instance().applyStyleSheet(btn, xvtrNameStyle(kXvtrBtnStyle, bands[i].name));
         btn->setCheckable(true);
         const double freq = bands[i].rfFreqMhz;
         const QString name = bands[i].name;
@@ -4035,7 +4045,7 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
     for (const auto& xvtr : bands) {
         auto* btn = new QPushButton(xvtr.name, m_xvtrPanel);
         btn->setFixedSize(BAND_BTN_W, BAND_BTN_H);
-        btn->setStyleSheet(btnStyle);
+        btn->setStyleSheet(xvtrNameStyle(btnStyle, xvtr.name));
 
         const double freq = xvtr.rfFreqMhz;
         const QString name = xvtr.name;

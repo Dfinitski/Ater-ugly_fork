@@ -5527,8 +5527,14 @@ QWidget* RadioSetupDialog::buildXvtrTab()
         };
 
         auto* nameEdit   = addField(0, 0, "Name:", x.name);
-        nameEdit->setMaxLength(4);
-        nameEdit->setAccessibleDescription(QStringLiteral("Transverter name, up to four characters."));
+        // Build 358: four characters is the FlexRadio's limit; the band button
+        // (48 px, 11 px bold) holds six, and on an openHPSDR radio the name
+        // lives in the program.
+        const bool longName = m_model->backendDeclaresExtension(QStringLiteral("hl2"));
+        nameEdit->setMaxLength(longName ? 6 : 4);
+        nameEdit->setAccessibleDescription(longName
+            ? QStringLiteral("Transverter name, up to six characters.")
+            : QStringLiteral("Transverter name, up to four characters."));
         auto* validLbl   = new QLabel(x.isValid ? "Valid" : "Invalid");
         setTone(validLbl, x.isValid ? Tone::Ok : Tone::Error);
         grid->addWidget(validLbl, 0, 3);
