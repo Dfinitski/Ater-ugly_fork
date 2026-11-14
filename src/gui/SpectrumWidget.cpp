@@ -9192,14 +9192,11 @@ void SpectrumWidget::endLockDragFreeze()
         return;
     m_lockDragFreeze = false;
     markOverlayDirty();   // build 370: the locked receiver goes back into its own layer
-    // The last reports of the drag are still on their way: afterwards the
-    // overlay takes the receiver's real frequency (the same to the hertz when
-    // the tune was accepted; the old one if it was refused).
-    QTimer::singleShot(300, this, [this] {
-        if (m_lockDragFreeze || m_centerLockSliceId < 0 || m_lockDragRealMhz <= 0.0)
-            return;
-        setSliceOverlayFreq(m_centerLockSliceId, m_lockDragRealMhz);
-    });
+    // Build 371: no timed "real frequency" write-back here any more (build
+    // 369). It could land a report that was one step old -- the filter
+    // twitched once after the drag. The window holds the tune target over
+    // late reports itself (MainWindow::holdCenterLockTuneTarget) and writes
+    // the receiver's real frequency back when that hold ends.
 }
 
 void SpectrumWidget::setSliceOverlayFreq(int sliceId, double freqMhz)
@@ -12858,8 +12855,21 @@ void SpectrumWidget::mouseReleaseEvent(QMouseEvent* ev)
         if (m_panDragSettleTimer) {
             m_panDragSettleTimer->stop();
         }
+        // ANAN fork build 371 (operator, 13.11: "under Center Lock the
+        // frequency is not rounded to the step when the mouse is released").
+        // The drag tunes the locked receiver; where it stops, the receiver
+        // goes to the nearest tuning step and the view goes with it (by at
+        // most half a step), the filter still in the middle.
+        double releaseCenterMhz = m_centerMhz;
+        if (m_lockDragFreeze && m_stepHz > 0) {
+            const int li = overlayIndex(m_centerLockSliceId);
+            if (li >= 0) {
+                const double f = m_sliceOverlays[li].freqMhz;
+                releaseCenterMhz += snapToStep(f, m_stepHz) - f;
+            }
+        }
         applyPanDragCenter(panGeometryConfirmationRequired()
-                               ? m_panDragPendingCenterMhz : m_centerMhz, true);
+                               ? m_panDragPendingCenterMhz : releaseCenterMhz, true);
         commitFrequencyPreview();
         m_panDragWaterfallFrameCenterMhz = m_centerMhz;
         emit panDragSettled(m_centerMhz, m_bandwidthMhz);

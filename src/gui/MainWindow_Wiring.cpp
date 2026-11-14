@@ -4447,8 +4447,14 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 if (m_tciIqCenterLockPans.contains(dragPanId))   // the lock centres the passband there
                     tuneMhz -= (locked->filterLow() + locked->filterHigh()) / 2.0e6;
                 tuneMhz = std::round(tuneMhz * 1.0e6) / 1.0e6;
-                if (tuneMhz > 0.0 && !qFuzzyCompare(tuneMhz, locked->frequency()))
+                if (tuneMhz > 0.0 && !qFuzzyCompare(tuneMhz, locked->frequency())) {
+                    // Build 371: reports of the earlier steps arrive after this
+                    // one is asked for; until they have passed, the overlay
+                    // and the lock's recentre take THIS target, not a report
+                    // one step old (the filter twitched once after a drag).
+                    holdCenterLockTuneTarget(locked, tuneMhz);
                     applyTuneRequest(locked, tuneMhz, TuneIntent::IncrementalTune, "center-lock-drag");
+                }
             }
         }
         m_radioModel.requestPanCenter(dragPanId, center, -1.0,
