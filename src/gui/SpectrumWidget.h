@@ -2039,7 +2039,12 @@ private:
     // plan catch up. m_lockDragRealMhz: the receiver's frequency as last
     // reported, put back into the overlay once the drag is over.
     bool m_lockDragFreeze{false};
-    QElapsedTimer m_lockDragRepaintClock;
+    QElapsedTimer m_lockDragRepaintClock;   // (build 369; unused since 370)
+    // Build 370: which receivers drawSliceMarkers() paints -- 0 all, 1 all but
+    // the Center-Locked one, 2 only that one. During a Center Lock drag the
+    // locked receiver is painted into the screen-fixed layer, the rest into
+    // the layer that moves with the band.
+    int m_sliceMarkerPass{0};
     double m_lockDragRealMhz{0.0};
     void endLockDragFreeze();
     double m_frequencyPreviewOverlayBaseBandwidthMhz{0.0};

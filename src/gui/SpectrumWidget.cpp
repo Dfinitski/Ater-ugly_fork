@@ -9191,6 +9191,7 @@ void SpectrumWidget::endLockDragFreeze()
     if (!m_lockDragFreeze)
         return;
     m_lockDragFreeze = false;
+    markOverlayDirty();   // build 370: the locked receiver goes back into its own layer
     // The last reports of the drag are still on their way: afterwards the
     // overlay takes the receiver's real frequency (the same to the hertz when
     // the tune was accepted; the old one if it was refused).
@@ -12018,11 +12019,14 @@ void SpectrumWidget::applyPanDragCenter(double newCenterMhz, bool force)
             }
             if (!m_lockDragFreeze) {
                 m_lockDragFreeze = true;
-                m_lockDragRepaintClock.start();
-                m_previewSliceOverlayMoved = true;
-            } else if (m_lockDragRepaintClock.elapsed() >= 100) {
-                m_lockDragRepaintClock.restart();
-                m_previewSliceOverlayMoved = true;
+#ifdef AETHER_GPU_SPECTRUM
+                // Build 370: one repaint of both layers at this centre, split
+                // as render() describes; the moving layer's transform starts
+                // from here. Nothing is repainted again until the drag ends.
+                m_overlayStaticDirty = true;
+                m_frequencyPreviewOverlayBaseCenterMhz = newCenterMhz;
+                m_frequencyPreviewOverlayBaseBandwidthMhz = m_bandwidthMhz;
+#endif
             }
         }
         m_centerMhz = newCenterMhz;
@@ -15926,8 +15930,7 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                 FrequencyFrame{m_frequencyPreviewTargetCenterMhz,
                                panDisplayBandwidthMhz(m_frequencyPreviewTargetBandwidthMhz,
                                                       panEdgeCropActive())});
-        // Build 369: not while a Center Lock drag holds the layer in place.
-        if (m_frequencyPreviewActive && overlayTransform.valid && !m_lockDragFreeze) {
+        if (m_frequencyPreviewActive && overlayTransform.valid) {
             overlayScale = static_cast<float>(overlayTransform.scale);
             overlayOffset = static_cast<float>(overlayTransform.offset);
             overlayPreview = 1.0f;
@@ -16129,7 +16132,9 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
             if (m_showSpots || m_showSHistory) {
                 drawSpotMarkers(frequencyPainter, specRect);
             }
+            m_sliceMarkerPass = m_lockDragFreeze ? 1 : 0;   // build 370
             drawSliceMarkers(frequencyPainter, specRect, wfRect);
+            m_sliceMarkerPass = 0;
             drawOffScreenSlices(frequencyPainter, specRect);
             m_overlayFrequencyNeedsUpload = true;
         }
@@ -16145,12 +16150,27 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
             if (m_showSpots || m_showSHistory) {
                 drawSpotMarkers(frequencyPainter, specRect);
             }
+            m_sliceMarkerPass = m_lockDragFreeze ? 1 : 0;   // build 370
             drawSliceMarkers(frequencyPainter, specRect, wfRect);
+            m_sliceMarkerPass = 0;
             drawOffScreenSlices(frequencyPainter, specRect);
 
             m_overlayStatic.fill(Qt::transparent);
             QPainter p(&m_overlayStatic);
             p.setRenderHint(QPainter::Antialiasing, false);
+            // ANAN fork build 370 (operator, 13.11: build 369 held the whole
+            // frequency layer still during a Center Lock drag and repainted it
+            // ten times a second -- "the spots move in jerks; put the filter
+            // in a layer of its own"). This layer is the one that does not
+            // move with the band, so the locked receiver's filter is painted
+            // HERE for the length of the drag, once, in the middle where the
+            // drag keeps it; the layer above moves smoothly again with the
+            // spots, the band plan and the other receivers.
+            if (m_lockDragFreeze) {
+                m_sliceMarkerPass = 2;
+                drawSliceMarkers(p, specRect, wfRect);
+                m_sliceMarkerPass = 0;
+            }
 
             // Edge crop (panEdgeCropActive()) happens upstream now, at the
             // bin/coordinate level (croppedBinsForDisplay(), and
@@ -18953,6 +18973,8 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
 
     // Draw inactive slices first, then active slice on top
     auto drawOne = [&](const SliceOverlay& so) {
+        if (m_sliceMarkerPass == 1 && so.sliceId == m_centerLockSliceId) return;   // build 370
+        if (m_sliceMarkerPass == 2 && so.sliceId != m_centerLockSliceId) return;
         if (so.freqMhz < startMhz || so.freqMhz > endMhz) return;
 
         const QColor col = so.inCapture ? sliceColorForOverlay(so)
