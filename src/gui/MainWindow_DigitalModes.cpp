@@ -1452,6 +1452,24 @@ void MainWindow::showFreeDvReporter()
                 activateRADE(sl->sliceId());
 #endif
         });
+        // Build 398: the dialog's "Enable" button -- the connection itself.
+        // Kept as SpotHub's Auto-Start, so it comes back as it was left.
+        connect(m_freedvReporterDialog, &FreeDvReporterDialog::enableRequested, this, [this](bool on) {
+            auto& as = AppSettings::instance();
+            as.setValue("FreeDvAutoStart", on ? "True" : "False");
+            as.save();
+            QMetaObject::invokeMethod(m_freedvClient, [this, on] {
+                if (on)
+                    m_freedvClient->startConnection();
+                else
+                    m_freedvClient->stopConnection();
+            });
+        });
+        connect(m_freedvClient, &FreeDvClient::started, m_freedvReporterDialog,
+                [dlg = m_freedvReporterDialog] { dlg->setConnectionActive(true); }, Qt::QueuedConnection);
+        connect(m_freedvClient, &FreeDvClient::stopped, m_freedvReporterDialog,
+                [dlg = m_freedvReporterDialog] { dlg->setConnectionActive(false); }, Qt::QueuedConnection);
+        m_freedvReporterDialog->setConnectionActive(m_freedvClient->isConnected());
         // Seed: reporting may already be on when the dialog is first opened.
         m_freedvReporterDialog->setReportingActive(
             m_freedvClient->isReportingEnabled());

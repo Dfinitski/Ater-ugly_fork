@@ -6465,6 +6465,19 @@ mode» и возвращается до оптимистичного состо�
 Saturn при включённом PureSignal банк фильтров АЦП обратной связи на передаче обходится всегда
 (`psBypassesBank`). Платы с ФВЧ/ФНЧ (100D / 200D) — без изменений: обхода там нет аппаратно.
 
+## 365. Сборка 398 — FreeDV Reporter: кнопка Enable в окне
+
+Оператор, 14.11: «нажал Reporter в апплете — открылся, но отключён. После бендов внизу, за
+разделителем, кнопку Enable для включения и выключения».
+
+Подключение к qso.freedv.org включалось только в SpotHub (вкладка FreeDV, Start / Auto-Start).
+В `FreeDvReporterDialog` после кнопок диапазонов — вертикальный разделитель и фиксируемая кнопка
+«Enable» (`enableRequested(bool)` → `FreeDvClient::startConnection / stopConnection`); состояние
+кнопки следует за `started` / `stopped` клиента (`setConnectionActive`), при открытии — по
+`isConnected()`. Выбор сохраняется как `FreeDvAutoStart` (тот же Auto-Start, что в SpotHub).
+
+Проверено компиляцией.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -335,6 +335,21 @@ void FreeDvReporterDialog::buildBody()
     // Default: "All" mode — empty set; last button checked
     m_bandBtns.last()->setChecked(true);
 
+    // Build 398 (operator, 14.11: "after the bands, behind a separator, an
+    // Enable button to switch it on and off"): the reporter opened from the
+    // FDV applet was not connected -- that was only in SpotHub's FreeDV tab.
+    auto* enableSep = new QFrame;
+    enableSep->setFrameShape(QFrame::VLine);
+    ThemeManager::instance().applyStyleSheet(enableSep, "color: {{color.border.subtle}};");
+    bottom->addWidget(enableSep);
+    m_enableBtn = new QPushButton("Enable");
+    m_enableBtn->setCheckable(true);
+    m_enableBtn->setObjectName(QStringLiteral("freedvReporterEnableButton"));
+    m_enableBtn->setToolTip("Connect to FreeDV Reporter (qso.freedv.org) / disconnect");
+    ThemeManager::instance().applyStyleSheet(m_enableBtn, bandBtnStyle);
+    connect(m_enableBtn, &QPushButton::clicked, this, [this](bool on) { emit enableRequested(on); });
+    bottom->addWidget(m_enableBtn);
+
     bottom->addStretch();
 
     auto* closeBtn = new QPushButton("Close");
@@ -411,6 +426,12 @@ void FreeDvReporterDialog::reloadMessage()
     // clears the flag, so this composes with commitMessage() (#4231 review).
     if (!m_msgEdit->isModified() && m_msgEdit->text() != stored)
         m_msgEdit->setText(stored);
+}
+
+void FreeDvReporterDialog::setConnectionActive(bool connected)
+{
+    if (m_enableBtn)
+        m_enableBtn->setChecked(connected);
 }
 
 void FreeDvReporterDialog::setReportingActive(bool active)

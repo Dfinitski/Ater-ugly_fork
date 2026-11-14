@@ -44,8 +44,14 @@ public slots:
     // disabled with a tooltip saying why rather than silently doing nothing
     // (#4231).
     void setReportingActive(bool active);
+    // Build 398: the connection to FreeDV Reporter is up / down -- the state
+    // of the "Enable" button.
+    void setConnectionActive(bool connected);
 
 signals:
+    // Build 398: the "Enable" button -- connect to / disconnect from FreeDV
+    // Reporter (the same start / stop as SpotHub's FreeDV tab).
+    void enableRequested(bool on);
     // Emitted when the operator commits a new status message. MainWindow
     // forwards it to FreeDvClient::updateMessage() on the client's thread.
     void messageChanged(const QString& message);
@@ -95,6 +101,7 @@ private:
     QRadioButton*  m_freqRadio{nullptr};
     QButtonGroup*  m_bandGroup{nullptr};
     QVector<QPushButton*> m_bandBtns;
+    QPushButton*   m_enableBtn{nullptr};   // build 398
 
     QPointer<SliceModel> m_slice;
     QMetaObject::Connection m_sliceFreqConn;
