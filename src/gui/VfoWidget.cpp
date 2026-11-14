@@ -76,6 +76,7 @@
 #include <QEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include "core/SsbSideband.h"   // build 353: SSB entry of the mode-button menu
 #include <QApplication>   // build 340
 #include <QWindow>
 #include <QImage>            // FlagShadow::m_shadowImage (was transitive only)
@@ -3031,9 +3032,9 @@ void VfoWidget::buildTabContent()
         static const char* kDefaults[kQuickModeButtons] = {
             "LSB", "USB", "CW", "AM",      // row 1 (slots 1..3 = old buttons)
 #ifdef HAVE_RADE
-            "CWL", "DIGL", "DIGU", "FDV"}; // row 2 (build 340: FDV, was SAM)
+            "SAM", "DIGL", "DIGU", "FDV"}; // row 2 (build 353: SAM, was CWL -- CW's second click)
 #else
-            "CWL", "DIGL", "DIGU", "SAM"}; // row 2
+            "SAM", "DIGL", "DIGU", "FM"};  // row 2
 #endif
         for (int i = 0; i < kQuickModeButtons; ++i) {
             QString a = settings.value(quickModeKey(i), QString::fromLatin1(kDefaults[i])).toString();
@@ -3111,13 +3112,24 @@ void VfoWidget::buildTabContent()
                 QMenu menu;
                 for (const QString& m : quickModeChoices()) {
                     QAction* act = menu.addAction(m, [this, i, m] {
-                        m_quickModeAssign[i] = m;
-                        AppSettings::instance().setValue(quickModeKey(i), m);
+                        // Build 353: "SSB" assigns the sideband of the band
+                        // the receiver is on (LSB below 10 MHz, USB above and
+                        // on 60 m); the button then IS that LSB or USB, and a
+                        // second click on it swaps the sideband (build 336).
+                        QString assign = m;
+                        if (m == QLatin1String("SSB"))
+                            assign = m_slice ? ssbSidebandFor(m_slice->frequency())
+                                             : QStringLiteral("USB");
+                        m_quickModeAssign[i] = assign;
+                        AppSettings::instance().setValue(quickModeKey(i), assign);
                         AppSettings::instance().save();
                         updateQuickModeButtons();
                     });
                     act->setCheckable(true);
-                    act->setChecked(m == m_quickModeAssign[i]);
+                    const QString& cur = m_quickModeAssign[i];
+                    act->setChecked(m == QLatin1String("SSB")
+                                        ? (cur == QLatin1String("USB") || cur == QLatin1String("LSB"))
+                                        : m == cur);
                 }
                 menu.exec(btn->mapToGlobal(pos));
             });
@@ -6365,6 +6377,26 @@ QStringList VfoWidget::quickModeChoices() const
         modes = {"USB", "LSB", "CW", "AM", "SAM", "FM", "NFM", "DFM", "DSTR",
                  "RTTY", "DIGU", "DIGL"};
     modes = filterUnavailableDigitalVoiceModes(modes);
+    // Build 353 (operator, 13.11: "the list is redundant: remove CWL, one SSB
+    // in place of USB and LSB"): the other sideband is a second click on the
+    // button, so the list needs one entry per pair. SSB stands where the
+    // first of USB / LSB stood; CWL is reached from CW.
+    {
+        const bool ssb = modes.contains("USB") || modes.contains("LSB");
+        int at = -1;
+        for (int k = 0; k < modes.size(); ++k) {
+            if (modes[k] == QLatin1String("USB") || modes[k] == QLatin1String("LSB")) {
+                at = k;
+                break;
+            }
+        }
+        modes.removeAll(QStringLiteral("USB"));
+        modes.removeAll(QStringLiteral("LSB"));
+        if (ssb)
+            modes.insert(std::clamp(at, 0, static_cast<int>(modes.size())), QStringLiteral("SSB"));
+        if (modes.contains("CW") || modes.contains("CWU"))
+            modes.removeAll(QStringLiteral("CWL"));
+    }
 #ifdef HAVE_RADE
     if (!modes.contains("FDV"))
         modes << QStringLiteral("FDV");
