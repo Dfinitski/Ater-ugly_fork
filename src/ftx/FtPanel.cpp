@@ -47,7 +47,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     setObjectName("FtPanel");
     setWindowFlags(Qt::Window);         // a window of its own (owned by the main window)
     setWindowTitle("AetherSDR FTX");   // AetherSDR
-    setMinimumSize(560, 260);
+    setMinimumSize(676, 260);   // AetherSDR, build 389: the operator's smallest width (14.11)
     setAttribute(Qt::WA_StyledBackground, true);
     psk = new PskReporter("AetherSDR", this);
     for(int m = 0; m < 3; m++)
@@ -329,7 +329,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
         t->setEditTriggers(QAbstractItemView::NoEditTriggers);
         t->setSelectionBehavior(QAbstractItemView::SelectRows);
         t->setSelectionMode(QAbstractItemView::SingleSelection);
-        t->setAlternatingRowColors(true);
+        t->setAlternatingRowColors(false);   // AetherSDR, build 389: a background means something (as JTDX)
         t->setWordWrap(false);
         t->horizontalHeader()->setHighlightSections(false);
         QFont f("Consolas");
@@ -921,6 +921,11 @@ void FtPanel::onDecoded(qint64 periodStartMs, int mode, QVector<FtUnit::Decode> 
     const QString myCall = leCall->text().trimmed().toUpper();
     double myLat = 0, myLon = 0;
     const bool haveMy = gridToLatLon(leGrid->text().trimmed(), myLat, myLon);
+    // AetherSDR, build 389: the highlighting by the rules of JTDX (displaytext.cpp)
+    if(!wkLoaded)
+        loadWorked();
+    const QString dxCall = leDx->text().trimmed().toUpper();
+    const QString bandNow = FtLog::band(dial > 0 ? dial : freqs[modeIndex(curMode)][bandOf[modeIndex(curMode)]]);
 
     QScrollBar *sb = twAct->verticalScrollBar();
     const bool atEnd = sb->value() >= sb->maximum() - 2;
@@ -1010,19 +1015,55 @@ void FtPanel::onDecoded(qint64 periodStartMs, int mode, QVector<FtUnit::Decode> 
                                          : d.nap ? QString("a%1%2").arg(d.nap).arg(d.qual < 0.17f ? "?" : "") : QString(),
                                     country, dist(km),
                                     az >= 0 ? QString::number(qRound(az)) : QString() };
-        const bool toMe = !myCall.isEmpty() && w.contains(myCall);
+        // AetherSDR, build 389: the rules of JTDX (displaytext.cpp, its defaults), the colours
+        // this program's, muted.
+        //   - to my call (std_type 2): its own colour, before anything else;
+        //   - a station one may call -- CQ / QRZ (1) or the end of its QSO, "73" / "RR73" (4, the
+        //     "73 / RR73 marker"): the background says what it would be for the log -- a new
+        //     country, a new country on this band, a new call, a new call on this band; worked on
+        //     this band already: no background, the message struck through;
+        //   - the other messages (3): plain; those with the DX of the QSO now: another text colour.
+        const QString first = w.isEmpty() ? QString() : QString(w[0]).remove('<').remove('>');
+        const bool toMe = !wspr && !myCall.isEmpty() && first == myCall;
+        const bool fin = !wspr && !cq && !toMe && !call.isEmpty() && w.size() >= 3
+                         && (w.last() == "73" || w.last() == "RR73");
+        const bool withDx = !wspr && !dxCall.isEmpty() && w.contains(dxCall);
+        QColor rowBg;
+        bool worked = false;
+        if(toMe)
+            rowBg = QColor(104, 34, 34);
+        else if((cq || fin) && !call.isEmpty() && call != myCall)
+        {
+            const int ent = entityOf(call);
+            if(ent >= 0 && !wkEnt.contains(ent))
+                rowBg = QColor(84, 38, 92);         // a new country
+            else if(ent >= 0 && !wkEntBand.contains(QString::number(ent) + "|" + bandNow))
+                rowBg = QColor(52, 44, 96);         // a new country on this band
+            else if(!wkCall.contains(call))
+                rowBg = QColor(18, 58, 88);         // a new call (this program's blue)
+            else if(!wkCallBand.contains(call + "|" + bandNow))
+                rowBg = QColor(16, 68, 72);         // a new call on this band
+            else
+                worked = true;
+        }
         for(int c = 0; c < cells.size(); c++)
         {
             QTableWidgetItem *it = new QTableWidgetItem(cells[c]);
-            it->setForeground(QColor(230, 230, 230));       // light text whatever the style
+            it->setForeground(worked ? QColor(140, 140, 140) : withDx && !toMe ? QColor(130, 200, 235)
+                                                                              : QColor(230, 230, 230));
             if(c <= 3 || c >= 7)
                 it->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            if(d.nap && (c == 4 || c == 5))
+            if(d.nap && (c == 4 || c == 5) && !worked)
                 it->setForeground(QColor(255, 210, 90));    // AP decodes: yellow
-            if(toMe)
-                it->setBackground(QColor(110, 30, 30));
-            else if(cq)
-                it->setBackground(QColor(18, 58, 88));   // AetherSDR: CQ in this program's blue (MicronSDR: green)
+            if(rowBg.isValid())
+                it->setBackground(rowBg);
+            if(worked && c == 4)
+            {
+                QFont sf = twAct->font();
+                sf.setStrikeOut(true);
+                it->setFont(sf);
+                it->setToolTip("Worked on this band already");
+            }
             if(c == 6 && !cont.isEmpty())
                 it->setToolTip(country + ", " + cont);
             if(c == 7 && km >= 0)
@@ -1149,6 +1190,33 @@ void FtPanel::loadCty()
         }
     }
     qDebug() << "FT: cty.dat:" << ents.size() << "entities," << pfx.size() << "prefixes," << exact.size() << "calls";
+}
+
+// AetherSDR, build 389: the log read once (the ADIF file of FtLog), then kept by logQso()
+void FtPanel::loadWorked()
+{
+    wkLoaded = true;
+    wkCall.clear();
+    wkCallBand.clear();
+    wkEnt.clear();
+    wkEntBand.clear();
+    for(const QString &r : FtLog::records())
+        addWorked(FtLog::field(r, "call"), FtLog::field(r, "band"));
+}
+
+void FtPanel::addWorked(const QString &callIn, const QString &bandIn)
+{
+    const QString call = callIn.trimmed().toUpper(), band = bandIn.trimmed().toLower();
+    if(call.isEmpty())
+        return;
+    wkCall.insert(call);
+    wkCallBand.insert(call + "|" + band);
+    const int ent = entityOf(call);
+    if(ent >= 0)
+    {
+        wkEnt.insert(ent);
+        wkEntBand.insert(QString::number(ent) + "|" + band);
+    }
 }
 
 int FtPanel::entityOf(const QString &callIn) const

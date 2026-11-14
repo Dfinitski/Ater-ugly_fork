@@ -48,7 +48,7 @@ void FtPanel::buildTxUi(QVBoxLayout *v)
     lbDxLbl = new QLabel("DX");
     h->addWidget(lbDxLbl);
     leDx = new QLineEdit;
-    leDx->setFixedWidth(100);    // AetherSDR: this program's font
+    leDx->setFixedWidth(86);     // AetherSDR: this program's font (389: the row fits the smallest window)
     leDx->setMaxLength(12);
     leDx->setValidator(new QRegularExpressionValidator(QRegularExpression("[A-Za-z0-9/<>]{0,14}"), leDx));
     leDx->setToolTip("The station called (a double click on its decode puts it here)");
@@ -56,7 +56,7 @@ void FtPanel::buildTxUi(QVBoxLayout *v)
     lbGridLbl = new QLabel("Grid");
     h->addWidget(lbGridLbl);
     leDxGrid = new QLineEdit;
-    leDxGrid->setFixedWidth(66);
+    leDxGrid->setFixedWidth(58);
     leDxGrid->setMaxLength(6);
     h->addWidget(leDxGrid);
     lbRptLbl = new QLabel("Rpt");
@@ -64,14 +64,14 @@ void FtPanel::buildTxUi(QVBoxLayout *v)
     sbRpt = new QSpinBox;
     sbRpt->setRange(-50, 49);
     sbRpt->setValue(-10);
-    sbRpt->setFixedWidth(60);
+    sbRpt->setFixedWidth(54);
     sbRpt->setToolTip("The report sent (dB): the SNR of the DX, put by the double click and Auto seq");
     h->addWidget(sbRpt);
     pbGen = new QPushButton("Gen");
     pbGen->setFocusPolicy(Qt::NoFocus);
     pbGen->setToolTip("The messages Tx1 .. Tx6 made again (the DX, its grid, the report, my call and grid)");
     h->addWidget(pbGen);
-    h->addSpacing(10);
+    h->addSpacing(4);
     pbEnable = new QPushButton("Enable TX");
     pbEnable->setCheckable(true);
     pbEnable->setFocusPolicy(Qt::NoFocus);
@@ -93,7 +93,7 @@ void FtPanel::buildTxUi(QVBoxLayout *v)
     h->addWidget(chbAutoSeq);
     h->addStretch(1);
     lbTxState = new QLabel;
-    lbTxState->setMinimumWidth(60);
+    lbTxState->setMinimumWidth(24);
     h->addWidget(lbTxState);
     g->addLayout(h, 0, 0, 1, 6);
 
@@ -760,6 +760,7 @@ void FtPanel::logQso()
     if(FtLog::append(qso, &why))
     {
         qsoLogged = true;
+        addWorked(qso.call, FtLog::band(qso.freqHz));   // AetherSDR, 389: the highlighting
         lbStat->setText(QString("QSO with %1 logged (%2 / %3%4)").arg(qso.call, qso.rstSent, qso.rstRcvd.isEmpty() ? "?" : qso.rstRcvd)
                         .arg(qso.powerW > 0 ? QString(", %1 W").arg(qso.powerW, 0, 'f', 1) : QString()));
         qDebug().noquote() << "FT: logged" << FtLog::record(qso);

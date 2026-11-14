@@ -150,6 +150,13 @@ private:
     QHash<QString, int> pfx;           // prefix -> entity
     QHash<QString, int> exact;         // =CALL -> entity
     bool ctyLoaded;
+    // AetherSDR, build 389: what the log holds, for the highlighting of the decodes (the rules of
+    // JTDX, displaytext.cpp): the calls and the entities worked, at all and on a band ("CALL|20m").
+    QSet<QString> wkCall, wkCallBand, wkEntBand;
+    QSet<int> wkEnt;
+    bool wkLoaded = false;
+    void loadWorked();
+    void addWorked(const QString &call, const QString &band);
     void loadCty();
     int  entityOf(const QString &call) const;
 
