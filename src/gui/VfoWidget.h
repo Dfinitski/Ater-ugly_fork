@@ -581,6 +581,8 @@ private:
     bool    m_fdvSynced{false};
     bool    m_fdvSnrValid{false};
     float   m_fdvSnrDb{0.0f};
+    bool    m_fdvOffsValid{false};   // build 342: second line, the modem's frequency offset
+    float   m_fdvOffsHz{0.0f};
     void    updateFdvBadge();
     QString m_fdvText;
     void syncFdvTextGeometry();

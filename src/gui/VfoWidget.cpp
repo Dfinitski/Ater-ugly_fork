@@ -1211,7 +1211,9 @@ void VfoWidget::buildUI()
         freqRow->setSpacing(4);
 #ifdef HAVE_RADE
         m_radeStatusLabel = new QLabel;
-        m_radeStatusLabel->setFixedHeight(16);
+        // Build 342: two lines (SNR, frequency offset), from the top of the row.
+        m_radeStatusLabel->setFixedHeight(30);
+        m_radeStatusLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
         m_radeStatusLabel->setTextFormat(Qt::RichText);
         AetherSDR::ThemeManager::instance().applyStyleSheet(m_radeStatusLabel, "QLabel { color: {{color.accent}}; font-size: 11px; font-weight: bold;"
             " background: transparent; border: none; padding: 0; margin: 0; }");
@@ -4204,8 +4206,9 @@ void VfoWidget::syncFdvTextGeometry()
         m_fdvTextLabel->setTextFormat(Qt::RichText);
         m_fdvTextLabel->setToolTip(tr("FreeDV: the callsign received (up to 8 characters)"));
         AetherSDR::ThemeManager::instance().applyStyleSheet(m_fdvTextLabel,
-            "QLabel { background: rgba(0, 0, 0, 200); border: 1px solid {{color.accent}};"
-            " border-top: none; font-size: 13px; font-weight: bold; padding: 0; margin: 0; }");
+            // Build 342: a full frame, the flag's own background (paintEvent).
+            "QLabel { background: #0a0a14; border: 1px solid {{color.accent}};"
+            " font-size: 13px; font-weight: bold; padding: 0; margin: 0; }");
     } else if (m_fdvTextLabel->parentWidget() != flagParent) {
         m_fdvTextLabel->setParent(flagParent);
     }
@@ -7861,6 +7864,7 @@ void VfoWidget::setRadeActive(bool on, const QString& label)
     }
     m_fdvSynced = false;
     m_fdvSnrValid = false;
+    m_fdvOffsValid = false;
     updateFdvBadge();   // build 341
     // Build 340: FDV shows as the mode -- tab label and mode buttons.
     if (m_slice && m_tabBtns.size() > 2 && m_tabBtns[2])
@@ -7878,8 +7882,10 @@ void VfoWidget::setRadeSynced(bool synced)
 {
     if (!m_radeActive) return;
     m_fdvSynced = synced;
-    if (!synced)
+    if (!synced) {
         m_fdvSnrValid = false;
+        m_fdvOffsValid = false;
+    }
     updateFdvBadge();   // build 341
     if (!synced) {
         AetherSDR::ThemeManager::instance().applyStyleSheet(m_radeSnrLabel, "QLabel { color: {{color.text.secondary}}; font-size: 10px;"
@@ -7926,7 +7932,15 @@ void VfoWidget::updateFdvBadge()
                         : (m_fdvSnrDb < 5.0f ? QStringLiteral("#e0e040") : QStringLiteral("#00ff88"));
     const QString val = have ? QString::number(static_cast<double>(m_fdvSnrDb), 'f', 1)
                              : QStringLiteral("--.-");
-    const QString text = QStringLiteral("%1 <font color='%2'>SNR: %3 dB</font>").arg(led, color, val);
+    QString text = QStringLiteral("%1 <font color='%2'>SNR: %3 dB</font>").arg(led, color, val);
+    // Build 342 (operator, 13.11): second line, same font -- how far the
+    // signal is from the tuning, as the modem measures it (RADE).
+    if (m_fdvSynced && m_fdvOffsValid) {
+        const int hz = static_cast<int>(std::lround(m_fdvOffsHz));
+        text += QStringLiteral("<br><font color='#0a0a14'>\u25CF</font> "
+                               "<font color='#8090a0'>Offset: %1%2 Hz</font>")
+                    .arg(hz >= 0 ? QStringLiteral("+") : QString()).arg(hz);
+    }
     if (m_radeStatusLabel->text() != text)
         m_radeStatusLabel->setText(text);
     m_radeStatusLabel->setToolTip(m_radeLabel);
@@ -7938,6 +7952,9 @@ void VfoWidget::setRadeFreqOffset(float hz)
     const QString sign = (hz >= 0) ? "+" : "";
     m_radeOffsetLabel->setText(QString("%1%2Hz").arg(sign).arg(static_cast<int>(hz)));
     m_radeOffsetLabel->show();
+    m_fdvOffsHz = hz;
+    m_fdvOffsValid = true;
+    updateFdvBadge();   // build 342
 }
 
 void VfoWidget::setRadeCallsign(const QString& callsign)
