@@ -6590,7 +6590,9 @@ void VfoWidget::rebuildFilterButtons()
     // SSB-only visibility is handled by presence/absence (not setVisible). The
     // controls live in the reusable AdaptiveFilterControls (shared with the RX
     // applet); both stay in sync via the SliceModel.
-    if (m_slice && (m_slice->mode() == "USB" || m_slice->mode() == "LSB")) {
+    // Build 349 (operator, 13.11): not in FreeDV -- its filter is the band of
+    // the sub-mode, nothing adapts it.
+    if (m_slice && !fdvShown() && (m_slice->mode() == "USB" || m_slice->mode() == "LSB")) {
         const int arow = (m_filterWidths.size() + 3) / 4 + 1;
         m_adaptive = new AdaptiveFilterControls(AdaptiveFilterControls::SecAll,
                                                 /*withHeader=*/true, /*compact=*/true,
@@ -7752,13 +7754,21 @@ bool VfoWidget::foldOnOutsidePress(QObject* obj, QEvent* event)
     const QPoint global = static_cast<QMouseEvent*>(event)->globalPosition().toPoint();
     if (rect().contains(mapFromGlobal(global)))
         return false;   // inside the flag
+    foldExpanded();
+    return true;   // consumed: the click only folded the flag
+}
+
+bool VfoWidget::foldExpanded()
+{
+    if (m_activeTab < 0 && !m_meterMenuOpen)
+        return false;
     if (m_meterMenuOpen)
         setMeterMenuOpen(false);
     if (m_activeTab >= 0) {
         closeActiveTab();
         relayoutToCurrentContent();
     }
-    return true;   // consumed: the click only folded the flag
+    return true;
 }
 
 bool VfoWidget::eventFilter(QObject* obj, QEvent* event)
@@ -7866,6 +7876,8 @@ void VfoWidget::setRadeActive(bool on, const QString& label)
     m_fdvSnrValid = false;
     m_fdvOffsValid = false;
     updateFdvBadge();   // build 341
+    if (m_slice)
+        rebuildFilterButtons();   // build 349: the Adaptive RX Filter group goes / comes back
     // Build 340: FDV shows as the mode -- tab label and mode buttons.
     if (m_slice && m_tabBtns.size() > 2 && m_tabBtns[2])
         m_tabBtns[2]->setText(on ? QStringLiteral("FDV") : m_slice->mode());

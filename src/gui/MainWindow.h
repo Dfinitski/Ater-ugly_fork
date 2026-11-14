@@ -2161,6 +2161,7 @@ private:
     void applyLocalFdvPassband();
     int  m_localFdvSavedLo{100};     // the SSB filter to put back, audio Hz
     int  m_localFdvSavedHi{2900};
+    bool m_localFdvAdaptiveWas{false};   // build 349: Adaptive RX Filter, put back on the way out
     int  m_localFdvSentLo{0};
     int  m_localFdvSentHi{0};
     QElapsedTimer m_localFdvFilterClock;

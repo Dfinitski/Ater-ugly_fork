@@ -976,6 +976,10 @@ void MainWindow::activateLocalFdv(int sliceId)
         }
     }
     m_localFdvSentLo = m_localFdvSentHi = 0;
+    // Build 349: the adaptive RX filter would fight the fixed FreeDV band.
+    m_localFdvAdaptiveWas = s->adaptiveFilterEnabled();
+    if (m_localFdvAdaptiveWas)
+        s->setAdaptiveFilterEnabled(false);
     if (const QString sb = freeDvSidebandFor(s->frequency()); s->mode() != sb)
         s->setMode(sb);
     m_localFdvModeConn = connect(s, &SliceModel::modeChanged, this, [this](const QString& mode) {
@@ -1133,6 +1137,10 @@ void MainWindow::deactivateLocalFdv()
         }
         // Build 337: back to the SSB filter the operator had. Another mode
         // has brought its own passband already.
+        if (m_localFdvAdaptiveWas) {   // build 349
+            m_localFdvAdaptiveWas = false;
+            s->setAdaptiveFilterEnabled(true);
+        }
         if (s->mode() == QLatin1String("USB"))
             s->setFilterWidth(m_localFdvSavedLo, m_localFdvSavedHi);
         else if (s->mode() == QLatin1String("LSB"))

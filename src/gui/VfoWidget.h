@@ -308,6 +308,10 @@ public:
     // to extend the pan-follow trigger to the flag's outer edge — single-side
     // for non-split slices, both-sides for split pairs (#2761).
     bool onLeft() const { return m_lastOnLeft; }
+    // Build 349: fold whatever is open on the flag (a tab or the meter
+    // selector); true if something was. Used on an outside press and when
+    // transmit starts.
+    bool foldExpanded();
 
 #ifdef HAVE_RADE
     void setRadeActive(bool on, const QString& label = QStringLiteral("RADE"));
@@ -420,6 +424,7 @@ private:
     void updateTxBadgeStyle(bool isTx);
     void showTab(int index);
     void closeActiveTab();  // close any open DSP/Mode/... tab panel
+
     void updateDspTabAccent();
     void deactivateTabButton(int closedTab);  // reset a just-closed tab's style
     void updateFreqLabel();

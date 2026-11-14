@@ -850,8 +850,8 @@ public:
         QString perClientLetter;   // radio-provided index_letter (Multi-Flex)
         // ANAN fork build 337: FreeDV. Non-zero = the centre of the modem
         // signal from the dial frequency (+1500 Hz on USB, -1500 on LSB): no
-        // carrier line, the flag sits centred over the filter, and a click
-        // tunes the centre of the filter to the click.
+        // carrier line, the flag sits beside the filter (right by preference,
+        // build 349), and a click tunes the centre of the filter to the click.
         int    fdvCenterHz{0};
     };
 

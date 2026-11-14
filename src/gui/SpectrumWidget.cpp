@@ -5016,7 +5016,10 @@ void SpectrumWidget::drawTxPeakLine(QPainter& p, const QRect& specRect)
     const QString text = QStringLiteral("TX drive peak %1 dB").arg(
         QString::number(static_cast<double>(m_txPeakHoldDb), 'f', 1));
     const int ty = (y - specRect.top() < 16) ? y + 14 : y - 4;
-    p.drawText(specRect.left() + 6, ty, text);
+    // Build 349 (operator, 13.11: the "Slice A" label is in the way): the
+    // text starts where it used to end.
+    const int tx0 = specRect.left() + 6 + QFontMetrics(f).horizontalAdvance(text) + 12;
+    p.drawText(tx0, ty, text);
     p.restore();
 }
 
@@ -8682,6 +8685,12 @@ void SpectrumWidget::setDuplexTxHold(bool hold)
 void SpectrumWidget::setTransmitting(bool tx)
 {
     if (tx && !m_transmitting) {
+        // Build 349 (operator, 13.11): options open on a flag fold when
+        // transmit starts.
+        for (VfoWidget* flag : std::as_const(m_vfoWidgets)) {
+            if (flag)
+                flag->foldExpanded();
+        }
         m_preTxAutoBlack = m_autoBlackThresh;  // save before TX
         m_nextFallbackWaterfallRowMs = 0;      // first TX FFT row should render immediately
         if (m_txFixedRange) {
@@ -17439,8 +17448,23 @@ void SpectrumWidget::repositionVfoFlags(const QRect& specRect)
     auto placeFdvFlag = [&](const VfoPos& v) {
         if (!v.overlay || v.overlay->fdvCenterHz == 0)
             return false;
-        v.w->updatePosition(v.x + v.w->width() / 2, specRect.top() + flagTopPad(),
-                            VfoWidget::LockLeft);
+        // Build 349 (operator, 13.11: "centred did not prove itself: draw it
+        // to the right by preference, to the left when the screen limits
+        // it"): right of the filter, its left edge on the filter's upper
+        // edge; when that does not fit in the panadapter, left of the filter.
+        // The side is kept until it stops fitting (no flicker at the limit).
+        const SliceOverlay& so = *v.overlay;
+        const int xa = mhzToX(so.freqMhz + so.filterLowHz / 1.0e6);
+        const int xb = mhzToX(so.freqMhz + so.filterHighHz / 1.0e6);
+        const int left = std::min(xa, xb), right = std::max(xa, xb);
+        const int fw = v.w->width();
+        const bool fitsRight = right + fw <= specW;
+        const bool fitsLeft = left - fw >= 0;
+        bool toLeft = !fitsRight && fitsLeft;
+        if (v.w->onLeft() && fitsLeft && right + fw + 40 > specW)
+            toLeft = true;   // already left: come back only with 40 px to spare
+        v.w->updatePosition(toLeft ? left : right, specRect.top() + flagTopPad(),
+                            toLeft ? VfoWidget::LockLeft : VfoWidget::LockRight);
         return true;
     };
     QMap<int, VfoWidget::FlagDir> directionBySlice;
