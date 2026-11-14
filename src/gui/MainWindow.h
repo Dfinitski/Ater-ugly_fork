@@ -1096,10 +1096,11 @@ private:
     void recallBandStackEntry(SliceModel* slice, const BandStackEntry& e);
     QString m_linkDetail;
     bool m_linkStateShown{false};
-    // Started when an ANAN link drops on its own. The transport keeps its
-    // session and re-raises the link when IQ resumes (a short network or
-    // radio glitch heals itself), so discovery waits kLinkLostGraceMs before
-    // starting a fresh connect -- the same pause the old reconnect timer had.
+    // Started when an ANAN link drops on its own. Build 377: the transport
+    // ENDS its session at the loss (it used to take the stream back when IQ
+    // resumed, without configuring the radio again), so nothing heals by
+    // itself any more; discovery waits kLinkLostGraceMs -- a short pause for
+    // the session's stop to be done -- and then connects from the start.
     QElapsedTimer m_linkLostClock;
     // Build 214: once per run, the own-noise Capture reminder (ANAN).
     bool m_ownNoiseHintDone = false;
@@ -1135,7 +1136,7 @@ private:
     // Entering a band (button, typed frequency, spot): its antennas, LNA and
     // RX2 attenuator, as Thetis applies them on any band change.
     void ananBandMemApplyHardware(SliceModel* s, const QJsonObject& mem);
-    static constexpr int kLinkLostGraceMs = 3000;
+    static constexpr int kLinkLostGraceMs = 1000;   // build 377: was 3000, see m_linkLostClock
     // A busy ANAN is taken over only when the busy session is plausibly ours:
     // the previous run of this program right after start-up (closed or stopped
     // without releasing the radio), our own dropped session, or an explicit

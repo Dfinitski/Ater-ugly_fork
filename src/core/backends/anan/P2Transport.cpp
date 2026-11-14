@@ -1210,6 +1210,19 @@ void P2Transport::onWatchdogTick()
         // link ends the transmission at the transport, always.
         unkeyOnLinkLoss();
         emit linkDown();
+        // Build 377 (operator, 14.11: "after the transceiver is lost, its full
+        // initialisation as at the start"). The session used to stay running
+        // and take the stream back when I/Q resumed. Log 20261114-125136: the
+        // radio was switched off and on; it came back in its power-on state,
+        // our High Priority packets (run = 1) started it, and it streamed at
+        // ITS default 48 ksps into chains built for 192 ksps -- it had never
+        // been sent General / DDC Specific / TX Specific again. So the loss
+        // ENDS the session: the socket is closed, nothing more is sent, and
+        // the radio is found and connected again by the ordinary path
+        // (discovery -> connect), which configures it from the start.
+        qCInfo(lcAnanP2T) << "ANAN transport: session ended after the loss of I/Q; the radio will be"
+                             " connected and configured anew when it answers discovery";
+        stopSession(true);
     }
 }
 
