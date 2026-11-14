@@ -619,7 +619,23 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
 
         if (btn) {
             connect(btn, &QPushButton::toggled, this,
-                    [c, key](bool checked) {
+                    [this, c, key](bool checked) {
+                // ANAN fork build 351 (operator, 13.11: "I floated the VUDU
+                // panels; I close the windows and switch the button off, and
+                // at every start they are there again"). Switching the
+                // button off on a floating tile only HID its window: the
+                // saved state stayed "floating, visible" and Applet_<id>
+                // stayed True, so the next start floated and showed it
+                // again. Off now does what the window's x does since build
+                // 261: back to its panel slot, hidden, and saved.
+                if (c->isFloating() && !checked && !c->isPresentationManaged()
+                    && m_containerMgr) {
+                    m_containerMgr->dockContainer(c->id());
+                    c->setContainerVisible(false);
+                    AppSettings::instance().setValue(key, "False");
+                    AppSettings::instance().save();
+                    return;
+                }
                 // Floating containers: raising = show the window,
                 // lowering = hide it.  The manager owns the window
                 // so we just toggle the container's visibility.
