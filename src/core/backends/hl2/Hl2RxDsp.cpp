@@ -1016,6 +1016,21 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq)
     for (std::size_t n = 0; n < iq.size(); ++n)
         m_conjugated[n] = std::conj(iq[n]);
 
+    // Build 391: the FTX mode's decoders take this receiver's I/Q themselves
+    // (MicronSDR: FtUnit::iq) -- the slice's dial brought to 0 Hz, 48 kHz.
+    // m_conjugated has signals above the NCO at positive frequency and the
+    // slice at +m_shiftHz (shift = slice - NCO, Hl2Backend). Before any
+    // filter, AGC or noise reduction of the receiver.
+    {
+        auto& bridge = ftx::FtxBridge::instance();
+        if (bridge.iqOwner.load(std::memory_order_relaxed) == this
+            && m_ftxTap.process(m_conjugated, m_shiftHz, m_config.inputSampleRateHz)
+            && !m_ftxTap.i().empty()) {
+            bridge.feedIq(m_ftxTap.q().data(), m_ftxTap.i().data(),
+                          static_cast<unsigned long>(m_ftxTap.i().size()));
+        }
+    }
+
     // The FFT runs only when a frame is due (see setSpectrumRateFps); otherwise
     // the accumulator is still fed, so the next due frame is a contiguous
     // snapshot without a ~9-EP6-block refill. That keeps the achieved rate

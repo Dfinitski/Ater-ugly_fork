@@ -2,6 +2,7 @@
 
 #include "core/LogManager.h"
 #include "core/backends/TxAudioSource.h"
+#include "core/ftx/FtxBridge.h"
 #include "core/backends/anan/AnanNativeUdp.h"
 #include "core/backends/anan/P2Transport.h"
 #include "core/backends/hl2/Hl2TxDsp.h"
@@ -54,6 +55,35 @@ void AnanTxEngine::onMicPacket(const std::vector<float>& s48)
         m_raised = true;
         raiseCurrentThreadToTimeCritical();
     }
+    // Build 391: the FTX mode transmitting -- its waveform (FtTx, 48 kHz, in
+    // step with this packet, i.e. with the radio's clock) instead of either
+    // microphone, straight to the modulator: no speech high-pass, no MIC
+    // gain, no fade (the waveform has its own ramps). MicronSDR does the same
+    // in its audio callback (micronsdr.cpp: txUnit()->audio()).
+    auto& ftxBridge = ftx::FtxBridge::instance();
+    if (ftxBridge.hasTx() && !s48.empty()) {
+        m_ftx48.assign(s48.size(), 0.0f);
+        if (ftxBridge.fillTx(m_ftx48.data(), static_cast<unsigned long>(m_ftx48.size()))) {
+            m_down.down(m_ftx48.data(), m_ftx48.size(), m_scratch);
+            TxCoordinator::Context ctx;
+            {
+                std::lock_guard<std::mutex> lock(m_ctxMutex);
+                ctx = m_ctx;
+            }
+            if (!m_ftxWasOn) {
+                m_ftxWasOn = true;
+                qCInfo(lcHl2) << "ANAN TX engine: FTX waveform to the modulator (TX thread)";
+            }
+            if (m_keyed.load(std::memory_order_relaxed) && !m_scratch.empty()
+                && ctx.permitsDispatch(TxCoordinator::monotonicMs())) {
+                m_transport->setTxPrimeSamples(1536);
+                m_txDsp->processAudioBlock(m_scratch, TxAudioSource::EngineGenerated, ctx);
+            }
+            m_transport->txDeviceTick(static_cast<int>(s48.size()) * 4);
+            return;
+        }
+    }
+    m_ftxWasOn = false;
     const bool fromRadio = m_micFromRadio.load(std::memory_order_relaxed);
     if (fromRadio && !s48.empty()) {
         m_down.down(s48.data(), s48.size(), m_scratch);

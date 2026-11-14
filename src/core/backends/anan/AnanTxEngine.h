@@ -110,6 +110,8 @@ private:
 
     // ---- transmit thread only ----
     fdv::HalfbandResampler m_down;
+    std::vector<float> m_ftx48;   // build 391: the FTX waveform of this packet
+    bool m_ftxWasOn = false;
     std::vector<float> m_scratch;
     double m_testPh1 = 0.0, m_testPh2 = 0.0;
     float m_hpX1 = 0.0f, m_hpX2 = 0.0f, m_hpY1 = 0.0f, m_hpY2 = 0.0f;

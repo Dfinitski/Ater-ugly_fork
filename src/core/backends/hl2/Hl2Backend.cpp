@@ -46,6 +46,7 @@
 #include "core/fdv/FdvEngine.h"
 #include "core/fdv/FdvState.h"
 #include "core/ftx/FtxState.h"
+#include "core/ftx/FtxBridge.h"
 #include "core/ClientComp.h"
 #ifdef Q_OS_WIN
 // Two kernel32 calls, declared here rather than pulling <windows.h> (its
@@ -3020,10 +3021,20 @@ void Hl2Backend::fdvTick()
                 QMetaObject::invokeMethod(m_metis, "setFilterOwnerRx", Qt::QueuedConnection,
                                           Q_ARG(int, ftxDdc));
             publishWideState();
+            // Build 391: the mode transmits -- no speech compressor / leveler
+            // on its waveform, and a transmit filter as wide as its band.
+            pushTxCompressor();
+            if (const Receiver* txRx = rx(m_txDdc))
+                pushTxPassband(txRx->mode);
             qCInfo(lcHl2) << "ANAN: FTX" << (ftxDdc >= 0 ? "has taken over receiver" : "released the receiver")
                           << (ftxDdc >= 0 ? ftxDdc + 1 : 0);
         }
         m_ftxMicHoldIo.store(ftxDdc >= 0, std::memory_order_relaxed);
+        // Build 391: whose I/Q the decoders take. Refreshed every tick -- a
+        // receiver's DSP object is replaced when it is rebuilt.
+        const Receiver* ftxRx = ftxDdc >= 0 ? rx(ftxDdc) : nullptr;
+        ftx::FtxBridge::instance().iqOwner.store(ftxRx ? static_cast<const void*>(ftxRx->dsp) : nullptr,
+                                                 std::memory_order_relaxed);
     }
     // Build 374: what submitTxAudio() reads off the GUI thread.
     m_micFromRadioIo.store(m_ananMicFromRadio, std::memory_order_relaxed);
@@ -7783,7 +7794,8 @@ void Hl2Backend::pushTxCompressor()
     // leveler for PC and CDC; none for the TEST two-tone.
     // Build 343: nor for FreeDV on the transmitting receiver -- what reaches
     // TXA then is the modem signal, not speech (MicronSDR: txFdv).
-    const bool on = !m_ananTestTone && m_fdvTxBandKey < 0;
+    // Build 391: nor for the FTX mode (constant-envelope tones, full scale).
+    const bool on = !m_ananTestTone && m_fdvTxBandKey < 0 && m_ftxDdc < 0;
     const double gain = m_codecProcOn ? kGainDb[std::clamp(m_codecProcLevel, 0, 2)] : 10.0;
     if (on == m_txCompPushedOn && gain == m_txCompPushedGain)
         return;
@@ -8202,7 +8214,10 @@ void Hl2Backend::submitTxAudio(const QByteArray& int16Stereo, int sampleRateHz,
         return;
     // Build 380: in the FTX mode the microphone does not reach the transmitter
     // (either microphone: both arrive here tagged Microphone).
-    if (m_ftxMicHoldIo.load(std::memory_order_relaxed) && source == TxAudioSource::Microphone)
+    // Build 391: nor anything else that comes this way (TCI / DAX clients,
+    // generated audio): the mode's waveform goes to the modulator on the
+    // transmit thread (AnanTxEngine), and nothing may be mixed into it.
+    if (m_ftxMicHoldIo.load(std::memory_order_relaxed))
         return;
     // Sticky per transmission until #5647 gives it a job in TxAudioSource
     // (see Hl2Backend.h). Assumes sources never interleave within one
@@ -8627,6 +8642,11 @@ std::pair<int, int> Hl2Backend::effectiveTxPassband(const QString& mode) const
             return {lo, hi};
         }
     }
+    // Build 391: the FTX mode on the transmitting receiver -- its whole band
+    // (the TX frequency of the window is anywhere in the decoders' 100 ..
+    // 4000 Hz; the DIGU default would cut the upper part).
+    if (m_ftxDdc >= 0 && m_ftxDdc == m_txDdc)
+        return {50, 4100};
     if (m_txFilterFromOperator && ssbVoice)
         return {m_txFilterLowHz, m_txFilterHighHz};
     return defaultTxPassbandForMode(mode);

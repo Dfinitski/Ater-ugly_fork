@@ -12,8 +12,9 @@
 #include "SpectrumWidget.h"
 #include "Theme.h"
 #include "core/PcmFrame.h"
-#include "core/fdv/FdvEngine.h"   // HalfbandResampler: 24 -> 48 kHz
 #include "core/ftx/FtxState.h"
+#include "core/ftx/FtxBridge.h"
+#include "models/TransmitModel.h"
 #include "ftx/FtPanel.h"
 #include "ftx/FtUnit.h"
 #include "ftx/FtWaterfall.h"
@@ -182,14 +183,24 @@ void MainWindow::activateFtx(int sliceId)
                 [](int mode) { ftx::FtxState::instance().setSubMode(mode); });
         // Closing the window ends the mode. Queued: not inside its closeEvent.
         connect(m_ftPanel, &FtPanel::closed, this, [this] { deactivateFtx(); }, Qt::QueuedConnection);
-        // The transmitter of the mode is the next stage of the port: refused.
-        connect(m_ftPanel, &FtPanel::pttRequest, this, [this](bool on) {
-            if (!on || !m_ftPanel)
+        // Build 391: the transmitter of the mode (MicronSDR: ftPtt). The
+        // window keys at the start of its period and unkeys at the end; the
+        // waveform replaces the microphone on the transmit thread.
+        connect(m_ftPanel, &FtPanel::pttRequest, this, [this](bool on) { ftxPtt(on); });
+        // The transmitter released by anything else while the mode transmits
+        // (the MOX button, an interlock, the link lost): its transmission
+        // ends, Enable TX off.
+        connect(&m_radioModel.transmitModel(), &TransmitModel::moxChanged, this, [this](bool mox) {
+            if (mox || !m_ftxTxOn || m_ftxKeying)
                 return;
-            m_ftPanel->txAborted();
-            m_ftPanel->txNote(QStringLiteral("Transmit is not connected yet in this build"));
+            m_ftxTxOn = false;
+            ftx::FtxState::instance().ownTx = false;
+            if (m_ftPanel) {
+                m_ftPanel->txAborted();
+                m_ftPanel->txNote(QStringLiteral("The transmitter was released"));
+            }
         });
-        m_ftPanel->setTxAllowed(false);
+        m_ftPanel->setTxAllowed(true);
     }
     if (!m_ftUnit->load()) {
         QMessageBox::warning(this, QStringLiteral("FT8 / FT4 / WSPR"),
@@ -233,33 +244,20 @@ void MainWindow::activateFtx(int sliceId)
     };
     m_ftxFreqConn = connect(s, &SliceModel::frequencyChanged, view, [dial](double) { dial(); });
 
-    // The receiver's own audio (before the loudspeaker's mute and fader) to
-    // the decoders. FtUnit wants the receiver's I/Q at 48 kHz and demodulates
-    // it itself (USB, 100 .. 4000 Hz); until this program hands it the I/Q,
-    // it gets the demodulated audio as a real signal (I = audio, Q = 0): its
-    // demodulator keeps the positive half, which IS that audio. So the
-    // decoders hear the receiver's filter and AGC for now -- the next stage
-    // gives them the I/Q, as in MicronSDR.
-    auto up = std::make_shared<fdv::HalfbandResampler>();
-    auto mono = std::make_shared<std::vector<float>>();
-    auto a48 = std::make_shared<std::vector<float>>();
-    auto zero = std::make_shared<std::vector<float>>();
-    FtUnit* unit = m_ftUnit;
-    m_ftxAudioConn = connect(&m_radioModel, &RadioModel::backendSliceAudioFrameReady, view,
-                             [unit, sliceId, up, mono, a48, zero](int id, const PcmFrame& frame) {
-        if (id != sliceId)
-            return;
-        const QVector<float>& st = frame.samples();
-        const std::size_t frames = static_cast<std::size_t>(st.size() / 2);
-        if (frames == 0)
-            return;
-        mono->resize(frames);
-        for (std::size_t i = 0; i < frames; ++i)
-            (*mono)[i] = 0.5f * (st[static_cast<qsizetype>(2 * i)] + st[static_cast<qsizetype>(2 * i + 1)]);
-        up->up(mono->data(), frames, *a48);   // 48 kHz
-        zero->assign(a48->size(), 0.0f);
-        unit->iq(zero->data(), a48->data(), static_cast<unsigned long>(a48->size()));   // left = Q, right = I
-        unit->audio(a48->data(), static_cast<unsigned long>(a48->size()));
+    // Build 391: the decoders take the receiver's I/Q (dial at 0 Hz, 48 kHz,
+    // on the I/O thread: Hl2RxDsp -> FtxBridge) and demodulate it themselves,
+    // as in MicronSDR -- no receive filter, AGC or audio path of this program
+    // in between. (380..390: the demodulated audio, as a real signal.)
+    ftx::FtxBridge::instance().setIqSink([unit = m_ftUnit](const float* q, const float* i, unsigned long n) {
+        unit->iq(q, i, n);   // left = Q, right = I
+    });
+    // The transmitter: the mode's waveform instead of the microphone, on the
+    // transmit thread (AnanTxEngine). FtTx::audio() leaves the buffers alone
+    // while it is not started, so they are cleared first.
+    ftx::FtxBridge::instance().setTxSource([tx = m_ftPanel->txUnit(), r = std::make_shared<std::vector<float>>()](
+                                               float* mono, unsigned long n) {
+        r->resize(n);
+        tx->audio(mono, r->data(), n);
     });
     connect(view, &FtxView::exitRequested, this, [this] { deactivateFtx(); }, Qt::QueuedConnection);
     // Build 385: "+RX" of the bar is the "+RX" of this panadapter's side menu
@@ -378,6 +376,61 @@ void MainWindow::activateFtx(int sliceId)
             << m_ftxSavedPanBandwidthMhz * 1000.0 << "kHz";
 }
 
+// Build 391: the mode's own key. FtxState::ownTx lets it through the
+// backend's refusal of every other key (Hl2Backend::ftxKeyRefused).
+void MainWindow::ftxPtt(bool on)
+{
+    auto& st = ftx::FtxState::instance();
+    TransmitModel& tm = m_radioModel.transmitModel();
+    if (on) {
+        QString why;
+        if (m_ftxSliceId < 0 || !m_radioModel.isConnected())
+            why = QStringLiteral("TX not allowed now (no radio)");
+        else if (tm.isMox() || tm.isTransmitting())
+            why = QStringLiteral("TX not allowed now (the transmitter is on already)");
+        if (why.isEmpty()) {
+            m_ftxKeying = true;
+            st.ownTx = true;
+            m_radioModel.setTransmit(true);
+            m_ftxKeying = false;
+            // A refusal (the band, the transmit limits, an interlock) leaves
+            // the model unkeyed; looked at a moment later, not here -- the
+            // model's state may follow the radio's answer.
+            QTimer::singleShot(400, this, [this] {
+                TransmitModel& model = m_radioModel.transmitModel();
+                if (!m_ftxTxOn || model.isMox() || model.isTransmitting())
+                    return;
+                m_ftxTxOn = false;
+                ftx::FtxState::instance().ownTx = false;
+                qInfo() << "MainWindow: FTX TX refused by the transmitter";
+                if (m_ftPanel) {
+                    m_ftPanel->txAborted();
+                    m_ftPanel->txNote(QStringLiteral("TX refused (the band, the transmit limits, an interlock?)"));
+                }
+            });
+        }
+        if (!why.isEmpty()) {
+            qInfo().noquote() << "MainWindow: FTX TX refused --" << why;
+            if (m_ftPanel) {
+                m_ftPanel->txAborted();
+                m_ftPanel->txNote(why);
+            }
+            return;
+        }
+        m_ftxTxOn = true;
+        qInfo() << "MainWindow: FTX TX on";
+        return;
+    }
+    if (!m_ftxTxOn)
+        return;
+    m_ftxTxOn = false;
+    m_ftxKeying = true;
+    m_radioModel.setTransmit(false);
+    m_ftxKeying = false;
+    st.ownTx = false;
+    qInfo() << "MainWindow: FTX TX off";
+}
+
 void MainWindow::ftxUpdateAddRx()
 {
     if (auto* view = qobject_cast<FtxView*>(m_ftxView.data()))
@@ -403,6 +456,14 @@ void MainWindow::deactivateFtx(bool restoreMode)
         return;
     const int sliceId = m_ftxSliceId;
     m_ftxSliceId = -1;
+    // Build 391: the mode's transmission off first, then its connections to
+    // the radio threads (a call in flight finishes before these return).
+    if (m_ftPanel)
+        m_ftPanel->stop();
+    if (m_ftxTxOn)
+        ftxPtt(false);
+    ftx::FtxBridge::instance().setTxSource(nullptr);
+    ftx::FtxBridge::instance().setIqSink(nullptr);
     ftx::FtxState::instance().sliceId = -1;
     disconnect(m_ftxAudioConn);
     disconnect(m_ftxModeConn);

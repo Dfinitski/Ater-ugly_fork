@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cmath>
 #include <complex>
+#include "core/ftx/FtxBridge.h"
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -782,6 +783,7 @@ private:
     // the demodulator takes the raw wire. A member rather than a local: this
     // runs per IQ block on the I/O thread.
     std::vector<std::complex<float>> m_conjugated;
+    ftx::FtxIqTap m_ftxTap;   // build 391: the FTX decoders' I/Q (I/O thread)
     std::vector<float> m_i, m_q;                    // deinterleaved input scratch
     std::vector<float> m_left, m_right;             // WdspChannel output scratch
     // Applied to m_left/m_right on the way into m_stereo. See DcBlocker above
