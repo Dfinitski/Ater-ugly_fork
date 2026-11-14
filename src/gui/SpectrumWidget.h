@@ -2030,6 +2030,9 @@ private:
     double m_frequencyPreviewTargetCenterMhz{0.0};
     double m_frequencyPreviewTargetBandwidthMhz{0.0};
     double m_frequencyPreviewOverlayBaseCenterMhz{0.0};
+    // Build 368: a receiver's frequency or filter changed while the drag's
+    // overlay texture is frozen -- repaint the frequency layer (see render()).
+    bool m_previewSliceOverlayMoved{false};
     double m_frequencyPreviewOverlayBaseBandwidthMhz{0.0};
     quint64 m_frequencyPreviewUpdateCount{0};
     quint64 m_frequencyPreviewPresentCount{0};

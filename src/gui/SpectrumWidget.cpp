@@ -9037,6 +9037,8 @@ void SpectrumWidget::setSliceOverlay(int sliceId, double freq, int fLow, int fHi
         o.mode = mode; o.rttyMark = rttyMark; o.rttyShift = rttyShift;
         o.ritOn = ritOn; o.ritFreq = ritFreq;
         o.xitOn = xitOn; o.xitFreq = xitFreq;
+        if (m_frequencyPreviewActive)
+            m_previewSliceOverlayMoved = true;   // build 368
         markOverlayDirty();
     }
 }
@@ -9180,6 +9182,8 @@ void SpectrumWidget::setSliceOverlayFreq(int sliceId, double freqMhz)
         if (so.sliceId == sliceId) {
             if (so.freqMhz == freqMhz) return;  // unchanged — no repaint needed
             so.freqMhz = freqMhz;
+            if (m_frequencyPreviewActive)
+                m_previewSliceOverlayMoved = true;   // build 368
             markOverlayDirty();  // repaint so markers reflect the new frequency (#1272)
             return;
         }
@@ -15814,6 +15818,8 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
     // (m_centerMhz is already the drag's target) and the transform re-based
     // on it. Only that layer; it happens while a filter crosses into view.
     bool previewFrequencyOverlayRefresh = false;
+    if (!m_frequencyPreviewActive)
+        m_previewSliceOverlayMoved = false;   // build 368: nothing frozen to refresh
     if (m_frequencyPreviewActive && m_ovPreviewPipeline && !m_overlayStaticDirty
         && std::isfinite(m_frequencyPreviewTargetCenterMhz)
         && m_frequencyPreviewTargetBandwidthMhz > 0.0) {
@@ -15837,6 +15843,15 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                 break;
             }
         }
+        // ANAN fork build 368 (operator, 13.11: "dragging the panorama under
+        // Center Lock the filter is DRAWN going along with the panorama, though
+        // the receiver is retuned -- it stands in the middle in fact"). The
+        // texture holds the filter where it was when the drag began, and
+        // changes to the overlay are deferred until the drag ends
+        // (markOverlayDirty). A receiver that moved during the drag is the one
+        // change that cannot wait: same repaint and re-base as above.
+        if (m_previewSliceOverlayMoved)
+            previewFrequencyOverlayRefresh = true;
         if (previewFrequencyOverlayRefresh) {
             m_frequencyPreviewOverlayBaseCenterMhz = m_centerMhz;
             m_frequencyPreviewOverlayBaseBandwidthMhz = m_bandwidthMhz;
@@ -16046,6 +16061,7 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
         // shader can move them without also distorting screen-space controls.
         // Build 296: the frequency layer alone, re-based during a drag.
         if (previewFrequencyOverlayRefresh && !rebuildStaticOverlay && !resizePreview) {
+            m_previewSliceOverlayMoved = false;   // build 368: repainted here
             m_overlayFrequency.fill(Qt::transparent);
             QPainter frequencyPainter(&m_overlayFrequency);
             frequencyPainter.setRenderHint(QPainter::Antialiasing, false);
