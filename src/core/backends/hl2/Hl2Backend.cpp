@@ -1776,7 +1776,11 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         // there. At most kWfMaxBins, mean power per output bin; fewer FFT
         // bins than that go out as they are.
         SpectrumCoverage wf;
-        if (raw.size() == n && rate > 0.0 && n >= 64) {
+        // Build 379: the row is made from the waterfall's own average of the
+        // frames when that is on (Display > WF Average), else from the frame.
+        const std::vector<float>& wfRaw =
+            waterfallSource(ids->ddcIndex, raw, receiver->ncoHz, rate, txOnAir);
+        if (wfRaw.size() == n && rate > 0.0 && n >= 64) {
             constexpr std::size_t kWfMaxBins = 8192;
             constexpr double kWfSpanFraction = 0.96;
             const std::size_t wKeep = std::min<std::size_t>(
@@ -1788,12 +1792,12 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
                 const std::size_t b0 = wFirst + o * wKeep / outN;
                 const std::size_t b1 = std::max(b0 + 1, wFirst + (o + 1) * wKeep / outN);
                 if (b1 == b0 + 1) {
-                    row[o] = static_cast<float>(raw[b0] + dispOff);
+                    row[o] = static_cast<float>(wfRaw[b0] + dispOff);
                     continue;
                 }
                 double sum = 0.0;
                 for (std::size_t b = b0; b < b1; ++b)
-                    sum += static_cast<double>(dbToPower(raw[b]));   // build 308
+                    sum += static_cast<double>(dbToPower(wfRaw[b]));   // build 308
                 row[o] = static_cast<float>(10.0 * std::log10(sum / static_cast<double>(b1 - b0) + 1e-30)
                                             + dispOff);
             }
@@ -3055,6 +3059,77 @@ void Hl2Backend::fdvTick()
             st.rxCallsign = QString::fromLatin1(s.callsign, static_cast<int>(qstrnlen(s.callsign, sizeof s.callsign)));
         }
     }
+}
+
+// ANAN fork build 379 (a user, 14.11: "when I raise the black level the weak
+// signals are gone; in Thetis this works much better").
+//
+// The waterfall row was ONE FFT frame, unaveraged (build 201: "FFT AVG changes
+// the panadapter only"). The noise of a single frame is spread over some
+// +-5 dB around its mean (a Rayleigh amplitude: about 5.6 dB standard
+// deviation in dB), so a black level that hides the noise has to sit above its
+// PEAKS -- and takes with them every signal that is not stronger than those
+// peaks. Thetis' waterfall has an average of its own, on by default (Setup >
+// Display: Waterfall averaging "Log Recursive", 120 ms): the noise shrinks to a
+// narrow band around its mean, the black level can sit just above that, and a
+// steady signal a few dB over the noise stays.
+//
+// The same here: an exponential average of the frames in dB ("log recursive":
+// it also sets the noise about 2.5 dB below its power mean while a steady
+// carrier keeps its level), time constant AnanUiState::wfAverageMs. The bins
+// follow the NCO (a retune shifts them; the bins drawn in start from the
+// frame), and a transmission starts it afresh. The frame itself is untouched:
+// the AUTO attenuator and the noise line take it as before.
+const std::vector<float>& Hl2Backend::waterfallSource(int ddc, const std::vector<float>& raw,
+                                                      double ncoHz, double rate, bool txOnAir)
+{
+    const auto& ui = anan::AnanUiState::instance();
+    if (ddc < 0 || ddc >= static_cast<int>(m_wfAverage.size()))
+        return raw;
+    WfAverage& a = m_wfAverage[static_cast<std::size_t>(ddc)];
+    const std::size_t n = raw.size();
+    if (!ui.wfAverage || n < 64 || rate <= 0.0) {
+        a.db.clear();
+        return raw;
+    }
+    const bool fresh = a.db.size() != n || a.rate != rate || a.tx != txOnAir || !a.clock.isValid()
+                       || a.clock.elapsed() > 1000;
+    const qint64 dtMs = a.clock.isValid() ? a.clock.restart() : (a.clock.start(), 0);
+    if (fresh) {
+        a.db = raw;
+        a.rate = rate;
+        a.tx = txOnAir;
+        a.ncoHz = ncoHz;
+        return a.db;
+    }
+    // Bin k is (k - n/2) * rate / n above the NCO: when the NCO goes up by d
+    // bins, what was in bin k + d is now in bin k.
+    const double binHz = rate / static_cast<double>(n);
+    const long long d = std::llround((ncoHz - a.ncoHz) / binHz);
+    if (d != 0) {
+        a.ncoHz += static_cast<double>(d) * binHz;
+        if (std::llabs(d) >= static_cast<long long>(n)) {
+            a.db = raw;
+        } else if (d > 0) {
+            const auto sd = static_cast<std::size_t>(d);
+            std::copy(a.db.begin() + static_cast<std::ptrdiff_t>(sd), a.db.end(), a.db.begin());
+            std::copy(raw.end() - static_cast<std::ptrdiff_t>(sd), raw.end(),
+                      a.db.end() - static_cast<std::ptrdiff_t>(sd));
+        } else {
+            const auto sd = static_cast<std::size_t>(-d);
+            std::copy_backward(a.db.begin(), a.db.end() - static_cast<std::ptrdiff_t>(sd), a.db.end());
+            std::copy(raw.begin(), raw.begin() + static_cast<std::ptrdiff_t>(sd), a.db.begin());
+        }
+    }
+    const double tau = static_cast<double>(std::clamp(ui.wfAverageMs, 20, 1000));
+    const float alpha = static_cast<float>(
+        1.0 - std::exp(-static_cast<double>(std::clamp<qint64>(dtMs, 1, 1000)) / tau));
+    for (std::size_t k = 0; k < n; ++k) {
+        const float v = raw[k];
+        if (std::isfinite(v))
+            a.db[k] += alpha * (v - a.db[k]);
+    }
+    return a.db;
 }
 
 void Hl2Backend::pushAudioMix()

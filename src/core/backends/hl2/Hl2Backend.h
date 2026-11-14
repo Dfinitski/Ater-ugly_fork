@@ -1350,6 +1350,18 @@ public:
     [[nodiscard]] QString transmitRefusalMessage() const override;
 private:
     void warnTxOutOfBand(double hz);
+    // Build 379: the waterfall's own average (see waterfallSource()). One
+    // state per receiver, GUI thread.
+    struct WfAverage {
+        std::vector<float> db;      // the running average, dBFS per FFT bin
+        double ncoHz = 0.0;         // the NCO the bins are placed against
+        double rate = 0.0;
+        bool tx = false;
+        QElapsedTimer clock;        // since the previous frame
+    };
+    std::array<WfAverage, 8> m_wfAverage;
+    const std::vector<float>& waterfallSource(int ddc, const std::vector<float>& raw, double ncoHz,
+                                              double rate, bool txOnAir);
     [[nodiscard]] QString transmitRefusalText(double txHz) const;   // build 378
 
     // The four index spaces, never derived from one another (Hl2Receivers.h). GUI

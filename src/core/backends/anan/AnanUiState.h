@@ -49,6 +49,11 @@ public:
                      != QLatin1String("Average");
         showNoiseLine = st.value(QStringLiteral("AnanShowNoiseLine"), QStringLiteral("True")).toString()
                         == QLatin1String("True");
+        // Build 379: waterfall averaging (Display panel), as Thetis' default
+        // "Log Recursive, 120 ms".
+        wfAverage = st.value(QStringLiteral("AnanWfAverage"), QStringLiteral("True")).toString()
+                    == QLatin1String("True");
+        wfAverageMs = std::clamp(st.value(QStringLiteral("AnanWfAverageMs"), 120).toInt(), 20, 1000);
         showAgcLine = st.value(QStringLiteral("AnanShowAgcLine"), QStringLiteral("True")).toString()
                       == QLatin1String("True");
         // Build 302 (operator, 11.11: "make the lines on by default"): the
@@ -262,6 +267,8 @@ public:
     }
     // The noise-floor line on the panadapter (Setup > Receive, 06.11).
     bool showNoiseLine = true;
+    bool wfAverage = true;     // build 379: GUI thread (the Display panel writes, the backend reads)
+    int wfAverageMs = 120;
     void setShowNoiseLine(bool on)
     {
         showNoiseLine = on;

@@ -2238,6 +2238,41 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         emit wfBlankerThresholdChanged(t);
     });
 
+    // ANAN fork build 379: the waterfall's own average, as Thetis has
+    // (Hl2Backend::waterfallSource). On: each row is an average of the FFT
+    // frames over about the time set, so the noise is a narrow band and the
+    // black level can sit right above it without taking the weak signals.
+    {
+        QSlider* avgSlider = nullptr;
+        QLabel* avgLabel = nullptr;
+        QPushButton* avgBtn = nullptr;
+        auto& ui = AetherSDR::anan::AnanUiState::instance();
+        makeRowWithBtn("WF Average:", 2, 50, ui.wfAverageMs / 10, avgSlider, avgLabel, avgBtn,
+                       ui.wfAverage ? "On" : "Off");
+        avgSlider->setObjectName("displayWfAverageSlider");
+        avgBtn->setObjectName("displayWfAverageBtn");
+        avgBtn->setChecked(ui.wfAverage);
+        avgBtn->setToolTip("Averages the waterfall over the time set (the panadapter's FFT AVG does not "
+                           "reach the waterfall). The noise becomes even, so Black Level can be raised "
+                           "to the noise without losing weak signals. Off: every row is one FFT frame.");
+        avgLabel->setText(QStringLiteral("%1 ms").arg(ui.wfAverageMs));
+        connect(avgBtn, &QPushButton::toggled, this, [avgBtn](bool on) {
+            avgBtn->setText(on ? "On" : "Off");
+            AetherSDR::anan::AnanUiState::instance().wfAverage = on;
+            auto& st = AppSettings::instance();
+            st.setValue(QStringLiteral("AnanWfAverage"), on ? QStringLiteral("True") : QStringLiteral("False"));
+            st.save();
+        });
+        connect(avgSlider, &QSlider::valueChanged, this, [avgLabel](int v) {
+            const int ms = v * 10;
+            avgLabel->setText(QStringLiteral("%1 ms").arg(ms));
+            AetherSDR::anan::AnanUiState::instance().wfAverageMs = ms;
+            auto& st = AppSettings::instance();
+            st.setValue(QStringLiteral("AnanWfAverageMs"), ms);
+            st.save();
+        });
+    }
+
     // Black + Auto.  Single slider with two roles depending on AUTO state:
     //   AUTO off → manual black-level (0..100), value persists in
     //              m_blackManualValue and emits wfBlackLevelChanged.
