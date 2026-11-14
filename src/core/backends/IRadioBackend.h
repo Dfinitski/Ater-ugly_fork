@@ -1385,6 +1385,10 @@ signals:
 protected:
     TxCoordinator::Context transmitContext() const { return m_transmitContext; }
     quint64 pcmSession() const { return m_pcmSession; }
+    // ANAN fork build 373: whether the speaker stream of this connection is
+    // live -- for a backend that produces the loudspeaker frames on a thread
+    // of its own and must apply the same gate as publishLegacyAudio().
+    bool pcmLive() const { return m_pcmLive; }
 
     // Compatibility publishers for current 24 kHz backends. Call on the owner
     // thread, after rejecting obsolete worker deliveries. Native-rate producers

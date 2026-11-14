@@ -13,6 +13,7 @@
 #include <limits>
 
 #include "core/backends/hl2/Hl2RxDsp.h"
+#include "core/backends/hl2/Hl2AudioMixer.h"
 #include "core/dsp/WdspProcessTally.h"
 #include "core/dsp/WdspTxaGuard.h"
 #include "core/backends/hl2/Hl2TxDsp.h"
@@ -929,6 +930,44 @@ Hl2Backend::Hl2Backend(QObject* parent)
         m_txThread->setPriority(QThread::TimeCriticalPriority);
 #endif
     }
+    // ANAN fork build 373: the receive-audio mixer on a thread of its own.
+    // No parent (moveToThread refuses one); deleted in the destructor after
+    // the thread is joined.
+    m_audioThread = new QThread(this);
+    m_audioThread->setObjectName(QStringLiteral("anan-audio"));
+    m_audioMixer = new Hl2AudioMixer;
+    m_audioMixer->moveToThread(m_audioThread);
+    m_audioThreadActive = AppSettings::instance()
+                              .value(QStringLiteral("AnanAudioThread"), QStringLiteral("True"))
+                              .toString() != QLatin1String("False");
+    qCInfo(lcHl2) << "ANAN: receive audio is mixed on"
+                  << (m_audioThreadActive ? "its own thread (anan-audio)"
+                                          : "the backend's thread (AnanAudioThread=False)");
+    // The copy of the mix for everything that is not the loudspeaker: the
+    // recorder and decoders behind RadioModel (publishLegacyAudio) and the
+    // radio's codec when its own mixer is off (FreeDV).
+    connect(m_audioMixer, &Hl2AudioMixer::mixedBlockReady, this,
+            [this](const std::vector<float>& pcm) {
+        publishLegacyAudio(floatBytes(pcm));
+        forwardSpeakerAudioToCodec(pcm);
+    });
+    connect(m_audioMixer, &Hl2AudioMixer::fdvInput, this,
+            [this](int ddc, const std::vector<float>& pcm) { fdvDecodeForMixer(ddc, pcm); });
+    // After IRadioBackend's own handler (connected in its constructor, so it
+    // runs first and m_pcmLive is already set).
+    connect(this, &IRadioBackend::connected, this, [this] {
+        pushAudioMix();
+        QMetaObject::invokeMethod(m_audioMixer, "startStream", Qt::QueuedConnection);
+    });
+    connect(this, &IRadioBackend::disconnected, this, [this] {
+        pushAudioMix();
+        QMetaObject::invokeMethod(m_audioMixer, "stopStream", Qt::QueuedConnection);
+    });
+    AetherSDR::startStreamThread(m_audioThread);
+#ifdef Q_OS_WIN
+    // Below the I/O thread (which feeds it) and above everything else.
+    m_audioThread->setPriority(QThread::HighestPriority);
+#endif
     AetherSDR::startStreamThread(m_ioThread);   // High QoS; see AppActivity.h
 #ifdef Q_OS_WIN
     // ANAN-100D port (operator, 29.10): the radio I/O thread carries the
@@ -1783,9 +1822,21 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         if (!publishLegacySliceAudio(ids->uiNumber, floatBytes(pcm))) {
             return; // malformed PCM must not enter the stateful speaker mixer
         }
-
-        mixReceiverAudio(ids->ddcIndex, pcm);
+        // Build 373: the loudspeaker mix is not made here any more -- see the
+        // connection to m_audioMixer below. This thread keeps the per-slice
+        // feed above (TCI, decoders), which may run late without being heard.
+        if (!m_audioThreadActive)
+            mixReceiverAudio(ids->ddcIndex, pcm);   // the old path, by setting
     });
+    // ANAN fork build 373: the loudspeaker path. From the I/O thread to the
+    // audio thread, not through this (the GUI) thread: the mixer is the
+    // context object, so the lambda runs on its thread.
+    if (m_audioThreadActive) {
+        connect(dsp, &Hl2RxDsp::audioReady, m_audioMixer,
+                [mixer = m_audioMixer, key = static_cast<const void*>(dsp)](const std::vector<float>& pcm) {
+            mixer->receiverAudio(key, pcm);
+        });
+    }
 
     connect(dsp, &Hl2RxDsp::meterUpdate, this,
             [this, ui, producer = QPointer<Hl2RxDsp>(dsp)](float dbfs) {
@@ -2450,6 +2501,8 @@ void Hl2Backend::applyRxAudioMute(bool muted)
     if (muted != m_rxAudioMuted)
         ananUnkeyEvent(muted ? QStringLiteral("RX audio mute") : QStringLiteral("RX audio unmute"));
     m_rxAudioMuted = muted;
+    if (m_audioMixer)   // build 373: the same hold, on the audio thread, from its next block
+        m_audioMixer->setMuted(muted);
     // Record the moment sampling is asked to RESUME at the site that actually
     // asks for it, which since #5497 is HERE and not at the top of
     // applyKeying(): on the unkey edge the request is now made a hold later
@@ -2902,6 +2955,8 @@ void Hl2Backend::ananPushCwKeyer()
 
 void Hl2Backend::fdvTick()
 {
+    pushAudioMix();   // build 373: the safety net for any change not pushed at its source
+
     if (m_txEngine)
         m_txEngine->setFdvTxRunning(m_fdv && m_fdv->txRunning());
     // Build 346: the TX panadapter takes the FFT AVG of the transmitting
@@ -2963,6 +3018,43 @@ void Hl2Backend::fdvTick()
             st.rxCallsign = QString::fromLatin1(s.callsign, static_cast<int>(qstrnlen(s.callsign, sizeof s.callsign)));
         }
     }
+}
+
+void Hl2Backend::pushAudioMix()
+{
+    if (!m_audioMixer)
+        return;
+    Hl2AudioMixer::Params p;
+    for (std::size_t i = 0; i < m_rx.size() && i < static_cast<std::size_t>(Hl2AudioMixer::kMaxReceivers); ++i) {
+        const Receiver& r = m_rx[i];
+        if (!r.dsp || r.audioMuted)
+            continue;
+        p.dsp[i] = r.dsp;
+        p.gain[i] = r.audioGain;
+        p.pan[i] = r.audioPanPercent;
+    }
+    // The same test mixReceiverAudio() makes for the FreeDV receiver.
+    const int fdvSlice = fdv::FdvState::instance().sliceId;
+    if (m_fdv && fdvSlice >= 0)
+        p.fdvReceiver = m_fdv->loaded() ? m_fdv->rxReceiver() : ddcForSlice(fdvSlice);
+    p.live = pcmLive() && isConnected();
+    m_audioMixer->setParams(p);
+}
+
+void Hl2Backend::fdvDecodeForMixer(int ddc, const std::vector<float>& pcm)
+{
+    // As in mixReceiverAudio(): libfdv's decoded speech replaces the modem
+    // signal; without libfdv the receiver is silent rather than hissing.
+    std::vector<float> speech = pcm;
+    if (m_fdv && m_fdv->loaded())
+        m_fdv->processRx(speech);
+    else
+        std::fill(speech.begin(), speech.end(), 0.0f);
+    if (!m_audioMixer)
+        return;
+    QMetaObject::invokeMethod(m_audioMixer, [mixer = m_audioMixer, ddc, block = std::move(speech)] {
+        mixer->decodedAudio(ddc, block);
+    }, Qt::QueuedConnection);
 }
 
 void Hl2Backend::mixReceiverAudio(int ddc, const std::vector<float>& pcm)
@@ -3246,6 +3338,13 @@ Hl2Backend::~Hl2Backend()
     } else if (m_metis) {
         QMetaObject::invokeMethod(m_metis, "stop");
     }
+    // Build 373: the audio thread after the I/O thread (which feeds it).
+    if (m_audioThread) {
+        m_audioThread->quit();
+        m_audioThread->wait();
+    }
+    delete m_audioMixer;
+    m_audioMixer = nullptr;
     // The transmit thread after the I/O thread (which posts mic packets to
     // it) and before the transport it sends through is deleted.
     if (m_txThread) {
@@ -4456,6 +4555,10 @@ void Hl2Backend::invalidateTxDspConfiguration()
 void Hl2Backend::disconnectRadio()
 {
     retirePcmStreams();
+    if (m_audioMixer) {   // build 373: the audio thread's stream ends with it
+        pushAudioMix();
+        QMetaObject::invokeMethod(m_audioMixer, "stopStream", Qt::QueuedConnection);
+    }
     invalidateTxDspConfiguration();
     // Invalidate any DSP build still in flight. Without this, a disconnect
     // during the opens would be followed by finishDspSetup() starting a wire
@@ -5208,6 +5311,7 @@ void Hl2Backend::setSliceAudioMute(int sliceId, bool mute)
     const int ddc = ddcForSlice(sliceId);
     if (ddc >= 0 && static_cast<std::size_t>(ddc) < m_mixPending.size())
         m_mixPending[static_cast<std::size_t>(ddc)].clear();
+    pushAudioMix();   // build 373: a receiver out of the mix has its queue dropped there
     qCDebug(lcHl2) << "HL2: slice" << sliceId << (mute ? "muted" : "unmuted");
     emitSliceState(ddc);
 }
@@ -5225,6 +5329,7 @@ void Hl2Backend::setSliceAudioGain(int sliceId, int gainPercent)
         return;
     }
     r->audioGain = scaled;
+    pushAudioMix();   // build 373
     emitSliceState(ddcForSlice(sliceId));
     notifyOperatingStateChanged();
 }
@@ -5239,6 +5344,7 @@ void Hl2Backend::setSliceAudioPan(int sliceId, int panPercent)
         return;
     }
     r->audioPanPercent = clamped;
+    pushAudioMix();   // build 373
     notifyOperatingStateChanged();
 }
 
@@ -6626,6 +6732,8 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
     // stalest blocks in the buffer and would play out ahead of live audio.
     for (auto& q : m_mixPending)
         q.clear();
+    if (m_audioMixer)   // build 373
+        m_audioMixer->flushAll();
 
     // While keyed the shared filter board must follow the TRANSMIT receiver
     // rather than the agree-or-bypass receive policy — see applyBandFilter().
@@ -7507,6 +7615,14 @@ void Hl2Backend::ananMonitorTx(const std::vector<float>& mono)
         m_monScratch[2 * i + 1] = s;
     }
     publishLegacyAudio(floatBytes(m_monScratch));
+    // Build 373: the loudspeaker takes its frames from the audio thread's
+    // stream (one producer per route in AudioEngine), so MON goes out through
+    // it; the call above feeds the other consumers.
+    if (m_audioMixer && m_audioThreadActive) {
+        QMetaObject::invokeMethod(m_audioMixer, [mixer = m_audioMixer, block = m_monScratch] {
+            mixer->passthrough(block);
+        }, Qt::QueuedConnection);
+    }
     // The codec gets MON from the transmit thread straight into the I/O
     // mixer's FIFO (ananMonToCodec); the direct path only when that mixer is
     // off (FDV).

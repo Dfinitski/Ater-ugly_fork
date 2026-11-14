@@ -329,6 +329,10 @@ void MainWindow::wireDiscovery()
         // feeding live receive UNDER the playback. Reachable in practice only
         // now that the recorder captures RX on such a radio at all. (#4537.)
         if (m_rxMutedForPlayback) return;
+        // Build 373: a backend with an audio thread of its own feeds the
+        // engine from there (wireBackendSeam); these relayed frames are the
+        // same audio for the other consumers and must not be played twice.
+        if (m_directSpeakerFeed.load(std::memory_order_acquire)) return;
         m_audio->feedPcmFrame(pcm);
     });
 

@@ -264,6 +264,7 @@
 #include "core/backends/flex/PanadapterStream.h"
 #include "core/backends/IRadioBackend.h"
 #include "core/backends/hl2/Hl2Backend.h"  // dynamic_cast for WDSP setup progress
+#include "core/backends/hl2/Hl2AudioMixer.h"   // build 373: the direct loudspeaker feed
 #include "workspace/WorkspaceController.h"  // prepareShutdown (phase 7 canvas windows)
 #include "workspace/WorkspaceWindow.h"      // shutdown sweep of hidden windows (M1)
 #if defined(Q_OS_MACOS)
@@ -7602,6 +7603,7 @@ void MainWindow::wireBackendSeam(IRadioBackend* backend)
     // double rate — the audible scratchy buzz this branch already had to fix once —
     // and Qt::UniqueConnection cannot protect the lambda connects at all.
     disconnect(backend, &IRadioBackend::audioFrameReady, m_audio, nullptr);
+    m_directSpeakerFeed.store(false, std::memory_order_release);
 
     // HL2 only: opening its client-side WDSP chains measures FFTW plans, ~20 s
     // without cached wisdom, so the operator needs a visible explanation. The
@@ -7618,6 +7620,23 @@ void MainWindow::wireBackendSeam(IRadioBackend* backend)
         connect(hl2Backend, &hl2::Hl2Backend::dspSetupFinished, this,
                 [this] { dismissWdspSetupDialog(); });
         wireDrmBackend(hl2Backend);   // build 237: DRM decoder state -> DRM applet
+        // ANAN fork build 373 (operator, 14.11: "work in the interface must not
+        // stop the sound"). The loudspeaker audio used to come here through
+        // two hops on THIS thread (the backend's mixer, RadioModel's relay)
+        // before it was queued to the AudioEngine thread, so anything that
+        // held the GUI event loop held the audio. The backend's mixer now
+        // runs on a thread of its own and its frames go from there straight
+        // to the AudioEngine thread: m_audio is the context object, so the
+        // lambda runs on the engine's thread, as the relay's lambda does.
+        if (hl2::Hl2AudioMixer* mixer = hl2Backend->audioThreadActive() ? hl2Backend->audioMixer() : nullptr) {
+            disconnect(mixer, &hl2::Hl2AudioMixer::speakerFrameReady, m_audio, nullptr);
+            connect(mixer, &hl2::Hl2AudioMixer::speakerFrameReady, m_audio,
+                    [this](const PcmFrame& pcm) {
+                if (m_rxMutedForPlayback) return;   // as the relay: playback mute
+                m_audio->feedPcmFrame(pcm);
+            });
+            m_directSpeakerFeed.store(true, std::memory_order_release);
+        }
     }
 
     // Spectrum seam is not rendered here:

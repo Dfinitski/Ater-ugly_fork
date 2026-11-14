@@ -669,6 +669,11 @@ private:
     // seam backend has no such connection to drop, so its relay consults this
     // instead. (PR #4537 review.)
     bool m_rxMutedForPlayback{false};
+    // ANAN fork build 373: the connected backend hands the loudspeaker audio
+    // to the AudioEngine itself, from its audio thread (Hl2AudioMixer); the
+    // relay through RadioModel (this thread) must then not feed it a second
+    // time. Read on the AudioEngine thread.
+    std::atomic<bool> m_directSpeakerFeed{false};
     // Who is asking; see RxPlaybackMuteOwners.h. A plain bool would let
     // whichever producer finished first unmute under the others.
     RxPlaybackMuteOwners m_rxPlaybackMuters;

@@ -938,6 +938,7 @@ set(CORE_SOURCES
     src/core/backends/hl2/Hl2Receivers.cpp   # per-receiver index-space map (docs/HERMES.md §12.5)
     src/core/backends/hl2/Hl2Spectrum.cpp    # aetherd HL2 Phase 1a (FFT panadapter, FFTW)
     src/core/backends/hl2/Hl2RxDsp.cpp       # aetherd HL2 Phase 1a (IQ -> WdspChannel demod + spectrum)
+    src/core/backends/hl2/Hl2AudioMixer.cpp  # ANAN fork build 373: receive-audio mix on its own thread
     src/core/backends/hl2/Hl2TxDsp.cpp       # SSB transmit chain (TX audio -> baseband IQ)
     src/core/backends/hl2/Hl2Backend.cpp     # aetherd HL2 Phase 1b (IRadioBackend impl)
     src/core/backends/hl2/Hl2TelemetryPoller.cpp # stream-free telemetry on port 1025 (#15)

@@ -59,6 +59,7 @@ namespace AetherSDR::hl2 {
 
 class MetisClient;
 class Hl2RxDsp;
+class Hl2AudioMixer;
 class Hl2TxDsp;
 
 // The IQ rates the HL2's DDC can run, ascending. One list serves as the
@@ -87,6 +88,15 @@ class Hl2Backend : public IRadioBackend, public IAutoRfGainControl {
     Q_OBJECT
 
 public:
+    // Build 373: the object whose speakerFrameReady() carries the loudspeaker
+    // audio (emitted on the audio thread); MainWindow connects it straight to
+    // the AudioEngine. Never null after construction.
+    [[nodiscard]] Hl2AudioMixer* audioMixer() const noexcept { return m_audioMixer; }
+    // False when the operator switched the audio thread off (AppSettings
+    // "AnanAudioThread" = False, read once at start): the mix then runs on the
+    // backend's thread as before build 373 -- a way back without a rebuild.
+    [[nodiscard]] bool audioThreadActive() const noexcept { return m_audioThreadActive; }
+
     // ANAN-100D port: the Protocol 2 transport (radio I/O thread), for the
     // Wideband Monitor's widebandFrame signal and setWideband().
     QObject* ananTransport() const;
@@ -1387,7 +1397,17 @@ private:
     void publishIoDspList(std::vector<Hl2RxDsp*> next);
 
     // Sum one receiver's audio into the host mix (the HL2 has no on-radio mixer).
+    // Build 373: no longer on the audio path -- the mix runs on the audio
+    // thread (Hl2AudioMixer, see m_audioMixer). Kept as the reference
+    // implementation the unit tests drive (pcm_compatibility_test).
     void mixReceiverAudio(int ddc, const std::vector<float>& pcm);
+    // Build 373: the mix parameters as the audio thread needs them (which
+    // receivers, faders, balance, the FreeDV receiver, live). Called wherever
+    // one of them changes and on the 50 ms tick.
+    void pushAudioMix();
+    // The FreeDV receiver's modem audio, handed over by the audio thread:
+    // decoded here (libfdv is driven from this thread) and sent back.
+    void fdvDecodeForMixer(int ddc, const std::vector<float>& pcm);
 
     // Receive-audio hold. applyRxAudioMute() is the only writer of m_rxAudioMuted
     // and the path for every mute, so the mixer gate and demod mute stay in step.
@@ -1535,6 +1555,12 @@ private:
     // Wire and DSP thread, off the GUI thread (see MetisClient.h for EP2 pacing).
     // Owned; joined in the destructor.
     QThread* m_ioThread = nullptr;
+    // Build 373: the receive-audio mixer and its thread ("anan-audio"), between
+    // the demodulators (I/O thread) and the AudioEngine thread -- so that the
+    // GUI thread is not on the way of the sound. See Hl2AudioMixer.h.
+    QThread* m_audioThread = nullptr;
+    Hl2AudioMixer* m_audioMixer = nullptr;
+    bool m_audioThreadActive = true;
 
     // Rate-change build thread. m_ioThread carries the EP2 2 ms pacer, the EP6 drain
     // and every Hl2RxDsp::processIqBlock() via DirectConnection, so a rebuild there
