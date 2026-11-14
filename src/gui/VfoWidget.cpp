@@ -3029,13 +3029,17 @@ void VfoWidget::buildTabContent()
         m_modeCombo->setParent(modeTab);
         m_modeCombo->hide();
         auto& settings = AppSettings::instance();
+        // Build 361 (operator, 13.11: "fix my current buttons as the
+        // defaults"): the operator's own set, read from his settings --
+        // SSB, AM, SAM, FDV / CWL, SAM, DIGU, FM. The sideband buttons swap on
+        // a second click (LSB <-> USB, CWL <-> CW), so one of each is enough.
         static const char* kDefaults[kQuickModeButtons] = {
-            "LSB", "USB", "CW", "AM",      // row 1 (slots 1..3 = old buttons)
 #ifdef HAVE_RADE
-            "SAM", "DIGL", "DIGU", "FDV"}; // row 2 (build 353: SAM, was CWL -- CW's second click)
+            "LSB", "AM", "SAM", "FDV",     // row 1
 #else
-            "SAM", "DIGL", "DIGU", "FM"};  // row 2
+            "LSB", "AM", "SAM", "CW",      // row 1 (no FreeDV in this build)
 #endif
+            "CWL", "SAM", "DIGU", "FM"};   // row 2
         for (int i = 0; i < kQuickModeButtons; ++i) {
             QString a = settings.value(quickModeKey(i), QString::fromLatin1(kDefaults[i])).toString();
             // ANAN-100D port: the RADE pseudo-mode is now "FDV" (FreeDV).
