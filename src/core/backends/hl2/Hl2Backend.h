@@ -652,6 +652,11 @@ private:
     // encoder (the compressor PROC uses, with its limiter). GUI thread.
     void fdvSpeechProcess(std::vector<float>& mono);
     bool m_fdvSpeechPrimed = false;
+    // Build 350: the level of the speech going into the FreeDV encoder, shown
+    // on the ALC gauge (labelled MOD then). Peak since the last publication.
+    void fdvPublishMod(const std::vector<float>& mono);
+    float m_fdvModPeak = 0.0f;
+    QElapsedTimer m_fdvModClock;
     // ANAN-100D port: the radio's codec. Speaker: the existing codec tap
     // (forwardSpeakerAudioToCodec) at "AnanCodecVolume"; microphone: port 1026
     // samples, 48 -> 24 kHz, replace the computer microphone in submitTxAudio()

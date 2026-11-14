@@ -101,6 +101,9 @@ public slots:
     // Notify the applet when RADE mode activates/deactivates so the mic level
     // slider and meter behave correctly (client-side gain + RX metering).
     void setRadeActive(bool on);
+    // Build 350: the ALC gauge shows the speech level into the FreeDV encoder
+    // while FreeDV is on, and is labelled MOD then.
+    void setAlcGaugeAsMod(bool mod);
 
     // CW meter (ALC 0–100)
     void updateAlc(float alc);

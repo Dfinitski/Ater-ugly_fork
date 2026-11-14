@@ -1027,6 +1027,8 @@ void MainWindow::activateLocalFdv(int sliceId)
     applyLocalFdvPassband();
     if (m_appletPanel && m_appletPanel->rxApplet())
         m_appletPanel->rxApplet()->refreshModeDisplay();   // build 340
+    if (m_appletPanel && m_appletPanel->phoneCwApplet())
+        m_appletPanel->phoneCwApplet()->setAlcGaugeAsMod(true);   // build 350
     qInfo() << "MainWindow: FDV activated on slice" << sliceId << st.label();
 }
 
@@ -1154,6 +1156,8 @@ void MainWindow::deactivateLocalFdv()
     m_radeSliceId = -1;
     if (m_appletPanel && m_appletPanel->rxApplet())
         m_appletPanel->rxApplet()->refreshModeDisplay();   // build 340
+    if (m_appletPanel && m_appletPanel->phoneCwApplet())
+        m_appletPanel->phoneCwApplet()->setAlcGaugeAsMod(false);   // build 350
     qInfo() << "MainWindow: FDV deactivated";
 }
 

@@ -874,6 +874,7 @@ Hl2Backend::Hl2Backend(QObject* parent)
                 // What comes out is the modem signal: engine-generated, no
                 // microphone control acts on it.
                 fdvSpeechProcess(mono);
+                fdvPublishMod(mono);   // build 350
                 m_fdv->processTx(mono);
                 QMetaObject::invokeMethod(m_txDsp, [dsp = m_txDsp, mono = std::move(mono), ctx] {
                     dsp->processAudioBlock(mono, TxAudioSource::EngineGenerated, ctx);
@@ -1205,7 +1206,10 @@ Hl2Backend::Hl2Backend(QObject* parent)
         m_alcPeakDbfs = dbfs;
     });
     connect(m_metis, &MetisClient::txEnvelopePeak, this, [this](float dbfs) {
-        if (m_keyed)
+        // Build 350: not while FreeDV transmits -- the modem signal is always
+        // at full scale; the gauge shows the speech into the encoder then
+        // (fdvPublishMod).
+        if (m_keyed && !(m_fdv && m_fdv->txRunning()))
             emit meterUpdate(QStringLiteral("TX:ALC"), dbfs);
     });
         // The gain the ALC applies, a separate meter from TX:ALC (a level):
@@ -7315,6 +7319,26 @@ void Hl2Backend::fdvSpeechProcess(std::vector<float>& mono)
         v = std::clamp(v, -1.0f, 1.0f);
 }
 
+// ANAN fork build 350 (operator, 13.11: "how do I see the microphone level in
+// FDV now? ALC always shows maximum. Replace ALC by MOD: the microphone level
+// at the encoder's input against the full scale of that input"). `mono` is
+// what the encoder is about to get -- after MIC gain and the speech
+// compressor; 0 dBFS is the full scale of its input. Published as TX:ALC
+// (the gauge is relabelled MOD by the GUI while FreeDV is on), the peak of
+// each 40 ms.
+void Hl2Backend::fdvPublishMod(const std::vector<float>& mono)
+{
+    for (float v : mono)
+        m_fdvModPeak = std::max(m_fdvModPeak, std::abs(v));
+    if (m_fdvModClock.isValid() && m_fdvModClock.elapsed() < 40)
+        return;
+    m_fdvModClock.start();
+    const float dbfs = m_fdvModPeak > 1e-7f ? 20.0f * std::log10(m_fdvModPeak) : -140.0f;
+    m_fdvModPeak = 0.0f;
+    if (m_keyed)
+        emit meterUpdate(QStringLiteral("TX:ALC"), dbfs);
+}
+
 void Hl2Backend::pushTxCompressor()
 {
     // Radio microphone only (the computer microphone has the app's own TX
@@ -7772,6 +7796,7 @@ void Hl2Backend::submitTxAudio(const QByteArray& int16Stereo, int sampleRateHz,
         }
         if (source == TxAudioSource::Microphone)
             fdvSpeechProcess(mono);
+        fdvPublishMod(mono);   // build 350
         m_fdv->processTx(mono);
         source = TxAudioSource::EngineGenerated;
     }

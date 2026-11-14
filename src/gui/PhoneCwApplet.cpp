@@ -1723,6 +1723,20 @@ void PhoneCwApplet::setAlcMeterUnit(const QString& unit)
     }
 }
 
+void PhoneCwApplet::setAlcGaugeAsMod(bool mod)
+{
+    for (HGauge* gauge : {m_alcGaugePhone, m_alcGaugeCw}) {
+        if (!gauge)
+            continue;
+        gauge->setLabel(mod ? QStringLiteral("MOD") : QStringLiteral("ALC"));
+        gauge->setToolTip(mod
+            ? tr("FreeDV: speech level into the encoder, dB below the full scale of its input.\n"
+                 "Set MIC so that speech peaks reach -6 .. -1 dB.")
+            : QString());
+        gauge->clearPeak();
+    }
+}
+
 void PhoneCwApplet::resetAlc()
 {
     const float floor = m_alcMeterUnit == QLatin1String("Percent") ? 0.0f : -20.0f;
