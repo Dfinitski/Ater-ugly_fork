@@ -1580,16 +1580,7 @@ void TciServer::onTextMessage(const QString& msg)
             // bandwidth than the receiver captures gets it -- the DDC rate is
             // raised to the request, as the pan's rate buttons do; asking
             // for less, the tap converts down (Hl2Backend::tciIqTap).
-            if (native) {
-                const int ddcRate = anan::AnanUiState::instance().sampleRateHz;
-                if (ddcRate > 0 && rate > ddcRate) {
-                    qCInfo(lcCat).noquote() << "TCI: iq_samplerate" << rate
-                                            << "is wider than the receiver rate" << ddcRate
-                                            << "Hz; raising the receiver rate to" << rate;
-                    m_model->invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.rate"), 0,
-                                                    QVariant(rate));
-                }
-            }
+            raiseReceiverRateForIq("iq_samplerate");   // build 354: one place
             const int effectiveRate = effectiveIqSampleRate();
             const int announcedRate = effectiveRate != 0 ? effectiveRate : rate;
             m_announcedIqSampleRate = announcedRate;
@@ -3895,11 +3886,55 @@ void TciServer::onIqDataReady(int channel, const QByteArray& rawPayload, int sam
 // and one warning when a client has had I/Q on for 3 s and nothing went out
 // in the last second -- with how many frames the radio side delivered, so
 // the log tells "no I/Q from the radio" from "I/Q not reaching the client".
+// ANAN fork build 354 (users, 13.11: "above 96 kHz the I/Q over TCI does not
+// work -- the skimmer server always stays at 96 k"). Build 324 raised the
+// receiver rate to a wider iq_samplerate request, but only at the moment the
+// request arrived, and only if the receiver's rate was known then. A skimmer
+// that is left running reconnects the instant the program starts -- before
+// the radio is started (the program waits for a click since build 302) --
+// and sends its iq_samplerate then: the receiver rate is unknown (0), nothing
+// is raised, and when the radio starts at its saved 96 kHz the tap can only
+// stretch that into a 192 kHz stream with 96 kHz of signal in it. The same
+// after a reconnect of the radio, and when the rate is lowered by hand.
+// Now it is one check, made at the request, at iq_start and once a second
+// while a client takes I/Q: receiver rate known and below the I/Q rate asked
+// for -> raise it. One attempt per (asked rate, receiver rate) pair, so a
+// radio that cannot go that high is not asked again every second.
+void TciServer::raiseReceiverRateForIq(const char* why)
+{
+    if (!m_model || !nativeIq())
+        return;
+    const int ddcRate = anan::AnanUiState::instance().sampleRateHz;
+    const int want = m_iqSampleRate;
+    if (ddcRate <= 0 || want <= ddcRate) {
+        // Wide enough (or not known yet): the next shortfall is a new case --
+        // the radio restarted at a saved lower rate, or it was lowered by hand.
+        if (ddcRate > 0)
+            m_iqRaiseTriedRate = m_iqRaiseTriedDdcRate = 0;
+        return;
+    }
+    if (want == m_iqRaiseTriedRate && ddcRate == m_iqRaiseTriedDdcRate)
+        return;   // asked already and the radio stayed: it cannot (or was refused)
+    m_iqRaiseTriedRate = want;
+    m_iqRaiseTriedDdcRate = ddcRate;
+    qCInfo(lcCat).noquote() << "TCI: I/Q rate" << want << "is wider than the receiver rate" << ddcRate
+                            << "Hz; raising the receiver rate to" << want << "(" << why << ")";
+    m_model->invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.rate"), 0,
+                                    QVariant(want));
+}
+
 void TciServer::updateIqStats()
 {
     if (++m_statsTick < 5)
         return;
     m_statsTick = 0;
+    // Build 354: while any client takes I/Q.
+    for (const ClientState& cs : std::as_const(m_clients)) {
+        if (cs.socket && !cs.iqReceivers.isEmpty()) {
+            raiseReceiverRateForIq("check");
+            break;
+        }
+    }
     const bool logNow = (++m_statsLogTick % 5) == 0;
     const quint64 inDelta = m_iqFramesIn - m_iqFramesInMark;
     m_iqFramesInMark = m_iqFramesIn;
@@ -4028,6 +4063,7 @@ bool TciServer::ensureIqStream(int trx)
         m_tciIqChannels.insert(channel);
         m_nativeIqSlice.insert(channel, slice->sliceId());
         announceEffectiveIqSampleRate();
+        raiseReceiverRateForIq("iq_start");   // build 354
         setNativeIq(channel, slice->sliceId(), true);
         return true;
     }

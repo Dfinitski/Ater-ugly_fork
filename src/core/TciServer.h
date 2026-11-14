@@ -450,6 +450,11 @@ private:
     int                m_statsTick{0};
     int                m_statsLogTick{0};
     void updateIqStats();
+    // Build 354: the receiver rate is kept at least the I/Q rate a client
+    // asked for, whenever that can be checked (see the definition).
+    void raiseReceiverRateForIq(const char* why);
+    int m_iqRaiseTriedRate{0};      // the last attempt: asked rate ...
+    int m_iqRaiseTriedDdcRate{0};   // ... at this receiver rate
     int                m_iqSampleRate{48000};// shared requested rate, all TCI receivers
     QHash<QString, long long> m_lastDdsCenterHz; // panId → last broadcast dds center, gates zoom-only re-emits (#3910)
     TciRoutingState m_routingState;
