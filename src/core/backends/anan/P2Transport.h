@@ -296,13 +296,15 @@ signals:
     // [-1, 1), 122.88 Msps) from ADC `adc`.
     void widebandFrame(int adc, const QVector<float>& samples);
 
-private slots:
-    void onReadyRead();
+private:
     // Build 376 diagnostics (I/O thread): what Protocol 1 packets were refused
     // (printed with "no IQ for ..."), and how often the read loop had to
     // yield to the event loop because the socket did not run empty.
     quint64 m_p1DiagSeen = 0, m_p1DiagBadSize = 0, m_p1DiagNoSync = 0, m_p1DiagOneFrame = 0;
-    int m_diagReadYields = 0;
+    int m_diagReadYields = 0;   // not in the slots section: moc reads that one
+
+private slots:
+    void onReadyRead();
     void onKeepaliveTick();
     void onBoardWaitTimeout();
     void onWatchdogTick();
