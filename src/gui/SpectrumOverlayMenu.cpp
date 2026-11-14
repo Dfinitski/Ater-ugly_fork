@@ -301,9 +301,15 @@ static const QString kMenuBtnActive =
     "border: 1px solid #0090e0; border-radius: 2px; "
     "color: #ffffff; font-size: 11px; font-weight: bold; }";
 
+// ANAN fork build 365 (operator, 13.11: "the labels on the band buttons are
+// cut off, to less than the button's width"). The button is 48 px and the
+// style set no padding, so it took the application's (wide) button padding
+// and the text was left a strip in the middle: three characters fit, "2200"
+// and "XVTR" did not. Build 358 took the padding off the transverter buttons
+// only. No padding on any band button: the whole width is the label's.
 static const QString kBandBtnStyle =
     "QPushButton { background: rgba(30, 40, 55, 220); "
-    "border: 1px solid #304050; border-radius: 3px; "
+    "border: 1px solid #304050; border-radius: 3px; padding: 0px; "
     "color: #c8d8e8; font-size: 11px; font-weight: bold; }"
     "QPushButton:hover { background: rgba(0, 112, 192, 180); "
     "border: 1px solid #0090e0; }"
@@ -322,7 +328,7 @@ static QString xvtrNameStyle(const QString& base, const QString& name)
 
 static const QString kXvtrBtnStyle =
     "QPushButton { background: rgba(30, 40, 55, 220); "
-    "border: 1px solid #304050; border-radius: 3px; "
+    "border: 1px solid #304050; border-radius: 3px; padding: 0px; "
     "color: #00d0ff; font-size: 11px; font-weight: bold; }"
     "QPushButton:hover { background: rgba(0, 112, 192, 180); "
     "border: 1px solid #0090e0; }"
