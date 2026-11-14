@@ -8785,6 +8785,16 @@ void MainWindow::applyPanRangeRequest(const QString& panId, double centerMhz,
 
     centerMhz = std::max(centerMhz, bandwidthMhz / 2.0);
 
+    // ANAN fork build 366: under Center Lock a range request (a zoom) changes
+    // the width only -- the centre stays where the lock holds it. A centre of
+    // its own would be undone by the lock at once, and on this radio the
+    // bandwidth of the same request was dropped in that exchange.
+    if (const int lockId = centerLockSliceForPan(panId); lockId >= 0 && !m_sliceDragInProgress) {
+        const double held = m_radioModel.effectivePanCenterMhz(panId);
+        if (held > 0.0)
+            centerMhz = std::max(held, bandwidthMhz / 2.0);
+    }
+
     auto* pan = m_radioModel.panadapter(panId);
     // A fixed span takes the center only, silently: no zoom route can change
     // it, and the dimmed -/+ pair already says why.

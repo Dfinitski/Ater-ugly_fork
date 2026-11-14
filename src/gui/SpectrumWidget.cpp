@@ -2364,7 +2364,7 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
         // When zooming in, center on the active VFO so repeated clicks do not
         // push it toward the panadapter edge (#1932).
         double newCenter = m_centerMhz;
-        if (factor < 1.0) {  // zooming in
+        if (factor < 1.0 && m_centerLockSliceId < 0) {  // zooming in (build 366: not under Center Lock)
             const auto* ao = activeOverlay();
             if (ao)
                 newCenter = ao->freqMhz;
@@ -12262,7 +12262,16 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
             ? std::min(m_maxBwMhz, ananRateHz * AetherSDR::anan::kUsableSpanFraction / 1.0e6)
             : m_maxBwMhz;
         const double newBw = std::clamp(m_bwDragStartBw * scale, std::min(m_minBwMhz, maxBw), maxBw);
-        const double zoomCenter = std::max(
+        // ANAN fork build 366 (operator, 13.11: "with Center Lock on the zoom
+        // does not happen: it jerks and comes back"). A zoom is anchored on
+        // the frequency under the cursor, so every step asked for a new
+        // centre; Center Lock put the centre back on its receiver at once, and
+        // the step's bandwidth was lost in between. Under Center Lock the
+        // centre is not the zoom's to move: it stays, and only the width
+        // changes -- the zoom is about the locked receiver.
+        const double zoomCenter = m_centerLockSliceId >= 0
+            ? std::max(m_centerMhz, newBw / 2.0)
+            : std::max(
             centerForAnchoredPanBandwidth(
                 m_bwDragAnchorMhz, m_bwDragAnchorFraction, newBw,
                 panEdgeCropActive()),
@@ -13144,7 +13153,9 @@ bool SpectrumWidget::applyAnchoredZoom(double bandwidthFactor,
     // at the bandwidth-drag-start anchor. newBw itself stays on the raw bandwidth.
     const double anchorMhz = frequencyAtFraction(
         FrequencyFrame{m_centerMhz, effectiveBandwidthMhz()}, mouseXFrac);
-    const double newCenter = std::max(
+    const double newCenter = m_centerLockSliceId >= 0   // build 366: see the bandwidth drag
+        ? std::max(m_centerMhz, newBw / 2.0)
+        : std::max(
         centerForAnchoredPanBandwidth(
             anchorMhz, mouseXFrac, newBw, panEdgeCropActive()),
         newBw / 2.0);
