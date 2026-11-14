@@ -849,6 +849,8 @@ Hl2Backend::Hl2Backend(QObject* parent)
     // Build 374: before the transmit thread below starts -- its callbacks
     // (MON, FreeDV) read these.
     m_audioMixer->setFdvEngine(m_fdv);   // FreeDV receive decoded on that thread
+    // Build 375: and the radio's own loudspeaker from that thread too.
+    m_audioMixer->setCodecSink([this](const std::vector<float>& pcm) { codecForwardAudioThread(pcm); });
     m_audioMixer->moveToThread(m_audioThread);
     m_audioThreadActive = AppSettings::instance()
                               .value(QStringLiteral("AnanAudioThread"), QStringLiteral("True"))
@@ -976,7 +978,8 @@ Hl2Backend::Hl2Backend(QObject* parent)
     connect(m_audioMixer, &Hl2AudioMixer::mixedBlockReady, this,
             [this](const std::vector<float>& pcm) {
         publishLegacyAudio(floatBytes(pcm));
-        forwardSpeakerAudioToCodec(pcm);
+        // Build 375: the radio's codec is fed by the mixer thread itself
+        // (the codec sink, set where the mixer is created).
     });
     connect(m_audioMixer, &Hl2AudioMixer::fdvInput, this,
             [this](int ddc, const std::vector<float>& pcm) { fdvDecodeForMixer(ddc, pcm); });
@@ -2984,6 +2987,9 @@ void Hl2Backend::ananPushCwKeyer()
 void Hl2Backend::fdvTick()
 {
     pushAudioMix();   // build 373: the safety net for any change not pushed at its source
+    // Build 375: likewise for the codec feed of the audio thread.
+    m_codecFwdGainIo.store(codecSpeakerGain(), std::memory_order_relaxed);
+    m_codecFwdActiveIo.store(m_metis && m_hw.hasLocalCodec() && !m_codecIoMixActive, std::memory_order_relaxed);
     // Build 374: what submitTxAudio() reads off the GUI thread.
     m_micFromRadioIo.store(m_ananMicFromRadio, std::memory_order_relaxed);
     m_micGainIo.store(static_cast<float>(micSliderToLinear(m_micLevel)), std::memory_order_relaxed);
@@ -3913,6 +3919,7 @@ void Hl2Backend::connectRadio(const RadioConnectRequest& request)
     // The codec's resampler carries state across blocks; a new radio is a new
     // stream and must not be interpolated out of the last one's final sample.
     m_codecHavePrev = false;
+    m_codecFwdResetSeq.fetch_add(1, std::memory_order_relaxed);
     if (m_hw != Hl2HardwareOptions{})
         qCInfo(lcHl2) << "HL2 hardware options: codec=" << static_cast<int>(m_hw.codec)
                       << "dither=" << m_hw.ditherBitOnWire()
@@ -7311,6 +7318,10 @@ void Hl2Backend::ananPushCodecMix()
         }
     }
     m_codecIoMixActive = p.active;
+    // Build 375: the direct feed's conditions for the audio thread
+    // (codecForwardAudioThread): a codec, and this mixer not doing the job.
+    m_codecFwdGainIo.store(codecSpeakerGain(), std::memory_order_relaxed);
+    m_codecFwdActiveIo.store(m_metis && m_hw.hasLocalCodec() && !p.active, std::memory_order_relaxed);
     // The codec plays AudioEngine's post-AetherRX output when it has one.
     anan::AnanCodecFeed::instance().setWanted(p.active && p.aetherRx);
     std::lock_guard<std::mutex> lock(m_codecMixMutex);
@@ -7656,7 +7667,9 @@ void Hl2Backend::ananMonitorTx(const std::vector<float>& mono)
     // The codec gets MON from the transmit thread straight into the I/O
     // mixer's FIFO (ananMonToCodec); the direct path only when that mixer is
     // off (FDV).
-    if (m_codecIoMixActive)
+    // Build 375: nor from here with the audio thread -- MON reaches the mixer
+    // from the transmit thread, and the mixer's codec sink forwards it.
+    if (m_codecIoMixActive || m_audioThreadActive)
         return;
     forwardSpeakerAudioToCodec(m_monScratch, true);
 }
@@ -7719,16 +7732,11 @@ void Hl2Backend::forwardSpeakerAudioToCodec(const std::vector<float>& mixed, boo
     if (!m_metis || !m_hw.hasLocalCodec() || mixed.empty())
         return;
 
-    // 24 kHz -> 48 kHz: Hl2RxDsp outputs the engine's RX rate and EP2 runs at a
-    // fixed 48 kHz, so this is an exact 2x linear interpolation (repetition
-    // would mirror the baseband about 12 kHz). m_codecLastL/R carry the last
-    // frame so the midpoint across a block boundary is correct.
-    const std::size_t frames = mixed.size() / 2;
-    if (frames == 0)
-        return;
-    std::vector<std::int16_t> out;
-    out.reserve(frames * 4);              // 2 output frames x 2 channels
+    codecForward(mixed, codecSpeakerGain(), m_codecLastL, m_codecLastR, m_codecHavePrev);
+}
 
+float Hl2Backend::codecSpeakerGain() const
+{
     // THE RADIO'S OWN LEVEL, which is not the application's. AudioEngine
     // applies the operator's volume as a device attenuation on the host's
     // QAudioSink, so it is not in these samples and no tap could find it —
@@ -7745,14 +7753,49 @@ void Hl2Backend::forwardSpeakerAudioToCodec(const std::vector<float>& mixed, boo
         const float db = -10.0f + 0.4f * static_cast<float>(m_hw.speakerLevelPercent);
         speakerGain = std::pow(10.0f, db / 20.0f);
     }
+    return speakerGain;
+}
+
+// ANAN fork build 375: the same feed from the audio thread (Hl2AudioMixer's
+// codec sink). It is the radio's own loudspeaker whenever the I/O-thread codec
+// mixer is off -- in FreeDV, where the decoded speech exists only after the
+// mixer thread's decoder -- and it went through the GUI thread until now
+// (mixedBlockReady, ananMonitorTx). Reads atomics published by
+// ananPushCodecMix(); has its own interpolator carry.
+void Hl2Backend::codecForwardAudioThread(const std::vector<float>& mixed)
+{
+    if (!m_codecFwdActiveIo.load(std::memory_order_relaxed) || mixed.empty())
+        return;
+    const unsigned seq = m_codecFwdResetSeq.load(std::memory_order_relaxed);
+    if (seq != m_codecAtResetSeen) {
+        m_codecAtResetSeen = seq;
+        m_codecAtHavePrev = false;
+    }
+    codecForward(mixed, m_codecFwdGainIo.load(std::memory_order_relaxed), m_codecAtLastL, m_codecAtLastR,
+                 m_codecAtHavePrev);
+}
+
+void Hl2Backend::codecForward(const std::vector<float>& mixed, float speakerGain, float& lastL, float& lastR,
+                              bool& havePrev)
+{
+    // 24 kHz -> 48 kHz: Hl2RxDsp outputs the engine's RX rate and EP2 runs at a
+    // fixed 48 kHz, so this is an exact 2x linear interpolation (repetition
+    // would mirror the baseband about 12 kHz). lastL / lastR carry the last
+    // frame so the midpoint across a block boundary is correct.
+    const std::size_t frames = mixed.size() / 2;
+    if (frames == 0)
+        return;
+    std::vector<std::int16_t> out;
+    out.reserve(frames * 4);              // 2 output frames x 2 channels
+
     if (speakerGain <= 0.0f) {
         // Silent, but the interpolator's carry still has to advance or the
         // first sample after the operator brings the level back up would be
         // interpolated out of a frame from before it went down — a click at
         // exactly the moment they are listening for one.
-        m_codecLastL = mixed[2 * (frames - 1)];
-        m_codecLastR = mixed[2 * (frames - 1) + 1];
-        m_codecHavePrev = true;
+        lastL = mixed[2 * (frames - 1)];
+        lastR = mixed[2 * (frames - 1) + 1];
+        havePrev = true;
         return;
     }
 
@@ -7774,8 +7817,8 @@ void Hl2Backend::forwardSpeakerAudioToCodec(const std::vector<float>& mixed, boo
         return static_cast<std::int16_t>(v * 32767.0f);
     };
 
-    float prevL = m_codecHavePrev ? m_codecLastL : (mixed.size() > 0 ? mixed[0] : 0.0f);
-    float prevR = m_codecHavePrev ? m_codecLastR : (mixed.size() > 1 ? mixed[1] : 0.0f);
+    float prevL = havePrev ? lastL : (mixed.size() > 0 ? mixed[0] : 0.0f);
+    float prevR = havePrev ? lastR : (mixed.size() > 1 ? mixed[1] : 0.0f);
     for (std::size_t f = 0; f < frames; ++f) {
         const float l = mixed[2 * f];
         const float r = mixed[2 * f + 1];
@@ -7790,9 +7833,9 @@ void Hl2Backend::forwardSpeakerAudioToCodec(const std::vector<float>& mixed, boo
         prevL = l;
         prevR = r;
     }
-    m_codecLastL = prevL;
-    m_codecLastR = prevR;
-    m_codecHavePrev = true;
+    lastL = prevL;
+    lastR = prevR;
+    havePrev = true;
 
     QMetaObject::invokeMethod(
         m_metis, "submitSpeakerAudio", Qt::QueuedConnection,
@@ -7855,6 +7898,7 @@ void Hl2Backend::applyHardwareOptions(const Hl2HardwareOptions& next, bool persi
         // The resampler's carry describes a stream that is about to stop or
         // start; either way the next block must not be interpolated out of it.
         m_codecHavePrev = false;
+    m_codecFwdResetSeq.fetch_add(1, std::memory_order_relaxed);
         QMetaObject::invokeMethod(m_metis, "setLocalCodec", Qt::QueuedConnection,
                                   Q_ARG(bool, m_hw.hasLocalCodec()));
     }

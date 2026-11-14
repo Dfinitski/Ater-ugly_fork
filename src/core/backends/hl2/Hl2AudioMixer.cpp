@@ -83,6 +83,8 @@ void Hl2AudioMixer::emitOut(const std::vector<float>& pcm, const Params& p)
             emit speakerFrameReady(*frame);
         }
     }
+    if (m_codecSink)
+        m_codecSink(pcm);   // the radio's codec, when the I/O-thread mixer is not feeding it
     // The owner's copy, whether or not the stream is live: it applies its own
     // gate (publishLegacyAudio) for the consumers behind it.
     emit mixedBlockReady(pcm);
@@ -148,7 +150,11 @@ void Hl2AudioMixer::passthrough(const std::vector<float>& pcm)
     }
     // The owner publishes its own copy of this (it made the block): only the
     // loudspeaker frame from here.
-    if (pcm.empty() || !p.live || !m_streaming)
+    if (pcm.empty())
+        return;
+    if (m_codecSink)
+        m_codecSink(pcm);
+    if (!p.live || !m_streaming)
         return;
     QVector<float> samples(static_cast<qsizetype>(pcm.size()));
     std::copy(pcm.begin(), pcm.end(), samples.begin());

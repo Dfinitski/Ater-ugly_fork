@@ -49,6 +49,7 @@
 #include <atomic>
 #include <cstddef>
 #include <deque>
+#include <functional>
 #include <mutex>
 #include <vector>
 
@@ -84,6 +85,10 @@ public:
     // outliving it. Without one the modem blocks go to the owner (fdvInput)
     // and come back through decodedAudio(), as in build 373.
     void setFdvEngine(fdv::FdvEngine* engine) noexcept { m_fdv = engine; }
+    // Build 375: called on the mixer thread with every block that goes to the
+    // loudspeaker (the mix and the passthrough), for the radio's own codec.
+    // Set once before the thread starts.
+    void setCodecSink(std::function<void(const std::vector<float>&)> sink) { m_codecSink = std::move(sink); }
     void setParams(const Params& params);
     // The receive-audio hold (transmit, the hold after it). Takes effect on
     // the next block: an atomic, not a queued call.
@@ -117,6 +122,7 @@ private:
     void diag(const std::vector<float>& pcm, bool dropped);
 
     fdv::FdvEngine* m_fdv = nullptr;
+    std::function<void(const std::vector<float>&)> m_codecSink;
     std::vector<float> m_speech;   // mixer thread only
     std::mutex m_paramsMutex;
     Params m_params;

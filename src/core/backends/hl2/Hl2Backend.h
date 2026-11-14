@@ -979,6 +979,20 @@ private:
     // goes through the I/O-thread codec mixer below instead whenever that is
     // in charge (m_codecIoMixActive).
     void forwardSpeakerAudioToCodec(const std::vector<float>& mixed, bool fromMonitor = false);
+    // Build 375: the body of the above (any thread: no member state but what
+    // is passed in), the Codec volume as a linear gain (GUI thread), and the
+    // entry for the audio thread with its atomics and its own carry.
+    void codecForward(const std::vector<float>& mixed, float speakerGain, float& lastL, float& lastR,
+                      bool& havePrev);
+    [[nodiscard]] float codecSpeakerGain() const;
+    void codecForwardAudioThread(const std::vector<float>& mixed);
+    std::atomic<bool> m_codecFwdActiveIo{false};
+    std::atomic<float> m_codecFwdGainIo{0.0f};
+    std::atomic<unsigned> m_codecFwdResetSeq{0};
+    unsigned m_codecAtResetSeen = 0;   // audio thread only, as the three below
+    float m_codecAtLastL = 0.0f;
+    float m_codecAtLastR = 0.0f;
+    bool m_codecAtHavePrev = false;
 
     // ANAN-100D port: the receive audio for the radio's codec is mixed and
     // sent ON THE I/O THREAD, straight from Hl2RxDsp::audioReady, never
