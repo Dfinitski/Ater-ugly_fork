@@ -778,6 +778,11 @@ void P2Transport::sendHighPriority(bool run)
             o.adc0Filter = bank0.used ? bank0.filter
                                       : alexRxFilterFor(static_cast<double>(m_rxHz[filterRx]));
             o.adc1Filter = bank1.used ? bank1.filter : o.adc0Filter;
+            // Build 396: Thetis' "BPF ByPass on PS".
+            if (psBypassesBank(0))
+                o.adc0Filter = AlexRxFilter::Bypass;
+            if (psBypassesBank(1))
+                o.adc1Filter = AlexRxFilter::Bypass;
         } else {
             o.adc0Filter = bank0.filter;
             o.adc1Filter = o.adc0Filter;
@@ -2076,6 +2081,22 @@ void P2Transport::setMicControl(int bits)
         sendTransmitSpecific();
 }
 
+void P2Transport::setPsBpfBypassOnTx(bool on)
+{
+    if (on == m_psBpfBypassOnTx)
+        return;
+    m_psBpfBypassOnTx = on;
+    qCInfo(lcAnanP2T) << "ANAN: band-pass filters bypassed on TX with PureSignal" << (on ? "on" : "off");
+    if (m_run && m_configured && m_mox && m_psEnabled)
+        sendHighPriority(true);
+}
+
+bool P2Transport::psBypassesBank(int adc) const
+{
+    return m_mox && m_psEnabled && m_psBpfBypassOnTx
+        && m_profile.alexScheme == AlexScheme::Orion2BandPass && m_psAdc == adc;
+}
+
 void P2Transport::setAdc1GroundOnTx(bool on)
 {
     if (on == m_adc1GndOnTx)
@@ -2808,8 +2829,10 @@ P1CcState P2Transport::p1State() const
     if (orion2Filters) {
         // ORION MkII: band-pass banks per ADC, the LPF on the TX frequency.
         const AlexRxFilter f0 = bank0.used ? bank0.filter : alexRxFilterFor(filterHz);
-        s.alexHpf = p1AlexHpfBits(f0);
-        s.alex2Hpf = p1AlexHpfBits(bank1.used ? bank1.filter : f0);
+        // Build 396: Thetis' "BPF ByPass on PS", as on Protocol 2.
+        s.alexHpf = p1AlexHpfBits(psBypassesBank(0) ? AlexRxFilter::Bypass : f0);
+        s.alex2Hpf = p1AlexHpfBits(psBypassesBank(1) ? AlexRxFilter::Bypass
+                                                     : (bank1.used ? bank1.filter : f0));
         s.alexLpf = p1AlexLpfBitsFor(static_cast<double>(tx));
         s.rx2GroundOnTx = m_adc1GndOnTx;
     } else {

@@ -10,6 +10,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPushButton>
 #include <QRegularExpressionValidator>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -68,6 +69,19 @@ RadeApplet::RadeApplet(QWidget* parent)
             }
         });
         modeRow->addWidget(m_modeCombo, 1);
+        // Build 396 (operator, 14.11): FreeDV Reporter one click away.
+        auto* reporterBtn = new QPushButton(tr("Reporter"));
+        reporterBtn->setObjectName(QStringLiteral("fdvReporterButton"));
+        reporterBtn->setFixedHeight(20);
+        reporterBtn->setFocusPolicy(Qt::NoFocus);
+        reporterBtn->setToolTip(tr("Open FreeDV Reporter (the stations on FreeDV now)"));
+        ThemeManager::instance().applyStyleSheet(reporterBtn, QStringLiteral(
+            "QPushButton { background: {{color.background.1}}; border: 1px solid {{color.background.2}};"
+            " border-radius: 3px; padding: 0px 8px; font-size: 11px; font-weight: bold;"
+            " color: {{color.text.primary}}; }"
+            "QPushButton:hover { background: {{color.background.2}}; }"));
+        connect(reporterBtn, &QPushButton::clicked, this, &RadeApplet::reporterRequested);
+        modeRow->addWidget(reporterBtn);
         vbox->addLayout(modeRow);
 
         auto* callRow = new QHBoxLayout;

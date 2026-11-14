@@ -6431,6 +6431,31 @@ mode» и возвращается до оптимистичного состо�
 
 Проверено компиляцией.
 
+## 363. Сборка 396 — сообщение о связи, кнопка Reporter, имя программы, обход ДПФ на передаче с PureSignal
+
+Оператор, 14.11.
+
+- **Сообщение о связи.** `FtPanel::showToast`: после записи QSO в журнал — «Connection <мой позывной> -
+  <его позывной> done» на 2 с посередине таблицы декодов. Метка — дочерняя самой таблицы, группа
+  Settings на положение не влияет.
+- **FDV → Reporter.** В апплете FDV рядом со списком мод кнопка «Reporter»
+  (`RadeApplet::reporterRequested` → `MainWindow::showFreeDvReporter`).
+- **Имя программы.** FreeDV Reporter: версия «AetherSDR N7DDC <версия>» (было «AetherSDR <версия>»).
+  FTX: поле Rig по умолчанию «AetherSDR N7DDC» (прежнее «AetherSDR» заменяется один раз), то же имя
+  как декодирующая программа в PSK Reporter.
+- **PureSignal: обход полосовых фильтров на передаче.** Thetis, `console.cs`
+  `setBPF1ForOrionIISaturn`: `if (_mox && (disable_hpf_on_tx || (disable_hpf_on_ps &&
+  PureSignalEnabled))) SetAlexHPFBits(0x20)` — галка «BPF ByPass on PS» (Setup), по умолчанию
+  включена, показывается только для плат ORION MkII / Saturn (7000DLE, 8000DLE, G2); при её снятии
+  Thetis предупреждает о пассивной интермодуляции в катушках фильтров, которую PS «исправляет» по
+  искажённой обратной связи. У плат с Alex ФВЧ/ФНЧ (10/100/100D/200D) такой опции в Thetis нет.
+  Сделано так же: `P2Transport::psBypassesBank(adc)` = передача + PS включён + опция + схема
+  Orion2BandPass + это АЦП обратной связи; в пакете High Priority (Protocol 2) и в C&C Protocol 1
+  фильтр этого банка заменяется на Bypass на время передачи. Настройка `AnanPsBpfBypassOnTx`, по
+  умолчанию True, элемента управления пока нет. Платы с ФВЧ/ФНЧ не тронуты.
+
+Проверено компиляцией; на радио не проверялось.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

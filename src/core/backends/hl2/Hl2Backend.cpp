@@ -558,6 +558,10 @@ void Hl2Backend::pushAnanModelOptions()
     QMetaObject::invokeMethod(m_metis, "setMicControl", Qt::QueuedConnection, Q_ARG(int, bits));
     QMetaObject::invokeMethod(m_metis, "setAdc1GroundOnTx", Qt::QueuedConnection,
                               Q_ARG(bool, on("AnanAdc2GndOnTx", true)));
+    // Build 396: Thetis' "BPF ByPass on PS", on by default (the setting has
+    // no control yet: AnanPsBpfBypassOnTx=False in the settings file).
+    QMetaObject::invokeMethod(m_metis, "setPsBpfBypassOnTx", Qt::QueuedConnection,
+                              Q_ARG(bool, on("AnanPsBpfBypassOnTx", true)));
 }
 
 double Hl2Backend::ananFwdDisplayWatts(double watts) const

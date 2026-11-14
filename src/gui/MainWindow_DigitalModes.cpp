@@ -1344,7 +1344,8 @@ void MainWindow::startFreeDvReporting(int sliceId)
     }
 
     const QString message = cs.value("FreeDvMyMessage", "").toString();
-    const QString swVer   = QString("AetherSDR %1").arg(QCoreApplication::applicationVersion());
+    // Build 396 (operator, 14.11): this fork names itself.
+    const QString swVer   = QString("AetherSDR N7DDC %1").arg(QCoreApplication::applicationVersion());
     const double  freqMhz = m_radioModel.slice(sliceId)
                             ? m_radioModel.slice(sliceId)->frequency() : 0.0;
 

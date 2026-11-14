@@ -55,7 +55,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     setWindowTitle("AetherSDR FTX");   // AetherSDR
     setMinimumSize(676, 260);   // AetherSDR, build 389: the operator's smallest width (14.11)
     setAttribute(Qt::WA_StyledBackground, true);
-    psk = new PskReporter("AetherSDR", this);
+    psk = new PskReporter("AetherSDR N7DDC", this);   // (396: the decoding software named in the spots)
     for(int m = 0; m < 3; m++)
     {
         bandOf[m] = 5;                      // 20 m
@@ -474,9 +474,10 @@ void FtPanel::loadSettings()
     // AetherSDR (build 383): the rig named in the spots is this program; the
     // default MicronSDR had saved is replaced once.
     {
-        QString rig = st.value("Rig", "AetherSDR").toString();
-        if(rig.isEmpty() || rig == "SDR Micron (N7DDC)")
-            rig = "AetherSDR";
+        // (build 396: "AetherSDR N7DDC"; the earlier default replaced once)
+        QString rig = st.value("Rig", "AetherSDR N7DDC").toString();
+        if(rig.isEmpty() || rig == "SDR Micron (N7DDC)" || rig == "AetherSDR")
+            rig = "AetherSDR N7DDC";
         leRig->setText(rig);
     }
     cbDepth->setCurrentIndex(qBound(0, st.value("Depth", 2).toInt(), 2));
@@ -1237,6 +1238,29 @@ void FtPanel::addWorked(const QString &callIn, const QString &bandIn)
         wkEnt.insert(ent);
         wkEntBand.insert(QString::number(ent) + "|" + band);
     }
+}
+
+// AetherSDR, build 396 (operator, 14.11): a word over the middle of the table for 2 s -- the
+// table's own child, so the Settings group shown or not does not move it
+void FtPanel::showToast(const QString &text)
+{
+    if(!lbToast)
+    {
+        lbToast = new QLabel(twAct);
+        lbToast->setAlignment(Qt::AlignCenter);
+        lbToast->setAttribute(Qt::WA_TransparentForMouseEvents);
+        lbToast->setStyleSheet("QLabel { background: #1b4a66; color: white; border: 1px solid #6a90b0;"
+                               " border-radius: 6px; padding: 10px 18px; font-size: 14px; font-weight: bold; }");
+        toastTimer = new QTimer(this);
+        toastTimer->setSingleShot(true);
+        connect(toastTimer, &QTimer::timeout, lbToast, &QWidget::hide);
+    }
+    lbToast->setText(text);
+    lbToast->adjustSize();
+    lbToast->move((twAct->width() - lbToast->width()) / 2, (twAct->height() - lbToast->height()) / 2);
+    lbToast->show();
+    lbToast->raise();
+    toastTimer->start(2000);
 }
 
 int FtPanel::entityOf(const QString &callIn) const

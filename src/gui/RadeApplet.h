@@ -19,6 +19,9 @@ class RadeApplet : public QWidget {
 public:
     explicit RadeApplet(QWidget* parent = nullptr);
 
+signals:
+    void reporterRequested();   // build 396: the "Reporter" button -- FreeDV Reporter
+
 public slots:
     void setRadeActive(bool on, const QString& label = {});
 

@@ -5725,6 +5725,11 @@ void MainWindow::buildUI()
     // Right — applet panel (includes S-Meter)
     m_appletPanel = new AppletPanel(splitter);
     splitter->addWidget(m_appletPanel);
+#if defined(HAVE_RADE) && defined(HAVE_WEBSOCKETS)
+    // Build 396: the FDV applet's "Reporter" button.
+    if (auto* fdvApplet = m_appletPanel->radeApplet())
+        connect(fdvApplet, &RadeApplet::reporterRequested, this, &MainWindow::showFreeDvReporter);
+#endif
     // ANAN-100D port: the CW applet (radio keyer). Its speed is the app's CW
     // speed both ways (MicronSDR: the keyer speed is also the CW message
     // speed).

@@ -259,6 +259,9 @@ private:
     double qsoPowerW = 0;
     void startQso(const QString &call, const QString &grid);
     void logQso();
+    void showToast(const QString &text);        // AetherSDR, 396
+    QLabel *lbToast = nullptr;
+    QTimer *toastTimer = nullptr;
     void qrzUi();
     void wsprSpots(qint64 periodStartMs, const QVector<FtUnit::Decode> &list);
     void buildTxUi(QVBoxLayout *v);

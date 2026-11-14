@@ -766,6 +766,7 @@ void FtPanel::logQso()
     {
         qsoLogged = true;
         addWorked(qso.call, FtLog::band(qso.freqHz));   // AetherSDR, 389: the highlighting
+        showToast(QString("Connection %1 - %2 done").arg(qso.myCall, qso.call));   // AetherSDR, 396
         lbStat->setText(QString("QSO with %1 logged (%2 / %3%4)").arg(qso.call, qso.rstSent, qso.rstRcvd.isEmpty() ? "?" : qso.rstRcvd)
                         .arg(qso.powerW > 0 ? QString(", %1 W").arg(qso.powerW, 0, 'f', 1) : QString()));
         qDebug().noquote() << "FT: logged" << FtLog::record(qso);
