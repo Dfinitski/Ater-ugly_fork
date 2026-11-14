@@ -48,7 +48,7 @@ void FtPanel::buildTxUi(QVBoxLayout *v)
     lbDxLbl = new QLabel("DX");
     h->addWidget(lbDxLbl);
     leDx = new QLineEdit;
-    leDx->setFixedWidth(84);
+    leDx->setFixedWidth(100);    // AetherSDR: this program's font
     leDx->setMaxLength(12);
     leDx->setValidator(new QRegularExpressionValidator(QRegularExpression("[A-Za-z0-9/<>]{0,14}"), leDx));
     leDx->setToolTip("The station called (a double click on its decode puts it here)");
@@ -56,7 +56,7 @@ void FtPanel::buildTxUi(QVBoxLayout *v)
     lbGridLbl = new QLabel("Grid");
     h->addWidget(lbGridLbl);
     leDxGrid = new QLineEdit;
-    leDxGrid->setFixedWidth(52);
+    leDxGrid->setFixedWidth(66);
     leDxGrid->setMaxLength(6);
     h->addWidget(leDxGrid);
     lbRptLbl = new QLabel("Rpt");
@@ -64,7 +64,7 @@ void FtPanel::buildTxUi(QVBoxLayout *v)
     sbRpt = new QSpinBox;
     sbRpt->setRange(-50, 49);
     sbRpt->setValue(-10);
-    sbRpt->setFixedWidth(52);
+    sbRpt->setFixedWidth(60);
     sbRpt->setToolTip("The report sent (dB): the SNR of the DX, put by the double click and Auto seq");
     h->addWidget(sbRpt);
     pbGen = new QPushButton("Gen");
@@ -107,8 +107,8 @@ void FtPanel::buildTxUi(QVBoxLayout *v)
         rbTx[i] = new QPushButton(QString("Tx%1").arg(i + 1));
         rbTx[i]->setCheckable(true);
         rbTx[i]->setFocusPolicy(Qt::NoFocus);
-        rbTx[i]->setFixedWidth(40);
-        rbTx[i]->setStyleSheet("QPushButton { padding: 1px 2px; } QPushButton:checked { background: #2F6F2F; border-color: #A0E0A0; }");
+        rbTx[i]->setFixedWidth(46);
+        rbTx[i]->setStyleSheet("QPushButton { padding: 1px 2px; } QPushButton:checked { background: #006040; color: #00ff88; border-color: #00a060; }");
         bgTx->addButton(rbTx[i], i);
         leTx[i] = new QLineEdit;
         leTx[i]->setMaxLength(37);

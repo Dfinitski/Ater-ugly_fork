@@ -59,7 +59,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
 
     QVBoxLayout *v = new QVBoxLayout(this);
     v->setContentsMargins(6, 4, 6, 4);
-    v->setSpacing(4);
+    v->setSpacing(6);   // AetherSDR: 4 -- the rows ran into each other with the larger font
 
     // the mode, the band, the dial frequency
     QHBoxLayout *h1 = new QHBoxLayout;
@@ -69,7 +69,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     {
         QPushButton *b = new QPushButton(FtUnit::modeName(modes[i]));
         b->setCheckable(true);
-        b->setFixedWidth(modes[i] == FtUnit::WSPR ? 54 : 46);
+        b->setMinimumWidth(46);   // AetherSDR: no fixed width -- the theme's font and padding cut "WSPR"
         b->setFocusPolicy(Qt::NoFocus);
         bgMode->addButton(b, modes[i]);
         h1->addWidget(b);
@@ -122,18 +122,19 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     v->addWidget(pbPeriod);
     QHBoxLayout *h2 = new QHBoxLayout;
     lbStat = new QLabel("Waiting for the first period");
+    lbStat->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);   // AetherSDR: a long text is cut, not pushed over the others
     h2->addWidget(lbStat, 1);
     lbDt = new QLabel("DT --");
     lbDt->setToolTip("The average DT of the stations heard: about 0 when the time of this computer\n"
                      "and the time correction (Settings) are right (FT4 within +-0.15 s, WSPR +-1 s)");
-    lbDt->setMinimumWidth(80);
+    lbDt->setMinimumWidth(96);
     h2->addWidget(lbDt);
     lbLevel = new QLabel("In --");
     lbLevel->setToolTip("The decoder input before its level setting (the receiver IQ), dBFS:\n"
                         "In - the noise in 3000 Hz (the median of the spectrum of the period: the signals left out),\n"
                         "pk - the peak of the period; new at each decode (WSPR: every 2 min).\n"
                         "ATT Auto steps wait for the end of the period (after the decoding point)");
-    lbLevel->setMinimumWidth(150);
+    lbLevel->setMinimumWidth(240);
     h2->addWidget(lbLevel);
     pbQrz = new QPushButton("QRZ");
     pbQrz->setFocusPolicy(Qt::NoFocus);
@@ -166,6 +167,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     g->addWidget(new QLabel("Decoding:"), 1, 0);
     cbDepth = new QComboBox;
     cbDepth->addItems(QStringList() << "Fast" << "Normal" << "Deep");
+    cbDepth->setMaximumWidth(120);   // AetherSDR: it stretched over the whole column
     g->addWidget(cbDepth, 1, 1);
     chbAp = new QCheckBox("AP decoding");
     chbAp->setToolTip("A priori decoding (as WSJT-X): weaker signals with the known parts of the\n"
@@ -337,7 +339,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     // the table always as wide as the window: a border dragged moves with the mouse, the width
     // comes from the column next to it (left of Message: from Message; Message and right of it: from
     // the next one on the right), a new width of the window: the Message column (fitColumns)
-    const int wAct[9] = { 62, 34, 38, 44, 196, 30, 150, 46, 36 };
+    const int wAct[9] = { 70, 40, 46, 54, 196, 34, 150, 52, 42 };   // AetherSDR: this program's font (4-digit Hz was cut)
     for(int i = 0; i < 9; i++)
         twAct->setColumnWidth(i, wAct[i]);
     twAct->horizontalHeader()->setStretchLastSection(false);
@@ -432,7 +434,7 @@ void FtPanel::loadSettings()
     winGeom = st.value("WindowGeometry").toByteArray();
     {
         // the column widths set by hand (the message column: the width left)
-        const QByteArray hs = st.value("ActColumns").toByteArray();
+        const QByteArray hs = st.value("ActColumns2").toByteArray();
         if(!hs.isEmpty())
         {
             colFitting = true;
@@ -542,7 +544,7 @@ void FtPanel::saveSettings()
     st.setValue("WaterfallShown", pbWf->isChecked());
     if(!winGeom.isEmpty())
         st.setValue("WindowGeometry", winGeom);
-    st.setValue("ActColumns", twAct->horizontalHeader()->saveState());
+    st.setValue("ActColumns2", twAct->horizontalHeader()->saveState());
     st.endGroup();
 }
 

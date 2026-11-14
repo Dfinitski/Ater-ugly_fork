@@ -60,7 +60,49 @@ void MainWindow::activateFtx(int sliceId)
     if (!m_ftUnit) {
         m_ftUnit = new FtUnit(this);
         m_ftPanel = new FtPanel(m_ftUnit, this);
-        applyAppTheme(m_ftPanel);
+        // Build 382: the program's theme plus the rules it has none of (line
+        // edits, spin boxes, checked buttons, tables, the progress bar), in
+        // the colours of the panadapter's side menus (SpectrumOverlayMenu):
+        // dark blue-grey fields with a lighter border, green for "on".
+        ThemeManager::instance().applyStyleSheet(m_ftPanel, appStylesheetTemplate() + QStringLiteral(R"(
+            QLabel, QCheckBox { background: transparent; }
+            QPushButton {
+                background-color: #1a2a3a; color: #c8d8e8;
+                border: 1px solid #205070; border-radius: 3px; padding: 3px 9px;
+            }
+            QPushButton:hover { background-color: #204060; }
+            QPushButton:checked { background-color: #006040; color: #00ff88; border-color: #00a060; }
+            QPushButton:disabled { color: #5c6c7c; border-color: #263646; }
+            QLineEdit, QSpinBox {
+                background-color: #1a2a3a; color: #e8f0f8;
+                border: 1px solid #304050; border-radius: 3px;
+                padding: 1px 4px; min-height: 20px;
+                selection-background-color: #205070;
+            }
+            QLineEdit { font-family: Consolas, "Cascadia Mono", monospace; }
+            QLineEdit:focus, QSpinBox:focus { border-color: #0090e0; }
+            QLineEdit:disabled, QSpinBox:disabled { color: #5c6c7c; }
+            QComboBox {
+                background-color: #1a2a3a; color: #e8f0f8;
+                border: 1px solid #304050; border-radius: 3px; padding: 2px 6px; min-height: 20px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #1a2a3a; color: #e8f0f8; selection-background-color: #205070;
+            }
+            QProgressBar { border: 1px solid #304050; border-radius: 2px; background-color: #0f1620; }
+            QProgressBar::chunk { background-color: #00a060; }
+            QTableWidget {
+                background-color: #0f1620; alternate-background-color: #162230; color: #e6eef6;
+                gridline-color: #22303f; border: 1px solid #304050;
+                selection-background-color: #205070;
+                font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px;
+            }
+            QHeaderView::section {
+                background-color: #1a2a3a; color: #c8d8e8; border: none;
+                border-right: 1px solid #304050; padding: 2px 4px;
+            }
+            QTableCornerButton::section { background-color: #1a2a3a; border: none; }
+        )"));
         m_ftPanel->loadSettings();
         // The dial of the mode -> the receiver (USB dial frequency).
         connect(m_ftPanel, &FtPanel::tuneRequest, this, [this](qint64 dialHz) {
