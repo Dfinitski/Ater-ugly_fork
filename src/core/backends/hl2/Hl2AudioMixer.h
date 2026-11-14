@@ -75,6 +75,12 @@ public:
         // The receiver whose audio is the FreeDV modem signal (-1 = none): its
         // blocks pass through the decoder (setFdvEngine) before the mix.
         int fdvReceiver = -1;
+        // Build 393: when NO receiver is in the mix (the only one is muted, or
+        // the FTX mode has it), the chain whose blocks clock silence to the
+        // output instead of nothing. Log 14.11 15:57: with the only receiver
+        // in FTX the engine got no audio at all and its watchdog restarted
+        // the sound device every 15 s. nullptr = none.
+        const void* silenceClock = nullptr;
         // The connection is up and the speaker stream may be produced.
         bool live = false;
     };

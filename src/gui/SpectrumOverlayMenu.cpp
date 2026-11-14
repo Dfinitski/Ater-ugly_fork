@@ -4285,7 +4285,11 @@ bool SpectrumOverlayMenu::closeSubPanelsOnOutsidePress(QObject* obj, QEvent* eve
         return false;
     }
     hideAllSubPanels();
-    return true;   // consumed: the click only closed the panel
+    // Build 393 (operator, 14.11): the same rule as the frequency flag's --
+    // the click only closes the panel when it lands on the plot (it would
+    // retune); on any control the panel closes and the control acts.
+    const QWidget* under = QApplication::widgetAt(global);
+    return under && under->inherits("AetherSDR::SpectrumWidget");
 }
 
 bool SpectrumOverlayMenu::eventFilter(QObject* obj, QEvent* event)

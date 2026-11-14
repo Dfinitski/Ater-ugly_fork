@@ -105,6 +105,15 @@ void Hl2AudioMixer::receiverAudio(const void* dsp, const std::vector<float>& pcm
     if (receiver < 0) {
         // Not in the mix: a muted receiver, or a chain the owner has not
         // announced yet or has already withdrawn.
+        // Build 393: with nothing in the mix at all, this chain's blocks
+        // become silence of the same length -- the output keeps running. Not
+        // during the transmit hold (a GAP there, as in mixIn).
+        if (dsp && dsp == p.silenceClock && !m_muted.load(std::memory_order_acquire)) {
+            m_accum.assign(pcm.size(), 0.0f);
+            diag(m_accum, false);
+            emitOut(m_accum, p);
+            return;
+        }
         diag(pcm, true);
         return;
     }

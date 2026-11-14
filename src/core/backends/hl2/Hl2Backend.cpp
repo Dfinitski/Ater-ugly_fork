@@ -3179,12 +3179,17 @@ void Hl2Backend::pushAudioMix()
     if (!m_audioMixer)
         return;
     Hl2AudioMixer::Params p;
+    bool anyInMix = false;
     for (std::size_t i = 0; i < m_rx.size() && i < static_cast<std::size_t>(Hl2AudioMixer::kMaxReceivers); ++i) {
         const Receiver& r = m_rx[i];
         // Build 380: nor the receiver the FTX mode has taken over -- its
         // audio is the decoders', not the loudspeaker's.
-        if (!r.dsp || r.audioMuted || static_cast<int>(i) == m_ftxDdc)
+        if (!r.dsp || r.audioMuted || static_cast<int>(i) == m_ftxDdc) {
+            if (r.dsp && !p.silenceClock)
+                p.silenceClock = r.dsp;   // build 393, dropped below if anything is in the mix
             continue;
+        }
+        anyInMix = true;
         p.dsp[i] = r.dsp;
         p.gain[i] = r.audioGain;
         p.pan[i] = r.audioPanPercent;
@@ -3193,6 +3198,8 @@ void Hl2Backend::pushAudioMix()
     const int fdvSlice = fdv::FdvState::instance().sliceId;
     if (m_fdv && fdvSlice >= 0)
         p.fdvReceiver = m_fdv->loaded() ? m_fdv->rxReceiver() : ddcForSlice(fdvSlice);
+    if (anyInMix)
+        p.silenceClock = nullptr;
     p.live = pcmLive() && isConnected();
     m_audioMixer->setParams(p);
 }

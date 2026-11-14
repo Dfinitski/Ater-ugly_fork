@@ -7803,7 +7803,13 @@ bool VfoWidget::foldOnOutsidePress(QObject* obj, QEvent* event)
     if (rect().contains(mapFromGlobal(global)))
         return false;   // inside the flag
     foldExpanded();
-    return true;   // consumed: the click only folded the flag
+    // Build 393 (operator, 14.11: "the first click doing nothing else only on
+    // the waterfall and panadapter, where it would retune; on a control the
+    // flag folds AND the control acts -- the window buttons, the side
+    // buttons, everything"). The plot is the SpectrumWidget itself; its
+    // buttons, flags and menus are child widgets of their own.
+    const QWidget* under = QApplication::widgetAt(global);
+    return under && under->inherits("AetherSDR::SpectrumWidget");
 }
 
 bool VfoWidget::foldExpanded()
