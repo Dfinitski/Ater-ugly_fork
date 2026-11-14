@@ -869,6 +869,11 @@ Hl2Backend::Hl2Backend(QObject* parent)
             QMetaObject::invokeMethod(this, [this, mono = std::move(mono), ctx]() mutable {
                 if (!m_fdv || !m_fdv->txRunning() || !m_txDsp)
                     return;
+                // Build 343: `mono` is the radio microphone after MIC gain
+                // (AnanTxEngine); its speech processing, then the encoder.
+                // What comes out is the modem signal: engine-generated, no
+                // microphone control acts on it.
+                fdvSpeechProcess(mono);
                 m_fdv->processTx(mono);
                 QMetaObject::invokeMethod(m_txDsp, [dsp = m_txDsp, mono = std::move(mono), ctx] {
                     dsp->processAudioBlock(mono, TxAudioSource::EngineGenerated, ctx);
@@ -2890,6 +2895,7 @@ void Hl2Backend::fdvTick()
             m_fdvTxBandKey = key;
             if (const Receiver* txRx = rx(m_txDdc))
                 pushTxPassband(txRx->mode);
+            pushTxCompressor();   // build 343: off for the modem signal, back on leaving
         }
     }
     if (!m_fdv)
@@ -6373,6 +6379,8 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
             m_fdvStopSent = false;
             fdv::FdvState::instance().eooRequested = false;
             m_fdv->txStart();
+            if (m_codecComp)
+                m_codecComp->reset();   // build 343: each over from a clean envelope
         } else if (!key && m_fdv->txRunning() && !m_fdvStopSent) {
             m_fdvStopSent = true;
             m_fdv->txStop();
@@ -7276,6 +7284,29 @@ void Hl2Backend::applyCodecProcessor(bool on, int level)
     qInfo() << "Hl2Backend: codec-mic PROC" << (on ? "on" : "off") << "level" << level;
 }
 
+// Build 343: the microphone's speech processing ahead of the FreeDV encoder.
+// In SSB the TXA compressor and leveler do this after the microphone; in
+// FreeDV they are off (the modem signal passes there), so the same job is done
+// here, on the speech: the PROC compressor (NOR / DX / DX+ as chosen, NOR with
+// PROC off) and its brick-wall limiter at -1 dBFS, so the vocoder gets level
+// speech that cannot clip.
+void Hl2Backend::fdvSpeechProcess(std::vector<float>& mono)
+{
+    if (!m_codecComp || mono.empty())
+        return;
+    if (!m_fdvSpeechPrimed) {
+        m_fdvSpeechPrimed = true;
+        m_codecComp->setLimiterEnabled(true);
+        m_codecComp->setLimiterCeilingDb(-1.0f);
+        m_codecComp->reset();
+    }
+    if (!m_codecComp->isEnabled())
+        m_codecComp->setEnabled(true);
+    m_codecComp->process(mono.data(), static_cast<int>(mono.size()), 1);
+    for (float& v : mono)
+        v = std::clamp(v, -1.0f, 1.0f);
+}
+
 void Hl2Backend::pushTxCompressor()
 {
     // Radio microphone only (the computer microphone has the app's own TX
@@ -7295,7 +7326,9 @@ void Hl2Backend::pushTxCompressor()
     static constexpr double kGainDb[3] = {14.0, 17.0, 20.0};
     // 06.11: one chain for both microphones -- the same compression and
     // leveler for PC and CDC; none for the TEST two-tone.
-    const bool on = !m_ananTestTone;
+    // Build 343: nor for FreeDV on the transmitting receiver -- what reaches
+    // TXA then is the modem signal, not speech (MicronSDR: txFdv).
+    const bool on = !m_ananTestTone && m_fdvTxBandKey < 0;
     const double gain = m_codecProcOn ? kGainDb[std::clamp(m_codecProcLevel, 0, 2)] : 10.0;
     if (on == m_txCompPushedOn && gain == m_txCompPushedGain)
         return;
@@ -7711,8 +7744,29 @@ void Hl2Backend::submitTxAudio(const QByteArray& int16Stereo, int sampleRateHz,
         mono[static_cast<std::size_t>(n)] = 0.5f * (l + r);
     }
     // ANAN-100D port: FDV -- the microphone becomes libfdv's modem audio.
-    if (m_fdv && m_fdv->txRunning())
+    // ANAN fork build 343 (operator, 13.11: "the encoder's output goes to the
+    // modulator through the microphone path, that is silly: the microphone
+    // through the microphone processing, the encoder's output straight to the
+    // modulator"). It was: microphone -> encoder -> MIC gain -> TXA compressor
+    // (10..20 dB) + leveler -> modulator, i.e. the speech controls worked on
+    // the modem signal and the encoder got the microphone unprocessed. Now:
+    // microphone -> MIC gain -> speech compressor -> encoder -> modulator
+    // (tagged EngineGenerated: no MIC gain; the TXA compressor and leveler
+    // are off while FreeDV owns the transmitter, pushTxCompressor). The TXA
+    // ALC stays, as in MicronSDR (DspUnit::SetMode: "without the speech
+    // processing -- the ALC stays"); libfdv's output peaks near full scale
+    // for it (fdv_engine.cpp RADE_TX_GAIN / C2_TX_GAIN), so no gain is added.
+    if (m_fdv && m_fdv->txRunning()) {
+        if (source != TxAudioSource::EngineGenerated) {
+            const float g = static_cast<float>(micSliderToLinear(m_micLevel));
+            for (float& v : mono)
+                v *= g;
+        }
+        if (source == TxAudioSource::Microphone)
+            fdvSpeechProcess(mono);
         m_fdv->processTx(mono);
+        source = TxAudioSource::EngineGenerated;
+    }
     // PC-clocked audio feeds the modulator: the DUC queue needs the larger
     // prime (the radio's clock still paces the DUC).
     if (m_metis)

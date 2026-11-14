@@ -648,6 +648,10 @@ private:
     bool m_fdvInMix = false;
     bool m_fdvStopSent = false;
     int m_fdvTxBandKey = -1;   // build 339: sub-mode whose TX filter is pushed, -1 = not FreeDV
+    // Build 343: the speech processing of the microphone ahead of the FreeDV
+    // encoder (the compressor PROC uses, with its limiter). GUI thread.
+    void fdvSpeechProcess(std::vector<float>& mono);
+    bool m_fdvSpeechPrimed = false;
     // ANAN-100D port: the radio's codec. Speaker: the existing codec tap
     // (forwardSpeakerAudioToCodec) at "AnanCodecVolume"; microphone: port 1026
     // samples, 48 -> 24 kHz, replace the computer microphone in submitTxAudio()
