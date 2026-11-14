@@ -9,13 +9,21 @@
 // RF power slider) moves the scale: 0 dBFS is the full scale of the wire
 // samples (24-bit on Protocol 2), i.e. a complex tone of |x| = 1.
 //
-// 4096-point FFT at 192 kHz (46.9 Hz bins), 4-term Blackman-Harris window
+// ANAN fork build 344 (operator, 13.11: "the TX panadapter has a very low
+// horizontal resolution; make it as fine as the receive one"): it was a
+// 4096-point FFT -- 46.9 Hz bins, 513 points across the +-12 kHz the display
+// shows, a third of the pixels of a full-width panadapter. Now:
+//
+// 16384-point FFT at 192 kHz (11.7 Hz bins), 4-term Blackman-Harris window
 // normalised by its sum so a full-scale tone on a bin reads 0 dBFS. The DC bin
 // is kept: the CW carrier and the suppressed SSB carrier sit there. Output is
-// the centre +-12 kHz (513 bins, lowest RF first -- the wire's HPSDR
-// handedness is mirrored back to RF), one frame per four
-// FFTs at 50 % overlap (~23 frames per second), power-averaged over those four
-// and lightly smoothed across frames. A wideband signal spreads its power over
+// the centre +-12 kHz (2049 bins -- one per pixel or finer on any panadapter;
+// lowest RF first -- the wire's HPSDR handedness is mirrored back to RF), one
+// frame per two FFTs at 75 % overlap (~23 frames per second, as before),
+// power-averaged over those two and lightly smoothed across frames.
+// Both protocols feed this from the same 192 ksps transmit path (Protocol 1
+// decimates to its 48 ksps wire rate after it), so the span shown and the
+// resolution are the same on both. A wideband signal spreads its power over
 // many bins, so voice reads below 0 dBFS per bin even when it peaks at full
 // scale; a tone does not.
 //
@@ -28,13 +36,13 @@ namespace AetherSDR::anan {
 
 class TxScope {
 public:
-    static constexpr int kFftSize = 4096;
-    static constexpr int kHop = kFftSize / 2;
+    static constexpr int kFftSize = 16384;
+    static constexpr int kHop = kFftSize / 4;
     static constexpr double kSampleRateHz = 192000.0;
-    static constexpr int kHalfBins = 256;
+    static constexpr int kHalfBins = 1024;
     static constexpr int kBins = 2 * kHalfBins + 1;
     static constexpr double kHalfSpanHz = kHalfBins * kSampleRateHz / kFftSize;
-    static constexpr int kFftsPerFrame = 4;
+    static constexpr int kFftsPerFrame = 2;
     static constexpr float kFloorDbfs = -200.0f;
     static_assert(kHalfSpanHz == 12000.0, "TX scope must span exactly +-12 kHz");
 
