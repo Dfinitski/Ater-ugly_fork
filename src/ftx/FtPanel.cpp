@@ -448,7 +448,14 @@ void FtPanel::loadSettings()
     leCall->setText(st.value("MyCall", "").toString());
     leGrid->setText(st.value("MyGrid", "").toString());
     leAnt->setText(st.value("Antenna", "").toString());
-    leRig->setText(st.value("Rig", "SDR Micron (N7DDC)").toString());
+    // AetherSDR (build 383): the rig named in the spots is this program; the
+    // default MicronSDR had saved is replaced once.
+    {
+        QString rig = st.value("Rig", "AetherSDR").toString();
+        if(rig.isEmpty() || rig == "SDR Micron (N7DDC)")
+            rig = "AetherSDR";
+        leRig->setText(rig);
+    }
     cbDepth->setCurrentIndex(qBound(0, st.value("Depth", 2).toInt(), 2));
     chbAp->setChecked(st.value("AP", true).toBool());
     sbFa->setValue(st.value("Fa", 200).toInt());

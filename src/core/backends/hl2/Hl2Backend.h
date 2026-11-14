@@ -1365,6 +1365,8 @@ private:
     const std::vector<float>& waterfallSource(int ddc, const std::vector<float>& raw, double ncoHz,
                                               double rate, bool txOnAir);
     [[nodiscard]] QString transmitRefusalText(double txHz) const;   // build 378
+    [[nodiscard]] bool ftxKeyRefused() const;                       // build 383
+    [[nodiscard]] QString ftxKeyRefusalText() const;
 
     // The four index spaces, never derived from one another (Hl2Receivers.h). GUI
     // thread only; the signal handlers that use it are queued onto this thread.

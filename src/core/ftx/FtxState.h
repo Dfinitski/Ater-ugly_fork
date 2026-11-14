@@ -62,6 +62,11 @@ public:
 
     int sliceId = -1;      // the receiver FTX has taken over, -1 = FTX is off
     int subMode = kFt8;
+    // Build 383: the mode's own transmitter is keying (set by its window for
+    // the time of its transmission). Every other key -- MOX, PTT, TUNE in the
+    // program, the PTT of the radio -- is refused while FTX has the
+    // transmitting receiver (Hl2Backend::applyKeying).
+    bool ownTx = false;
 };
 
 }  // namespace AetherSDR::ftx

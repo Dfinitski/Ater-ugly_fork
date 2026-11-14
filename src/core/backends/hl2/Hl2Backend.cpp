@@ -6649,6 +6649,20 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
                           "without AETHER_AUTOMATION_ALLOW_TX";
         return;
     }
+    // Build 383 (operator, 14.11: "in FTX, transmitting from the program's
+    // buttons and from the transceiver is forbidden"): while the FTX mode has
+    // the transmitting receiver only its own transmitter may key. The radio's
+    // PTT is covered too: the radio reports it, and it is this host's MOX
+    // that puts the radio on the air.
+    if (key && !m_keyed && ftxKeyRefused()) {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - m_txBandWarnMs >= 3000) {
+            m_txBandWarnMs = now;
+            qCWarning(lcHl2) << "ANAN: transmit refused -- the FTX mode has the transmitter";
+            emit configurationWarning(ftxKeyRefusalText());
+        }
+        return;
+    }
     // Build 223: no transmission outside the amateur bands of the band plan.
     if (key && !m_keyed) {
         const Receiver* txRx = rx(m_txDdc);
@@ -7165,11 +7179,25 @@ QString Hl2Backend::transmitRefusalMessage() const
     // key then changes nothing but the message at the bottom.
     if (!m_txAllowed || m_keyed)
         return {};   // the capability gate covers !m_txAllowed; keyed = already on air
+    if (ftxKeyRefused())   // build 383
+        return ftxKeyRefusalText();
     const Receiver* txRx = rx(m_txDdc);
     const double txHz = m_txWantedHz > 0.0 ? m_txWantedHz : (txRx ? txRx->sliceFreqHz : 0.0);
     if (txHz <= 0.0 || txInAmateurBand(txHz))
         return {};
     return transmitRefusalText(txHz);
+}
+
+bool Hl2Backend::ftxKeyRefused() const
+{
+    const auto& st = ftx::FtxState::instance();
+    return st.sliceId >= 0 && !st.ownTx && ddcForSlice(st.sliceId) == m_txDdc;
+}
+
+QString Hl2Backend::ftxKeyRefusalText() const
+{
+    return QStringLiteral("Transmit refused: the receiver is in the FTX mode -- "
+                          "only the FTX window transmits (close it to leave the mode).");
 }
 
 // Build 378: the refusal with its REAL reason. Through a transverter the only
