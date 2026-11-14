@@ -2407,6 +2407,35 @@ void P2Transport::txDeviceTick(int ducSamples)
     txPumpLocked();
 }
 
+// ANAN fork build 348 (operator, 13.11: "can we drive the scale fully?").
+// No: the radio's own transmit chain overflows just under full scale. In the
+// standard openHPSDR firmware (read in Odyssey-3 2.0 ANP: Odyssey.v,
+// CicInterpM5.v, cpl_cordic.v, and Quartus' own warning that
+// out_data_I[23..22] have no fanouts) the interpolator's gain, 625/131072,
+// takes a full-scale sample to 0.6104 of its output, the CORDIC's gain is
+// 1.64676, and the product, 1.0051, goes into a 22-bit word WITHOUT
+// saturation. Above 0.9949 of full scale the peaks of the carrier wrap to the
+// opposite rail: at exactly 1.0, 6.4 % of the DAC samples, the fundamental
+// 2.5 dB down and nearly as much power beside it (bit-exact model, journal
+// section 313). The firmware cannot be changed -- thousands of radios run it
+// -- so the ceiling is here, on the samples as they go to the wire, both
+// protocols: the envelope is held to 1 (a radial limit; only a fault would
+// reach it, the ALC holds the envelope) and scaled by 0.99 (-0.087 dB).
+// The TX panadapter and its drive line see the samples before this: there,
+// 0 dB is the most the program sends.
+namespace {
+constexpr float kTxWireCeiling = 0.99f;
+void limitTxDrive(std::complex<float>* buf, int n) noexcept
+{
+    for (int i = 0; i < n; ++i) {
+        float re = buf[i].real(), im = buf[i].imag();
+        const float m2 = re * re + im * im;
+        const float g = m2 > 1.0f ? kTxWireCeiling / std::sqrt(m2) : kTxWireCeiling;
+        buf[i] = {re * g, im * g};
+    }
+}
+}   // namespace
+
 void P2Transport::accountTxSamples(const std::complex<float>* buf, int n)
 {
     // Live = primed and 25 ms past the RF Delay (the start and the 2 ms
@@ -2500,6 +2529,7 @@ void P2Transport::txPumpLocked()
     while (m_txPacketsSent < due && burst < 32) {
         fillTxPacket(buf);
         accountTxSamples(buf, kDucSamplesPerPacket);
+        limitTxDrive(buf, kDucSamplesPerPacket);   // build 348
         const auto pkt = buildDucIq(m_txSeq++, std::span<const std::complex<float>>(buf, kDucSamplesPerPacket));
         if (sendNative(pkt.data(), pkt.size(), kDucIqPort) < 0)
             m_nativeSendFails.fetch_add(1, std::memory_order_relaxed);
@@ -2820,6 +2850,7 @@ void P2Transport::sendP1Ep2()
             fillTxPacket(buf.data(), kIn);
             accountTxSamples(buf.data(), kIn);
             m_p1TxDec.process(buf.data(), kIn, iq48.data());
+            limitTxDrive(iq48.data(), static_cast<int>(iq48.size()));   // build 348
             hl2::ep2WriteTxIq(pkt, std::span<const std::complex<float>>(iq48.data(), iq48.size()));
             ++m_txPacketsSent;
             m_ducSentTotal.fetch_add(1, std::memory_order_relaxed);
