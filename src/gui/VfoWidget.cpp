@@ -7908,8 +7908,13 @@ void VfoWidget::setRadeActive(bool on, const QString& label)
     m_fdvSnrValid = false;
     m_fdvOffsValid = false;
     updateFdvBadge();   // build 341
-    if (m_slice)
-        rebuildFilterButtons();   // build 349: the Adaptive RX Filter group goes / comes back
+    // Build 349: the Adaptive RX Filter group goes / comes back. Only when
+    // its presence has to change (build 355).
+    if (m_slice) {
+        const bool ssb = m_slice->mode() == "USB" || m_slice->mode() == "LSB";
+        if ((m_adaptive != nullptr) != (ssb && !on))
+            rebuildFilterButtons();
+    }
     // Build 340: FDV shows as the mode -- tab label and mode buttons.
     if (m_slice && m_tabBtns.size() > 2 && m_tabBtns[2])
         m_tabBtns[2]->setText(on ? QStringLiteral("FDV") : m_slice->mode());
@@ -7920,6 +7925,20 @@ void VfoWidget::setRadeActive(bool on, const QString& label)
         m_fdvText.clear();
     relayoutToCurrentContent();
     syncFdvTextGeometry();
+    // Build 355 (operator, 13.11: "choosing FDV the buttons are spaced too
+    // far apart; back in SSB the two lower rows overlap and Adaptive RX is
+    // half hidden under the flag's edge -- the flag has the wrong size").
+    // The filter grid was rebuilt just above, and the relayout on the same
+    // turn reads the tab page's size hint before the new grid has settled
+    // (the reason updateModeTab defers its own, #3853): the flag kept the
+    // height of the grid it had before. Sized again once the rebuilt grid is
+    // laid out, and once more after the adaptive group has built itself.
+    for (int ms : {0, 60}) {
+        QTimer::singleShot(ms, this, [this] {
+            relayoutToCurrentContent();
+            syncFdvTextGeometry();
+        });
+    }
 }
 
 void VfoWidget::setRadeSynced(bool synced)
