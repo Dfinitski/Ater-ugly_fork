@@ -619,7 +619,8 @@ private:
     // built up yet after a pan move; left out of the statistic.
     void ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, double rateHz,
                            std::size_t viewFirst, std::size_t viewKeep,
-                           int unsettledLo = 0, int unsettledHi = 0);
+                           int unsettledLo = 0, int unsettledHi = 0,
+                           const std::vector<float>* frameDbfs = nullptr);
     [[nodiscard]] int ananAutoAttMarginDb(int rx) const;
     // Build 295: the AUTO attenuator after MicronSDR (autoAttMeasure): the
     // floor averaged over windows of frames made at the commanded ATT, held

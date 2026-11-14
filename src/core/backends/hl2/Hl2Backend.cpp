@@ -1744,7 +1744,8 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         if (ids->ddcIndex < 2 && !txOnAir && bins.size() == n) {
             // Build 335: only bins whose average has built up.
             const auto [ulo, uhi] = producer->unsettledBins();
-            ananNoiseLineStep(ids->ddcIndex, bins, rate, first, keep, ulo, uhi);
+            ananNoiseLineStep(ids->ddcIndex, bins, rate, first, keep, ulo, uhi,
+                              raw.size() == n ? &raw : nullptr);
             panMoveDiagFrame(ids->ddcIndex, bins, first, keep, dispOff, ulo, uhi);   // build 359
         }
         emit spectrumFrameReady(ui, floatBytes(dbm), wf);
@@ -10742,7 +10743,8 @@ void Hl2Backend::ananSyncUiState()
 // shownFloorDbm) and is what AUTO ATT holds.
 void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, double rateHz,
                                    std::size_t viewFirst, std::size_t viewKeep,
-                                   int unsettledLo, int unsettledHi)
+                                   int unsettledLo, int unsettledHi,
+                                   const std::vector<float>* frameDbfs)
 {
     if (rx < 0 || rx > 1 || rawDbfs.size() < 64 || rateHz <= 0.0 || m_keyed || m_radioPtt)
         return;
@@ -10772,6 +10774,40 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
     }
     lo = std::max(lo, edge);
     hi = std::min(hi, n - edge);
+    // ANAN fork build 360 (operator, 13.11: "on a fast pan drag the floor and
+    // the spectrum jump up ~15 dB and stay there; with AUTO off it drops at
+    // once -- the automatic is computed wrong"). It was: since build 298 the
+    // AUTO attenuator was fed the floor of the AVERAGED spectrum (the line as
+    // drawn), while its timing (300 ms after a step, 200 ms windows) is that
+    // of a measurement which answers at once, as build 295 had it. Whatever
+    // disturbs the average then moves the attenuator: after a pan move or a
+    // restart of the average the 20th percentile reads up to 6.5 dB low
+    // (a single frame's bins are spread wider than averaged ones) -> less
+    // attenuation, the band comes up; and the way back was shut, because
+    // 500 ms after a step to MORE attenuation the average had followed only
+    // part of it, which the loop takes for "the receiver's own noise" and
+    // blocks further attenuation -- the floor stayed high.
+    // So the loop gets its own measurement again: THIS frame before any
+    // averaging. A frame's noise bins are exponentially distributed, their
+    // 20th percentile is -ln(0.8) of the mean: the mean noise per bin,
+    // referred to 500 Hz. No average, so no unsettled bins, no lag, and
+    // nothing a pan move or an FFT AVG setting can shift.
+    if (frameDbfs && frameDbfs->size() == n && hi > lo + 16 && m_ananAutoOn[rx]
+        && !m_ananCapture.running) {
+        std::vector<float> f(frameDbfs->begin() + static_cast<std::ptrdiff_t>(lo),
+                             frameDbfs->begin() + static_cast<std::ptrdiff_t>(hi));
+        const std::size_t fk = f.size() / 5;
+        std::nth_element(f.begin(), f.begin() + static_cast<std::ptrdiff_t>(fk), f.end());
+        if (std::isfinite(f[fk])) {
+            static const double kP20ToMeanDb = -10.0 * std::log10(-std::log(0.8));   // 6.49 dB
+            if (!m_ananOwnClock.isValid())
+                m_ananOwnClock.start();
+            ananAutoAttStep(rx,
+                            static_cast<double>(f[fk]) + kP20ToMeanDb + m_dbRef.offsetDb()
+                                + ananRbwTo500HzDb(rateHz, n) + ananDisplayCalDb(),
+                            m_ananOwnClock.elapsed());
+        }
+    }
     // ANAN fork build 335 (operator, 12.11: "while the panadapter is dragged
     // the floor takes the part drawn in, whose data is not accumulated yet,
     // and goes wrong -- take only accumulated data, as everything else
@@ -10865,10 +10901,7 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
             << (r ? r->filterHighHz - r->filterLowHz : 0) << " Hz, ATT " << ananRxAtt(rx) << " dB";
     }
 
-    // Build 295: the AUTO attenuator, on this frame's floor (not the
-    // display smoothing) on the S-meter's calibration.
-    if (m_ananAutoOn[rx] && !m_ananCapture.running)
-        ananAutoAttStep(rx, now + calDb, t);
+    // Build 360: the AUTO attenuator runs above, on the frame before averaging.
 }
 
 // ANAN fork build 295 (operator, 11.11): the AUTO attenuator of MicronSDR
