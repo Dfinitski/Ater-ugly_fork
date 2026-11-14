@@ -595,6 +595,25 @@ private:
     [[nodiscard]] double ananOwnNoiseOfAdc(int adc) const;
     void ananOwnNoiseCaptureStep(int rx, qint64 t);
     QElapsedTimer m_ananOwnClock;
+    // Build 359 (diagnostic; operator, 13.11: "on a fast pan drag the floor
+    // and the spectrum jump up ~15 dB and stay there for a while"): after an
+    // NCO move, what each spectrum frame held for the next 3 s -- one log
+    // line per drag ("ANAN pan move RX..."), to see WHAT rises and when.
+    struct PanMoveDiag {
+        bool active = false;
+        QElapsedTimer clock;
+        qint64 lastMoveMs = 0;
+        int moves = 0;
+        double totalHz = 0.0;
+        double floorBefore = 0.0;
+        int attBefore = 0;
+        QString points;
+        int frames = 0;
+    };
+    PanMoveDiag m_panMoveDiag[2];
+    void panMoveDiagMove(int ddc, double deltaHz);
+    void panMoveDiagFrame(int ddc, const std::vector<float>& bins, std::size_t first, std::size_t keep,
+                          double dispOff, int unsettledLo, int unsettledHi);
     // Build 297: viewFirst / viewKeep = the bins of the frame on screen.
     // Build 335: [unsettledLo, unsettledHi) -- bins whose average has not
     // built up yet after a pan move; left out of the statistic.

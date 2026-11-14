@@ -1745,6 +1745,7 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
             // Build 335: only bins whose average has built up.
             const auto [ulo, uhi] = producer->unsettledBins();
             ananNoiseLineStep(ids->ddcIndex, bins, rate, first, keep, ulo, uhi);
+            panMoveDiagFrame(ids->ddcIndex, bins, first, keep, dispOff, ulo, uhi);   // build 359
         }
         emit spectrumFrameReady(ui, floatBytes(dbm), wf);
     });
@@ -5608,6 +5609,7 @@ void Hl2Backend::moveNcoForView(int ddc, Receiver& r, double newNcoHz, double vi
     if (newNcoHz <= 0.0 || newNcoHz == r.ncoHz)
         return;
     const double ncoDeltaHz = newNcoHz - r.ncoHz;
+    panMoveDiagMove(ddc, ncoDeltaHz);   // build 359
     r.ncoHz = newNcoHz;
     r.viewOffsetHz = viewCenterHz - newNcoHz;
     r.viewForNcoHz = newNcoHz;
@@ -5632,6 +5634,73 @@ void Hl2Backend::moveNcoForView(int ddc, Receiver& r, double newNcoHz, double vi
         QMetaObject::invokeMethod(r.dsp, "ncoMoved", Qt::QueuedConnection,
                                   Q_ARG(double, ncoDeltaHz));
     }
+}
+
+void Hl2Backend::panMoveDiagMove(int ddc, double deltaHz)
+{
+    if (ddc < 0 || ddc > 1)
+        return;
+    PanMoveDiag& d = m_panMoveDiag[ddc];
+    if (!d.active) {
+        d = PanMoveDiag();
+        d.active = true;
+        d.clock.start();
+        d.floorBefore = anan::AnanUiState::instance().shownFloorDbm[ddc];
+        d.attBefore = ananRxAtt(ddc);
+    }
+    d.lastMoveMs = d.clock.elapsed();
+    ++d.moves;
+    d.totalHz += deltaHz;
+    if (d.points.size() < 6000)
+        d.points += QStringLiteral(" [%1:move %2]").arg(d.lastMoveMs).arg(deltaHz, 0, 'f', 0);
+}
+
+void Hl2Backend::panMoveDiagFrame(int ddc, const std::vector<float>& bins, std::size_t first,
+                                  std::size_t keep, double dispOff, int unsettledLo, int unsettledHi)
+{
+    if (ddc < 0 || ddc > 1 || !m_panMoveDiag[ddc].active)
+        return;
+    PanMoveDiag& d = m_panMoveDiag[ddc];
+    const qint64 t = d.clock.elapsed();
+    const std::size_t n = bins.size();
+    if (first < n && keep >= 16 && first + keep <= n && d.points.size() < 6000) {
+        // The view as drawn: 20th percentile, median and maximum of its bins,
+        // on the trace's ruler; the published floor; the attenuator; how many
+        // of the view's bins are still marked unsettled.
+        std::vector<float> v(bins.begin() + static_cast<std::ptrdiff_t>(first),
+                             bins.begin() + static_cast<std::ptrdiff_t>(first + keep));
+        const std::size_t k20 = v.size() / 5;
+        const std::size_t k50 = v.size() / 2;
+        std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(k20), v.end());
+        const float p20 = v[k20];
+        std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(k50), v.end());
+        const float p50 = v[k50];
+        const float mx = *std::max_element(v.begin(), v.end());
+        const long long uLo = std::max<long long>(unsettledLo, static_cast<long long>(first));
+        const long long uHi = std::min<long long>(unsettledHi, static_cast<long long>(first + keep));
+        const int unsPct = uHi > uLo ? static_cast<int>(100 * (uHi - uLo) / static_cast<long long>(keep)) : 0;
+        ++d.frames;
+        d.points += QStringLiteral(" %1:%2/%3/%4,f%5,a%6,u%7")
+                        .arg(t)
+                        .arg(p20 + dispOff, 0, 'f', 0)
+                        .arg(p50 + dispOff, 0, 'f', 0)
+                        .arg(mx + dispOff, 0, 'f', 0)
+                        .arg(anan::AnanUiState::instance().shownFloorDbm[ddc], 0, 'f', 1)
+                        .arg(ananRxAtt(ddc))
+                        .arg(unsPct);
+    }
+    if (t - d.lastMoveMs < 3000)
+        return;
+    const Receiver* r = rx(ddc);
+    qCInfo(lcHl2).noquote().nospace()
+        << "ANAN pan move RX" << ddc + 1 << ": " << d.moves << " NCO moves, " << QString::number(d.totalHz, 'f', 0)
+        << " Hz in all, over " << d.lastMoveMs << " ms; before: floor " << QString::number(d.floorBefore, 'f', 1)
+        << " dBm, ATT " << d.attBefore << " dB; FFT " << n << ", view " << keep << " bins from " << first
+        << ", average step " << (r ? r->panAverage : -1) << (r && r->panWeightedAverage ? " (log)" : "")
+        << ", AUTO ATT " << (m_ananAutoOn[ddc] ? "on" : "off") << "; " << d.frames
+        << " frames (ms:p20/median/max of the view dBm, f published floor, a ATT, u % of the view unsettled):"
+        << d.points;
+    d.active = false;
 }
 
 void Hl2Backend::settlePanViews()
