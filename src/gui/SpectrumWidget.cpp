@@ -8654,14 +8654,19 @@ void SpectrumWidget::setTransmitting(bool tx)
         m_preTxAutoBlack = m_autoBlackThresh;  // save before TX
         m_nextFallbackWaterfallRowMs = 0;      // first TX FFT row should render immediately
         if (m_txFixedRange) {
-            // ANAN-100D port: fixed -60 .. +10 dBm while transmitting.
+            // ANAN-100D port: a fixed scale while transmitting.
+            // Build 345 (operator, 13.11: "to judge the level the scale needs
+            // a reference: the top, 0 dB, is the full scale going to the
+            // transmitter"): 0 .. -80 dBFS (was +10 .. -60). The top edge is
+            // the full scale of the samples sent to the radio -- a full-scale
+            // tone (TUNE, CW) reaches it exactly; nothing can go above it.
             m_txSavedRefLevel = m_refLevel;
             m_txSavedDynamicRange = m_dynamicRange;
             m_txFixedDeferredValid = false;
             m_txFixedActive = true;
             resetTxDbmRangeFreeze();
-            m_refLevel = 10.0f;
-            m_dynamicRange = 70.0f;
+            m_refLevel = 0.0f;
+            m_dynamicRange = 80.0f;
             m_resetFftSmoothingOnNextFrame = true;
             if (txWaterfallAffectsThisPan())
                 enterTxZoom();

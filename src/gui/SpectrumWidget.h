@@ -998,7 +998,7 @@ public:
     // Build 315: DUP over -- the receiver automatics hold, the display does not.
     void setDuplexTxHold(bool hold);
     // ANAN-100D port: while transmitting the panadapter shows a fixed
-    // -60 .. +10 dBm scale; the receive scale comes back on unkey.
+    // 0 .. -80 dBFS scale (build 345; 0 = full scale to the radio); the receive scale comes back on unkey.
     void setTxFixedDbmRange(bool on) { m_txFixedRange = on; }
     // ANAN-100D port, unkey test: log what this pan receives and draws for
     // 6 s from now (100 ms rows).
