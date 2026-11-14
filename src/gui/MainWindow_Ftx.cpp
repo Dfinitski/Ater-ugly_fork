@@ -18,7 +18,10 @@
 #include "models/PanadapterModel.h"
 #include "models/SliceModel.h"
 
+#include <QDir>
+#include <QImage>
 #include <QMessageBox>
+#include <QPainter>
 #include <cmath>
 
 #include <memory>
@@ -26,6 +29,45 @@
 namespace AetherSDR {
 
 namespace {
+
+// Build 384: the arrows of the spin boxes. A styled QSpinBox loses the native
+// ones, and a stylesheet can only show an image there: two small triangles in
+// the text colour, drawn once into the temporary directory (as
+// RadioSetupDialog does for its own spin boxes).
+QString ftxSpinArrowStyle()
+{
+    auto arrow = [](const QString& name, bool up) -> QString {
+        const QString path = QDir(QDir::tempPath()).filePath(QStringLiteral("aethersdr-ftx-%1.png").arg(name));
+        QImage img(16, 10, QImage::Format_ARGB32_Premultiplied);
+        img.fill(Qt::transparent);
+        {
+            QPainter p(&img);
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(200, 216, 232));
+            const QPointF upTri[] = {{2, 9}, {14, 9}, {8, 1}};
+            const QPointF downTri[] = {{2, 1}, {14, 1}, {8, 9}};
+            p.drawPolygon(up ? upTri : downTri, 3);
+        }
+        return img.save(path, "PNG") ? QString(path).replace(QLatin1Char('\\'), QLatin1Char('/')) : QString();
+    };
+    const QString up = arrow(QStringLiteral("up"), true);
+    const QString down = arrow(QStringLiteral("down"), false);
+    if (up.isEmpty() || down.isEmpty())
+        return {};
+    return QStringLiteral(
+        "QSpinBox { padding-right: 18px; }"
+        "QSpinBox::up-button, QSpinBox::down-button {"
+        " subcontrol-origin: border; width: 16px; border: none;"
+        " border-left: 1px solid {{color.border.strong}}; background: transparent; }"
+        "QSpinBox::up-button { subcontrol-position: top right; }"
+        "QSpinBox::down-button { subcontrol-position: bottom right; }"
+        "QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: {{color.background.2}}; }"
+        "QSpinBox::up-arrow { image: url(\"%1\"); width: 8px; height: 5px; }"
+        "QSpinBox::down-arrow { image: url(\"%2\"); width: 8px; height: 5px; }")
+        .arg(up, down);
+}
+
 // The receiver in FTX: the upper sideband, the decoders' audio band, and the
 // narrowest receiver (48 ksps -- a view its 80 % holds).
 constexpr int kFtxFilterLoHz = 100;
@@ -60,48 +102,62 @@ void MainWindow::activateFtx(int sliceId)
     if (!m_ftUnit) {
         m_ftUnit = new FtUnit(this);
         m_ftPanel = new FtPanel(m_ftUnit, this);
-        // Build 382: the program's theme plus the rules it has none of (line
-        // edits, spin boxes, checked buttons, tables, the progress bar), in
-        // the colours of the panadapter's side menus (SpectrumOverlayMenu):
-        // dark blue-grey fields with a lighter border, green for "on".
-        ThemeManager::instance().applyStyleSheet(m_ftPanel, appStylesheetTemplate() + QStringLiteral(R"(
+        // Build 382/384: the program's theme plus the rules it has none of
+        // (line edits, spin boxes with their arrows, checked buttons, tables,
+        // the progress bar, scroll bars). Buttons as the applet buttons of
+        // the applet panel (AppletPanel kBarBtnStyle): the theme's colours,
+        // "on" = the dim accent (blue) with a bright outline, the text stays
+        // the theme's light text. Nothing green: that was MicronSDR's.
+        ThemeManager::instance().applyStyleSheet(
+            m_ftPanel, appStylesheetTemplate() + ftxSpinArrowStyle() + QStringLiteral(R"(
             QLabel, QCheckBox { background: transparent; }
             QPushButton {
-                background-color: #1a2a3a; color: #c8d8e8;
-                border: 1px solid #205070; border-radius: 3px; padding: 3px 9px;
+                background: {{color.background.1}}; color: {{color.text.primary}};
+                border: 1px solid {{color.background.2}}; border-radius: 3px; padding: 3px 9px;
             }
-            QPushButton:hover { background-color: #204060; }
-            QPushButton:checked { background-color: #006040; color: #00ff88; border-color: #00a060; }
-            QPushButton:disabled { color: #5c6c7c; border-color: #263646; }
+            QPushButton:hover { background: {{color.background.2}}; }
+            QPushButton:checked {
+                background: {{color.accent.dim}}; color: {{color.text.primary}};
+                border: 1px solid {{color.accent.bright}};
+            }
+            QPushButton:disabled { color: {{color.text.disabled}}; border-color: {{color.background.1}}; }
             QLineEdit, QSpinBox {
-                background-color: #1a2a3a; color: #e8f0f8;
-                border: 1px solid #304050; border-radius: 3px;
+                background-color: {{color.background.1}}; color: {{color.text.primary}};
+                border: 1px solid {{color.border.strong}}; border-radius: 3px;
                 padding: 1px 4px; min-height: 20px;
-                selection-background-color: #205070;
+                selection-background-color: {{color.accent.dim}};
             }
-            QLineEdit { font-family: Consolas, "Cascadia Mono", monospace; }
-            QLineEdit:focus, QSpinBox:focus { border-color: #0090e0; }
-            QLineEdit:disabled, QSpinBox:disabled { color: #5c6c7c; }
-            QComboBox {
-                background-color: #1a2a3a; color: #e8f0f8;
-                border: 1px solid #304050; border-radius: 3px; padding: 2px 6px; min-height: 20px;
-            }
+            QLineEdit:focus, QSpinBox:focus { border-color: {{color.accent}}; }
+            QLineEdit:disabled, QSpinBox:disabled { color: {{color.text.disabled}}; }
+            QComboBox { min-height: 20px; }
             QComboBox QAbstractItemView {
-                background-color: #1a2a3a; color: #e8f0f8; selection-background-color: #205070;
+                background-color: {{color.background.1}}; color: {{color.text.primary}};
+                selection-background-color: {{color.accent.dim}};
             }
-            QProgressBar { border: 1px solid #304050; border-radius: 2px; background-color: #0f1620; }
-            QProgressBar::chunk { background-color: #00a060; }
+            QProgressBar {
+                border: 1px solid {{color.border.strong}}; border-radius: 2px;
+                background-color: {{color.background.0}};
+            }
+            QProgressBar::chunk { background-color: {{color.accent}}; }
             QTableWidget {
-                background-color: #0f1620; alternate-background-color: #162230; color: #e6eef6;
-                gridline-color: #22303f; border: 1px solid #304050;
-                selection-background-color: #205070;
-                font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px;
+                background-color: {{color.background.0}};
+                alternate-background-color: {{color.background.1}};
+                color: {{color.text.primary}};
+                gridline-color: {{color.background.2}}; border: 1px solid {{color.border.strong}};
+                selection-background-color: {{color.accent.dim}};
             }
             QHeaderView::section {
-                background-color: #1a2a3a; color: #c8d8e8; border: none;
-                border-right: 1px solid #304050; padding: 2px 4px;
+                background-color: {{color.background.1}}; color: {{color.text.primary}}; border: none;
+                border-right: 1px solid {{color.border.strong}}; padding: 2px 4px;
             }
-            QTableCornerButton::section { background-color: #1a2a3a; border: none; }
+            QTableCornerButton::section { background-color: {{color.background.1}}; border: none; }
+            QScrollBar:vertical { background: {{color.background.0}}; width: 12px; margin: 0; border: none; }
+            QScrollBar::handle:vertical {
+                background: {{color.background.2}}; min-height: 24px; border-radius: 4px; margin: 2px;
+            }
+            QScrollBar::handle:vertical:hover { background: {{color.border.strong}}; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none; }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
         )"));
         m_ftPanel->loadSettings();
         // The dial of the mode -> the receiver (USB dial frequency).

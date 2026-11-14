@@ -156,18 +156,20 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     g->setVerticalSpacing(4);
     g->addWidget(new QLabel("My call:"), 0, 0);
     leCall = new QLineEdit;
+    leCall->setFixedWidth(200);   // AetherSDR: one width for the fields of Settings
     leCall->setMaxLength(12);
     leCall->setValidator(new QRegularExpressionValidator(QRegularExpression("[A-Za-z0-9/]{0,12}"), leCall));
     g->addWidget(leCall, 0, 1);
     g->addWidget(new QLabel("My locator:"), 0, 2);
     leGrid = new QLineEdit;
+    leGrid->setFixedWidth(200);   // AetherSDR: one width for the fields of Settings
     leGrid->setMaxLength(6);
     leGrid->setValidator(new QRegularExpressionValidator(QRegularExpression("[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2})?"), leGrid));
     g->addWidget(leGrid, 0, 3);
     g->addWidget(new QLabel("Decoding:"), 1, 0);
     cbDepth = new QComboBox;
     cbDepth->addItems(QStringList() << "Fast" << "Normal" << "Deep");
-    cbDepth->setMaximumWidth(120);   // AetherSDR: it stretched over the whole column
+    cbDepth->setFixedWidth(200);   // AetherSDR: one width for the fields of Settings
     g->addWidget(cbDepth, 1, 1);
     chbAp = new QCheckBox("AP decoding");
     chbAp->setToolTip("A priori decoding (as WSJT-X): weaker signals with the known parts of the\n"
@@ -191,6 +193,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     g->addLayout(hr, 2, 1);
     g->addWidget(new QLabel("Time corr., ms:"), 2, 2);
     sbOffset = new QSpinBox;
+    sbOffset->setFixedWidth(200);   // AetherSDR: one width for the fields of Settings
     sbOffset->setRange(-10000, 10000);
     sbOffset->setSingleStep(10);
     sbOffset->setToolTip("Added to the time of the received samples: the delay of the device and of\n"
@@ -201,6 +204,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     g->addWidget(chbPsk, 3, 0, 1, 2);
     g->addWidget(new QLabel("Antenna:"), 3, 2);
     leAnt = new QLineEdit;
+    leAnt->setFixedWidth(200);   // AetherSDR: one width for the fields of Settings
     leAnt->setMaxLength(60);
     g->addWidget(leAnt, 3, 3);
     chbAutoT = new QCheckBox("Auto time correction");
@@ -210,6 +214,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     g->addWidget(chbAutoT, 4, 0, 1, 2);
     g->addWidget(new QLabel("Rig:"), 4, 2);
     leRig = new QLineEdit;
+    leRig->setFixedWidth(200);   // AetherSDR: one width for the fields of Settings
     leRig->setMaxLength(60);
     leRig->setToolTip("The receiver for PSK Reporter (the station information of the spots)");
     g->addWidget(leRig, 4, 3);
@@ -248,6 +253,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     g->addWidget(chbWsprNet, 9, 0, 1, 2);
     g->addWidget(new QLabel("QRZ.com API key:"), 9, 2);
     leQrzKey = new QLineEdit;
+    leQrzKey->setFixedWidth(200);   // AetherSDR: one width for the fields of Settings
     leQrzKey->setEchoMode(QLineEdit::PasswordEchoOnEdit);
     leQrzKey->setToolTip("The key of the QRZ.com logbook: QRZ.com -> My Logbook -> Settings -> API key\n"
                          "(QRZ.com takes the QSOs with this key, not with the login and password)");
@@ -339,7 +345,7 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     // the table always as wide as the window: a border dragged moves with the mouse, the width
     // comes from the column next to it (left of Message: from Message; Message and right of it: from
     // the next one on the right), a new width of the window: the Message column (fitColumns)
-    const int wAct[9] = { 70, 40, 46, 54, 196, 34, 150, 52, 42 };   // AetherSDR: this program's font (4-digit Hz was cut)
+    const int wAct[9] = { 74, 42, 48, 58, 196, 36, 150, 56, 44 };   // AetherSDR: this program's font (4-digit Hz was cut)
     for(int i = 0; i < 9; i++)
         twAct->setColumnWidth(i, wAct[i]);
     twAct->horizontalHeader()->setStretchLastSection(false);
@@ -434,7 +440,7 @@ void FtPanel::loadSettings()
     winGeom = st.value("WindowGeometry").toByteArray();
     {
         // the column widths set by hand (the message column: the width left)
-        const QByteArray hs = st.value("ActColumns2").toByteArray();
+        const QByteArray hs = st.value("ActColumns3").toByteArray();
         if(!hs.isEmpty())
         {
             colFitting = true;
@@ -551,7 +557,7 @@ void FtPanel::saveSettings()
     st.setValue("WaterfallShown", pbWf->isChecked());
     if(!winGeom.isEmpty())
         st.setValue("WindowGeometry", winGeom);
-    st.setValue("ActColumns2", twAct->horizontalHeader()->saveState());
+    st.setValue("ActColumns3", twAct->horizontalHeader()->saveState());
     st.endGroup();
 }
 
@@ -1016,7 +1022,7 @@ void FtPanel::onDecoded(qint64 periodStartMs, int mode, QVector<FtUnit::Decode> 
             if(toMe)
                 it->setBackground(QColor(110, 30, 30));
             else if(cq)
-                it->setBackground(QColor(28, 70, 28));
+                it->setBackground(QColor(18, 58, 88));   // AetherSDR: CQ in this program's blue (MicronSDR: green)
             if(c == 6 && !cont.isEmpty())
                 it->setToolTip(country + ", " + cont);
             if(c == 7 && km >= 0)

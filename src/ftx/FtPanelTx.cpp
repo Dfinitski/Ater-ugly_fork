@@ -108,7 +108,7 @@ void FtPanel::buildTxUi(QVBoxLayout *v)
         rbTx[i]->setCheckable(true);
         rbTx[i]->setFocusPolicy(Qt::NoFocus);
         rbTx[i]->setFixedWidth(46);
-        rbTx[i]->setStyleSheet("QPushButton { padding: 1px 2px; } QPushButton:checked { background: #006040; color: #00ff88; border-color: #00a060; }");
+        rbTx[i]->setStyleSheet("QPushButton { padding: 1px 2px; }");   // AetherSDR: the checked colour is the window's
         bgTx->addButton(rbTx[i], i);
         leTx[i] = new QLineEdit;
         leTx[i]->setMaxLength(37);
