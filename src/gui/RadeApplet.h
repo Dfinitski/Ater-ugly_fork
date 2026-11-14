@@ -22,12 +22,12 @@ public:
 
 signals:
     void reporterRequested();   // build 396: the "Reporter" button -- FreeDV Reporter
-    // Build 399: the "Visible" button clicked -- on: FreeDV Reporter connected
-    // (if it was not) and its Track on; off: Track off.
+    // Build 400: the "Visible" button clicked -- whether this station is
+    // shown on FreeDV Reporter.
     void visibleToggled(bool on);
 
 public slots:
-    void setVisibleChecked(bool on);   // build 399: follows the reporter window's Track box
+    void setVisibleChecked(bool on);   // build 400: follows the setting
     void setRadeActive(bool on, const QString& label = {});
 
     void setRadeSynced(bool synced);

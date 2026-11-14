@@ -5729,13 +5729,12 @@ void MainWindow::buildUI()
     // Build 396: the FDV applet's "Reporter" button.
     if (auto* fdvApplet = m_appletPanel->radeApplet())
         connect(fdvApplet, &RadeApplet::reporterRequested, this, &MainWindow::showFreeDvReporter);
-    // Build 399: "Visible". Its first state is the Track box as it was saved
-    // (the reporter window does not exist yet).
+    // Build 400: "Visible" = this station shown on FreeDV Reporter (the
+    // setting FreeDvAutoReport).
     if (auto* fdvApplet = m_appletPanel->radeApplet()) {
         connect(fdvApplet, &RadeApplet::visibleToggled, this, &MainWindow::setFreeDvVisible);
-        const QJsonObject saved = QJsonDocument::fromJson(
-            AppSettings::instance().value("FreeDvReporter", "").toString().toUtf8()).object();
-        fdvApplet->setVisibleChecked(saved.value(QStringLiteral("track")).toBool(false));
+        fdvApplet->setVisibleChecked(
+            AppSettings::instance().value("FreeDvAutoReport", "False").toString() == "True");
     }
 #endif
     // ANAN-100D port: the CW applet (radio keyer). Its speed is the app's CW

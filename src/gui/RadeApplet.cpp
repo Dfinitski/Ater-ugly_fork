@@ -124,8 +124,8 @@ RadeApplet::RadeApplet(QWidget* parent)
         m_visibleBtn->setCheckable(true);
         m_visibleBtn->setFixedSize(72, 20);
         m_visibleBtn->setFocusPolicy(Qt::NoFocus);
-        m_visibleBtn->setToolTip(tr("On: FreeDV Reporter is connected (if it was not) and its Track is on;\n"
-                                    "off: Track off. The same as the Track box of the Reporter window"));
+        m_visibleBtn->setToolTip(tr("On: this station is shown on FreeDV Reporter while FDV is on\n"
+                                    "(needs a callsign and a locator); off: it is not shown"));
         ThemeManager::instance().applyStyleSheet(m_visibleBtn, QStringLiteral(
             "QPushButton { background: {{color.background.1}}; border: 1px solid {{color.background.2}};"
             " border-radius: 3px; padding: 0px 8px; font-size: 11px; font-weight: bold;"

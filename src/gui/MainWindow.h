@@ -1009,8 +1009,8 @@ private:
     QString netScheduleFilePath() const;
 #ifdef HAVE_WEBSOCKETS
     void showFreeDvReporter();
-    void setFreeDvVisible(bool on);          // build 399
-    bool m_freedvReporterCreateOnly = false;
+    void setFreeDvVisible(bool on);          // build 399 / 400
+
 #endif
     void updateKeyerAvailability();
     // Client-side voice keyer (MainWindow_DigitalModes.cpp).
@@ -2209,6 +2209,7 @@ private:
     void onRadeSliceModeChanged(const QString& mode);
     void startFreeDvReporting(int sliceId);
     void stopFreeDvReporting(int sliceId);
+    int m_freedvReportingSliceId = -1;   // build 400
     // FreeDV Docker waveform sync/SNR display state
     int  m_fdvDisplaySliceId{-1};
     int  m_fdvSnrMeterIndex{-1};

@@ -13,6 +13,8 @@
 #include <QActionGroup>
 #include <QDesktopServices>
 #include <QDir>
+#include <QSettings>
+#include <QStatusBar>
 #include <QMenu>
 #include <QUrl>
 #include "DStarAvailabilityGate.h"
@@ -950,6 +952,10 @@ void MainWindow::activateLocalFdv(int sliceId)
     auto& st = fdv::FdvState::instance();
     m_localFdv = true;
     m_radeSliceId = sliceId;
+    // Build 400: FreeDV Reporter for the local FDV too (it was wired to the
+    // Flex RADE path only -- an ANAN station was never on the list).
+    if (AppSettings::instance().value("FreeDvAutoReport", "False").toString() == "True")
+        startFreeDvReporting(sliceId);
     st.sliceId = sliceId;
     st.eooRequested = false;
     m_localFdvEooPending = false;
@@ -1118,6 +1124,7 @@ void MainWindow::deactivateLocalFdv()
 {
     auto& st = fdv::FdvState::instance();
     const int sliceId = m_radeSliceId;
+    stopFreeDvReporting(sliceId);   // build 400
     st.sliceId = -1;
     st.eooRequested = false;
     m_radioModel.transmitModel().clearPttOffHook();
@@ -1310,6 +1317,8 @@ void MainWindow::startFreeDvReporting(int sliceId)
     Q_UNUSED(sliceId);
 #else
     if (!m_freedvClient) return;
+    if (m_freedvReportingSliceId == sliceId)
+        return;   // build 400: already reporting this receiver (the Visible button)
 
     auto& cs = AppSettings::instance();
 
@@ -1336,7 +1345,21 @@ void MainWindow::startFreeDvReporting(int sliceId)
     // map — the dialog already validates this when the user toggles the
     // checkbox, but RADE auto-activation can hit this path without going
     // through the toggle, so guard here too.
+    // Build 400: what the operator has already typed elsewhere in this
+    // program, before giving up -- the FDV applet's Text (the callsign sent
+    // with FreeDV) and the FTX window's My call / My locator.
     if (callsign.isEmpty() || grid.isEmpty()) {
+        const QSettings ftx(QDir::homePath() + QStringLiteral("/AetherSDR-FTX/Options.ini"), QSettings::IniFormat);
+        if (callsign.isEmpty())
+            callsign = fdv::FdvState::instance().callsign.trimmed().toUpper();
+        if (callsign.isEmpty())
+            callsign = ftx.value(QStringLiteral("MyCall")).toString().trimmed().toUpper();
+        if (grid.isEmpty())
+            grid = ftx.value(QStringLiteral("MyGrid")).toString().trimmed().toUpper();
+    }
+    if (callsign.isEmpty() || grid.isEmpty()) {
+        statusBar()->showMessage(QStringLiteral("FreeDV Reporter: set a callsign and a locator first "
+                                                "(SpotHub, FreeDV tab) -- this station is not shown"), 8000);
         qCWarning(lcDxCluster)
             << "FreeDvReporting: refusing to enable — callsign or grid empty"
             << "(callsign='" << callsign << "', grid='" << grid << "')";
@@ -1354,6 +1377,7 @@ void MainWindow::startFreeDvReporting(int sliceId)
     if (!m_freedvClient->isConnected())
         QMetaObject::invokeMethod(m_freedvClient, [this] { m_freedvClient->startConnection(); });
 
+    m_freedvReportingSliceId = sliceId;
     QMetaObject::invokeMethod(m_freedvClient,
         [this, callsign, grid, message, swVer, freqMhz] {
             m_freedvClient->enableReporting(callsign, grid, message, swVer, freqMhz);
@@ -1392,6 +1416,7 @@ void MainWindow::stopFreeDvReporting(int sliceId)
     Q_UNUSED(sliceId);
 #else
     if (!m_freedvClient) return;
+    m_freedvReportingSliceId = -1;
 
     disconnect(m_freedvMoxConn);
     if (m_radeEngine) {
@@ -1409,28 +1434,24 @@ void MainWindow::stopFreeDvReporting(int sliceId)
 #endif  // HAVE_RADE
 
 #ifdef HAVE_WEBSOCKETS
-// Build 399 (operator, 14.11): the FDV applet's "Visible" button. On: the
-// reporter is connected if it was not (as its Enable button) and its Track
-// box is set; off: Track cleared. The window is made if it does not exist
-// yet (the Track box and its settings live there) but not shown.
+// Build 400 (operator, 14.11: "leave Track alone; the button simply blocks
+// the visibility"): the FDV applet's "Visible" button is whether this station
+// is shown on FreeDV Reporter -- the setting FreeDvAutoReport (SpotHub's
+// "Enable FreeDV Reporter reporting when FDV is active"). On: reported while
+// FDV is on (now, if it is); off: never, and taken off the list at once.
 void MainWindow::setFreeDvVisible(bool on)
 {
     if (!m_freedvClient)
         return;
-    if (!m_freedvReporterDialog) {
-        m_freedvReporterCreateOnly = true;
-        showFreeDvReporter();
-        m_freedvReporterCreateOnly = false;
-    }
-    if (!m_freedvReporterDialog)
+    auto& as = AppSettings::instance();
+    as.setValue("FreeDvAutoReport", on ? "True" : "False");
+    as.save();
+    if (m_radeSliceId < 0)
         return;
-    if (on && !m_freedvClient->isConnected()) {
-        auto& as = AppSettings::instance();
-        as.setValue("FreeDvAutoStart", "True");
-        as.save();
-        QMetaObject::invokeMethod(m_freedvClient, [this] { m_freedvClient->startConnection(); });
-    }
-    m_freedvReporterDialog->setTracking(on);
+    if (on)
+        startFreeDvReporting(m_radeSliceId);
+    else
+        stopFreeDvReporting(m_radeSliceId);
 }
 
 void MainWindow::showFreeDvReporter()
@@ -1494,13 +1515,7 @@ void MainWindow::showFreeDvReporter()
         connect(m_freedvClient, &FreeDvClient::stopped, m_freedvReporterDialog,
                 [dlg = m_freedvReporterDialog] { dlg->setConnectionActive(false); }, Qt::QueuedConnection);
         m_freedvReporterDialog->setConnectionActive(m_freedvClient->isConnected());
-#ifdef HAVE_RADE
-        // Build 399: the FDV applet's "Visible" follows the Track box.
-        if (auto* fdvApplet = m_appletPanel ? m_appletPanel->radeApplet() : nullptr) {
-            connect(m_freedvReporterDialog, &FreeDvReporterDialog::trackingChanged,
-                    fdvApplet, &RadeApplet::setVisibleChecked);
-        }
-#endif
+
         // Seed: reporting may already be on when the dialog is first opened.
         m_freedvReporterDialog->setReportingActive(
             m_freedvClient->isReportingEnabled());
@@ -1530,12 +1545,6 @@ void MainWindow::showFreeDvReporter()
     // Re-read the message every open so an edit made in SpotHub's FreeDV tab
     // (same FreeDvMyMessage setting) doesn't leave this field stale (#4231).
     m_freedvReporterDialog->reloadMessage();
-#ifdef HAVE_RADE
-    if (auto* fdvApplet = m_appletPanel ? m_appletPanel->radeApplet() : nullptr)
-        fdvApplet->setVisibleChecked(m_freedvReporterDialog->tracking());
-#endif
-    if (m_freedvReporterCreateOnly)
-        return;   // build 399: made for the applet's "Visible", not asked to show
     m_freedvReporterDialog->show();
     m_freedvReporterDialog->raise();
     m_freedvReporterDialog->activateWindow();

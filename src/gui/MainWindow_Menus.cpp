@@ -20,6 +20,9 @@
 #endif
 #include "AetherialAudioStrip.h"
 #include "AppletPanel.h"
+#ifdef HAVE_RADE
+#include "RadeApplet.h"   // build 400
+#endif
 #include "DaxApplet.h"
 #include "DocsLinks.h"
 #include "ControlAvailabilityRegistry.h"
@@ -832,11 +835,17 @@ void MainWindow::buildMenuBar()
 #ifdef HAVE_RADE
         connect(dlg, &DxClusterDialog::freedvReportingToggled,
                 this, [this](bool on) {
+                    // Build 400: the local FDV (no RADE engine object) too,
+                    // and the FDV applet's "Visible" shows the same setting.
                     if (on) {
-                        if (m_radeEngine)
+                        if (m_radeSliceId >= 0)
                             startFreeDvReporting(m_radeSliceId);
                     } else {
                         stopFreeDvReporting(m_radeSliceId);
+                    }
+                    if (m_appletPanel) {
+                        if (auto* fdvApplet = m_appletPanel->radeApplet())
+                            fdvApplet->setVisibleChecked(on);
                     }
                 });
 #endif
