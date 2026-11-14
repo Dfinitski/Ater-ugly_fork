@@ -46,6 +46,44 @@ class QVBoxLayout;
 class QSettings;
 class PskReporter;
 #include "FtWaterfall.h"
+#include <QRegularExpressionValidator>
+#include <QDebug>
+
+// AetherSDR, build 392: the fields that take Latin letters only (calls, locators, messages).
+// With the keyboard in the Russian layout every letter typed was Cyrillic, the validator
+// refused it and the field took nothing, without a word (operator, 14.11: "I cannot make an
+// entry in the call and locator fields"). A letter of the Russian layout is now taken as the
+// Latin letter of the same key; what is refused after that is written to the log.
+class FtLatinValidator : public QRegularExpressionValidator
+{
+public:
+    FtLatinValidator(const QString &pattern, QObject *parent)
+        : QRegularExpressionValidator(QRegularExpression(pattern), parent) {}
+    static QString latin(const QString &s)
+    {
+        // the letters of the Russian layout, in the order of the keys Q W E R T Y ... (escapes: no
+        // dependence on the source encoding)
+        static const QString ru = QString::fromUtf16(u"\u0439\u0446\u0443\u043a\u0435\u043d\u0433\u0448\u0449\u0437\u0444\u044b\u0432\u0430\u043f\u0440\u043e\u043b\u0434\u044f\u0447\u0441\u043c\u0438\u0442\u044c");
+        static const QString en = QStringLiteral("qwertyuiopasdfghjklzxcvbnm");
+        QString out = s;
+        for(QChar &c : out)
+        {
+            const int i = ru.indexOf(c.toLower());
+            if(i >= 0)
+                c = c.isUpper() ? en[i].toUpper() : en[i];
+        }
+        return out;
+    }
+    State validate(QString &input, int &pos) const override
+    {
+        input = latin(input);
+        const State st = QRegularExpressionValidator::validate(input, pos);
+        if(st == Invalid)
+            qInfo().noquote() << "FT: input refused by the field" << (parent() ? parent()->objectName() : QString())
+                              << ":" << input.toUtf8().toHex(' ');
+        return st;
+    }
+};
 
 class FtPanel : public QWidget
 {

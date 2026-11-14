@@ -50,7 +50,8 @@ void FtPanel::buildTxUi(QVBoxLayout *v)
     leDx = new QLineEdit;
     leDx->setFixedWidth(86);     // AetherSDR: this program's font (389: the row fits the smallest window)
     leDx->setMaxLength(12);
-    leDx->setValidator(new QRegularExpressionValidator(QRegularExpression("[A-Za-z0-9/<>]{0,14}"), leDx));
+    leDx->setObjectName("DxCall");
+    leDx->setValidator(new FtLatinValidator("[A-Za-z0-9/<>]{0,14}", leDx));   // AetherSDR, 392
     leDx->setToolTip("The station called (a double click on its decode puts it here)");
     h->addWidget(leDx);
     lbGridLbl = new QLabel("Grid");
@@ -58,6 +59,8 @@ void FtPanel::buildTxUi(QVBoxLayout *v)
     leDxGrid = new QLineEdit;
     leDxGrid->setFixedWidth(58);
     leDxGrid->setMaxLength(6);
+    leDxGrid->setObjectName("DxGrid");
+    leDxGrid->setValidator(new FtLatinValidator("[A-Ra-r]{0,2}[0-9]{0,2}[A-Xa-x]{0,2}", leDxGrid));   // AetherSDR, 392
     h->addWidget(leDxGrid);
     lbRptLbl = new QLabel("Rpt");
     h->addWidget(lbRptLbl);
@@ -112,6 +115,8 @@ void FtPanel::buildTxUi(QVBoxLayout *v)
         bgTx->addButton(rbTx[i], i);
         leTx[i] = new QLineEdit;
         leTx[i]->setMaxLength(37);
+        leTx[i]->setObjectName(QString("Tx%1").arg(i + 1));
+        leTx[i]->setValidator(new FtLatinValidator("[ -~]{0,37}", leTx[i]));   // AetherSDR, 392: printable ASCII
         leTx[i]->setFont(mf);
         g->addWidget(rbTx[i], 1 + i / 3, (i % 3) * 2);
         g->addWidget(leTx[i], 1 + i / 3, (i % 3) * 2 + 1);

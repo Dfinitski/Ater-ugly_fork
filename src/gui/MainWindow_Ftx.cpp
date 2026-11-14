@@ -167,9 +167,9 @@ void MainWindow::activateFtx(int sliceId)
             QTableCornerButton::section { background-color: {{color.background.1}}; border: none; }
             QScrollBar:vertical { background: {{color.background.0}}; width: 12px; margin: 0; border: none; }
             QScrollBar::handle:vertical {
-                background: {{color.background.2}}; min-height: 24px; border-radius: 4px; margin: 2px;
+                background: #4a6880; min-height: 24px; border-radius: 4px; margin: 2px;
             }
-            QScrollBar::handle:vertical:hover { background: {{color.border.strong}}; }
+            QScrollBar::handle:vertical:hover { background: #6a90b0; }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none; }
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
         )"));

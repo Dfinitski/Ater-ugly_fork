@@ -165,13 +165,15 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     leCall = new QLineEdit;
     leCall->setFixedWidth(200);   // AetherSDR: one width for the fields of Settings
     leCall->setMaxLength(12);
-    leCall->setValidator(new QRegularExpressionValidator(QRegularExpression("[A-Za-z0-9/]{0,12}"), leCall));
+    leCall->setObjectName("MyCall");
+    leCall->setValidator(new FtLatinValidator("[A-Za-z0-9/]{0,12}", leCall));   // AetherSDR, 392
     g->addWidget(leCall, 0, 1);
     g->addWidget(new QLabel("My locator:"), 0, 2);
     leGrid = new QLineEdit;
     leGrid->setFixedWidth(200);   // AetherSDR: one width for the fields of Settings
     leGrid->setMaxLength(6);
-    leGrid->setValidator(new QRegularExpressionValidator(QRegularExpression("[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2})?"), leGrid));
+    leGrid->setObjectName("MyLocator");
+    leGrid->setValidator(new FtLatinValidator("[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2})?", leGrid));   // AetherSDR, 392
     g->addWidget(leGrid, 0, 3);
     g->addWidget(new QLabel("Decoding:"), 1, 0);
     cbDepth = new QComboBox;
@@ -948,7 +950,7 @@ void FtPanel::onDecoded(qint64 periodStartMs, int mode, QVector<FtUnit::Decode> 
         for(int c = 0; c < twAct->columnCount(); c++)
         {
             QTableWidgetItem *it = new QTableWidgetItem;
-            it->setBackground(QColor(70, 70, 70));
+            it->setBackground(QColor(0x4a, 0x68, 0x80));   // AetherSDR, 392: the applet panel's scroll bar colour (was grey)
             it->setFlags(Qt::NoItemFlags);
             twAct->setItem(r, c, it);
         }
