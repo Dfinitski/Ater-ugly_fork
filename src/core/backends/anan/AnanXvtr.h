@@ -22,6 +22,7 @@
 #include <QMap>
 #include <QString>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -35,7 +36,13 @@ struct Xvtr {
     double ifMhz{0.0};
     double loErrorMhz{0.0};
     double rxGainDb{0.0};
-    double maxPowerDbm{10.0};
+    double maxPowerDbm{10.0};   // FlexRadio's field; not used on an openHPSDR radio
+    // Build 357: the ceiling of the RF Power and Tune sliders while the
+    // transmitter is on this transverter, in percent of the calibrated full
+    // power. A percentage, not dBm: the program cannot know which connector
+    // drives the transverter (the PA, or the low-level output ahead of it) and
+    // so has no dBm figure of its own to compare against.
+    double maxDrivePct{100.0};
     bool rxOnly{false};
 };
 
@@ -123,6 +130,7 @@ public:
             o[QStringLiteral("loError")] = x.loErrorMhz;
             o[QStringLiteral("rxGain")] = x.rxGainDb;
             o[QStringLiteral("maxPower")] = x.maxPowerDbm;
+            o[QStringLiteral("maxPct")] = x.maxDrivePct;
             o[QStringLiteral("rxOnly")] = x.rxOnly;
             arr.append(o);
         }
@@ -143,7 +151,7 @@ public:
         kvs[QStringLiteral("if_freq")] = QString::number(x.ifMhz, 'f', 6);
         kvs[QStringLiteral("lo_error")] = QString::number(x.loErrorMhz, 'f', 6);
         kvs[QStringLiteral("rx_gain")] = QString::number(x.rxGainDb, 'f', 2);
-        kvs[QStringLiteral("max_power")] = QString::number(x.maxPowerDbm, 'f', 2);
+        kvs[QStringLiteral("max_power")] = QString::number(x.maxDrivePct, 'f', 2);   // build 357: percent
         kvs[QStringLiteral("rx_only")] = x.rxOnly ? QStringLiteral("1") : QStringLiteral("0");
         kvs[QStringLiteral("is_valid")] =
             valid(x, nativeMinHz, nativeMaxHz) ? QStringLiteral("1") : QStringLiteral("0");
@@ -168,6 +176,7 @@ private:
             x.loErrorMhz = o.value(QStringLiteral("loError")).toDouble();
             x.rxGainDb = o.value(QStringLiteral("rxGain")).toDouble();
             x.maxPowerDbm = o.value(QStringLiteral("maxPower")).toDouble(10.0);
+            x.maxDrivePct = std::clamp(o.value(QStringLiteral("maxPct")).toDouble(100.0), 0.0, 100.0);
             x.rxOnly = o.value(QStringLiteral("rxOnly")).toBool();
             m_items.insert(x.index, x);
         }

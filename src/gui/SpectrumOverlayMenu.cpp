@@ -4041,7 +4041,9 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
         const QString name = xvtr.name;
         const QString stackKey = xvtr.stackKey;
         connect(btn, &QPushButton::clicked, this, [this, name, freq, stackKey]() {
-            emit bandSelected(name, freq, "FM", stackKey);
+            // Build 357: the same mode as the band panel's button for this
+            // transverter (it was FM here and USB there).
+            emit bandSelected(name, freq, "USB", stackKey);
             m_xvtrPanel->hide();
             m_xvtrPanelVisible = false;
         });

@@ -736,10 +736,9 @@ Hl2Backend::Hl2Backend(QObject* parent)
                            .toString() == QLatin1String("True");
         // PA Level Calibration moved (settings page) or the band changed:
         // the drive follows at once, from the last level asked for.
-        if (m_ananLastDrivePercent >= 0
-            && m_ananPaCalApplied != m_currentBandKey + QLatin1Char(':')
-                                         + QString::number(ananPaCalPercent()) + QLatin1Char(':')
-                                         + QString::number(ananPaMidDrivePercent(), 'f', 1))
+        // Build 357: likewise when the transmitter moves onto or off a
+        // transverter, or its power ceiling is edited (ananPaCalKey).
+        if (m_ananLastDrivePercent >= 0 && m_ananPaCalApplied != ananPaCalKey())
             applyDrive(m_ananLastDrivePercent);
         {
             const int txAtt = std::clamp(
@@ -1657,7 +1656,10 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         // (ananNoiseLineStep) is the same quantity, so the two coincide; a
         // steady carrier reads its power when a pixel spans about 500 Hz,
         // higher on narrower bins (the price of a noise-true display).
-        const double panShift = ananRbwTo500HzDb(rate, n) + ananDisplayCalDb();
+        // Build 357: less the RX Gain of the transverter in front of this
+        // receiver -- the level at the transverter's antenna socket.
+        const double panShift = ananRbwTo500HzDb(rate, n) + ananDisplayCalDb()
+                              - ananXvtrRxGainDb(ids->ddcIndex);
         const double dispOff = off + panShift;
         if (ids->ddcIndex < 2)
             anan::AnanUiState::instance().panShiftDb[ids->ddcIndex] = panShift;
@@ -1794,7 +1796,8 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
                              - anan::modelTraits(anan::AnanModel::Anan100D).rxMeterOffsetDb;
         m_ananSMeterRaw[smRx] = m_dbRef.toDbm(dbfs) + modelDb;   // for the noise-floor check
         const double dbm = m_dbRef.toDbm(dbfs) + modelDb
-                         + anan::AnanUiState::instance().sMeterOffsetDb(smAtt, m_ananLnaPushed == 1);
+                         + anan::AnanUiState::instance().sMeterOffsetDb(smAtt, m_ananLnaPushed == 1)
+                         - ananXvtrRxGainDb(ids->ddcIndex);   // build 357
         if ((m_ukKeyed || m_ukPost) && ids->ddcIndex == 0)
             m_ukCur.sMeter = std::max(m_ukCur.sMeter, static_cast<float>(dbm));
 
@@ -4895,7 +4898,10 @@ ReceiveDispatch Hl2Backend::requestTransverter(const TransverterRequest& request
         case Field::IfFrequencyMhz: x->ifMhz = std::get<double>(request.value); break;
         case Field::LoErrorMhz: x->loErrorMhz = std::get<double>(request.value); break;
         case Field::RxGainDb: x->rxGainDb = std::get<double>(request.value); break;
-        case Field::MaximumPowerDbm: x->maxPowerDbm = std::get<double>(request.value); break;
+        // Build 357: on this radio the field is the power ceiling in percent.
+        case Field::MaximumPowerDbm:
+            x->maxDrivePct = std::clamp(std::get<double>(request.value), 0.0, 100.0);
+            break;
         case Field::RxOnly: x->rxOnly = std::get<bool>(request.value); break;
         case Field::Create: case Field::Remove: case Field::Count: return ReceiveDispatch::Unsupported;
         }
@@ -8041,10 +8047,14 @@ void Hl2Backend::applyDrive(int percent)
     // the ideal square-law PA.
     const double mid = ananPaMidDrivePercent();
     const double e = -std::log2(mid / 100.0);
-    m_ananPaCalApplied = m_currentBandKey + QLatin1Char(':') + QString::number(cal)
-                       + QLatin1Char(':') + QString::number(mid, 'f', 1);
+    m_ananPaCalApplied = ananPaCalKey();
+    // Build 357: a transverter's Max Power is the ceiling of the slider while
+    // the transmitter is on it (the slider itself keeps its value).
+    double power = static_cast<double>(clamped);
+    if (const anan::Xvtr* x = ananTxXvtr())
+        power = std::min(power, std::clamp(x->maxDrivePct, 0.0, 100.0));
     const int drive = static_cast<int>(std::lround(
-        255.0 * cal / 100.0 * std::pow(static_cast<double>(clamped) / 100.0, e)));
+        255.0 * cal / 100.0 * std::pow(power / 100.0, e)));
     setTxDriveLevel(std::clamp(drive, 0, 255));
 }
 
@@ -8057,12 +8067,29 @@ double Hl2Backend::ananPaMidDrivePercent()
                       kAnanPaMidDriveMin, kAnanPaMidDriveMax);
 }
 
+QString Hl2Backend::ananPaCalKey() const
+{
+    const anan::Xvtr* x = ananTxXvtr();
+    return m_currentBandKey + QLatin1Char(':') + QString::number(ananPaCalPercent()) + QLatin1Char(':')
+         + QString::number(ananPaMidDrivePercent(), 'f', 1) + QLatin1Char(':')
+         + (x ? QString::number(x->index) + QLatin1Char('/') + QString::number(x->maxDrivePct, 'f', 2)
+                    + QLatin1Char('/') + QString::number(x->ifMhz, 'f', 3)
+              : QString());
+}
+
 int Hl2Backend::ananPaCalPercent() const
 {
     // bandKeyForHz() files everything above 32 MHz as "8m": on the ANAN that
     // is 6 m.
-    const QString band = m_currentBandKey == QLatin1String("8m") ? QStringLiteral("6m")
-                                                                  : m_currentBandKey;
+    // Build 357: through a transverter the PA works on the IF, so it is the
+    // IF band's calibration that applies (it was 6 m's, whatever the IF).
+    QString key = m_currentBandKey;
+    if (const Receiver* t = rx(m_txDdc)) {
+        const double off = xvtrOffsetHz(t->sliceFreqHz);
+        if (off != 0.0)
+            key = hl2::bandKeyForHz(t->sliceFreqHz - off);
+    }
+    const QString band = key == QLatin1String("8m") ? QStringLiteral("6m") : key;
     return std::clamp(AppSettings::instance()
                           .value(QStringLiteral("AnanPaCal_") + band, 64).toInt(),
                       0, 100);
@@ -10724,7 +10751,12 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
     m_ananShownFloorOk[rx] = true;
     auto& ui = anan::AnanUiState::instance();
     const double calDb = ananDisplayCalDb();
-    ui.shownFloorDbm[rx] = m_ananShownFloor[rx] + calDb;
+    // Build 357: the line is on the trace's ruler, which on a transverter is
+    // the level at its antenna socket (less its RX Gain). The AUTO attenuator
+    // below stays on the level at the ADC: its target is where the band noise
+    // sits against the converter's own, and a transverter's gain is exactly
+    // what it is there to take off.
+    ui.shownFloorDbm[rx] = m_ananShownFloor[rx] + calDb - ananXvtrRxGainDb(rx);
     // Build 295: no captured own noise any more (the AUTO attenuator finds it).
     ui.ownFloorDbm[rx] = std::numeric_limits<double>::quiet_NaN();
     ui.shownFloorAtMs[rx] = QDateTime::currentMSecsSinceEpoch();
@@ -10886,6 +10918,23 @@ double Hl2Backend::ananDisplayCalDb() const
          - anan::modelTraits(anan::AnanModel::Anan100D).rxMeterOffsetDb;
 }
 
+double Hl2Backend::ananXvtrRxGainDb(int ddc) const
+{
+    const Receiver* r = rx(ddc);
+    if (!r)
+        return 0.0;
+    const anan::Xvtr* x =
+        anan::AnanXvtrStore::instance().forRf(r->sliceFreqHz, m_tuningMinHz, m_tuningMaxHz);
+    return x ? x->rxGainDb : 0.0;
+}
+
+const anan::Xvtr* Hl2Backend::ananTxXvtr() const
+{
+    const Receiver* t = rx(m_txDdc);
+    return t ? anan::AnanXvtrStore::instance().forRf(t->sliceFreqHz, m_tuningMinHz, m_tuningMaxHz)
+             : nullptr;
+}
+
 double Hl2Backend::ananOwnNoiseOfAdc(int adc) const
 {
     adc = std::clamp(adc, 0, 1);
@@ -11008,7 +11057,8 @@ void Hl2Backend::ananPublishAgcGate(int rx)
     const double noiseOffsetDb = 10.0 * std::log10(bwHz * 1024.0 / double(m_sampleRateHz));
     const double gatePlusGainDb = kAnanAgcOutTargetDb - kAnanAgcVarGainDb - noiseOffsetDb
                                   + m_dbRef.offsetDb() + Hl2Spectrum::kToneGainDb
-                                  + ananRbwTo500HzDb(double(m_sampleRateHz), 1024) + ananDisplayCalDb();
+                                  + ananRbwTo500HzDb(double(m_sampleRateHz), 1024) + ananDisplayCalDb()
+                                  - ananXvtrRxGainDb(rx);   // build 357
     ui.agcGatePlusGainDb[rx] = gatePlusGainDb;
     ui.agcGainAtT0Db[rx] = m_dbRef.agcCeilingDb(0);
     ui.agcGateDbm[rx] = gatePlusGainDb - agcCeilingFor(*r);

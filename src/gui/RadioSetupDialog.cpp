@@ -5533,11 +5533,75 @@ QWidget* RadioSetupDialog::buildXvtrTab()
         setTone(validLbl, x.isValid ? Tone::Ok : Tone::Error);
         grid->addWidget(validLbl, 0, 3);
 
-        auto* rfEdit     = addField(1, 0, "RF Freq (MHz):", QString::number(x.rfFreq, 'f', 3));
-        auto* ifEdit     = addField(1, 1, "IF Freq (MHz):", QString::number(x.ifFreq, 'f', 3));
-        auto* loEdit     = addField(2, 0, "LO Freq (MHz):", QString::number(x.rfFreq - x.ifFreq, 'f', 3), false);
-        auto* errEdit    = addField(2, 1, "LO Error (MHz):", QString::number(x.loError, 'f', 6));
+        // ANAN fork build 357 (operators: "the transverter settings are not
+        // transparent"). On an openHPSDR radio the page is the program's own
+        // (anan/AnanXvtr.h), so it can say what it needs: the LO can be typed
+        // (a transverter is labelled with its IF and its oscillator, not with
+        // an RF frequency), the LO error is in Hz, Valid / Invalid follows
+        // every entry and gives its reason, and Max Power is a ceiling in
+        // percent that the transmitter really obeys.
+        const bool isAnan = m_model->backendDeclaresExtension(QStringLiteral("hl2"));
+        const int freqDecimals = isAnan ? 6 : 3;
+        auto* rfEdit     = addField(1, 0, "RF Freq (MHz):", QString::number(x.rfFreq, 'f', freqDecimals));
+        auto* ifEdit     = addField(1, 1, "IF Freq (MHz):", QString::number(x.ifFreq, 'f', freqDecimals));
+        auto* loEdit     = addField(2, 0, "LO Freq (MHz):",
+                                    QString::number(x.rfFreq - x.ifFreq, 'f', freqDecimals), isAnan);
+        auto* errEdit    = isAnan
+            ? addField(2, 1, "LO Error (Hz):", QString::number(x.loError * 1.0e6, 'f', 1))
+            : addField(2, 1, "LO Error (MHz):", QString::number(x.loError, 'f', 6));
         auto* rxGainEdit = addField(3, 0, "RX Gain (dB):", QString::number(x.rxGain, 'f', 1));
+        auto* hintLbl = new QLabel;
+        applyLabelStyle(hintLbl);
+        hintLbl->setWordWrap(true);
+        grid->addWidget(hintLbl, 5, 0, 1, 4);
+        if (isAnan) {
+            rfEdit->setToolTip(tr("A frequency on the transverter's band. With the IF it gives the "
+                                  "oscillator: LO = RF - IF. Either type RF and IF, or IF and LO."));
+            ifEdit->setToolTip(tr("The frequency the radio itself works on while the transverter is on "
+                                  "the RF frequency. Must be inside the radio's own range."));
+            loEdit->setToolTip(tr("The transverter's oscillator. Typing it sets RF = LO + IF."));
+            errEdit->setToolTip(tr("How far the transverter's oscillator really is from the LO shown, in Hz. "
+                                   "Positive when it is higher: a signal of known frequency then reads low "
+                                   "by that much before the correction."));
+            rxGainEdit->setToolTip(tr("The transverter's gain from its antenna socket to the radio's input "
+                                      "(negative for a loss). Taken off the S-meter, the panadapter trace "
+                                      "and the noise and AGC lines, so they read the level at the "
+                                      "transverter's antenna."));
+        }
+        // The radio's own coverage (Hl2Backend: 10 kHz - 55 MHz on an ANAN).
+        constexpr double kAnanMinMhz = 0.01;
+        constexpr double kAnanMaxMhz = 55.0;
+        auto refreshValid = [this, isAnan, idx, validLbl, hintLbl, rfEdit, ifEdit] {
+            if (!isAnan) {
+                const auto it = m_model->xvtrList().constFind(idx);
+                if (it == m_model->xvtrList().constEnd()) { return; }
+                validLbl->setText(it.value().isValid ? "Valid" : "Invalid");
+                setTone(validLbl, it.value().isValid ? Tone::Ok : Tone::Error);
+                return;
+            }
+            const double rf = rfEdit->text().toDouble();
+            const double ifF = ifEdit->text().toDouble();
+            QString why;
+            if (rf <= 0.0 || ifF <= 0.0)
+                why = tr("Enter the IF and either the RF frequency or the LO.");
+            else if (ifF < kAnanMinMhz || ifF > kAnanMaxMhz)
+                why = tr("The IF must be inside the radio's own range, %1 - %2 MHz.")
+                          .arg(kAnanMinMhz, 0, 'f', 2).arg(kAnanMaxMhz, 0, 'f', 0);
+            else if (rf <= kAnanMaxMhz)
+                why = tr("The RF frequency must be above %1 MHz: below that the radio tunes by itself "
+                         "and no transverter is used.").arg(kAnanMaxMhz, 0, 'f', 0);
+            const bool ok = why.isEmpty();
+            validLbl->setText(ok ? "Valid" : "Invalid");
+            setTone(validLbl, ok ? Tone::Ok : Tone::Error);
+            const double lo = rf - ifF;
+            hintLbl->setText(ok ? tr("Used for %1 - %2 MHz (the radio then works on %3 - %4 MHz).")
+                                      .arg(lo + kAnanMinMhz, 0, 'f', 3).arg(lo + kAnanMaxMhz, 0, 'f', 3)
+                                      .arg(kAnanMinMhz, 0, 'f', 2).arg(kAnanMaxMhz, 0, 'f', 0)
+                                : why);
+        };
+        refreshValid();
+        // Which of RF and LO the operator typed last: an IF entry keeps that one.
+        auto loTyped = std::make_shared<bool>(false);
 
         // RX Only toggle
         auto* rxOnlyLbl = new QLabel("RX Only:");
@@ -5552,7 +5616,13 @@ QWidget* RadioSetupDialog::buildXvtrTab()
         });
         grid->addWidget(rxOnlyBtn, 3, 3);
 
-        auto* maxPwrEdit = addField(4, 0, "Max Power (dBm):", QString::number(x.maxPower, 'f', 1));
+        auto* maxPwrEdit = addField(4, 0, isAnan ? "Max Power (%):" : "Max Power (dBm):",
+                                    QString::number(x.maxPower, 'f', 1));
+        if (isAnan) {
+            maxPwrEdit->setToolTip(tr("The most the RF Power and Tune sliders give while transmitting through "
+                                      "this transverter, in percent of the full calibrated power (100 = no "
+                                      "limit). The sliders keep their position; the output stops rising here."));
+        }
 
         // Remove button
         auto* removeBtn = new QPushButton("Remove");
@@ -5571,16 +5641,27 @@ QWidget* RadioSetupDialog::buildXvtrTab()
         auto* maxPwrValidator = new QDoubleValidator(maxPwrEdit);
         maxPwrValidator->setDecimals(2);
         maxPwrValidator->setNotation(QDoubleValidator::StandardNotation);
-        auto updateMaxPowerValidator = [maxPwrValidator, maxPowerRange] {
+        auto updateMaxPowerValidator = [maxPwrValidator, maxPowerRange, isAnan] {
+            if (isAnan) {
+                maxPwrValidator->setRange(0.0, 100.0, 2);
+                return;
+            }
             const XvtrPolicy::MaxPowerRange range = maxPowerRange();
             maxPwrValidator->setRange(range.minimumDbm, range.maximumDbm, 2);
         };
         updateMaxPowerValidator();
         maxPwrEdit->setValidator(maxPwrValidator);
-        auto submitMaxPower = [this, submit, maxPwrEdit, ifEdit, idx](bool sendWhenUnchanged) {
+        auto submitMaxPower = [this, submit, maxPwrEdit, ifEdit, idx, isAnan](bool sendWhenUnchanged) {
             bool ok = false;
             const double requested = maxPwrEdit->text().toDouble(&ok);
             if (!ok) {
+                return;
+            }
+            if (isAnan) {   // a percentage, independent of the IF
+                if (!sendWhenUnchanged) { return; }
+                const double pct = std::clamp(requested, 0.0, 100.0);
+                maxPwrEdit->setText(QString::number(pct, 'f', 1));
+                submit({idx, XvtrField::MaximumPowerDbm, pct, 0.0});
                 return;
             }
             bool validIf = false;
@@ -5601,31 +5682,63 @@ QWidget* RadioSetupDialog::buildXvtrTab()
         connect(nameEdit, &QLineEdit::editingFinished, this, [submit, nameEdit, idx] {
             submit({idx, XvtrField::Name, nameEdit->text()});
         });
-        auto updateLo = [rfEdit, ifEdit, loEdit] {
+        auto updateLo = [rfEdit, ifEdit, loEdit, freqDecimals] {
             double rf = rfEdit->text().toDouble();
             double ifF = ifEdit->text().toDouble();
-            loEdit->setText(QString::number(rf - ifF, 'f', 3));
+            loEdit->setText(QString::number(rf - ifF, 'f', freqDecimals));
         };
-        connect(rfEdit, &QLineEdit::editingFinished, this, [submit, rfEdit, idx, updateLo] {
+        // Other backends answer with a status; the label follows it shortly after.
+        auto validSoon = [this, pg, refreshValid, isAnan] {
+            refreshValid();
+            if (!isAnan) { QTimer::singleShot(400, pg, refreshValid); }
+        };
+        connect(rfEdit, &QLineEdit::editingFinished, this,
+                [submit, rfEdit, idx, updateLo, validSoon, loTyped] {
             bool valid = false;
             const double mhz = rfEdit->text().toDouble(&valid);
-            if (valid) { submit({idx, XvtrField::RfFrequencyMhz, mhz}); }
+            if (valid) {
+                submit({idx, XvtrField::RfFrequencyMhz, mhz});
+                *loTyped = false;
+            }
             updateLo();
+            validSoon();
+        });
+        // Build 357: LO typed -> RF = LO + IF (the stored pair stays RF / IF).
+        connect(loEdit, &QLineEdit::editingFinished, this,
+                [submit, rfEdit, ifEdit, loEdit, idx, validSoon, loTyped, freqDecimals, isAnan] {
+            if (!isAnan || !loEdit->isModified()) { return; }   // focus passing through is not an entry
+            loEdit->setModified(false);
+            bool valid = false;
+            const double lo = loEdit->text().toDouble(&valid);
+            if (!valid) { return; }
+            *loTyped = true;
+            const double rf = lo + ifEdit->text().toDouble();
+            rfEdit->setText(QString::number(rf, 'f', freqDecimals));
+            submit({idx, XvtrField::RfFrequencyMhz, rf});
+            validSoon();
         });
         connect(ifEdit, &QLineEdit::editingFinished, this,
-                [submit, ifEdit, idx, updateLo, updateMaxPowerValidator, submitMaxPower] {
+                [submit, rfEdit, ifEdit, loEdit, idx, updateLo, updateMaxPowerValidator, submitMaxPower,
+                 validSoon, loTyped, freqDecimals] {
             bool valid = false;
             const double mhz = ifEdit->text().toDouble(&valid);
             if (!valid || submit({idx, XvtrField::IfFrequencyMhz, mhz})
                 == ReceiveDispatch::Unsupported) { return; }
-            updateLo();
+            if (*loTyped) {   // the oscillator was given: the RF follows the new IF
+                const double rf = loEdit->text().toDouble() + mhz;
+                rfEdit->setText(QString::number(rf, 'f', freqDecimals));
+                submit({idx, XvtrField::RfFrequencyMhz, rf});
+            } else {
+                updateLo();
+            }
             updateMaxPowerValidator();
             submitMaxPower(false);
+            validSoon();
         });
-        connect(errEdit, &QLineEdit::editingFinished, this, [submit, errEdit, idx] {
+        connect(errEdit, &QLineEdit::editingFinished, this, [submit, errEdit, idx, isAnan] {
             bool valid = false;
-            const double mhz = errEdit->text().toDouble(&valid);
-            if (valid) { submit({idx, XvtrField::LoErrorMhz, mhz}); }
+            const double v = errEdit->text().toDouble(&valid);
+            if (valid) { submit({idx, XvtrField::LoErrorMhz, isAnan ? v / 1.0e6 : v}); }
         });
         connect(rxGainEdit, &QLineEdit::editingFinished, this, [submit, rxGainEdit, idx] {
             bool valid = false;

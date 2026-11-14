@@ -53,7 +53,7 @@ class HalfbandResampler;
 namespace aether_drm { class DrmEngine; }
 
 namespace AetherSDR { class ClientComp; }
-namespace AetherSDR::anan { class AnanPureSignal; class AnanTxEngine; }
+namespace AetherSDR::anan { class AnanPureSignal; class AnanTxEngine; struct Xvtr; }
 
 namespace AetherSDR::hl2 {
 
@@ -622,6 +622,12 @@ private:
     void ananAutoAttStep(int rx, double floorCalDbm, qint64 t);
     [[nodiscard]] static double ananRbwTo500HzDb(double rateHz, std::size_t fftSize) noexcept;
     [[nodiscard]] double ananDisplayCalDb() const;
+    // Build 357: the RX Gain of the transverter this receiver is tuned
+    // through (0 on the radio's own bands), and the transverter the
+    // transmitter is on (nullptr on the radio's own bands).
+    [[nodiscard]] double ananXvtrRxGainDb(int ddc) const;
+    [[nodiscard]] const anan::Xvtr* ananTxXvtr() const;
+    [[nodiscard]] QString ananPaCalKey() const;
     // The receiver's own noise, dBm / 500 Hz at the ADC, without the meter's
     // calibration (published with it as AnanUiState::ownFloorDbm).
     double m_ananOwnNoise[2] = {std::numeric_limits<double>::quiet_NaN(),
