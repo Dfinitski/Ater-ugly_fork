@@ -22,6 +22,7 @@
 
 #include <QDir>
 #include <QImage>
+#include <QDateTime>
 #include <QMessageBox>
 #include <QPainter>
 #include <cmath>
@@ -259,11 +260,48 @@ void MainWindow::activateFtx(int sliceId)
         if (SpectrumOverlayMenu* menu = applet->spectrumWidget()->overlayMenu())
             emit menu->addRxClicked(applet->panId());
     });
-    // Any other mode set from elsewhere (CAT, TCI, a memory) ends FTX.
-    m_ftxModeConn = connect(s, &SliceModel::modeChanged, this, [this](const QString& mode) {
-        if (mode != QLatin1String("DIGU"))
-            deactivateFtx(/*restoreMode=*/false);
+    // Build 387 (operator, 14.11: "the mode change -- block it too"): a mode
+    // set from elsewhere (CAT, TCI, MIDI, a memory) does not end FTX any
+    // more; the receiver is put back to the mode's DIGU and filter. Queued:
+    // not inside the model's own change. Only the window (closing it) and
+    // Exit FTX leave the mode.
+    m_ftxModeConn = connect(s, &SliceModel::modeChanged, this, [this, sliceId](const QString& mode) {
+        if (mode == QLatin1String("DIGU") || m_ftxSliceId != sliceId)
+            return;
+        QMetaObject::invokeMethod(this, [this, sliceId] {
+            SliceModel* sl = m_radioModel.slice(sliceId);
+            if (!sl || m_ftxSliceId != sliceId)
+                return;
+            if (sl->mode() != QLatin1String("DIGU"))
+                sl->setMode(QStringLiteral("DIGU"));
+            sl->setFilterWidth(kFtxFilterLoHz, kFtxFilterHiHz);
+        }, Qt::QueuedConnection);
     });
+    // Build 387 (operator: "the receiver in FTX takes the transmitter; the
+    // second receiver is blocked for transmit -- never"): the FTX receiver is
+    // made the transmitting one and kept so; the backend refuses every key
+    // that is not the mode's own. The one before the mode comes back on exit.
+    m_ftxSavedTxSliceId = -1;
+    for (SliceModel* other : m_radioModel.slices()) {
+        if (other && other->isTxSlice())
+            m_ftxSavedTxSliceId = other->sliceId();
+    }
+    if (!s->isTxSlice())
+        s->setTxSlice(true);
+    m_ftxTxSliceConn = connect(s, &SliceModel::txSliceChanged, this, [this, sliceId](bool tx) {
+        if (tx || m_ftxSliceId != sliceId)
+            return;
+        QMetaObject::invokeMethod(this, [this, sliceId] {
+            SliceModel* sl = m_radioModel.slice(sliceId);
+            if (sl && m_ftxSliceId == sliceId && !sl->isTxSlice())
+                sl->setTxSlice(true);
+        }, Qt::QueuedConnection);
+    });
+    // The attenuator: AUTO ATT steps only between the periods (the backend
+    // asks; MicronSDR: FtUnit::levelGap).
+    ftx::FtxState::instance().levelGap = [unit = m_ftUnit] {
+        return unit->levelGap(QDateTime::currentMSecsSinceEpoch());
+    };
     m_ftxGoneConn = connect(s, &QObject::destroyed, this, [this] { deactivateFtx(false); });
     // Build 386: the frequency of this receiver is the FTX window's alone.
     // Locked now; should anything unlock it (a MIDI or TCI "lock off"), it is
@@ -327,6 +365,8 @@ void MainWindow::deactivateFtx(bool restoreMode)
     disconnect(m_ftxGoneConn);
     disconnect(m_ftxLockConn);
     disconnect(m_ftxNewSliceConn);
+    disconnect(m_ftxTxSliceConn);
+    ftx::FtxState::instance().levelGap = nullptr;
     // The mode's lock off, so the frequency below can go back; the lock the
     // operator had before the mode is put back at the end.
     if (SliceModel* s = m_radioModel.slice(sliceId); s && s->isLocked())
@@ -364,6 +404,11 @@ void MainWindow::deactivateFtx(bool restoreMode)
     if (m_ftxSavedLocked) {
         if (SliceModel* s = m_radioModel.slice(sliceId))
             s->setLocked(true);
+    }
+    // The transmitting receiver as before the mode.
+    if (m_ftxSavedTxSliceId >= 0 && m_ftxSavedTxSliceId != sliceId) {
+        if (SliceModel* was = m_radioModel.slice(m_ftxSavedTxSliceId); was && !was->isTxSlice())
+            was->setTxSlice(true);
     }
     qInfo() << "MainWindow: FTX off, slice" << sliceId;
 }

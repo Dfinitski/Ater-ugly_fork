@@ -3004,10 +3004,11 @@ void Hl2Backend::fdvTick()
         if (ftxDdc != m_ftxDdc) {
             m_ftxDdc = ftxDdc;
             ananPushCodecMix();
+            applyBandFilter("ftx");   // build 387: the FTX receiver's filter holds
             qCInfo(lcHl2) << "ANAN: FTX" << (ftxDdc >= 0 ? "has taken over receiver" : "released the receiver")
                           << (ftxDdc >= 0 ? ftxDdc + 1 : 0);
         }
-        m_ftxMicHoldIo.store(ftxDdc >= 0 && ftxDdc == m_txDdc, std::memory_order_relaxed);
+        m_ftxMicHoldIo.store(ftxDdc >= 0, std::memory_order_relaxed);
     }
     // Build 374: what submitTxAudio() reads off the GUI thread.
     m_micFromRadioIo.store(m_ananMicFromRadio, std::memory_order_relaxed);
@@ -7191,7 +7192,10 @@ QString Hl2Backend::transmitRefusalMessage() const
 bool Hl2Backend::ftxKeyRefused() const
 {
     const auto& st = ftx::FtxState::instance();
-    return st.sliceId >= 0 && !st.ownTx && ddcForSlice(st.sliceId) == m_txDdc;
+    // Build 387: whichever receiver transmits -- with FTX on, the transmitter
+    // is the mode's alone (its receiver is made the transmitting one, and
+    // the second receiver never transmits).
+    return st.sliceId >= 0 && !st.ownTx;
 }
 
 QString Hl2Backend::ftxKeyRefusalText() const
@@ -11452,9 +11456,25 @@ void Hl2Backend::ananAutoAttStep(int rx, double floorCalDbm, qint64 t)
         L.moving = false;   // within half a dB, or at the end of the range
         return;
     }
+    // Build 387 (operator, 14.11: "the attenuator works as it was set before
+    // the mode; while a period is being received it is held, as in Micron"):
+    // AUTO ATT of the ADC the FTX receiver uses steps only in the gap between
+    // the periods -- a step inside one changes the level under the decoder.
+    // The step stays wanted (L.moving) and is made when the gap comes.
+    if (ftxAttHeld(rx))
+        return;
     L.lastAvg = avg;
     L.lastStep = next - att;
     apply(next);
+}
+
+bool Hl2Backend::ftxAttHeld(int rx) const
+{
+    const auto& st = ftx::FtxState::instance();
+    if (m_ftxDdc < 0 || !st.levelGap || rx < 0 || rx > 1)
+        return false;
+    const int ftxAdc = m_ftxDdc <= 1 ? m_ananAdc[m_ftxDdc] : 0;
+    return m_ananAdc[rx] == ftxAdc && !st.levelGap();
 }
 
 int Hl2Backend::ananAutoAttTargetDbm(int rx) const
@@ -12487,6 +12507,16 @@ void Hl2Backend::applyBandFilter(const char* reason)
     if (oc < 0)
         return;
 
+    // Build 387 (operator, 14.11: "on a conflict of the filters the FTX
+    // receiver keeps its filter; the second receiver works as it is, the
+    // operator can move it to the other ADC"): with FTX on, the receive
+    // filter is the FTX receiver's, not the bypass.
+    if (spanned && !transmitting && m_ftxDdc >= 0) {
+        if (const Receiver* fr = rx(m_ftxDdc)) {
+            oc = static_cast<int>(m_hw.ocReceiveByteForHz(fr->sliceFreqHz - xvtrOffsetHz(fr->sliceFreqHz)));
+            spanned = false;
+        }
+    }
     if (spanned) {
         // While KEYED the transmit receiver's filter wins outright. Radiating
         // through a bypassed filter bank because a second receiver happened to

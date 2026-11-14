@@ -14,6 +14,8 @@
 
 #include <QString>
 
+#include <functional>
+
 namespace AetherSDR::ftx {
 
 // The values of MicronSDR's FtUnit (the libraries take them).
@@ -67,6 +69,11 @@ public:
     // program, the PTT of the radio -- is refused while FTX has the
     // transmitting receiver (Hl2Backend::applyKeying).
     bool ownTx = false;
+    // Build 387: true when a step of the receiver's level (the attenuator)
+    // does no harm -- the decoding point of the period has passed and the
+    // next period has not begun (MicronSDR: FtUnit::levelGap). Set by the
+    // GUI while the mode is on; the backend's AUTO ATT asks before a step.
+    std::function<bool()> levelGap;
 };
 
 }  // namespace AetherSDR::ftx

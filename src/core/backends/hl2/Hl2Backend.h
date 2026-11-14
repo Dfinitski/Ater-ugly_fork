@@ -1366,6 +1366,7 @@ private:
                                               double rate, bool txOnAir);
     [[nodiscard]] QString transmitRefusalText(double txHz) const;   // build 378
     [[nodiscard]] bool ftxKeyRefused() const;                       // build 383
+    [[nodiscard]] bool ftxAttHeld(int rx) const;                     // build 387
     [[nodiscard]] QString ftxKeyRefusalText() const;
 
     // The four index spaces, never derived from one another (Hl2Receivers.h). GUI
