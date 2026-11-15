@@ -579,6 +579,12 @@ private:
     void ananAutoAgcStep(int rx);
     void ananPublishAgcGate(int rx);   // build 301
     QElapsedTimer m_ananAgcClock[2];
+    // Build 410: the Auto AGC of the receiver the FTX mode has is frozen, and
+    // after the mode it waits for the noise floor to settle (ananAutoAgcStep).
+    QElapsedTimer m_ananAgcHold[2];
+    double m_ananAgcHoldFloor[2] = {std::numeric_limits<double>::quiet_NaN(),
+                                    std::numeric_limits<double>::quiet_NaN()};
+    int m_ananAgcHoldStable[2] = {0, 0};
     // ANAN-100D port: per-receiver attenuation and the ADC <-> attenuator
     // rule (AnanUiState.h): RX1 owns its ADC's attenuator; RX2 owns its own
     // only when it listens to the other ADC.

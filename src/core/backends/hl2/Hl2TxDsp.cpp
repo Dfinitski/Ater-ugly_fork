@@ -232,6 +232,66 @@ void Hl2TxDsp::modulate(std::span<const float> audio)
     exchangeDueBlocks();
 }
 
+// Build 410 (operator, 14.11: "the crest factor of RADE grew by 4 dB behind
+// the transmit filter -- can the scale overflow on transmit?"). It cannot:
+// WDSP's ALC stands after the filter, max gain 1. What it costs is measured
+// here, per exchanged block: the ALC's gain (TXA_ALC_GAIN, dB <= 0), the peak
+// behind it (TXA_ALC_PK, dBFS of the envelope) and the envelope of the I/Q
+// this block puts out (after the CFIR and the resampler).
+void Hl2TxDsp::noteTxaLevels(std::size_t outBlock)
+{
+    constexpr int kTxaAlcPk = 12;     // enum txaMeterType (TXA.h)
+    constexpr int kTxaAlcGain = 14;
+    const int ch = m_channel ? m_channel->channelIdForTest() : -1;
+    if (ch < 0)
+        return;
+    const double gain = std::min(0.0, GetTXAMeter(ch, kTxaAlcGain));
+    const double pk = GetTXAMeter(ch, kTxaAlcPk);
+    m_txaAlcGainDb = gain;
+    m_txaAlcShownDb = std::min(gain, 0.9 * m_txaAlcShownDb);
+    double envPk = 0.0;
+    for (std::size_t k = 0; k < outBlock; ++k) {
+        const double e = static_cast<double>(m_outI[k]) * m_outI[k] + static_cast<double>(m_outQ[k]) * m_outQ[k];
+        envPk = std::max(envPk, e);
+        m_txaEnvSq += e;
+    }
+    m_txaEnvN += outBlock;
+    m_txaEnvPk = std::max(m_txaEnvPk, std::sqrt(envPk));
+    m_txaAlcMinDb = std::min(m_txaAlcMinDb, gain);
+    m_txaAlcSumDb += gain;
+    m_txaAlcPkDb = std::max(m_txaAlcPkDb, pk);
+    ++m_txaLevelBlocks;
+    if (gain < -0.05)
+        ++m_txaAlcBusyBlocks;
+    if (!m_txaLevelClock.isValid())
+        m_txaLevelClock.start();
+    if (m_txaLevelClock.elapsed() < 2000)
+        return;
+    const double rms = m_txaEnvN ? std::sqrt(m_txaEnvSq / static_cast<double>(m_txaEnvN)) : 0.0;
+    // Silence (a pause in speech, a gap between frames) says nothing.
+    if (m_txaEnvPk > 1.0e-3 && rms > 0.0) {
+        const double pkDb = 20.0 * std::log10(m_txaEnvPk);
+        const double rmsDb = 20.0 * std::log10(rms);
+        qCInfo(lcTxMod).nospace()
+            << "TXA levels, 2 s: ALC gain min " << QString::number(m_txaAlcMinDb, 'f', 1) << " dB, mean "
+            << QString::number(m_txaAlcSumDb / std::max(1, m_txaLevelBlocks), 'f', 2) << " dB, at work in "
+            << (100 * m_txaAlcBusyBlocks / std::max(1, m_txaLevelBlocks)) << " % of " << m_txaLevelBlocks
+            << " blocks; peak behind the ALC " << QString::number(m_txaAlcPkDb, 'f', 1)
+            << " dBFS; I/Q out: peak " << QString::number(pkDb, 'f', 1) << " dBFS, RMS "
+            << QString::number(rmsDb, 'f', 1) << " dBFS, crest " << QString::number(pkDb - rmsDb, 'f', 1)
+            << " dB; filter " << m_config.filterLowHz << ".." << m_config.filterHighHz << " Hz";
+    }
+    m_txaLevelClock.restart();
+    m_txaAlcMinDb = 0.0;
+    m_txaAlcSumDb = 0.0;
+    m_txaAlcPkDb = -400.0;
+    m_txaEnvPk = 0.0;
+    m_txaEnvSq = 0.0;
+    m_txaEnvN = 0;
+    m_txaLevelBlocks = 0;
+    m_txaAlcBusyBlocks = 0;
+}
+
 // How long the head block may wait for the worker before it is dropped: one
 // block period from when it reached the head. The worker turns a TXA block
 // round in well under a millisecond, so a whole period without output is a
@@ -314,6 +374,7 @@ void Hl2TxDsp::exchangeDueBlocks()
             off += block;
             continue;
         }
+        noteTxaLevels(outBlock);   // build 410
         for (std::size_t k = 0; k < outBlock; ++k) {
             // No conjugation (opposite of the phasing build): the signed
             // passband already gives the HPSDR wire's handedness. Adding -imag()
@@ -665,6 +726,12 @@ void Hl2TxDsp::setMicGain(double linear)
 
 double Hl2TxDsp::alcGainDb() const noexcept
 {
+#if AETHER_HL2_TX_TXA
+    // Build 410: with this stage's own ALC off (ANAN) the ALC at work is
+    // WDSP's, after the transmit filter -- the meter shows that one.
+    if (!m_config.alcEnabled)
+        return m_txaAlcShownDb;
+#endif
     return 20.0 * std::log10(std::max(1e-9, m_alc.gain()));
 }
 

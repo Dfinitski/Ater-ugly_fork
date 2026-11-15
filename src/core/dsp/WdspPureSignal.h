@@ -45,6 +45,7 @@ void PSSaveCorr(int channel, char* filename);
 void PSRestoreCorr(int channel, char* filename);
 
 void SetTXACFIRRun(int channel, int run);
+double GetTXAMeter(int channel, int mt);   // build 410 (meter.c)
 void SetTXAPostGenRun(int channel, int run);
 void SetTXAPostGenMode(int channel, int mode);
 void SetTXAPostGenTTMag(int channel, double mag1, double mag2);

@@ -3010,6 +3010,13 @@ void Hl2Backend::fdvTick()
         const int ftxSlice = ftx::FtxState::instance().sliceId;
         const int ftxDdc = ftxSlice >= 0 ? ddcForSlice(ftxSlice) : -1;
         if (ftxDdc != m_ftxDdc) {
+            // Build 410: the receiver the mode gives back -- its Auto AGC
+            // holds what it had until the floor has settled.
+            if (m_ftxDdc >= 0 && m_ftxDdc < 2) {
+                m_ananAgcHold[m_ftxDdc].start();
+                m_ananAgcHoldFloor[m_ftxDdc] = std::numeric_limits<double>::quiet_NaN();
+                m_ananAgcHoldStable[m_ftxDdc] = 0;
+            }
             m_ftxDdc = ftxDdc;
             ananPushCodecMix();
             applyBandFilter("ftx");   // build 387: the FTX receiver's filter holds
@@ -11701,6 +11708,16 @@ void Hl2Backend::ananAutoAgcStep(int rx)
     Receiver* r = this->rx(rx);
     if (!r)
         return;
+    // Build 410 (operator, 14.11: "on the way back from FTX I hear the noise
+    // come back to where it was"). Log 14.11 20:06-20:16: entering FTX (DIGU:
+    // AGC off, followModeAgc) dropped the gain Auto had found (78.5 dB); on
+    // the way back it was found anew from a floor still moving after the
+    // retune / band / attenuator change (-102.9 -> -91.4 -> -93.4 -> -99.2
+    // dBm in 2 s), so the gain went 78.5 -> 67.0 -> 69.0 -> 74.8 dB. The FTX
+    // receiver's Auto AGC is frozen now: nothing is dropped, the AGC comes
+    // back with the gain it had; then it waits for the floor (below).
+    if (rx == m_ftxDdc)
+        return;
     auto& ui = anan::AnanUiState::instance();
     const bool wanted = ui.agcAuto[rx] && r->agcMode.compare(QStringLiteral("off"), Qt::CaseInsensitive) != 0;
     if (!wanted) {
@@ -11720,6 +11737,23 @@ void Hl2Backend::ananAutoAgcStep(int rx)
     if (m_ananAgcClock[rx].isValid() && m_ananAgcClock[rx].elapsed() < 500)
         return;
     m_ananAgcClock[rx].restart();
+    // After FTX: at least 1.5 s, then until the floor has stood within 1 dB
+    // for two steps (1 s); 8 s at most.
+    if (rx >= 0 && rx < 2 && m_ananAgcHold[rx].isValid() && std::isfinite(r->autoAgcTopDb)) {
+        const qint64 held = m_ananAgcHold[rx].elapsed();
+        const double f = m_ananShownFloor[rx];
+        const bool stable = std::isfinite(m_ananAgcHoldFloor[rx]) && std::abs(f - m_ananAgcHoldFloor[rx]) < 1.0;
+        m_ananAgcHoldFloor[rx] = f;
+        m_ananAgcHoldStable[rx] = stable ? m_ananAgcHoldStable[rx] + 1 : 0;
+        if (held < 1500 || (m_ananAgcHoldStable[rx] < 2 && held < 8000))
+            return;
+        qCInfo(lcHl2).nospace() << "ANAN Auto AGC RX" << rx + 1 << ": held " << held
+                                << " ms after FTX at " << QString::number(r->autoAgcTopDb, 'f', 1)
+                                << " dB, floor now " << QString::number(ui.shownFloorDbm[rx], 'f', 1)
+                                << " dBm / 500 Hz";
+    }
+    if (rx >= 0 && rx < 2)
+        m_ananAgcHold[rx].invalidate();
     const double kOutTargetDb = kAnanAgcOutTargetDb;
     const double kVarGainDb = kAnanAgcVarGainDb;
     const double bwHz = std::max(50.0, double(std::abs(r->filterHighHz - r->filterLowHz)));
