@@ -362,6 +362,8 @@ private:
     std::uint8_t m_p1Gateware = 0;
     P1DdcPlan m_p1Plan;
     int m_p1CcIdx = 0;
+    // Build 426: log the filter / PureSignal C&C bytes once after MOX on.
+    std::atomic<bool> m_p1CcLogPending{false};
     std::uint32_t m_p1Seq = 0;
     quint64 m_p1AudioAcc = 0;                // EP2 pacing: rounds x 48000
     int m_p1StartTries = 0;

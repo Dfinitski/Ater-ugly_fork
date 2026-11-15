@@ -2211,8 +2211,10 @@ void P2Transport::setMox(bool keyed, const TxCoordinator::Operation& operation)
             m_ducSnapFill = 0;
         }
         beginTxStream();
-        if (m_p1)
+        if (m_p1) {
             m_p1TxDec.reset();
+            m_p1CcLogPending.store(true, std::memory_order_relaxed);
+        }
     } else {
         m_txTimer->stop();
         m_txQueue.clear();
@@ -2904,6 +2906,27 @@ void P2Transport::sendP1Ep2()
     m_p1CcIdx = (m_p1CcIdx + 1) % kP1CcCount;
     const hl2::Cc b = p1Cc(m_p1CcIdx, st);
     m_p1CcIdx = (m_p1CcIdx + 1) % kP1CcCount;
+    // Build 426 (operator, 15.11: a 7000DLE on Protocol 1, the PS feedback on
+    // ADC1, "the bypass relay does not switch"): what the radio is told on
+    // transmit, once per transmission -- the board profile and the C&C bytes
+    // that select the receive filters and the PureSignal inputs.
+    if (st.mox && m_p1CcLogPending.exchange(false, std::memory_order_relaxed)) {
+        const hl2::Cc g = p1Cc(0, st);    // C0 0x00: C3 bit 7 RX bypass out, bits 5-6 RX inputs
+        const hl2::Cc f = p1Cc(10, st);   // C0 0x12: C3 BPF1 / HPF (bit 5 bypass), C4 LPF
+        const hl2::Cc p = p1Cc(11, st);   // C0 0x14: C2 bit 6 PureSignal
+        const hl2::Cc f2 = p1Cc(16, st);  // C0 0x24: C1 BPF2 (bit 5 bypass), C2 bit 6 PureSignal
+        const auto hx = [](std::uint8_t v) {
+            return QStringLiteral("%1").arg(v, 2, 16, QLatin1Char('0'));
+        };
+        qCInfo(lcAnanP2T).nospace()
+            << "ANAN P1 transport: TX C&C on " << m_profile.modelName << " (board "
+            << int(m_profile.boardId) << ", band-pass banks "
+            << (m_profile.alexScheme == AlexScheme::Orion2BandPass ? "yes" : "no")
+            << "), PureSignal " << (m_psEnabled ? "on" : "off") << ", feedback ADC"
+            << m_psAdc + 1 << ", source " << m_psSource << ": 0x00 C3=" << hx(g[3])
+            << ", 0x12 C3=" << hx(f[3]) << " C4=" << hx(f[4]) << ", 0x14 C2=" << hx(p[2])
+            << ", 0x24 C1=" << hx(f2[1]) << " C2=" << hx(f2[2]);
+    }
     auto pkt = hl2::ep2Packet(m_p1Seq++, a, b);
     // Speaker audio, 126 stereo frames, if the mixer has produced them.
     std::array<std::int16_t, 2 * hl2::kTxSamplesPerPacket> audio{};
