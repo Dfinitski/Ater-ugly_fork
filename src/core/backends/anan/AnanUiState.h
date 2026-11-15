@@ -117,6 +117,7 @@ public:
     // Build 277: receive ADCs of the radio as driven (by the backend, from
     // the board profile). With one, the ADC1/ADC2 choice is not offered.
     int numAdcs = 2;
+    bool protocol1 = false;   // build 439: written by the backend (Dither / Random per ADC only on P2)
     bool adcOverloadTest = false;
     // What the panadapter adds to a per-bin level to draw it (06.11: the
     // referral of a bin to 500 Hz plus the meter's calibration); lines that

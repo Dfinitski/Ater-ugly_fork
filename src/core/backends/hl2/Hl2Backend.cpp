@@ -650,6 +650,7 @@ Hl2Backend::Hl2Backend(QObject* parent)
         // forcedly assigned type brings its own.
         const int numAdcs = std::clamp(ananProfile().numAdcs, 1, 2);
         anan::AnanUiState::instance().numAdcs = numAdcs;
+        anan::AnanUiState::instance().protocol1 = static_cast<anan::P2Transport*>(m_metis)->isProtocol1();   // build 439
         bool adcChanged = false;
         for (int rx = 0; rx < 2; ++rx) {
             const QString key = rx == 0 ? QStringLiteral("AnanRx1Adc")
@@ -696,6 +697,7 @@ Hl2Backend::Hl2Backend(QObject* parent)
         }
         ananApplyCodecSettings();
         ananPushCwKeyer();
+        ananPushAdcDitherRandom();   // build 439
         // Read the id only while the TX thread is not rebuilding the channel
         // (WdspTxaGuard.h); a skipped tick is picked up by the next one.
         if (m_ps) {
@@ -2941,6 +2943,27 @@ void Hl2Backend::ananUnkeyIqFeed(const std::vector<std::complex<float>>& iq)
                             << " Hz, I/Q, unkey at 500 ms); RX1 IQ peak dBFS per 20 ms from -100 ms: " << pk;
     m_ukIq.clear();
     m_ukIq.shrink_to_fit();
+}
+
+// Build 439 (operator, 15.11): Dither / Random per ADC, set in the receivers'
+// ANT menus (keys AnanAdc1Dither / AnanAdc1Random / AnanAdc2Dither /
+// AnanAdc2Random, global, off by default); pushed when they change.
+void Hl2Backend::ananPushAdcDitherRandom()
+{
+    if (!m_metis)
+        return;
+    auto& st = AppSettings::instance();
+    auto on = [&st](const char* k) {
+        return st.value(QString::fromLatin1(k), QStringLiteral("False")).toString() == QLatin1String("True");
+    };
+    const int dither = (on("AnanAdc1Dither") ? 1 : 0) | (on("AnanAdc2Dither") ? 2 : 0);
+    const int random = (on("AnanAdc1Random") ? 1 : 0) | (on("AnanAdc2Random") ? 2 : 0);
+    const int sig = dither | (random << 4);
+    if (sig == m_ananDitherRandomSig)
+        return;
+    m_ananDitherRandomSig = sig;
+    QMetaObject::invokeMethod(m_metis, "setAdcDitherRandom", Qt::QueuedConnection,
+                              Q_ARG(int, dither), Q_ARG(int, random));
 }
 
 void Hl2Backend::ananPushCwKeyer()

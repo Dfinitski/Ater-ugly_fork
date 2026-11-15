@@ -764,6 +764,8 @@ private:
     void ananApplyCodecSettings();
     // ANAN-100D port: the CW applet's keyer settings -> the FPGA keyer.
     void ananPushCwKeyer();
+    void ananPushAdcDitherRandom();   // build 439
+    int m_ananDitherRandomSig = -1;    // build 439
     // ANAN-100D port, unkey test (31.10): what the receivers do from the key
     // to 6 s after the unkey -- 25 ms rows of S-meter, panadapter, AGC gain,
     // DSP in/out; every backend command in that window; RX1 IQ -0.5..+3 s

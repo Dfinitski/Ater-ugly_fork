@@ -94,6 +94,12 @@ public:
     Q_INVOKABLE void setLnaGainDb(int db) override;
     Q_INVOKABLE void setBandFilter(int ocFilterByte) override;
     Q_INVOKABLE void setDitherRandomBits(bool dither, bool random) override;
+    // Build 439 (operator, 15.11): Dither / Random per ADC (bit N = ADC N+1),
+    // from the receivers' ANT menus (AnanAdc1Dither ...). Protocol 2: DDC
+    // Specific bytes 5 / 6 per ADC (Thetis network.c); Protocol 1: one pair
+    // for the radio, C0=0 C3 bits 3 / 4 = ADC1's (Thetis networkproto1.c
+    // adc[0]). Replaces the radio-wide pair of setDitherRandomBits on ANAN.
+    Q_INVOKABLE void setAdcDitherRandom(int ditherMask, int randomMask);
     Q_INVOKABLE void setLocalCodec(bool present) override;
     Q_INVOKABLE void submitSpeakerAudio(const QByteArray& interleavedInt16) override;
     Q_INVOKABLE void clearSpeakerAudio() override;
@@ -478,6 +484,8 @@ private:
     std::array<int, 2> m_adcAtt{};
     bool m_dither = false;
     bool m_random = false;
+    int m_ditherMask = 0;   // build 439: per ADC
+    int m_randomMask = 0;
     std::array<std::uint32_t, kMaxDdcs> m_rxHz{};
     std::array<std::uint32_t, kMaxDdcs> m_rxTunedHz{};   // setRxTunedHz()
     [[nodiscard]] double ocRxHz(std::size_t rx) const noexcept

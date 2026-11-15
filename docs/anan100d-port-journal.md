@@ -7551,6 +7551,30 @@ Thetis: «Ext 1 on Tx» / «Rx BYPASS on Tx» (Alex.cs `Ext1OutOnTx` / `Ext2OutO
 
 Проверено компиляцией; на радио не проверялось.
 
+## 411. Сборка 439 — Dither / Random по АЦП в меню ANT; убраны со страницы радио
+
+Оператор, 15.11: кнопку выбора АЦП в меню ANT вернуть по ширине как было (когда их было две), на
+освободившееся место — галки Dith: и Rand:; со страницы Radio Settings убрать. Галки — для АЦП,
+выбранного сейчас у этого приёмника, хранятся глобально для каждого АЦП. Проверить биты протоколов.
+
+Thetis: `SetADCDither` / `SetADCRandom` — одно значение для всех АЦП (netInterface.c 444/456).
+Протокол 2 (network.c 1080–1090): DDC Specific байт 5 — dither, байт 6 — random, бит N = АЦП N.
+Протокол 1 (networkproto1.c 628–630): C0=0 C3 бит 3 dither, бит 4 random — `adc[0]`, одна пара на
+радио.
+
+- `SpectrumOverlayMenu`: строка `RXn: [ADC1/ADC2]  Dith: [ ]  Rand: [ ]` — кнопка на половину строки,
+  галки — для АЦП этого приёмника; ключи `AnanAdc1Dither / AnanAdc1Random / AnanAdc2Dither /
+  AnanAdc2Random` (по умолчанию выкл.). На P1 у приёмника на АЦП2 галки неактивны (одна пара на
+  радио — АЦП1).
+- `Hl2Backend::ananPushAdcDitherRandom` (опрос 300 мс) → `P2Transport::setAdcDitherRandom(маски)`.
+- P2: байты 5 / 6 = маски по АЦП этой платы (`buildDdcSpecific` — без изменений, байты
+  перезаписываются после); P1: C0=0 C3 биты 3 / 4 = флаги АЦП1 (`p1State`).
+- Radio Settings (страница ANAN): группа ADC (Dither, Random) убрана; общая пара `setDitherRandomBits`
+  на ANAN больше не действует.
+- `AnanUiState::protocol1` пишет бэкенд.
+
+Проверено компиляцией; на радио не проверялось.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

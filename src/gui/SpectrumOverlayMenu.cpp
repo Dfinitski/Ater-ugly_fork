@@ -1094,6 +1094,60 @@ void SpectrumOverlayMenu::buildAntPanel()
         m_adcBtn->setText(next == 0 ? QStringLiteral("ADC1") : QStringLiteral("ADC2"));
     });
     adcRow->addWidget(m_adcBtn, 1);
+    // Build 439 (operator, 15.11): the button as wide as when there were two;
+    // in the freed half, Dither and Random of the ADC selected now (global,
+    // per ADC: AnanAdc1Dither / AnanAdc1Random / AnanAdc2Dither /
+    // AnanAdc2Random; Hl2Backend::ananPushAdcDitherRandom sends them).
+    {
+        auto* dr = new QWidget(m_adcRow);
+        applyTransparentStyle(dr, QStringLiteral("adcDitherRandom"));
+        auto* drl = new QHBoxLayout(dr);
+        drl->setContentsMargins(4, 0, 0, 0);
+        drl->setSpacing(3);
+        const QString chkStyle = QStringLiteral(
+            "QCheckBox { spacing: 0px; }"
+            "QCheckBox::indicator { width: 12px; height: 12px; border: 1px solid #304050;"
+            " border-radius: 2px; background: #0a0a18; }"
+            "QCheckBox::indicator:hover { border: 1px solid #0090e0; }"
+            "QCheckBox::indicator:checked { background: #00b4d8; border: 1px solid #40c8e8; }"
+            "QCheckBox::indicator:disabled { background: #1a2028; border: 1px solid #252f3a; }");
+        auto addChk = [&](const QString& text, const char* what, QCheckBox*& out) {
+            auto* l = new QLabel(text);
+            l->setStyleSheet(kLabelStyle);
+            drl->addWidget(l);
+            auto* c = new QCheckBox;
+            c->setStyleSheet(chkStyle);
+            c->setAccessibleName(QString::fromLatin1(what));
+            drl->addWidget(c);
+            out = c;
+        };
+        addChk(QStringLiteral("Dith:"), "ADC dither", m_ditherChk);
+        drl->addSpacing(4);
+        addChk(QStringLiteral("Rand:"), "ADC random", m_randomChk);
+        drl->addStretch(1);
+        m_ditherChk->setToolTip(QStringLiteral(
+            "The LTC2208's dither on the ADC this receiver uses: breaks up the ADC's spurs\n"
+            "at the cost of a slightly higher noise floor. Kept per ADC."));
+        m_randomChk->setToolTip(QStringLiteral(
+            "The LTC2208's output randomizer on the ADC this receiver uses: scrambles the\n"
+            "data bits so their noise coupled back to the input forms no spurs. Kept per ADC."));
+        auto bind = [this](QCheckBox* c, bool dither) {
+            connect(c, &QCheckBox::toggled, this, [this, dither](bool on) {
+                const int rx = AetherSDR::anan::AnanUiState::instance().rxForPan(m_panId);
+                const int r = (rx == 1) ? 1 : 0;
+                const int adc = std::clamp(AppSettings::instance()
+                                               .value(r == 0 ? QStringLiteral("AnanRx1Adc") : QStringLiteral("AnanRx2Adc"), 0)
+                                               .toInt(), 0, 1);
+                const QString key = QStringLiteral("AnanAdc%1%2").arg(adc + 1).arg(dither ? QStringLiteral("Dither")
+                                                                                          : QStringLiteral("Random"));
+                AppSettings::instance().setValue(key, on ? QStringLiteral("True") : QStringLiteral("False"));
+                AppSettings::instance().save();
+            });
+        };
+        bind(m_ditherChk, true);
+        bind(m_randomChk, false);
+        adcRow->addWidget(dr, 1);
+    }
     m_adcRow->setVisible(false);
     vbox->addWidget(m_adcRow);
 
@@ -3538,6 +3592,22 @@ void SpectrumOverlayMenu::syncAttOwnership()
         if (m_adcBtn->text() != t)
             m_adcBtn->setText(t);
         m_adcBtn->setEnabled(rx == 0 || rx == 1);
+        // Build 439: Dither / Random of the ADC selected now.
+        if (m_ditherChk && m_randomChk) {
+            auto flag = [adc](const char* what) {
+                return AppSettings::instance()
+                           .value(QStringLiteral("AnanAdc%1%2").arg(adc + 1).arg(QLatin1String(what)),
+                                  QStringLiteral("False"))
+                           .toString() == QLatin1String("True");
+            };
+            const QSignalBlocker b1(m_ditherChk), b2(m_randomChk);
+            m_ditherChk->setChecked(flag("Dither"));
+            m_randomChk->setChecked(flag("Random"));
+            // Protocol 1 has one pair for the radio, ADC1's (C0=0 C3 bits 3 / 4).
+            const bool p1Adc2 = AetherSDR::anan::AnanUiState::instance().protocol1 && adc == 1;
+            m_ditherChk->setEnabled((rx == 0 || rx == 1) && !p1Adc2);
+            m_randomChk->setEnabled((rx == 0 || rx == 1) && !p1Adc2);
+        }
     }
     // Build 277: the ADC count is known once the backend has the board.
     if (m_adcRow) {

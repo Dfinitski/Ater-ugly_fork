@@ -705,9 +705,14 @@ void P2Transport::sendDdcSpecific()
     const int lastAdc = std::max(0, m_profile.numAdcs - 1);
     for (int i = 0; i < m_numRx; ++i)
         ddcs.push_back(DdcConfig{rateKsps(), std::min(m_rxAdc[static_cast<std::size_t>(i)], lastAdc)});
-    const auto pkt = buildDdcSpecific(ddcs, m_profile.numAdcs, m_dither, m_random, m_profile.rxDdcBase,
+    auto pkt = buildDdcSpecific(ddcs, m_profile.numAdcs, false, false, m_profile.rxDdcBase,
                                       PsDdcOptions{m_psEnabled && m_mox,
                                                    m_psLoopback ? m_profile.numAdcs : m_psAdc});
+    // Build 439: bytes 5 / 6 per ADC (bit N = ADC N; Thetis network.c), from
+    // the ANT menus; only the ADCs this board has.
+    const int adcBits = (1 << std::clamp(m_profile.numAdcs, 1, 3)) - 1;
+    pkt[5] = static_cast<std::uint8_t>(m_ditherMask & adcBits);
+    pkt[6] = static_cast<std::uint8_t>(m_randomMask & adcBits);
     sendDatagram(*m_sock, pkt, m_txHost, kDdcSpecificPort, m_counters.txBytes, m_counters.txPackets);
 }
 
@@ -1631,10 +1636,27 @@ void P2Transport::setBandFilter(int ocFilterByte)
 
 void P2Transport::setDitherRandomBits(bool dither, bool random)
 {
+    // Build 439: the radio-wide pair of the hardware page is not used on
+    // ANAN any more -- per ADC from the ANT menus (setAdcDitherRandom).
     m_dither = dither;
     m_random = random;
-    if (m_run && m_configured)
-        sendDdcSpecific();
+}
+
+void P2Transport::setAdcDitherRandom(int ditherMask, int randomMask)
+{
+    ditherMask &= 0x07;
+    randomMask &= 0x07;
+    if (ditherMask == m_ditherMask && randomMask == m_randomMask)
+        return;
+    m_ditherMask = ditherMask;
+    m_randomMask = randomMask;
+    qCInfo(lcAnanP2T).nospace() << "ANAN transport: Dither ADC1 " << ((ditherMask & 1) ? "on" : "off")
+                                << ", ADC2 " << ((ditherMask & 2) ? "on" : "off") << "; Random ADC1 "
+                                << ((randomMask & 1) ? "on" : "off") << ", ADC2 "
+                                << ((randomMask & 2) ? "on" : "off")
+                                << (m_p1 ? " (Protocol 1: one pair for the radio, ADC1's)" : "");
+    if (m_run && m_configured && !m_p1)
+        sendDdcSpecific();   // Protocol 1: the next C&C round carries it
 }
 
 // ANAN fork build 279 (operator, 11.11: "WIDE means the filters are bypassed,
@@ -2826,8 +2848,10 @@ P1CcState P2Transport::p1State() const
     const double filterHz = static_cast<double>(m_rxHz[filterRx]);
     s.openCollector = openCollectorBits(m_oc, ocRxHz(filterRx), static_cast<double>(tx), m_mox,
                                         m_tunerStart);
-    s.dither = m_dither;
-    s.random = m_random;
+    // Build 439: Protocol 1 has one Dither / Random pair (C0=0 C3 bits 3 / 4,
+    // Thetis adc[0]): ADC1's setting.
+    s.dither = (m_ditherMask & 1) != 0;
+    s.random = (m_randomMask & 1) != 0;
     s.antenna = m_mox ? m_txAnt : m_rxAnt;
     s.duplex = true;
     // With PureSignal on, ADC0's transmit attenuation is the feedback

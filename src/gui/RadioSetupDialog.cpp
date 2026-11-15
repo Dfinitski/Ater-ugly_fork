@@ -4220,37 +4220,8 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     noRadioLbl->setVisible(false);
     vbox->addWidget(noRadioLbl);
 
-    auto* adcGroup = new QGroupBox("ADC");
-    auto* avb = new QVBoxLayout(adcGroup);
-    avb->setSpacing(6);
-
-    auto* ditherChk = new QCheckBox("Dither");
-    ditherChk->setObjectName(QStringLiteral("ananHwDither"));
-    ditherChk->setAccessibleDescription(QStringLiteral(
-        "Adds the ADC's internal dither, which spreads its spurious products."));
-    ditherChk->setToolTip(QStringLiteral(
-        "The LTC2208's dither: a small internal noise that breaks up the ADC's\n"
-        "spurious products (spurs) at the cost of a slightly higher noise floor.\n"
-        "Applies to both ADCs."));
-    avb->addWidget(ditherChk);
-    controls->append(ditherChk);
-
-    auto* randomChk = new QCheckBox("Random");
-    randomChk->setObjectName(QStringLiteral("ananHwRandom"));
-    randomChk->setAccessibleDescription(QStringLiteral(
-        "Randomizes the ADC's output bits, which reduces digital crosstalk."));
-    randomChk->setToolTip(QStringLiteral(
-        "The LTC2208's output randomizer: scrambles the data bits so the digital\n"
-        "noise they couple back into the input does not form spurs.\n"
-        "Applies to both ADCs."));
-    avb->addWidget(randomChk);
-    controls->append(randomChk);
-
-    auto* adcHint = new QLabel(
-        "Both are off by default. Try them when an ADC spur sits on a weak signal.");
-    setTone(adcHint, Tone::Hint);
-    adcHint->setWordWrap(true);
-    avb->addWidget(adcHint);
+    // Build 439 (operator, 15.11): Dither / Random moved to the receivers'
+    // ANT menus, per ADC (SpectrumOverlayMenu; keys AnanAdc1Dither ...).
 
     // ANAN-100D port: which radio this board is (Thetis "Radio Model"). One
     // board id covers several models (the 7000DLE, 8000DLE, Orion MkII and
@@ -4336,13 +4307,12 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
 
     vbox->addWidget(modelGroup);
     vbox->addWidget(connGroup);
-    vbox->addWidget(adcGroup);
 
-    const QPointer<QCheckBox> ditherGuard(ditherChk);
-    m_hl2HardwareReseed = [this, ditherGuard, ditherChk, randomChk, noRadioLbl, controls,
+    const QPointer<QComboBox> pageGuard(modelCombo);   // build 439 (was the Dither box)
+    m_hl2HardwareReseed = [this, pageGuard, noRadioLbl, controls,
                            modelCombo, psNote, micPttChk, micTipChk, micBiasChk, micXlrChk,
                            gndChk, connNone, connGroup, forceModelChk, forceNote] {
-        if (!ditherGuard)
+        if (!pageGuard)
             return;
         IRadioBackend* backend = m_model->backend();
         const bool haveRadio = !m_model->settingsScope().radioId().isEmpty();
@@ -4365,10 +4335,6 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
         const quint64 requestId = nextHwId++;
         auto* guard = new QObject(this);
         auto fill = [=](const QVariantMap& m) {
-            const QSignalBlocker b1(ditherChk);
-            const QSignalBlocker b2(randomChk);
-            ditherChk->setChecked(m.value(QStringLiteral("ditherBit")).toBool());
-            randomChk->setChecked(m.value(QStringLiteral("randomBit")).toBool());
             {
                 const QSignalBlocker bm(modelCombo);
                 const QString model = m.value(QStringLiteral("ananModel")).toString();
@@ -4438,12 +4404,6 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     };
     m_hl2HardwareReseed();
 
-    connect(ditherChk, &QCheckBox::toggled, this, [apply](bool on) {
-        apply(QVariantMap{{QStringLiteral("ditherBit"), on}});
-    });
-    connect(randomChk, &QCheckBox::toggled, this, [apply](bool on) {
-        apply(QVariantMap{{QStringLiteral("randomBit"), on}});
-    });
     connect(modelCombo, &QComboBox::currentTextChanged, this, [this, apply](const QString& model) {
         if (model.isEmpty())
             return;
