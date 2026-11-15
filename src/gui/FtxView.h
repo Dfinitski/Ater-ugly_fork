@@ -10,6 +10,7 @@
 #include <QPointer>
 #include <QWidget>
 
+class QFrame;
 class QLabel;
 class QVBoxLayout;
 
@@ -30,6 +31,9 @@ public:
     void setDialText(const QString& text);
     void setAddRxVisible(bool visible);   // build 388: hidden while a second receiver is open
 
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 signals:
     void exitRequested();
     void addRxRequested();   // build 385: the "+RX" of the side menu (hidden in FTX)
@@ -39,6 +43,10 @@ private:
     QLabel* m_dial = nullptr;
     QWidget* m_addRx = nullptr;
     QPointer<QWidget> m_waterfall;
+    // Build 428: the thin frame round the waterfall (shown with it).
+    QWidget* m_wfBox = nullptr;
+    QFrame* m_wfFrame = nullptr;
+    QVBoxLayout* m_wfLayout = nullptr;
 };
 
 }  // namespace AetherSDR

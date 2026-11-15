@@ -1,6 +1,8 @@
 // The FTX view: see FtxView.h.
 #include "gui/FtxView.h"
 
+#include <QEvent>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
@@ -48,7 +50,23 @@ FtxView::FtxView(QWidget* parent) : QWidget(parent)
     connect(exitBtn, &QPushButton::clicked, this, &FtxView::exitRequested);
     bar->addWidget(exitBtn);
     m_layout->addLayout(bar);
-    m_layout->addStretch(1);   // the waterfall goes above this (setWaterfall)
+    // Build 428 (operator, 15.11): the waterfall in a thin frame with small
+    // margins, so that its edges are seen.
+    m_wfBox = new QWidget(this);
+    auto* box = new QVBoxLayout(m_wfBox);
+    box->setContentsMargins(6, 2, 6, 6);
+    box->setSpacing(0);
+    m_wfFrame = new QFrame(m_wfBox);
+    m_wfFrame->setObjectName(QStringLiteral("ftxWaterfallFrame"));
+    m_wfFrame->setStyleSheet(QStringLiteral(
+        "#ftxWaterfallFrame { border: 1px solid #4a5568; border-radius: 3px; background: #101216; }"));
+    m_wfLayout = new QVBoxLayout(m_wfFrame);
+    m_wfLayout->setContentsMargins(3, 3, 3, 3);
+    m_wfLayout->setSpacing(0);
+    box->addWidget(m_wfFrame);
+    m_wfBox->hide();
+    m_layout->addWidget(m_wfBox);
+    m_layout->addStretch(1);   // the waterfall's frame goes above this (setWaterfall)
 }
 
 FtxView::~FtxView()
@@ -62,10 +80,14 @@ void FtxView::setWaterfall(QWidget* waterfall, int height)
     if (!waterfall)
         return;
     m_waterfall = waterfall;
-    waterfall->setParent(this);
+    waterfall->setParent(m_wfFrame);
     waterfall->setFixedHeight(std::clamp(height, 60, 600));
-    m_layout->insertWidget(1, waterfall);   // under the bar, above the stretch
+    m_wfLayout->addWidget(waterfall);
+    // The frame is seen with the waterfall: FtPanel / MainWindow hide and
+    // show the waterfall itself (Waterfall off in the FTX window settings).
+    waterfall->installEventFilter(this);
     waterfall->show();
+    m_wfBox->show();
 }
 
 QWidget* FtxView::takeWaterfall()
@@ -73,11 +95,25 @@ QWidget* FtxView::takeWaterfall()
     QWidget* w = m_waterfall;
     m_waterfall = nullptr;
     if (w) {
-        m_layout->removeWidget(w);
+        w->removeEventFilter(this);
+        m_wfLayout->removeWidget(w);
         w->hide();
         w->setParent(nullptr);
     }
+    if (m_wfBox)
+        m_wfBox->hide();
     return w;
+}
+
+bool FtxView::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == m_waterfall && m_wfBox) {
+        if (event->type() == QEvent::ShowToParent)
+            m_wfBox->show();
+        else if (event->type() == QEvent::HideToParent)
+            m_wfBox->hide();
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 void FtxView::setAddRxVisible(bool visible)

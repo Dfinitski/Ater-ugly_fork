@@ -176,7 +176,9 @@ private:
     QCheckBox *pbWf;                           // the waterfall shown (settings)
     QLabel *lbTx;
     QPointer<FtWaterfall> wf;
-    int wfHeight = 170;
+    // AetherSDR, build 428: 170 + one FT8 period (kWfFt8PeriodPx lines)
+    static const int kWfFt8PeriodPx = 44;      // 15 s / (4 x 1024 / 12000 s a line) = 43.9
+    int wfHeight = 170 + kWfFt8PeriodPx;
     QSpinBox *sbWf0, *sbWf1;
     void showWaterfall();
     void wfSettings();                         // the range, the search range, RX / TX, the mode

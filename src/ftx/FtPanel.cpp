@@ -523,7 +523,17 @@ void FtPanel::loadSettings()
     pbSettings->setChecked(st.value("SettingsOpen", false).toBool());
     loadTxSettings(st);
     st.remove("WaterfallGeometry");
-    wfHeight = qBound(60, st.value("WaterfallHeight", 170).toInt(), 2000);
+    wfHeight = qBound(60, st.value("WaterfallHeight", 170 + kWfFt8PeriodPx).toInt(), 2000);
+    // AetherSDR, build 428 (operator, 15.11: "the FTX waterfall one FT8 period higher, the same
+    // for all the sub-modes"): a height saved before grows by one FT8 period, once. One height
+    // for FT8 / FT4 / WSPR / JS8 (the lines come at one rate in all of them: FtUnit, 0.34 s).
+    if(!st.value("WaterfallHeightFt8Period", false).toBool())
+    {
+        if(st.contains("WaterfallHeight"))
+            wfHeight = qBound(60, wfHeight + kWfFt8PeriodPx, 2000);
+        st.setValue("WaterfallHeightFt8Period", true);
+        st.setValue("WaterfallHeight", wfHeight);
+    }
     sbWf0->setValue(st.value("WaterfallFrom", 0).toInt());
     sbWf1->setValue(st.value("WaterfallTo", 4000).toInt());
     pbWf->blockSignals(true);
