@@ -265,8 +265,20 @@ void FdvEngine::processTx(std::vector<float>& mono)
     m_api->txWrite(obj, m_tb.data(), static_cast<int>(m_tb.size()));
     m_api->txRead(obj, m_tb.data(), static_cast<int>(m_tb.size()));
     m_txDown.down(m_tb.data(), m_tb.size(), m_tc);             // 24 kHz
+    // Build 413 (operator, 14.11, after the measurements of 411 / 412): RADE
+    // 4.5 dB down. Behind the transmit filter (600 .. 2350 Hz, the modem's
+    // own) the envelope of libfdv's RADE output peaked 3.9 .. 4.6 dB over
+    // full scale, and WDSP's ALC rode it in 92 .. 97 % of the blocks (mean
+    // -1.9 dB): the modem's low crest factor lives in its clipping products,
+    // which any filter of the signal's width removes. At this level the ALC
+    // is idle. The cost is average power: about -8.9 dBFS instead of -6.3
+    // (13 W instead of 23 W of a 100 W scale). To be replaced by a
+    // clip-and-filter stage of our own (the operator: "the third later").
+    // libfdv's lib mode 0 is RADE (fdv_api.h); the codec2 modes are as they were.
+    constexpr float kRadeTxTrim = 0.5957f;   // -4.5 dB
+    const float g = (m_mode == 0) ? kRadeTxTrim : 1.0f;
     for (std::size_t i = 0; i < mono.size() && i < m_tc.size(); ++i)
-        mono[i] = m_tc[i];
+        mono[i] = m_tc[i] * g;
 }
 
 bool FdvEngine::status(Status* st)
