@@ -25,7 +25,8 @@
   take the receiver's I/Q, the transmit waveform goes straight to the modulator, and the mode's
   waterfall replaces the panadapter while FTX is on (decoders and window from MicronSDR, N7DDC)
 - **FreeDV built in** — RADE, 1600, 700D and 700E as an FDV mode on the VFO flag, with FreeDV
-  Reporter
+  Reporter (Windows build; in the Linux AppImage FTX and FreeDV are not available yet — their
+  decoder libraries are Windows DLLs for now)
 
 ![FT8 in the FTX window of the program: the decodes on the left, the mode's waterfall in place of the panadapter on the right (ANAN-100D, 40 m)](docs/screenshots/ftx-ft8-anan100d.png)
 

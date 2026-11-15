@@ -87,6 +87,13 @@ TX Profile.
 **Known:** in FreeDV 700D and 700E the ALC still rides the signal (1.3-2.9 dB on average) -- their
 transmit filter and level are the next work. 1600 is clean.
 
+## Linux AppImage
+
+Built from the same source. **FTX (FT8 / FT4 / WSPR / JS8) and FreeDV do not work in it yet:**
+their decoders exist only as Windows DLLs (`libftx.dll`, `libjs8.dll`, `libfdv.dll`); on Linux
+the program starts and reports that the decoder library is not loaded when the mode is switched
+on. Everything else is the same as on Windows.
+
 ## Reporting a problem
 
 **Tools -> Open Logs**, close the program, attach the newest `aethersdr-YYYYMMDD-HHMMSS.log` to an
