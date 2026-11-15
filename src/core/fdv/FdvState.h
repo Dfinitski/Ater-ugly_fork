@@ -78,8 +78,26 @@ inline void fdvTxBandHz(int subMode, int* lo, int* hi)
     // at work in 97 % of the blocks, mean -2.2 dB, dips to -5 dB (the peaks
     // behind the filter 5 dB over full scale; in: envelope crest about 2 dB).
     // Now the modem's own figures: 600 .. 2350.
+    //
+    // Build 421 -- the codec2 modes checked against codec2's source
+    // (github.com/drowe67/codec2, src/):
+    //   1600 (fdmdv.c, freedv_1600.c): Nc 16 + a pilot at 1500 Hz, 75 Hz
+    //        apart -> carriers 900 .. 2100 Hz, root raised cosine alpha 0.5 at
+    //        50 baud (gt_alpha5_root): each +-37.5 Hz -> 862.5 .. 2137.5 Hz.
+    //        OUR ERROR: 900 .. 2100 put the filter's -6 dB point on the two
+    //        outer carriers and cut their outer halves by 38 dB (the WDSP
+    //        filter, modelled). Now 800 .. 2200: flat over the signal.
+    //   700D (ofdm_mode.c): Nc 17 + edge pilots, Ts 18 ms (55.6 Hz) about
+    //        1500 -> 1000 .. 2000 Hz; codec2's own Tx BPF filtP650S900
+    //        (pass +-650 Hz at 8 kHz, ofdm.c allocate_tx_bpf) -> 850 .. 2150.
+    //   700E: Nc 21, no edge pilots, Ts 14 ms (71.4 Hz) -> 786 .. 2214 Hz;
+    //        its Tx BPF filtP900S1100 -> 600 .. 2400.
+    // 700D / 700E take codec2's own passbands, as RADE takes radae's: the
+    // modem's authors' filter after their clipper ("a little extra bandwidth
+    // helps reduce PAPR", filter_coef.h). 950 .. 2050 took 0.9 dB off 700D's
+    // carrier edges.
     static const int band[kFdvSubModeCount][2] = {
-        {900, 2100}, {950, 2050}, {700, 2300}, {600, 2350}};   // 1600, 700D, 700E, RADE
+        {800, 2200}, {850, 2150}, {600, 2400}, {600, 2350}};   // 1600, 700D, 700E, RADE
     const int m = std::clamp(subMode, 0, kFdvSubModeCount - 1);
     *lo = band[m][0];
     *hi = band[m][1];
