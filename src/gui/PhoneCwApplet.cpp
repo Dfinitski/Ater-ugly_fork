@@ -732,6 +732,8 @@ QJsonObject PhoneCwApplet::captureMicProfile() const
     p[QStringLiteral("txHigh")] = m_txHighSlider->value();
     if (captureAetherTx)
         p[QStringLiteral("aetherTx")] = captureAetherTx();
+    if (captureEq)
+        p[QStringLiteral("eq")] = captureEq();   // build 414
     return p;
 }
 
@@ -761,6 +763,11 @@ void PhoneCwApplet::applyMicProfile(const QJsonObject& p)
     m_txHighSlider->setValue(hi);
     if (applyAetherTx && p.value(QStringLiteral("aetherTx")).isObject())
         applyAetherTx(p.value(QStringLiteral("aetherTx")).toObject());
+    // After AetherTX: the 8-band EQ shares slots 0..7 of the transmit ClientEq
+    // with it, and the two were saved together. A profile saved before 414
+    // has no "eq": the equalizers stay as they are.
+    if (applyEq && p.value(QStringLiteral("eq")).isObject())
+        applyEq(p.value(QStringLiteral("eq")).toObject());
 }
 
 void PhoneCwApplet::saveMicProfile(int slot)

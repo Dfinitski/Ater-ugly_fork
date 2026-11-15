@@ -57,6 +57,11 @@ public:
     void setMicProfileGroup(const QString& group);   // "SSB" / "AM" / "FM" / "FDV" / "" (none)
     std::function<QJsonObject()> captureAetherTx;             // set by MainWindow
     std::function<void(const QJsonObject&)> applyAetherTx;
+    // Build 414 (operator, 15.11): the equalizers, receive and transmit, are
+    // part of a profile too -- the 8-band EQ applet (both sides, enables and
+    // bands) and the receive ClientEq (AetherRX EQ). Set by MainWindow.
+    std::function<QJsonObject()> captureEq;
+    std::function<void(const QJsonObject&)> applyEq;
     void setTransmitControlsAvailable(bool available);
 
     // Bind the active slice.  TransmitModel is radio-global TX state; APF is a

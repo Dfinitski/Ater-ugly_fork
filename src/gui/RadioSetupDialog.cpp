@@ -3311,7 +3311,8 @@ QWidget* RadioSetupDialog::buildTxTab()
             "A profile holds: RF power, TUNE power, microphone source (PC / MIC / TEST), "
             "mic gain, +20 dB, PROC on and level, TX filter low/high, monitor level and "
             "the TX equalizer, the PureSignal settings and the microphone profiles of the Mic "
-            "applet (Profile 1-4 of SSB, AM, FM and FDV, with AetherTX). Choosing a profile "
+            "applet (Profile 1-4 of SSB, AM, FM and FDV, with AetherTX and the RX / TX "
+            "equalizers). Choosing a profile "
             "applies it at once.");
         setTone(hint, Tone::Hint);
         hint->setWordWrap(true);

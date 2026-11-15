@@ -5741,6 +5741,45 @@ void MainWindow::buildUI()
             if (m_aetherialStrip)
                 m_aetherialStrip->refreshAfterProfile();
         };
+        // Build 414: the equalizers. "graphic" -- the EQ applet's state (its
+        // own settings schema, EqualizerModel::stateToJson); "rx" -- the
+        // receive ClientEq as the AetherRX profiles keep it (its bands 0..7
+        // are the EQ applet's RX side, the rest the strip's own).
+        mic->captureEq = [this] {
+            QJsonObject o;
+            QJsonObject graphic;
+            EqualizerModel::stateToJson(m_radioModel.equalizerModel().state(), graphic);
+            o[QStringLiteral("graphic")] = graphic;
+            if (m_audio) {
+                const QJsonObject rx = ChannelStripPresets::captureRxJson(m_audio);
+                if (rx.value(QStringLiteral("eq")).isObject())
+                    o[QStringLiteral("rx")] = rx.value(QStringLiteral("eq"));
+            }
+            return o;
+        };
+        mic->applyEq = [this](const QJsonObject& o) {
+            if (m_audio && o.value(QStringLiteral("rx")).isObject()) {
+                QJsonObject rx;
+                rx[QStringLiteral("eq")] = o.value(QStringLiteral("rx"));
+                ChannelStripPresets::applyRxJson(m_audio, rx);   // persists the RX EQ
+            }
+            if (o.value(QStringLiteral("graphic")).isObject()) {
+                auto& model = m_radioModel.equalizerModel();
+                const EqualizerModel::State s =
+                    EqualizerModel::stateFromJson(o.value(QStringLiteral("graphic")).toObject());
+                // restoreState is silent towards the radio and emits only for a
+                // side that changed; both sides are pushed to the ClientEqs
+                // anyway, since the RX and TX EQs above may have rewritten
+                // their bands 0..7.
+                model.restoreState(s);
+                applyGraphicEqToClientEq(true);
+                applyGraphicEqToClientEq(false);
+                if (m_radioModel.isConnected() && hostModulatesTxAudio() && !m_graphicEqFromRadio)
+                    EqualizerModel::savePersistedState(s);
+            }
+            if (m_aetherialStrip)
+                m_aetherialStrip->refreshAfterProfile();
+        };
         auto* groupTimer = new QTimer(this);
         groupTimer->setInterval(300);
         connect(groupTimer, &QTimer::timeout, this, [this] {
