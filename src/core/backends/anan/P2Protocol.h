@@ -570,6 +570,9 @@ struct HighPriorityOptions {
 inline constexpr std::uint32_t kAlexPsBit = std::uint32_t{1} << 18;
 inline constexpr std::uint32_t kAlexRxExt1 = std::uint32_t{1} << 9;
 inline constexpr std::uint32_t kAlexRxBypass = std::uint32_t{1} << 11;
+// Thetis network.h rbpfilter: bit 9 _Rx_2_In (EXT1), bit 10 _Rx_1_In (EXT2;
+// "Rx BYPASS on Tx" on the ORION MkII boards), bit 11 _Rx_1_Out (RL17).
+inline constexpr std::uint32_t kAlexRxExt2 = std::uint32_t{1} << 10;
 
 // ---- User Out (open collector) matrices, Thetis Penny.cs semantics ----
 // Ham bands only (no broadcast/VHF rows): 160 80 60 40 30 20 17 15 12 10 6 m.

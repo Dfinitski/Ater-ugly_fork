@@ -714,11 +714,14 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
         const std::uint32_t txLpf = legacyAlexLpfBitsFor(txHz);
         alex0 |= txLpf;
         alex1 |= txLpf;
-        // PureSignal feedback while transmitting: internal coupler = no RX
-        // input bit; EXT1-on-TX does not exist here and falls back to the RX
-        // bypass input, as deskHPSDR does (rxant 106/107).
+        // PureSignal feedback while transmitting, as Thetis on the ORION MkII
+        // boards (setup.cs: "Ext 1 on Tx" / "Rx BYPASS on Tx" = Alex.cs
+        // Ext1OutOnTx / Ext2OutOnTx -> SetAntBits): internal coupler = no RX
+        // input bit; EXT1 = _Rx_2_In + _Rx_1_Out; RX bypass = _Rx_1_In +
+        // _Rx_1_Out. Build 427: OUR ERROR -- both sent only _Rx_1_Out, so the
+        // input relay never switched to the chosen feedback port.
         if (tx && opts.psEnabled && opts.psFeedbackSource != 0)
-            alex0 |= kAlexRxBypass;
+            alex0 |= kAlexRxBypass | (opts.psFeedbackSource == 1 ? kAlexRxExt1 : kAlexRxExt2);
         // Antennas: Alex0 the receive antenna (the TX one while transmitting),
         // Alex1 always the TX antenna.
         alex0 |= legacyAlexAntennaBit(tx ? opts.txAntenna : opts.rxAntenna);

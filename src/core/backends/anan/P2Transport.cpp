@@ -2817,13 +2817,19 @@ P1CcState P2Transport::p1State() const
     // With PureSignal on, ADC0's transmit attenuation is the feedback
     // attenuator (Thetis SetTxAttenData from the PS auto-attenuate).
     s.txAdc0AttDb = m_psEnabled ? m_psAttDb : m_txAttDb;
-    // PS feedback input while transmitting, as on Protocol 2: internal
-    // coupler = no RX input bit; EXT1 (old PA board) = EXT1 + RX bypass out;
-    // bypass = RX bypass out. ORION MkII has no EXT1 on TX: bypass.
+    // PS feedback input while transmitting, as on Protocol 2 (C0=0 C3: bit 7
+    // _Rx_1_Out, bit 6 _Rx_2_In = EXT1, bit 5 _Rx_1_In = EXT2): internal
+    // coupler = no RX input bit; EXT1 = EXT1 + RX bypass out; RX bypass = RX
+    // bypass out on the Alex boards ("RX Out on Tx"), RX 1 in + RX bypass out
+    // on ORION MkII (Thetis "Rx BYPASS on Tx" = Ext2OutOnTx). Build 427: OUR
+    // ERROR -- ORION MkII got bit 7 only for both, so its input relay never
+    // switched (operator, 15.11, a 7000DLE on Protocol 1).
     if (psTx && m_psSource != 0) {
         s.rxInputBits = 0x80;
-        if (m_psSource == 1 && m_profile.alexScheme != AlexScheme::Orion2BandPass)
+        if (m_psSource == 1)
             s.rxInputBits |= 0x40;
+        else if (m_profile.alexScheme == AlexScheme::Orion2BandPass)
+            s.rxInputBits |= 0x20;
     }
     s.driveLevel = cwDemoActive() ? 0 : m_drive;   // CW demo: no RF
     s.micBoost = m_micBoost;
