@@ -51,6 +51,21 @@ jobs:
           cp build_macos.log build_macos_first.log || true
           EXTRA_LDFLAGS=-Wl,-ld_classic ./build_macos.sh
 
+      - name: libftx.dylib, diagnostic (GCC runtime exports allowed, to run the tests)
+        id: ftx3
+        if: steps.ftx.outcome == 'failure' && steps.ftx2.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          # GCC 16 of Homebrew exports four symbols of its own runtime (emutls, nested function
+          # trampolines) in spite of -exported_symbols_list. This copy of the script lets them
+          # pass the export check only, so that the decoder test still runs; the library of this
+          # step is not the release one.
+          T=$RUNNER_TEMP/ft_diag; rm -rf $T; cp -R tools/micronsdr-modules/FT_src $T
+          sed -i '' 's/"ftx_|wspr_"/"ftx_|wspr_|__emutls_|__gcc_nested_func_ptr_"/' $T/build_macos.sh
+          grep -n 'check_dylib libftx' $T/build_macos.sh
+          cd $T && ./build_macos.sh
+          nm -gU libftx.dylib
+
       - name: libjs8.dylib (JS8_src)
         id: js8
         continue-on-error: true
@@ -75,6 +90,8 @@ jobs:
           for d in FT_src JS8_src FreeDV_src; do
             for l in $M/$d/build_macos*.log; do [ -f "$l" ] && cp "$l" "$O/logs/${d}_$(basename "$l")"; done
           done
+          [ -f $RUNNER_TEMP/ft_diag/build_macos.log ] && cp $RUNNER_TEMP/ft_diag/build_macos.log $O/logs/FT_src_diagnostic_build_macos.log
+          [ -f $RUNNER_TEMP/ft_diag/libftx.dylib ] && mkdir -p $O/diagnostic && cp $RUNNER_TEMP/ft_diag/libftx.dylib $O/diagnostic/
           cp $M/FT_src/MACOS_MODULES.txt $O/ 2>/dev/null || true
           ( cd $O && ls -l && shasum -a 256 *.dylib > SHA256SUMS.txt 2>/dev/null || true )
           for f in $O/*.dylib; do
@@ -93,7 +110,7 @@ jobs:
       - name: Result
         if: always()
         run: |
-          echo "ftx: ${{ steps.ftx.outcome }} / classic linker: ${{ steps.ftx2.outcome }}"
+          echo "ftx: ${{ steps.ftx.outcome }} / classic linker: ${{ steps.ftx2.outcome }} / diagnostic: ${{ steps.ftx3.outcome }}"
           echo "js8: ${{ steps.js8.outcome }}"
           echo "fdv: ${{ steps.fdv.outcome }}"
           ok=1
