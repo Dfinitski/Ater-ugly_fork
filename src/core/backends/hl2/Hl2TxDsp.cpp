@@ -238,17 +238,30 @@ void Hl2TxDsp::modulate(std::span<const float> audio)
 // here, per exchanged block: the ALC's gain (TXA_ALC_GAIN, dB <= 0), the peak
 // behind it (TXA_ALC_PK, dBFS of the envelope) and the envelope of the I/Q
 // this block puts out (after the CFIR and the resampler).
-void Hl2TxDsp::noteTxaLevels(std::size_t outBlock)
+void Hl2TxDsp::noteTxaLevels(const float* in, std::size_t inBlock, std::size_t outBlock)
 {
     constexpr int kTxaAlcPk = 12;     // enum txaMeterType (TXA.h)
     constexpr int kTxaAlcGain = 14;
     const int ch = m_channel ? m_channel->channelIdForTest() : -1;
     if (ch < 0)
         return;
-    const double gain = std::min(0.0, GetTXAMeter(ch, kTxaAlcGain));
+    // Build 411 -- OUR ERROR in 410: the meter was read as a gain (<= 0 dB)
+    // and clamped at 0, and the log of 14.11 20:29 showed "0.0 dB, at work in
+    // 0 %" for RADE and for speech alike. WDSP's wcpagc publishes
+    // gain = volts / out_target with volts never under min_volts (wcpAGC.c
+    // 336-338): for the ALC (max gain 1) that is >= 1, i.e. the REDUCTION as
+    // a positive figure, as Thetis shows it ("ALC comp"). A stopped meter
+    // reads far below 0. Here: the gain applied, dB <= 0.
+    const double gain = -std::max(0.0, GetTXAMeter(ch, kTxaAlcGain));
     const double pk = GetTXAMeter(ch, kTxaAlcPk);
     m_txaAlcGainDb = gain;
     m_txaAlcShownDb = std::min(gain, 0.9 * m_txaAlcShownDb);
+    for (std::size_t k = 0; k < inBlock; ++k) {
+        const double v = std::abs(static_cast<double>(in[k]));
+        m_txaInPk = std::max(m_txaInPk, v);
+        m_txaInSq += v * v;
+    }
+    m_txaInN += inBlock;
     double envPk = 0.0;
     for (std::size_t k = 0; k < outBlock; ++k) {
         const double e = static_cast<double>(m_outI[k]) * m_outI[k] + static_cast<double>(m_outQ[k]) * m_outQ[k];
@@ -272,8 +285,13 @@ void Hl2TxDsp::noteTxaLevels(std::size_t outBlock)
     if (m_txaEnvPk > 1.0e-3 && rms > 0.0) {
         const double pkDb = 20.0 * std::log10(m_txaEnvPk);
         const double rmsDb = 20.0 * std::log10(rms);
+        const double inRms = m_txaInN ? std::sqrt(m_txaInSq / static_cast<double>(m_txaInN)) : 0.0;
+        const double inPkDb = m_txaInPk > 0.0 ? 20.0 * std::log10(m_txaInPk) : -140.0;
+        const double inRmsDb = inRms > 0.0 ? 20.0 * std::log10(inRms) : -140.0;
         qCInfo(lcTxMod).nospace()
-            << "TXA levels, 2 s: ALC gain min " << QString::number(m_txaAlcMinDb, 'f', 1) << " dB, mean "
+            << "TXA levels, 2 s: audio in: peak " << QString::number(inPkDb, 'f', 1) << " dBFS, RMS "
+            << QString::number(inRmsDb, 'f', 1) << " dBFS, crest " << QString::number(inPkDb - inRmsDb, 'f', 1)
+            << " dB (a real signal: 3 dB at a constant envelope); ALC gain min " << QString::number(m_txaAlcMinDb, 'f', 1) << " dB, mean "
             << QString::number(m_txaAlcSumDb / std::max(1, m_txaLevelBlocks), 'f', 2) << " dB, at work in "
             << (100 * m_txaAlcBusyBlocks / std::max(1, m_txaLevelBlocks)) << " % of " << m_txaLevelBlocks
             << " blocks; peak behind the ALC " << QString::number(m_txaAlcPkDb, 'f', 1)
@@ -290,6 +308,9 @@ void Hl2TxDsp::noteTxaLevels(std::size_t outBlock)
     m_txaEnvN = 0;
     m_txaLevelBlocks = 0;
     m_txaAlcBusyBlocks = 0;
+    m_txaInPk = 0.0;
+    m_txaInSq = 0.0;
+    m_txaInN = 0;
 }
 
 // How long the head block may wait for the worker before it is dropped: one
@@ -374,7 +395,7 @@ void Hl2TxDsp::exchangeDueBlocks()
             off += block;
             continue;
         }
-        noteTxaLevels(outBlock);   // build 410
+        noteTxaLevels(m_exchangePending.data() + off, block, outBlock);   // build 410
         for (std::size_t k = 0; k < outBlock; ++k) {
             // No conjugation (opposite of the phasing build): the signed
             // passband already gives the HPSDR wire's handedness. Adding -imag()

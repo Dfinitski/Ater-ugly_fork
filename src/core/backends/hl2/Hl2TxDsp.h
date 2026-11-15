@@ -242,7 +242,7 @@ private:
     // Build 410 (test of the transmit levels, FDV first): what WDSP's own
     // ALC -- after the transmit filter -- does, and the envelope that leaves
     // the modulator. Logged every 2 s of transmission (noteTxaLevels).
-    void noteTxaLevels(std::size_t outBlock);
+    void noteTxaLevels(const float* in, std::size_t inBlock, std::size_t outBlock);
     double m_txaAlcGainDb = 0.0;     // the last block's, 0 = no reduction
     double m_txaAlcShownDb = 0.0;    // for TX:ALCGAIN: dips held, let go slowly
     double m_txaAlcMinDb = 0.0;
@@ -253,6 +253,9 @@ private:
     unsigned long long m_txaEnvN = 0;
     int m_txaLevelBlocks = 0;
     int m_txaAlcBusyBlocks = 0;
+    double m_txaInPk = 0.0;          // build 411: the audio handed to the modulator
+    double m_txaInSq = 0.0;
+    unsigned long long m_txaInN = 0;
     QElapsedTimer m_txaLevelClock;
 
     // Exchange pacing. One capture delivery can carry several blocks (two per
