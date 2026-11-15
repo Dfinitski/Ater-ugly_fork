@@ -2510,6 +2510,16 @@ void limitTxDrive(std::complex<float>* buf, int n) noexcept
 }
 }   // namespace
 
+// Build 425 (operator, 15.11: "the peak line must measure before the
+// correction"). The TXA CFIR (the DUC CIC's pre-compensation, Thetis on
+// every Protocol 2 radio, ours on both protocols) has a passband gain of
+// 1 / droop(20 kHz)^5 = 0.9143 (CIC R 640, 5 stages at 192 kHz; the same
+// figure as AnanPureSignal's cfirPassbandGain()). The TX drive peak line
+// shows the modulator's samples on the scale before it: the most the ALC
+// lets through reads 0 dB. TUNE's tone and the host CW are made here, after
+// the CFIR: they are shown as they are.
+constexpr double kCfirPassbandPower = 0.9143298 * 0.9143298;
+
 void P2Transport::accountTxSamples(const std::complex<float>* buf, int n)
 {
     // Live = primed and 25 ms past the RF Delay (the start and the 2 ms
@@ -2541,7 +2551,7 @@ void P2Transport::accountTxSamples(const std::complex<float>* buf, int n)
             m_hwDucN = 0;
         }
         m_ovWinSumSq += p;
-        m_envPeak = std::max(m_envPeak, p);
+        m_envPeak = std::max(m_envPeak, (m_cwMode || m_toneAmp > 0.0) ? p : p / kCfirPassbandPower);
         if (++m_envN == kDucSampleRateHz / 20) {   // 50 ms
             emit txEnvelopePeak(static_cast<float>(10.0 * std::log10(std::max(m_envPeak, 1e-14))));
             m_envPeak = 0.0;
