@@ -20,6 +20,14 @@
 - ADC overload warning across the panadapter
 - Per-model settings page (Setup → Radio → *your model*): model selection, microphone and
   connector options, PA level and power meter calibration
+- **Digital modes built in — FT8, FT4, WSPR and JS8 (FTX)** — worked directly in the program's
+  own window: no WSJT-X, JTDX or JS8Call, no virtual audio cable and no CAT link. The decoders
+  take the receiver's I/Q, the transmit waveform goes straight to the modulator, and the mode's
+  waterfall replaces the panadapter while FTX is on (decoders and window from MicronSDR, N7DDC)
+- **FreeDV built in** — RADE, 1600, 700D and 700E as an FDV mode on the VFO flag, with FreeDV
+  Reporter
+
+![FT8 in the FTX window of the program: the decodes on the left, the mode's waterfall in place of the panadapter on the right (ANAN-100D, 40 m)](docs/screenshots/ftx-ft8-anan100d.png)
 
 ## Supported transceivers
 
