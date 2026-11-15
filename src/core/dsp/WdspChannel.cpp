@@ -809,6 +809,28 @@ bool WdspChannel::setTxCompressor(bool on, double gainDb) noexcept
     return true;
 }
 
+bool WdspChannel::setTxMinimumPhase(bool on) noexcept
+{
+    if (m_config.direction != Direction::Transmit) {
+        return false;
+    }
+    if (on == m_config.minimumPhase) {
+        return true;
+    }
+    if (!beginControlOperation()) {
+        return false;
+    }
+    {
+        // setMp_fircore re-plans the masks (FFTs at nc * pfactor): the same
+        // planner and lock as setMinimumPhase() on receive.
+        const std::scoped_lock setupLock(g_setupMutex);
+        TXASetMP(m_channelId, on ? 1 : 0);
+    }
+    m_config.minimumPhase = on;
+    endControlOperation();
+    return true;
+}
+
 bool WdspChannel::setTxLeveler(bool on, double topDb) noexcept
 {
     if (m_config.direction != Direction::Transmit || !std::isfinite(topDb)

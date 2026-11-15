@@ -366,6 +366,9 @@ public:
     bool setFilterLive(double lowHz, double highHz) noexcept;
     // ANAN-100D port: TXA speech compressor (transmit channels only).
     bool setTxCompressor(bool on, double gainDb) noexcept;
+    // ANAN fork build 418: the transmit bandpass's phase (TXASetMP: bp0..bp2,
+    // FM emphasis). Transmit channels only; same magnitude either way.
+    bool setTxMinimumPhase(bool on) noexcept;
     // ANAN-100D port: TXA leveler (transmit channels only).
     bool setTxLeveler(bool on, double topDb) noexcept;
     bool setWbfmDeemphasis(WbfmReceive::Deemphasis deemphasis) noexcept;

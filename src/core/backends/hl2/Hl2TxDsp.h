@@ -98,6 +98,9 @@ public:
     // sits after the PureSignal correction, and its passband gain (0.914) is
     // part of the 0.2899 HW peak. Kept across channel rebuilds.
     Q_INVOKABLE void setCicCompensation(bool on);
+    // ANAN fork build 418: linear-phase transmit filter (FreeDV, FTX, DIGU /
+    // DIGL) instead of minimum phase. Kept across channel rebuilds.
+    Q_INVOKABLE void setLinearPhase(bool on);
     // The TX mode in force (I/O thread, like every member here).
     [[nodiscard]] WdspChannel::Mode txMode() const noexcept { return m_config.mode; }
     [[nodiscard]] double micGain() const noexcept { return m_micGain; }
@@ -204,6 +207,7 @@ private:
     TxCoordinator::Context m_txContext;
     bool m_configured = false;
     bool m_compOn = false;
+    bool m_linearPhase = false;   // build 418
     bool m_cfirOn = false;
     void applyCfir();
     bool m_ttOn = false;

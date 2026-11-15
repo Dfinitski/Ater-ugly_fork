@@ -110,7 +110,17 @@ bool Hl2TxDsp::buildModulator(std::string* error)
     // 16384 / 2 / 192 kHz = 43 ms. The magnitude -- the suppression -- is the
     // same either way.
     c.filterTaps = kTxFilterTaps;
-    c.minimumPhase = true;
+    // Build 418 (operator, 15.11: RADE heard at 22 dB SNR where the native
+    // program gives 30). Minimum phase is right for speech and wrong for the
+    // OFDM modems: its group delay grows towards the band edges, and over
+    // RADE's carriers (750 .. 2200 Hz) it spread 4.9 ms with the 600 .. 2350
+    // filter and 15.2 ms with 700 .. 2300 -- RADE's cyclic prefix is 4 ms
+    // (rade_dsp.h), so the edge carriers smeared into the next symbol: a
+    // distortion floor no transmit power lifts. Thetis's default for the
+    // digital modes is "Linear Phase" (setup.cs, comboDSPDigTXFiltType 0).
+    // The data modes get linear phase: no spread, a fixed 8192 / 192 kHz =
+    // 42.7 ms delay, which they do not mind (FT8: DT +0.04 s).
+    c.minimumPhase = !m_linearPhase;
     // WdspChannel::open() pushes both, and turns TXA's default-on CTCSS off.
     c.txAmCarrierLevel = m_config.amCarrierLevel;
     c.txFmDeviationHz = m_config.fmDeviationHz;
@@ -656,6 +666,18 @@ void Hl2TxDsp::setFilter(double lowHz, double highHz)
 #else
     buildModulator(nullptr);
 #endif
+}
+
+void Hl2TxDsp::setLinearPhase(bool on)
+{
+    if (on == m_linearPhase)
+        return;
+    m_linearPhase = on;
+#if AETHER_HL2_TX_TXA
+    if (m_channel && !m_channel->setTxMinimumPhase(!on))
+        qCWarning(lcTxMod) << "HL2 TXA modulator: filter phase change refused";
+#endif
+    qCInfo(lcTxMod) << "HL2 TXA modulator: transmit filter" << (on ? "linear phase" : "minimum phase");
 }
 
 void Hl2TxDsp::setCompressor(bool on, double gainDb)

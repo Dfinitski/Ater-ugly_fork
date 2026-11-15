@@ -8677,6 +8677,15 @@ void Hl2Backend::pushTxPassband(const QString& mode)
 {
     const auto [lo, hi] = effectiveTxPassband(mode);
     if (m_txDsp) {
+        // Build 418: the data modes -- FreeDV or FTX on the transmitting
+        // receiver, DIGU / DIGL -- transmit through a linear-phase filter
+        // (see Hl2TxDsp::buildModulator); voice keeps minimum phase.
+        const auto& fs = fdv::FdvState::instance();
+        const bool fdvTx = fs.sliceId >= 0 && ddcForSlice(fs.sliceId) == m_txDdc;
+        const bool ftxTx = m_ftxDdc >= 0 && m_ftxDdc == m_txDdc;
+        const bool linear = fdvTx || ftxTx || isDigitalDataMode(mode);
+        QMetaObject::invokeMethod(m_txDsp, "setLinearPhase", Qt::QueuedConnection,
+            Q_ARG(bool, linear));
         QMetaObject::invokeMethod(m_txDsp, "setFilter", Qt::QueuedConnection,
             Q_ARG(double, static_cast<double>(lo)),
             Q_ARG(double, static_cast<double>(hi)));
