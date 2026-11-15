@@ -72,9 +72,19 @@ public:
     // phase costs ~14 ms per filter edit on hl2-io; patch 14 frees its design
     // scratch. See third_party/wdsp/AETHERSDR-PATCHES.md for the measurements.
     // CW's latency is cut by length instead: rxFilterTapsFor().
+    // ANAN fork build 440 (operator, 15.11: "does our filter spoil DRM?"):
+    // DRM is linear too. DRM feeds Dream the filtered I/Q (no demodulator, no
+    // AGC); a minimum-phase +-5 kHz mask (8192 taps at 48 kHz) delays the
+    // outer carriers far more than the centre: group delay 0.5 ms at 0 Hz,
+    // 2.5 ms at 4.5 kHz, 5.5 / 7.1 ms at 4.8 / 4.85 kHz (the 10 kHz modes'
+    // edge carriers) -- past the guard interval (2.67 ms robustness A,
+    // 5.33 ms B / C), the same failure as RADE behind the minimum-phase
+    // transmit filter (build 418). Linear phase: 85 ms flat, nothing against
+    // Dream's 0.8 s of buffering.
     [[nodiscard]] static constexpr bool rxMinimumPhaseFor(WdspChannel::Mode mode) noexcept
     {
-        return mode != WdspChannel::Mode::Cwl && mode != WdspChannel::Mode::Cwu;
+        return mode != WdspChannel::Mode::Cwl && mode != WdspChannel::Mode::Cwu
+            && mode != WdspChannel::Mode::Drm;
     }
 
     // RXA panel gain, applied after the AGC: unity removes WDSP's x4, which put
@@ -95,7 +105,9 @@ public:
                                                        double highHz, int notchCount,
                                                        int currentTaps = 0) noexcept
     {
-        if (rxMinimumPhaseFor(mode) || notchCount > 0)
+        // Build 440: DRM (linear) keeps the long filter -- its latency costs
+        // nothing there; the short one is CW's.
+        if (rxMinimumPhaseFor(mode) || notchCount > 0 || mode == WdspChannel::Mode::Drm)
             return kRxFilterTaps;
         const double width = highHz >= lowHz ? highHz - lowHz : lowHz - highHz;
         const bool shortening = currentTaps <= 0 || currentTaps > kRxShortFilterTaps;

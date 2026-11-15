@@ -222,9 +222,12 @@ int main(int argc, char** argv)
     using M = WdspChannel::Mode;
     check(!Hl2RxDsp::rxMinimumPhaseFor(M::Cwu) && !Hl2RxDsp::rxMinimumPhaseFor(M::Cwl),
           "ruling: CW (both sidebands) keeps LINEAR phase");
+    // ANAN fork build 440: DRM is linear as well (its OFDM carriers must not
+    // spread past the guard interval).
+    check(!Hl2RxDsp::rxMinimumPhaseFor(M::Drm), "ANAN build 440: DRM keeps LINEAR phase");
     bool othersMp = true;
     for (M m : {M::Lsb, M::Usb, M::Dsb, M::Fm, M::Am, M::Digu, M::Spec, M::Digl,
-                M::Sam, M::Drm, M::Wbfm}) {
+                M::Sam, M::Wbfm}) {
         othersMp = othersMp && Hl2RxDsp::rxMinimumPhaseFor(m);
     }
     check(othersMp, "ruling: every other mode runs MINIMUM phase");
