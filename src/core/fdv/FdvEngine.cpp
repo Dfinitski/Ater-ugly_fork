@@ -274,9 +274,22 @@ void FdvEngine::processTx(std::vector<float>& mono)
     // is idle. The cost is average power: about -8.9 dBFS instead of -6.3
     // (13 W instead of 23 W of a 100 W scale). To be replaced by a
     // clip-and-filter stage of our own (the operator: "the third later").
-    // libfdv's lib mode 0 is RADE (fdv_api.h); the codec2 modes are as they were.
-    constexpr float kRadeTxTrim = 0.5957f;   // -4.5 dB
-    const float g = (m_mode == 0) ? kRadeTxTrim : 1.0f;
+    //
+    // Build 419 -- the trims per sub-mode, measured behind the linear-phase
+    // transmit filter of 418 (log of 15.11 11:52, `TXA levels`). Linear phase
+    // took 3.5 dB off RADE's peaks (I/Q crest 7.6 .. 8.1 dB with minimum phase,
+    // 4.3 .. 4.8 dB now): at -4.5 dB the peak behind the ALC was -3.2 .. -3.7
+    // dBFS. The codec2 modes at unity: 700E ALC in 72 .. 86 % of the blocks,
+    // dips to 1.2 dB; 700D 15 .. 24 %, to 0.9 dB; 1600 one touch of 0.6 dB.
+    // Each now sits about 0.3 dB under the ALC's threshold at its worst peak.
+    // libfdv's lib modes (fdv_api.h): 0 RADE, 1 1600, 2 700D, 3 700E.
+    static constexpr float kTxTrim[4] = {
+        0.8128f,   // RADE  -1.8 dB (was -4.5)
+        0.9120f,   // 1600  -0.8 dB
+        0.8710f,   // 700D  -1.2 dB
+        0.8414f,   // 700E  -1.5 dB
+    };
+    const float g = (m_mode >= 0 && m_mode < 4) ? kTxTrim[m_mode] : 1.0f;
     for (std::size_t i = 0; i < mono.size() && i < m_tc.size(); ++i)
         mono[i] = m_tc[i] * g;
 }

@@ -191,6 +191,21 @@ void Hl2TxDsp::resetModulatorState()
         qCWarning(lcTxMod) << "HL2 TXA modulator: discard refused; transmit disabled until reconfigured";
     }
     m_modulatorRunning = false;
+    // Build 419: the level test's window belongs to this over -- the next
+    // over's first line must not carry its tail (log of 14.11 20:55).
+    m_txaLevelClock.invalidate();
+    m_txaAlcMinDb = 0.0;
+    m_txaAlcSumDb = 0.0;
+    m_txaAlcPkDb = -400.0;
+    m_txaEnvPk = 0.0;
+    m_txaEnvSq = 0.0;
+    m_txaEnvN = 0;
+    m_txaLevelBlocks = 0;
+    m_txaAlcBusyBlocks = 0;
+    m_txaInPk = 0.0;
+    m_txaInSq = 0.0;
+    m_txaInN = 0;
+    m_txaAlcShownDb = 0.0;
     // Blocks still waiting for their exchange belong to the over that just
     // ended; the next over must not open with them, nor with a stall deadline
     // started in the previous over.
