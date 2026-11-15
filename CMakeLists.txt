@@ -3260,6 +3260,30 @@ if(WIN32 AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/libjs8/win64/libjs8.dll")
     )
 endif()
 
+# ANAN fork build 442: the same modules for Linux (MicronSDR's Linux builds,
+# glibc 2.35+, everything else linked in): libftx.so (FTX), libfdv.so +
+# libcodec2.so.1.2 (FreeDV; libfdv finds codec2 next to itself, RUNPATH
+# $ORIGIN) and cty.dat, next to the executable. The AppImage workflow puts
+# them in usr/bin. No libjs8.so yet: JS8 is Windows-only for now.
+if(UNIX AND NOT APPLE AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/libftx/linux64/libftx.so")
+    add_custom_command(TARGET AetherSDR POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/third_party/libftx/linux64/libftx.so"
+            "${CMAKE_SOURCE_DIR}/third_party/libftx/win64/cty.dat"
+            "$<TARGET_FILE_DIR:AetherSDR>"
+        COMMENT "Copying libftx.so / cty.dat (FTX) to build directory"
+    )
+endif()
+if(UNIX AND NOT APPLE AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/libfdv/linux64/libfdv.so")
+    add_custom_command(TARGET AetherSDR POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/third_party/libfdv/linux64/libfdv.so"
+            "${CMAKE_SOURCE_DIR}/third_party/libfdv/linux64/libcodec2.so.1.2"
+            "$<TARGET_FILE_DIR:AetherSDR>"
+        COMMENT "Copying libfdv.so / libcodec2.so.1.2 (FreeDV) to build directory"
+    )
+endif()
+
 target_sources(aethercore PRIVATE src/models/CwRxModel.cpp src/models/CwRxModel.h)
 
 # Neural CW receive decoders (RFC #4817): built wherever ONNX Runtime is found

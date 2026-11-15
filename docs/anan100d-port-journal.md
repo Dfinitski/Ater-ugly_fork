@@ -7642,6 +7642,39 @@ robustness A, 5,33 мс у B / C) — та же ошибка, что у RADE з�
 
 Проверено компиляцией; на радио не проверялось.
 
+## 415. Сборка 442 — модули FTX и FreeDV для Linux (MicronSDR) в AppImage
+
+Оператор, 15.11: готовые Linux-модули MicronSDR — `FT_src\linux\` (libftx.so, test_ftx, ft8sim,
+ft4sim, wsprgen) и `FreeDV_src\linux\` (libfdv.so, libcodec2.so.1.2, test_fdv), журнал
+LINUX_MODULES.txt; проверить, всего ли хватает для полноценной Linux-версии.
+
+Проверка модулей (здесь, Ubuntu glibc 2.39):
+- libftx.so: экспорт только ftx_version / ftx_decode / wspr_decode / ftx_encode / wspr_encode,
+  NEEDED libm / libmvec / libc, GLIBC_2.35; ftx_version 121. ft8sim «CQ N7DDC CN87» −15 дБ →
+  test_ftx: «−16 dB DT −0.01 1500 Hz CQ N7DDC CN87». API = наш FtUnit (типы совпадают; 1.21 только
+  добавила nzhsym 0, наш вызов 47 → 50 не меняется).
+- libfdv.so: экспорт fdv_* (как fdv_api.h в third_party, файл совпадает), NEEDED libcodec2.so.1.2,
+  RUNPATH $ORIGIN, GLIBC_2.35; fdv_version 110, fdv_create для RADE / 1600 / 700D / 700E — объекты
+  создаются.
+- Нет libjs8.so: подрежим JS8 на Linux не работает (JS8_src собран только под Windows).
+
+Что было в AppImage: CI собирал libfdv.so из third_party/libfdv/src (старый рецепт); libftx.so и
+cty.dat не клались вовсе — FTX на Linux не работал. Заметки к релизу 413 / 439 («FTX и FreeDV не
+работают») были неточны для FreeDV.
+
+Сборка 442:
+- third_party/libftx/linux64/libftx.so, third_party/libfdv/linux64/{libfdv.so, libcodec2.so.1.2}
+  (+ LINUX_MODULES.txt); third_party/libftx/ftx_api.h — версия 1.21; README обновлены.
+- appimage.yml: шаг «Stage FTX / FreeDV modules» вместо сборки libfdv из исходников —
+  libftx.so, cty.dat, libfdv.so, libcodec2.so.1.2 в usr/bin (codec2 и в usr/lib: linuxdeploy может
+  переписать RUNPATH); шаг «Assert the FTX / FreeDV modules» — файлы на месте, ldd без «not
+  found», ctypes: ftx_version, fdv_version, fdv_create для 4 подмод.
+- CMakeLists.txt: на Linux те же модули копируются к исполняемому файлу (сборка для разработки).
+- `FtUnit::load` / `loadJs8`: сначала рядом с программой (dlopen на Linux не ищет в каталоге
+  исполняемого файла), потом по пути поиска; сообщения без «.dll».
+
+Проверено компиляцией и загрузкой модулей; AppImage — CI.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

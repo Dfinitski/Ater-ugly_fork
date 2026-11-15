@@ -23,7 +23,7 @@ enum { FTX_FT8 = 8, FTX_FT4 = 4 };
    blank padded, zero terminated), nap: 0 = normal, else the a-priori type (a1..a8) */
 typedef void (*ftx_callback)(void *user, int snr, float dt, float freq, const char *msg, int nap, float qual);
 
-int ftx_version(void);      /* 120 = 1.20 (the encoders); 110: no encoders; 100: FT2 instead of WSPR */
+int ftx_version(void);      /* 121 = 1.21 (nzhsym 0: one call); 120: the encoders; 110: no encoders; 100: FT2 instead of WSPR */
 
 /* mode: FTX_FT8 / FTX_FT4
    nfa, nfb: the audio frequency range searched (Hz, e.g. 200 .. 3000)
@@ -32,7 +32,9 @@ int ftx_version(void);      /* 120 = 1.20 (the encoders); 110: no encoders; 100:
    ap: 1 = a priori decoding (needs mycall; hiscall for the QSO)
    nqso: QSO progress 0..5 (0 = CQ / calling)
    nutc: hhmmss of the period start
-   nzhsym: FT8 only: 50 = the full period (0 = 50); 41 / 47 = the early decodes of WSJT-X
+   nzhsym: FT8 only: as WSJT-X, 41 / 47 = the early decodes, 50 = the full decode (ft8_decode
+           takes the audio in at 41 / 47 only: call 47 before 50); 0 (1.21) = the whole period
+           in one call (47 + 50 inside)
    mycall, hiscall: up to 12 characters ("" = none); hisgrid: up to 6
    Returns the number of decodes (the callback was called that often), -1: bad mode */
 int ftx_decode(int mode, const short *audio12k, int nsamples, int nfa, int nfb, int nfqso,

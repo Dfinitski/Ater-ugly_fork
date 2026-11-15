@@ -9,6 +9,7 @@
 #include <QElapsedTimer>
 #include <QDebug>
 #include <QDir>
+#include <QCoreApplication>
 #include <QFile>
 #include <cmath>
 #include <cstring>
@@ -159,10 +160,14 @@ bool FtUnit::load()
         return true;
     if(!err.isEmpty())
         return false;
-    QLibrary lib("libftx");
+    // AetherSDR, build 442: next to the program first (Linux: dlopen does
+    // not search the executable's directory), then the search path.
+    QLibrary lib(QDir(QCoreApplication::applicationDirPath()).filePath("libftx"));
     if(!lib.load())
+        lib.setFileName("libftx");
+    if(!lib.isLoaded() && !lib.load())
     {
-        err = "libftx.dll not loaded: " + lib.errorString();
+        err = "libftx (.dll / .so) not loaded: " + lib.errorString();
         qWarning() << "FT:" << err;
         return false;
     }
@@ -171,7 +176,7 @@ bool FtUnit::load()
     if(!ver || !fnDecode)
     {
         fnDecode = 0;
-        err = "libftx.dll: no ftx_decode";
+        err = "libftx: no ftx_decode";
         return false;
     }
     fnWspr = (WsprDecode)lib.resolve("wspr_decode");    // 1.10 on
@@ -190,10 +195,12 @@ bool FtUnit::loadJs8()
         return true;
     if(!errJs8.isEmpty())
         return false;
-    QLibrary lib("libjs8");
+    QLibrary lib(QDir(QCoreApplication::applicationDirPath()).filePath("libjs8"));   // AetherSDR, 442
     if(!lib.load())
+        lib.setFileName("libjs8");
+    if(!lib.isLoaded() && !lib.load())
     {
-        errJs8 = "libjs8.dll not loaded: " + lib.errorString();
+        errJs8 = "libjs8 (.dll / .so) not loaded: " + lib.errorString();
         qWarning() << "JS8:" << errJs8;
         return false;
     }
@@ -202,7 +209,7 @@ bool FtUnit::loadJs8()
     if(!ver || !fnJs8)
     {
         fnJs8 = 0;
-        errJs8 = "libjs8.dll: no js8_decode";
+        errJs8 = "libjs8: no js8_decode";
         return false;
     }
     fnJs8Enc = (Js8Encode)lib.resolve("js8_encode");

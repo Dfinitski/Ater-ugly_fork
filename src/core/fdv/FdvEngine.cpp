@@ -125,7 +125,7 @@ bool FdvEngine::load()
         const QString firstErr = lib->errorString();
         lib->setFileName(QStringLiteral("libfdv"));
         if (!lib->load()) {
-            m_err = QStringLiteral("libfdv.dll / libcodec2.dll not found next to AetherSDR.exe (%1): %2")
+            m_err = QStringLiteral("libfdv / libcodec2 (.dll / .so) not found next to the program (%1): %2")
                         .arg(QDir::toNativeSeparators(appDir), firstErr);
             qCWarning(lcFdv).noquote() << "FreeDV:" << m_err;
             delete lib;

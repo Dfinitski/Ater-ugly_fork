@@ -11,3 +11,9 @@ win64/cty.dat     The country file (AD1C), read by src/ftx/FtPanel.cpp.
 
 The source of the DLL and how to build it: MicronSDR, folder FT_src (build.sh,
 README.txt). License: GPL-3 (COPYING); the authors of WSJT-X: AUTHORS.
+
+linux64/libftx.so  The same decoders / encoders for Linux x86_64 (MicronSDR FT_src
+                   build_linux.sh, version 1.21; glibc 2.35+, the gfortran runtime
+                   linked in, FFTW replaced by pocketfft, BSD-3). The AppImage puts it
+                   next to the executable (usr/bin), with cty.dat. Notes from its
+                   builder: linux64/LINUX_MODULES.txt.

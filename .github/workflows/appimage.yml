@@ -376,18 +376,25 @@ jobs:
           cp -v "$GST_PATH/libgstpipewiresrc.so" AppDir/usr/lib/gstreamer-1.0/ || \
             echo "note: libgstpipewiresrc.so absent; PipeWire hosts use pulsesrc via pipewire-pulse"
 
-      # ANAN fork: FreeDV (FDV mode) -- libfdv from MicronSDR, built from its
-      # sources (third_party/libfdv/src/build_linux.sh: codec2, rade_c, opus at
-      # the same revisions as the Windows DLLs). FdvEngine loads libfdv from the
-      # executable's directory, as on Windows. Not fatal: without it the
-      # AppImage simply has no FDV mode.
-      - name: Build FreeDV (libfdv.so + libcodec2)
-        continue-on-error: true
+      # ANAN fork build 442: FTX and FreeDV -- MicronSDR's Linux modules
+      # (third_party/libftx/linux64, third_party/libfdv/linux64; glibc 2.35+,
+      # the Fortran / C++ runtimes, opus and rade_c linked in): libftx.so
+      # (FT8 / FT4 / WSPR), libfdv.so + libcodec2.so.1.2 (FreeDV) and cty.dat
+      # next to the executable, where FtUnit / FdvEngine / CtyDat look first.
+      # libfdv.so's RUNPATH is $ORIGIN; linuxdeploy may rewrite it to
+      # $ORIGIN/../lib, so codec2 goes in usr/lib as well. A missing module
+      # fails the job: the release notes promise these modes. (JS8 has no
+      # Linux module yet.)
+      - name: Stage FTX / FreeDV modules (libftx.so, libfdv.so, libcodec2, cty.dat)
         run: |
-          bash third_party/libfdv/src/build_linux.sh "$RUNNER_TEMP/fdv-deps" "$RUNNER_TEMP/fdv-out"
-          cp -v "$RUNNER_TEMP/fdv-out/libfdv.so" AppDir/usr/bin/
+          set -e
+          cp -v third_party/libftx/linux64/libftx.so AppDir/usr/bin/
+          cp -v third_party/libftx/win64/cty.dat AppDir/usr/bin/
+          cp -v third_party/libfdv/linux64/libfdv.so AppDir/usr/bin/
+          cp -v third_party/libfdv/linux64/libcodec2.so.1.2 AppDir/usr/bin/
           mkdir -p AppDir/usr/lib
-          cp -v "$RUNNER_TEMP"/fdv-out/libcodec2.so.* AppDir/usr/lib/
+          cp -v third_party/libfdv/linux64/libcodec2.so.1.2 AppDir/usr/lib/
+          chmod 755 AppDir/usr/bin/libftx.so AppDir/usr/bin/libfdv.so AppDir/usr/bin/libcodec2.so.1.2
 
       # Build 238: DRM audio. AetherSDR does not link FDK-AAC; it loads
       # libfdk-aac.so.2 at run time (third_party/dream/aether/fdk_dyn.cpp:
@@ -465,6 +472,30 @@ jobs:
       # falls back to XWayland rather than failing to start. Failing the build
       # is still right — silently reverting to the old behaviour while the
       # release notes claim native Wayland is worse than a red run.
+      # ANAN fork build 442: the FTX / FreeDV modules survived linuxdeploy and
+      # resolve inside the AppDir (codec2 found by libfdv's RUNPATH).
+      - name: Assert the FTX / FreeDV modules
+        run: |
+          set -e
+          for f in libftx.so libfdv.so libcodec2.so.1.2 cty.dat; do
+            test -f "AppDir/usr/bin/$f" || { echo "::error::AppDir/usr/bin/$f missing"; exit 1; }
+          done
+          readelf -d AppDir/usr/bin/libfdv.so | grep -E 'RUNPATH|RPATH' || true
+          for f in libftx.so libfdv.so; do
+            if ldd "AppDir/usr/bin/$f" | grep -q 'not found'; then
+              ldd "AppDir/usr/bin/$f"; echo "::error::$f has unresolved dependencies"; exit 1
+            fi
+          done
+          python3 - <<'PY'
+          import ctypes
+          ftx = ctypes.CDLL('AppDir/usr/bin/libftx.so'); print('libftx', ftx.ftx_version())
+          fdv = ctypes.CDLL('AppDir/usr/bin/libfdv.so'); print('libfdv', fdv.fdv_version())
+          fdv.fdv_create.restype = ctypes.c_void_p
+          for m in range(4):
+              o = fdv.fdv_create(m); assert o, m; fdv.fdv_destroy(ctypes.c_void_p(o))
+          print('libfdv: RADE / 1600 / 700D / 700E created')
+          PY
+
       - name: Assert the Wayland plugins were bundled
         run: |
           plugins="AppDir/usr/plugins"
