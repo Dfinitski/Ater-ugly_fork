@@ -17,6 +17,8 @@
 #include "models/TransmitModel.h"
 #include "models/MeterModel.h"
 #include "ftx/FtPanel.h"
+#include "ftx/Js8Panel.h"
+#include "core/AppSettings.h"
 #include "ftx/FtUnit.h"
 #include "ftx/FtWaterfall.h"
 #include "models/PanadapterModel.h"
@@ -123,8 +125,7 @@ void MainWindow::activateFtx(int sliceId)
         // the applet panel (AppletPanel kBarBtnStyle): the theme's colours,
         // "on" = the dim accent (blue) with a bright outline, the text stays
         // the theme's light text. Nothing green: that was MicronSDR's.
-        ThemeManager::instance().applyStyleSheet(
-            m_ftPanel, appStylesheetTemplate() + ftxSpinArrowStyle() + QStringLiteral(R"(
+        const QString ftxWindowStyle = appStylesheetTemplate() + ftxSpinArrowStyle() + QStringLiteral(R"(
             QLabel, QCheckBox { background: transparent; }
             QPushButton {
                 background: {{color.background.1}}; color: {{color.text.primary}};
@@ -173,11 +174,38 @@ void MainWindow::activateFtx(int sliceId)
             QScrollBar::handle:vertical:hover { background: #6a90b0; }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none; }
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
-        )"));
+            QPlainTextEdit {
+                background-color: {{color.background.0}}; color: {{color.text.primary}};
+                border: 1px solid {{color.border.strong}}; selection-background-color: {{color.accent.dim}};
+            }
+            QToolButton {
+                background: {{color.background.1}}; color: {{color.text.primary}};
+                border: 1px solid {{color.background.2}}; border-radius: 3px; padding: 3px 9px;
+            }
+            QToolButton:hover { background: {{color.background.2}}; }
+        )");
+        ThemeManager::instance().applyStyleSheet(m_ftPanel, ftxWindowStyle);
         m_ftPanel->loadSettings();
+        // Build 406: the JS8 sub-mode -- MicronSDR's Js8Panel, a window of
+        // its own on the same engine (libjs8.dll), in the same style. The
+        // two windows replace each other: "JS8" in the FTX window, "FTX" in
+        // the JS8 window.
+        m_js8Panel = new Js8Panel(m_ftUnit, this);
+        ThemeManager::instance().applyStyleSheet(m_js8Panel, ftxWindowStyle);
+        m_js8Panel->loadSettings();
+        m_js8Panel->hide();
+        connect(m_ftPanel, &FtPanel::js8Requested, this, [this] { ftxSwitchWindow(true); }, Qt::QueuedConnection);
+        connect(m_js8Panel, &Js8Panel::ftxRequested, this, [this] { ftxSwitchWindow(false); }, Qt::QueuedConnection);
+        connect(m_js8Panel, &Js8Panel::tuneRequest, this, [this](qint64 dialHz) {
+            if (m_ftxJs8 && dialHz > 0)
+                ftxTune(static_cast<double>(dialHz) / 1.0e6);
+        });
+        connect(m_js8Panel, &Js8Panel::closed, this, [this] { deactivateFtx(); }, Qt::QueuedConnection);
+        connect(m_js8Panel, &Js8Panel::pttRequest, this, [this](bool on) { ftxPtt(on); });
+        m_js8Panel->setTxAllowed(true);
         // The dial of the mode -> the receiver (USB dial frequency).
         connect(m_ftPanel, &FtPanel::tuneRequest, this, [this](qint64 dialHz) {
-            if (dialHz > 0)
+            if (!m_ftxJs8 && dialHz > 0)
                 ftxTune(static_cast<double>(dialHz) / 1.0e6);
         });
         connect(m_ftPanel, &FtPanel::modeChanged, this,
@@ -196,10 +224,7 @@ void MainWindow::activateFtx(int sliceId)
                 return;
             m_ftxTxOn = false;
             ftx::FtxState::instance().ownTx = false;
-            if (m_ftPanel) {
-                m_ftPanel->txAborted();
-                m_ftPanel->txNote(QStringLiteral("The transmitter was released"));
-            }
+            ftxTxAborted(QStringLiteral("The transmitter was released"));
         });
         // Build 395 (operator, 14.11: "stop the waterfall while
         // transmitting"): any transmission -- the mode's own, TUNE.
@@ -256,9 +281,13 @@ void MainWindow::activateFtx(int sliceId)
     if (FtWaterfall* wf = m_ftPanel->waterfall())
         view->setWaterfall(wf, m_ftPanel->waterfallHeight());
     FtPanel* panel = m_ftPanel;
-    auto dial = [view, panel, s] {
+    Js8Panel* js8Panel = m_js8Panel;
+    auto dial = [view, panel, js8Panel, s] {
         view->setDialText(QStringLiteral("%1 MHz  USB").arg(s->frequency(), 0, 'f', 6));
-        panel->setDialShown(static_cast<qint64>(std::llround(s->frequency() * 1.0e6)));
+        const qint64 hz = static_cast<qint64>(std::llround(s->frequency() * 1.0e6));
+        panel->setDialShown(hz);
+        if (js8Panel)
+            js8Panel->setDialShown(hz);
     };
     m_ftxFreqConn = connect(s, &SliceModel::frequencyChanged, view, [dial](double) { dial(); });
 
@@ -272,11 +301,8 @@ void MainWindow::activateFtx(int sliceId)
     // The transmitter: the mode's waveform instead of the microphone, on the
     // transmit thread (AnanTxEngine). FtTx::audio() leaves the buffers alone
     // while it is not started, so they are cleared first.
-    ftx::FtxBridge::instance().setTxSource([tx = m_ftPanel->txUnit(), r = std::make_shared<std::vector<float>>()](
-                                               float* mono, unsigned long n) {
-        r->resize(n);
-        tx->audio(mono, r->data(), n);
-    });
+    m_ftxJs8 = false;
+    ftxSetTxSource();
     connect(view, &FtxView::exitRequested, this, [this] { deactivateFtx(); }, Qt::QueuedConnection);
     // Build 385: "+RX" of the bar is the "+RX" of this panadapter's side menu
     // (hidden with the panadapter) -- the same signal, so the same handler.
@@ -388,10 +414,86 @@ void MainWindow::activateFtx(int sliceId)
     });
     m_ftPanel->showWindow(geometry());
     m_ftPanel->start();   // -> tuneRequest: the receiver to the band's frequency
+    // Build 406: the window the mode was left in (MicronSDR: FT/LastWindow).
+    if (AppSettings::instance().value(QStringLiteral("FtxLastWindowJs8"), "False").toString() == "True")
+        ftxSwitchWindow(true);
     dial();
     qInfo() << "MainWindow: FTX on, slice" << sliceId << "- was" << m_ftxSavedMode << m_ftxSavedFreqMhz
             << "MHz, filter" << m_ftxSavedFilterLo << ".." << m_ftxSavedFilterHi << "pan"
             << m_ftxSavedPanBandwidthMhz * 1000.0 << "kHz";
+}
+
+// Build 406: the transmitter's waveform comes from the window that is on.
+void MainWindow::ftxSetTxSource()
+{
+    FtTx* tx = (m_ftxJs8 && m_js8Panel) ? m_js8Panel->txUnit() : (m_ftPanel ? m_ftPanel->txUnit() : nullptr);
+    if (!tx) {
+        ftx::FtxBridge::instance().setTxSource(nullptr);
+        return;
+    }
+    // FtTx::audio() leaves the buffers alone while it is not started, so the
+    // caller clears them first (AnanTxEngine).
+    ftx::FtxBridge::instance().setTxSource([tx, r = std::make_shared<std::vector<float>>()](
+                                               float* mono, unsigned long n) {
+        r->resize(n);
+        tx->audio(mono, r->data(), n);
+    });
+}
+
+void MainWindow::ftxTxAborted(const QString& why)
+{
+    if (m_ftxJs8 && m_js8Panel) {
+        m_js8Panel->txAborted();
+        m_js8Panel->txNote(why);
+    } else if (m_ftPanel) {
+        m_ftPanel->txAborted();
+        m_ftPanel->txNote(why);
+    }
+}
+
+// Build 406: FT8 / FT4 / WSPR <-> JS8 while the mode is on (MicronSDR:
+// ftEnter with the other window). The receiver stays as it is; the windows
+// and their decoders change places.
+void MainWindow::ftxSwitchWindow(bool js8)
+{
+    if (m_ftxSliceId < 0 || !m_ftUnit || !m_ftPanel || !m_js8Panel || js8 == m_ftxJs8)
+        return;
+    if (js8 ? !m_ftUnit->loadJs8() : !m_ftUnit->load()) {
+        QMessageBox::warning(this, js8 ? QStringLiteral("JS8") : QStringLiteral("FT8 / FT4 / WSPR"),
+                             (js8 ? m_ftUnit->errorJs8() : m_ftUnit->error())
+                                 + (js8 ? QStringLiteral("\n\nlibjs8.dll (from MicronSDR, third_party/libjs8) "
+                                                         "must be next to AetherSDR.exe.")
+                                        : QStringLiteral("\n\nlibftx.dll must be next to AetherSDR.exe.")));
+        return;
+    }
+    if (m_ftxJs8) {
+        m_js8Panel->stop();        // its transmission ends (pttRequest(false))
+        m_js8Panel->hideWindow();
+    } else {
+        m_ftPanel->stop();
+        m_ftPanel->hideWindow();
+    }
+    if (m_ftxTxOn)
+        ftxPtt(false);
+    m_ftxJs8 = js8;
+    ftxSetTxSource();
+    auto& as = AppSettings::instance();
+    as.setValue(QStringLiteral("FtxLastWindowJs8"), js8 ? "True" : "False");
+    as.save();
+    if (js8) {
+        ftx::FtxState::instance().setSubMode(ftx::kJs8);
+        m_js8Panel->showWindow(geometry());
+        m_js8Panel->start();       // -> tuneRequest: the JS8 frequency of its band
+        // The waterfall under the panadapter is the FTX window's; its stop()
+        // above has stopped it.
+        if (FtWaterfall* wf = m_ftPanel->waterfall())
+            wf->setRunning(true);
+    } else {
+        ftx::FtxState::instance().setSubMode(m_ftPanel->mode());
+        m_ftPanel->showWindow(geometry());
+        m_ftPanel->start();
+    }
+    qInfo() << "MainWindow: FTX window" << (js8 ? "JS8" : "FT8 / FT4 / WSPR");
 }
 
 // Build 391: the mode's own key. FtxState::ownTx lets it through the
@@ -427,18 +529,12 @@ void MainWindow::ftxPtt(bool on)
                 m_ftxTxOn = false;
                 ftx::FtxState::instance().ownTx = false;
                 qInfo() << "MainWindow: FTX TX refused by the transmitter";
-                if (m_ftPanel) {
-                    m_ftPanel->txAborted();
-                    m_ftPanel->txNote(QStringLiteral("TX refused (the band, the transmit limits, an interlock?)"));
-                }
+                ftxTxAborted(QStringLiteral("TX refused (the band, the transmit limits, an interlock?)"));
             });
         }
         if (!why.isEmpty()) {
             qInfo().noquote() << "MainWindow: FTX TX refused --" << why;
-            if (m_ftPanel) {
-                m_ftPanel->txAborted();
-                m_ftPanel->txNote(why);
-            }
+            ftxTxAborted(why);
             return;
         }
         m_ftxTxOn = true;
@@ -482,6 +578,8 @@ void MainWindow::deactivateFtx(bool restoreMode)
     m_ftxSliceId = -1;
     // Build 391: the mode's transmission off first, then its connections to
     // the radio threads (a call in flight finishes before these return).
+    if (m_js8Panel && m_ftxJs8)
+        m_js8Panel->stop();
     if (m_ftPanel)
         m_ftPanel->stop();
     if (m_ftxTxOn)
@@ -503,6 +601,12 @@ void MainWindow::deactivateFtx(bool restoreMode)
     if (SliceModel* s = m_radioModel.slice(sliceId); s && s->isLocked())
         s->setLocked(false);
 
+    if (m_js8Panel) {
+        if (m_ftxJs8)
+            m_js8Panel->stop();
+        m_js8Panel->hideWindow();
+    }
+    m_ftxJs8 = false;
     if (m_ftPanel) {
         m_ftPanel->stop();
         m_ftPanel->hideWindow();   // its place and settings saved

@@ -82,6 +82,15 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
         h1->addWidget(b);
     }
     bgMode->setExclusive(true);
+    // AetherSDR, build 406: the JS8 sub-mode -- its own window (MicronSDR: the JS8 button)
+    {
+        QPushButton *bJs8 = new QPushButton("JS8");
+        bJs8->setMinimumWidth(46);
+        bJs8->setFocusPolicy(Qt::NoFocus);
+        bJs8->setToolTip("JS8 (JS8Call): its own window instead of this one");
+        connect(bJs8, &QPushButton::clicked, this, [this]() { emit js8Requested(); });
+        h1->addWidget(bJs8);
+    }
     connect(bgMode, &QButtonGroup::idClicked, this, [this](int m) { setMode(m); });
     h1->addSpacing(10);
     cbBand = new QComboBox;

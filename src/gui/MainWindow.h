@@ -131,6 +131,7 @@ class QSystemTrayIcon;
 
 class FtUnit;    // build 381: src/ftx (MicronSDR's, global namespace)
 class FtPanel;
+class Js8Panel;   // build 406
 
 namespace AetherSDR {
 
@@ -2161,6 +2162,11 @@ private:
     QPointer<QWidget> m_ftxView;
     FtUnit* m_ftUnit{nullptr};     // build 381: MicronSDR's decoders (src/ftx)
     FtPanel* m_ftPanel{nullptr};   // and the window of the mode
+    Js8Panel* m_js8Panel{nullptr}; // build 406: the JS8 sub-mode's window
+    bool m_ftxJs8{false};          // ... which is the one shown
+    void ftxSwitchWindow(bool js8);
+    void ftxSetTxSource();
+    void ftxTxAborted(const QString& why);
     double m_ftxSavedFreqMhz{0.0};
     // Build 386: the FTX receiver's frequency belongs to the FTX window alone.
     // The slice is locked (SliceModel's tune lock refuses every other caller:

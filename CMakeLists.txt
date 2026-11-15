@@ -1423,6 +1423,16 @@ set(GUI_SOURCES
     src/ftx/FtWaterfall.cpp
     src/ftx/FtPanel.cpp
     src/ftx/FtPanelTx.cpp
+    # ANAN fork build 406: the JS8 sub-mode of FTX (MicronSDR's Js8Panel and
+    # the text layer of JS8Call: varicode, JSC dictionary).
+    src/ftx/CtyDat.cpp
+    src/ftx/Js8Panel.cpp
+    src/ftx/Js8PanelTx.cpp
+    src/ftx/js8/varicode.cpp
+    src/ftx/js8/decodedtext.cpp
+    src/ftx/js8/jsc.cpp
+    src/ftx/js8/jsc_list.cpp
+    src/ftx/js8/jsc_map.cpp
     # src/gui/HealthApplet.cpp  -- ANAN-100D port: applet removed
     src/gui/PersistentDialog.cpp
     src/gui/CanonWindow.cpp
@@ -3235,6 +3245,18 @@ if(WIN32 AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/libftx/win64/libftx.dll")
             "${CMAKE_SOURCE_DIR}/third_party/libftx/win64/cty.dat"
             "$<TARGET_FILE_DIR:AetherSDR>"
         COMMENT "Copying libftx.dll / cty.dat (FTX) to build directory"
+    )
+endif()
+
+# ANAN fork build 406: the JS8 sub-mode of FTX -- libjs8.dll (the JS8 decoder
+# of JS8Call, built by MicronSDR's JS8_src with MinGW, C API only), loaded at
+# run time by src/ftx/FtUnit from the executable's directory.
+if(WIN32 AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/libjs8/win64/libjs8.dll")
+    add_custom_command(TARGET AetherSDR POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/third_party/libjs8/win64/libjs8.dll"
+            "$<TARGET_FILE_DIR:AetherSDR>"
+        COMMENT "Copying libjs8.dll (JS8) to build directory"
     )
 endif()
 

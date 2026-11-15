@@ -127,6 +127,7 @@ signals:
     void modeChanged(int mode);
     void closed();                      // the window closed by the user: FTX off
     void pttRequest(bool on);           // the transmitter: MOX on / off
+    void js8Requested();                // AetherSDR, build 406: the JS8 button
     void txRearmed();                   // the message changed just after the start (the same period)
     void txHalted();                    // Halt TX (the remote server: its transmission off now)
 
