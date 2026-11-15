@@ -283,11 +283,16 @@ void FdvEngine::processTx(std::vector<float>& mono)
     // dips to 1.2 dB; 700D 15 .. 24 %, to 0.9 dB; 1600 one touch of 0.6 dB.
     // Each now sits about 0.3 dB under the ALC's threshold at its worst peak.
     // libfdv's lib modes (fdv_api.h): 0 RADE, 1 1600, 2 700D, 3 700E.
+    //
+    // Build 424 (operator, 15.11: "raise the sub-modes to 0.3 dB under the
+    // limiter"): from the worst peak behind the ALC on build 422 (log 12:34,
+    // the codec2 bands of 421): RADE -0.4, 700E -0.7, 700D -0.7, 1600 -0.6
+    // dBFS -> each raised to -0.3.
     static constexpr float kTxTrim[4] = {
-        0.8128f,   // RADE  -1.8 dB (was -4.5)
-        0.9120f,   // 1600  -0.8 dB
-        0.8710f,   // 700D  -1.2 dB
-        0.8414f,   // 700E  -1.5 dB
+        0.8222f,   // RADE  -1.7 dB (419: -1.8)
+        0.9441f,   // 1600  -0.5 dB (419: -0.8)
+        0.9120f,   // 700D  -0.8 dB (419: -1.2)
+        0.8810f,   // 700E  -1.1 dB (419: -1.5)
     };
     const float g = (m_mode >= 0 && m_mode < 4) ? kTxTrim[m_mode] : 1.0f;
     for (std::size_t i = 0; i < mono.size() && i < m_tc.size(); ++i)

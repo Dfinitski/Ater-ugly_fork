@@ -5028,7 +5028,12 @@ void SpectrumWidget::drawTxPeakLine(QPainter& p, const QRect& specRect)
         return;
     const float norm = (m_refLevel - m_txPeakHoldDb) / m_dynamicRange;
     const int y = specRect.top() + static_cast<int>(std::clamp(norm, 0.0f, 1.0f) * specRect.height());
-    const bool full = m_txPeakHoldDb >= -1.0f;
+    // Build 424 (operator, 15.11: "in RADE the peak line stays yellow --
+    // users will ask"). Measured where the samples go to the wire, after the
+    // TXA CFIR, whose passband gain is 0.9143 (-0.78 dB): the most the ALC
+    // lets through reads -0.8 dB here, only TUNE's tone (made after the
+    // CFIR) reaches 0. Green within 1 dB of the ALC's maximum.
+    const bool full = m_txPeakHoldDb >= -1.8f;
     const QColor c = full ? QColor(0x00, 0xff, 0x88, 220) : QColor(0xff, 0xb0, 0x20, 220);
     p.save();
     p.setPen(QPen(c, 1, Qt::DashLine));
