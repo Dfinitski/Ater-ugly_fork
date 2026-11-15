@@ -12,6 +12,9 @@ int wsprd_main(int argc, char *argv[]);
 extern void (*wsprd_spot_hook)(void *user, float snr, float dt, double freq, int drift, const char *msg);
 extern void *wsprd_spot_user;
 extern int optind;
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
+extern int optreset;                /* BSD getopt (macOS): restarted by optreset, not optind = 0 */
+#endif
 
 typedef struct { wspr_callback cb; void *user; double dial; int count; } Ctx;
 
@@ -95,7 +98,12 @@ int wspr_decode(const short *audio12k, int nsamples, double dialMHz, const char 
     c.count = 0;
     wsprd_spot_hook = onSpot;
     wsprd_spot_user = &c;
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
+    optreset = 1;                   /* getopt from the start again (BSD libc of macOS: optind = 0 */
+    optind = 1;                     /* would make it take argv[0] "wsprd" as the WAV file) */
+#else
     optind = 0;                     /* getopt from the start again (glibc, mingw-w64) */
+#endif
     rc = wsprd_main(argc, argv);
     wsprd_spot_hook = 0;
     wsprd_spot_user = 0;
