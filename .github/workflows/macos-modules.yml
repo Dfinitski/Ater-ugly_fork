@@ -4,8 +4,10 @@ name: macOS modules (arm64)
 # tools/micronsdr-modules/* with their own build_macos.sh scripts:
 #   libftx.dylib (FT8 / FT4 / WSPR), libjs8.dylib (JS8), libfdv.dylib + libcodec2.1.2.dylib (FreeDV).
 # Each script checks its result (arm64 only, minos 14.4, @rpath install_name, exports, ad hoc
-# signature, only system dependencies) and runs its test. The libraries and the logs are
-# uploaded as artifacts; nothing is committed back.
+# signature, only system dependencies) and runs its quick test; the step "Tests" runs the full
+# set of the Linux journal. The libraries, test programs and logs are uploaded as an artifact
+# and, when everything passed, committed to the branch macos-modules-bin (one commit per run,
+# history replaced) so that they can be fetched with git.
 
 on:
   workflow_dispatch:
@@ -16,7 +18,7 @@ on:
       - '.github/workflows/macos-modules.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -42,30 +44,6 @@ jobs:
         working-directory: tools/micronsdr-modules/FT_src
         run: ./build_macos.sh
 
-      - name: libftx.dylib with the classic linker (if the first try failed)
-        id: ftx2
-        if: steps.ftx.outcome == 'failure'
-        continue-on-error: true
-        working-directory: tools/micronsdr-modules/FT_src
-        run: |
-          cp build_macos.log build_macos_first.log || true
-          EXTRA_LDFLAGS=-Wl,-ld_classic ./build_macos.sh
-
-      - name: libftx.dylib, diagnostic (GCC runtime exports allowed, to run the tests)
-        id: ftx3
-        if: steps.ftx.outcome == 'failure' && steps.ftx2.outcome == 'failure'
-        continue-on-error: true
-        run: |
-          # GCC 16 of Homebrew exports four symbols of its own runtime (emutls, nested function
-          # trampolines) in spite of -exported_symbols_list. This copy of the script lets them
-          # pass the export check only, so that the decoder test still runs; the library of this
-          # step is not the release one.
-          T=$RUNNER_TEMP/ft_diag; rm -rf $T; cp -R tools/micronsdr-modules/FT_src $T
-          sed -i '' 's/"ftx_|wspr_"/"ftx_|wspr_|__emutls_|__gcc_nested_func_ptr_"/' $T/build_macos.sh
-          grep -n 'check_dylib libftx' $T/build_macos.sh
-          cd $T && ./build_macos.sh
-          nm -gU libftx.dylib
-
       - name: libjs8.dylib (JS8_src)
         id: js8
         continue-on-error: true
@@ -78,26 +56,53 @@ jobs:
         working-directory: tools/micronsdr-modules/FreeDV_src
         run: ./build_macos.sh "$RUNNER_TEMP/fdv_deps"
 
+      - name: Tests (the set of LINUX_MODULES.txt)
+        id: tests
+        if: steps.ftx.outcome == 'success' && steps.js8.outcome == 'success' && steps.fdv.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          M=$PWD/tools/micronsdr-modules
+          L=$RUNNER_TEMP/tests.log; : > $L
+          t() { echo "\$ $*" | tee -a $L; "$@" 2>&1 | tee -a $L; }
+          cd $M/FT_src; rm -f *.wav
+          for snr in -15 -19 -22; do
+            t ./ft8sim "CQ N7DDC CN87" 1500 0.0 0.1 1.0 1 $snr > /dev/null
+            t ./test_ftx ft8 000000_000001.wav "" 1
+            t ./test_ftx ft8 000000_000001.wav "" 3
+          done
+          for snr in -12 -14; do
+            t ./ft4sim "CQ N7DDC CN87" 1500 0.0 0.1 1.0 1 $snr > /dev/null
+            t ./test_ftx ft4 000000_000001.wav
+          done
+          t ./wsprgen "N7DDC CN87 37" -26 1500
+          t ./test_ftx wspr wspr_test.wav 14.0956 3
+          rm -f *.wav
+          cd $M/JS8_src; t ./test_js8
+          cd $M/FreeDV_src
+          t ./test_fdv offair "$RUNNER_TEMP/fdv_deps/rade_c"
+          t ./test_fdv loop "$RUNNER_TEMP/fdv_deps/rade_c"
+          rm -f *.wav
+
       - name: Collect
         if: always()
         run: |
-          O=$RUNNER_TEMP/macos-modules; mkdir -p $O/logs
+          O=$RUNNER_TEMP/macos-modules; rm -rf $O; mkdir -p $O/FT_src/macos $O/JS8_src/macos $O/FreeDV_src/macos $O/logs
           M=tools/micronsdr-modules
-          for f in $M/FT_src/libftx.dylib $M/JS8_src/libjs8.dylib \
-                   $M/FreeDV_src/libfdv.dylib $M/FreeDV_src/libcodec2.1.2.dylib; do
-            [ -f "$f" ] && cp "$f" $O/
-          done
+          for f in libftx.dylib test_ftx ft8sim ft4sim wsprgen; do [ -f $M/FT_src/$f ] && cp $M/FT_src/$f $O/FT_src/macos/; done
+          for f in libjs8.dylib test_js8; do [ -f $M/JS8_src/$f ] && cp $M/JS8_src/$f $O/JS8_src/macos/; done
+          for f in libfdv.dylib libcodec2.1.2.dylib test_fdv; do [ -f $M/FreeDV_src/$f ] && cp $M/FreeDV_src/$f $O/FreeDV_src/macos/; done
           for d in FT_src JS8_src FreeDV_src; do
-            for l in $M/$d/build_macos*.log; do [ -f "$l" ] && cp "$l" "$O/logs/${d}_$(basename "$l")"; done
+            [ -f $M/$d/build_macos.log ] && cp $M/$d/build_macos.log $O/logs/${d}_build_macos.log
           done
-          [ -f $RUNNER_TEMP/ft_diag/build_macos.log ] && cp $RUNNER_TEMP/ft_diag/build_macos.log $O/logs/FT_src_diagnostic_build_macos.log
-          [ -f $RUNNER_TEMP/ft_diag/libftx.dylib ] && mkdir -p $O/diagnostic && cp $RUNNER_TEMP/ft_diag/libftx.dylib $O/diagnostic/
-          cp $M/FT_src/MACOS_MODULES.txt $O/ 2>/dev/null || true
-          ( cd $O && ls -l && shasum -a 256 *.dylib > SHA256SUMS.txt 2>/dev/null || true )
-          for f in $O/*.dylib; do
-            [ -f "$f" ] || continue
+          [ -f $RUNNER_TEMP/tests.log ] && cp $RUNNER_TEMP/tests.log $O/logs/tests.log
+          { sw_vers; xcodebuild -version | head -1; "$FC" --version | head -1; clang --version | head -1; } > $O/logs/toolchain.txt 2>&1 || true
+          ( cd $O && find . -name '*.dylib' -o -perm -u+x -type f | sort | xargs shasum -a 256 > SHA256SUMS.txt ) || true
+          for f in $(find $O -name '*.dylib'); do
             echo "== $f"; lipo -archs "$f"; otool -L "$f"; codesign -dv "$f" 2>&1 | head -3
+            otool -l "$f" | awk '/LC_BUILD_VERSION/{b=1} b&&/minos/{print "   minos " $2; exit}'
           done
+          ls -lR $O
 
       - name: Upload
         if: always()
@@ -107,14 +112,25 @@ jobs:
           path: ${{ runner.temp }}/macos-modules
           if-no-files-found: warn
 
+      - name: Publish to the branch macos-modules-bin
+        if: steps.ftx.outcome == 'success' && steps.js8.outcome == 'success' && steps.fdv.outcome == 'success' && steps.tests.outcome == 'success'
+        run: |
+          O=$RUNNER_TEMP/macos-modules
+          cd $O
+          git init -q -b macos-modules-bin
+          git config user.name "github-actions[bot]"
+          git config user.email "41898+github-actions[bot]@users.noreply.github.com"
+          echo "MicronSDR macOS arm64 modules built by run ${{ github.run_id }} from ${{ github.sha }}" > BUILD_INFO.txt
+          git add -A
+          git commit -qm "macOS arm64 modules: run ${{ github.run_id }}, source ${{ github.sha }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" macos-modules-bin
+
       - name: Result
         if: always()
         run: |
-          echo "ftx: ${{ steps.ftx.outcome }} / classic linker: ${{ steps.ftx2.outcome }} / diagnostic: ${{ steps.ftx3.outcome }}"
+          echo "ftx: ${{ steps.ftx.outcome }}"
           echo "js8: ${{ steps.js8.outcome }}"
           echo "fdv: ${{ steps.fdv.outcome }}"
-          ok=1
-          [ "${{ steps.ftx.outcome }}" = success ] || [ "${{ steps.ftx2.outcome }}" = success ] || ok=0
-          [ "${{ steps.js8.outcome }}" = success ] || ok=0
-          [ "${{ steps.fdv.outcome }}" = success ] || ok=0
-          [ $ok = 1 ]
+          echo "tests: ${{ steps.tests.outcome }}"
+          [ "${{ steps.ftx.outcome }}" = success ] && [ "${{ steps.js8.outcome }}" = success ] && \
+          [ "${{ steps.fdv.outcome }}" = success ] && [ "${{ steps.tests.outcome }}" = success ]

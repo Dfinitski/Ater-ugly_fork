@@ -4,7 +4,8 @@
 #   Xcode command line tools:  xcode-select --install       (clang, ld, otool, codesign)
 #   Homebrew gfortran:         brew install gcc
 # The result: arm64 only, macOS 14.4 or newer (MACOS_MIN), install_name @rpath/libftx.dylib,
-# only ftx_* / wspr_* exported, libgfortran / libquadmath / libgcc linked in statically, FFT by
+# only ftx_* / wspr_* exported (and 4 helpers of the GCC runtime, see check_dylib below),
+# libgfortran / libquadmath / libgcc linked in statically, FFT by
 # pocketfft (c/fftwf_pocketfft.cpp): it depends only on /usr/lib/libSystem.B.dylib and
 # /usr/lib/libc++.1.dylib, signed ad hoc. The checks at the end fail the build otherwise.
 #   FC=/opt/homebrew/bin/gfortran-15 ./build_macos.sh    another gfortran
@@ -119,7 +120,12 @@ $FC -dynamiclib -o libftx.dylib $B/obj/*.o $FFTLIB -mmacosx-version-min=$MACOS_M
 strip -x libftx.dylib
 install_name_tool -id @rpath/libftx.dylib libftx.dylib
 codesign -s - -f libftx.dylib || fail "codesign libftx.dylib"
-check_dylib libftx.dylib @rpath/libftx.dylib "ftx_|wspr_"
+# Besides the five API functions the GCC driver exports four helpers of the GCC runtime that it
+# links in itself (emutls: ___emutls_get_address / ___emutls_register_common; trampolines of
+# nested Fortran procedures: ___gcc_nested_func_ptr_created / _deleted); -exported_symbols_list
+# does not hide them. They are allowed: a program looks up only ftx_* / wspr_*, and macOS'
+# two-level namespace binds each symbol to the library it was linked against.
+check_dylib libftx.dylib @rpath/libftx.dylib "ftx_|wspr_|__emutls_|__gcc_nested_func_ptr_"
 
 echo "CC  test_ftx"
 $CC -O2 $ARCH -o test_ftx test/test_ftx.c -L. -lftx -Wl,-rpath,@loader_path || fail "test_ftx"
