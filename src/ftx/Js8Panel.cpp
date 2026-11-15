@@ -30,7 +30,7 @@ Js8Panel::Js8Panel(FtUnit *u, QWidget *parent)
     setObjectName("Js8Panel");
     setWindowFlags(Qt::Window);         // a window of its own
     setWindowTitle("AetherSDR JS8");   // AetherSDR
-    setMinimumSize(676, 420);   // AetherSDR: as the FTX window
+    setMinimumSize(726, 420);   // AetherSDR: as the FTX window
     setAttribute(Qt::WA_StyledBackground, true);
     // AetherSDR: no stylesheet of its own -- the window takes the program's theme
     psk = new PskReporter(AetherSDR::forkDisplayVersion(), this);   // AetherSDR

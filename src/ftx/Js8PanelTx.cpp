@@ -23,6 +23,7 @@
 //     without an action of the user, then no automatic transmissions); with the confirmation
 //     (90 s, the default) unless switched off.
 //   - The periods of my transmissions are not decoded.
+#include "core/ForkName.h"
 #include "Js8Panel.h"
 #include "FtPanel.h"   // AetherSDR: FtLatinValidator
 #include "js8/decodedtext.h"
@@ -616,7 +617,7 @@ QString Js8Panel::macros(const QString &text) const
     t.replace("<MYGRID4>", g.left(4));
     t.replace("<MYGRID12>", g);
     t.replace("<MYIDLE>", QString("%1M").arg(idleMin));
-    t.replace("<MYVERSION>", "MICRONSDR");
+    t.replace("<MYVERSION>", AetherSDR::forkDisplayVersion().toUpper());   // AetherSDR, build 408: goes on the air
     t.replace("<MYINFO>", leInfo->text().trimmed().toUpper());
     t.replace("<MYSTATUS>", leStatus->text().trimmed().toUpper());
     const QString call = selectedCall();

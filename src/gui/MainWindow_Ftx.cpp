@@ -34,10 +34,65 @@
 #include <cmath>
 
 #include <memory>
+#include <QEvent>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <QLibrary>
+#include <QOperatingSystemVersion>
+#endif
 
 namespace AetherSDR {
 
 namespace {
+// Build 408 (operator, 14.11): "we have no light window headers" -- the FTX
+// and JS8 windows keep their native frame (resize, snap, minimize), and the
+// caption gets the colours of the program's own title bars (the middle of
+// FramelessWindowTitleBar's gradient and its text). DWMWA_CAPTION_COLOR /
+// DWMWA_TEXT_COLOR exist from Windows 11; dwmapi.dll is resolved at run time.
+// Applied on every show: a window flags change makes a new native window.
+class FtxCaptionColour : public QObject
+{
+public:
+    explicit FtxCaptionColour(QWidget* w) : QObject(w), m_w(w)
+    {
+        w->installEventFilter(this);
+    }
+
+protected:
+    bool eventFilter(QObject* o, QEvent* e) override
+    {
+        if (o == m_w && (e->type() == QEvent::Show || e->type() == QEvent::WinIdChange))
+            apply();
+        return false;
+    }
+
+private:
+    void apply()
+    {
+#ifdef Q_OS_WIN
+        if (QOperatingSystemVersion::current() < QOperatingSystemVersion::Windows11 || !m_w->isWindow())
+            return;
+        using SetAttr = HRESULT (WINAPI*)(HWND, DWORD, LPCVOID, DWORD);
+        static const SetAttr setAttr = reinterpret_cast<SetAttr>(
+            QLibrary::resolve(QStringLiteral("dwmapi"), "DwmSetWindowAttribute"));
+        const HWND hwnd = reinterpret_cast<HWND>(m_w->winId());
+        if (!setAttr || !hwnd)
+            return;
+        constexpr DWORD kBorderColor = 34;    // DWMWA_BORDER_COLOR
+        constexpr DWORD kCaptionColor = 35;   // DWMWA_CAPTION_COLOR
+        constexpr DWORD kTextColor = 36;      // DWMWA_TEXT_COLOR
+        const COLORREF caption = RGB(0x38, 0x4e, 0x68);
+        const COLORREF text = RGB(0xe0, 0xec, 0xf4);
+        const COLORREF border = RGB(0x1e, 0x2e, 0x3e);
+        setAttr(hwnd, kCaptionColor, &caption, sizeof(caption));
+        setAttr(hwnd, kTextColor, &text, sizeof(text));
+        setAttr(hwnd, kBorderColor, &border, sizeof(border));
+#endif
+    }
+
+    QWidget* m_w;
+};
+
 
 // Build 384: the arrows of the spin boxes. A styled QSpinBox loses the native
 // ones, and a stylesheet can only show an image there: two small triangles in
@@ -185,6 +240,7 @@ void MainWindow::activateFtx(int sliceId)
             QToolButton:hover { background: {{color.background.2}}; }
         )");
         ThemeManager::instance().applyStyleSheet(m_ftPanel, ftxWindowStyle);
+        new FtxCaptionColour(m_ftPanel);   // build 408
         m_ftPanel->loadSettings();
         // Build 406: the JS8 sub-mode -- MicronSDR's Js8Panel, a window of
         // its own on the same engine (libjs8.dll), in the same style. The
@@ -192,6 +248,7 @@ void MainWindow::activateFtx(int sliceId)
         // the JS8 window.
         m_js8Panel = new Js8Panel(m_ftUnit, this);
         ThemeManager::instance().applyStyleSheet(m_js8Panel, ftxWindowStyle);
+        new FtxCaptionColour(m_js8Panel);
         m_js8Panel->loadSettings();
         m_js8Panel->hide();
         connect(m_ftPanel, &FtPanel::js8Requested, this, [this] { ftxSwitchWindow(true); }, Qt::QueuedConnection);
