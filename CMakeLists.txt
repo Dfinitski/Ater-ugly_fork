@@ -3264,7 +3264,7 @@ endif()
 # glibc 2.35+, everything else linked in): libftx.so (FTX), libfdv.so +
 # libcodec2.so.1.2 (FreeDV; libfdv finds codec2 next to itself, RUNPATH
 # $ORIGIN) and cty.dat, next to the executable. The AppImage workflow puts
-# them in usr/bin. No libjs8.so yet: JS8 is Windows-only for now.
+# them in usr/bin. Build 443: libjs8.so (JS8) too.
 if(UNIX AND NOT APPLE AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/libftx/linux64/libftx.so")
     add_custom_command(TARGET AetherSDR POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -3281,6 +3281,14 @@ if(UNIX AND NOT APPLE AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/libfdv/linux64
             "${CMAKE_SOURCE_DIR}/third_party/libfdv/linux64/libcodec2.so.1.2"
             "$<TARGET_FILE_DIR:AetherSDR>"
         COMMENT "Copying libfdv.so / libcodec2.so.1.2 (FreeDV) to build directory"
+    )
+endif()
+if(UNIX AND NOT APPLE AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/libjs8/linux64/libjs8.so")
+    add_custom_command(TARGET AetherSDR POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/third_party/libjs8/linux64/libjs8.so"
+            "$<TARGET_FILE_DIR:AetherSDR>"
+        COMMENT "Copying libjs8.so (JS8) to build directory"
     )
 endif()
 

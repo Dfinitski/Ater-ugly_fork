@@ -29,3 +29,8 @@ If something fails: send build.log.
 
 A WAV file (12 kHz, 16 bit, mono, one period from its start) can be decoded too:
        ./test_js8.exe file.wav 0        (0 Normal, 1 Fast, 2 Turbo, 4 Slow)
+
+linux64/libjs8.so  The same decoder / encoder for Linux x86_64 (MicronSDR JS8_src,
+                   glibc 2.35+, the C++ runtime linked in, pocketfft inside). The
+                   AppImage puts it next to the executable (usr/bin). Notes from its
+                   builder: linux64/LINUX_MODULES.txt.

@@ -1,0 +1,109 @@
+Linux modules of MicronSDR: libftx.so (FT8 / FT4 / WSPR), libjs8.so (JS8), libfdv.so (FreeDV)
+=============================================================================================
+Russian version: LINUX_MODULES_ru.txt
+Journal, 2026-11-15 (JS8 added the same day). The same file is in all three linux folders.
+
+Where
+  C:\Users\user\Desktop\MicronSDR_64\FT_src\linux\      prebuilt FTX module and its tests
+  C:\Users\user\Desktop\MicronSDR_64\JS8_src\linux\     prebuilt JS8 module and its test
+  C:\Users\user\Desktop\MicronSDR_64\FreeDV_src\linux\  prebuilt FreeDV module and its test
+  The sources and build scripts are in the parent folders (FT_src, JS8_src, FreeDV_src).
+
+What is there
+  FT_src\linux\
+    libftx.so          FT8 / FT4 / WSPR decoders and encoders of WSJT-X (GPL-3).
+                       API: FT_src\ftx_api.h (plain C). Exports only ftx_version, ftx_decode,
+                       wspr_decode, ftx_encode, wspr_encode.
+    test_ftx           decodes a WAV file (12000 S/s, mono, 16 bit) with libftx.so
+    ft8sim, ft4sim     WSJT-X test signal generators (FT8 / FT4 WAV)
+    wsprgen            WSPR test signal generator (2 min WAV)
+  JS8_src\linux\
+    libjs8.so          JS8 decoder of JS8Call 2.3+ (GPL-3), submodes Normal / Fast / Turbo / Slow.
+                       API: JS8_src\js8_api.h (plain C). Exports only js8_version,
+                       js8_period_samples, js8_decode, js8_encode. Call from ONE thread
+                       (it keeps its FFT plans between calls).
+    test_js8           encodes, modulates and decodes test frames in every submode;
+                       ./test_js8 file.wav 0 decodes a WAV (12 kHz mono 16 bit, one period)
+  FreeDV_src\linux\
+    libfdv.so          FreeDV: RADE V1, 1600, 700D, 700E. 48 kHz float audio in / out, works
+                       in its own thread. API: FreeDV_src\fdv_api.h. Exports only fdv_*.
+    libcodec2.so.1.2   codec2 (LGPL-2.1), needed by libfdv.so. Keep it in the same folder
+                       as libfdv.so (libfdv.so looks for it next to itself, rpath $ORIGIN).
+    test_fdv           off-air and loopback test
+
+Requirements on the target machine
+  Linux x86_64, glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+).
+  Nothing else: libgfortran, libquadmath, libstdc++, libgcc, opus and rade_c are linked in
+  (boost and Eigen are header only, FFT is pocketfft inside).
+  Check: ldd --version
+
+How to use from a program
+  1. Copy the .so files next to the program (or into a folder on LD_LIBRARY_PATH).
+     FreeDV: libfdv.so and libcodec2.so.1.2 together.
+  2. Include ftx_api.h / js8_api.h / fdv_api.h; link with -L<dir> -lftx / -ljs8 / -lfdv, or load
+     at run time with dlopen("libftx.so") / dlopen("libjs8.so") / dlopen("libfdv.so") and dlsym.
+  3. Linux file names have no "lib...dll" import libraries; the API is the same as on Windows.
+  Notes:
+    - FT8 / FT4: ftx_decode with nzhsym = 0 decodes a whole period in one call (version 1.21).
+      If you call it during the period yourself, call it at 41 or 47 first and then at 50 -
+      a call at 50 alone (depth 2..3) decodes the old buffer. ftx_version() returns 121.
+    - JS8: the frames are 12 characters of the JS8 alphabet; unpacking them into text is the
+      varicode of JS8Call, done by the program (MicronSDR: Js8Panel).
+    - FreeDV: the write / read calls only move samples through FIFOs, they may be called
+      from an audio callback.
+
+Checking that it works (run in the linux folder; the .so is found next to the test)
+  FTX:
+    ./ft8sim "CQ N7DDC CN87" 1500 0.0 0.1 1.0 1 -15     -> 000000_000001.wav
+    ./test_ftx ft8 000000_000001.wav
+    ./ft4sim "CQ N7DDC CN87" 1500 0.0 0.1 1.0 1 -12     -> ./test_ftx ft4 000000_000001.wav
+    ./wsprgen "N7DDC CN87 37" -26 1500                  -> wspr_test.wav
+    ./test_ftx wspr wspr_test.wav 14.0956 3
+  JS8:
+    ./test_js8                           every submode at 0 / -12 / -18 dB
+  FreeDV (needs the rade_c sources for the test recording; build_linux.sh fetches them):
+    ./test_fdv offair <deps>/rade_c      decodes rade_c's FDV_offair.wav -> offair_dec.wav
+    ./test_fdv loop   <deps>/rade_c      TX -> RX loopback in every mode -> loop_*.wav
+  If a file is not executable after copying from Windows: chmod +x test_ftx test_js8 ft8sim ...
+
+Results (2026-11-15)
+  FT8: -19 dB decoded at every depth, -22 dB at depth 3 (the slowest window 0.93 s).
+  FT4: -14 dB. WSPR: "N7DDC CN87 37" at -26 dB.
+  JS8 (same as the Windows DLL): Normal and Slow - 3 of 3 frames at 0 / -12 / -18 dB;
+  Fast and Turbo - 3 of 3 at 0 / -12 dB (-18 dB is below their limit).
+  FreeDV off-air RADE: sync after 0.55 s, 91 % in sync, SNR 28 dB, callsigns VK5KVA / VK3TPM.
+  FreeDV loopback RADE / 1600 / 700D / 700E: speech decoded, RADE callsign N7DDC.
+
+Rebuilding (on any Linux x86_64)
+  FTX:    cd FT_src;     ./build_linux.sh
+          needs gcc, g++, gfortran (Ubuntu: apt install gcc g++ gfortran)
+          FFTW is not needed: c/fftwf_pocketfft.cpp replaces it with pocketfft (BSD-3).
+          FTX_SYSTEM_FFTW=1 ./build_linux.sh uses the system FFTW (libfftw3-dev) instead.
+  JS8:    cd JS8_src;    ./build_linux.sh
+          needs g++ (gcc 11+, C++20) and the boost and Eigen headers
+          (Ubuntu: apt install g++ libboost-dev libeigen3-dev; or BOOST_INC=... EIGEN_INC=...);
+          FFT: pocketfft (fft/), JS8_SYSTEM_FFTW=1 for the system FFTW.
+  FreeDV: cd FreeDV_src; ./build_linux.sh ~/fdv_deps
+          needs git, cmake, make, gcc, g++, wget; fetches the pinned codec2, rade_c, opus
+          (+ 183 MB of opus model data) into the given folder.
+  All print "== OK: ... needs glibc X or newer" at the end. The outputs go into FT_src /
+  JS8_src / FreeDV_src themselves (copy them into linux\ if they are to be updated there).
+  Building on a newer system still gives glibc 2.35: FT_src/c/glibc_compat.c (fmod),
+  JS8_src/glibc_compat.c (fmod, fmodf, __isoc23_strtoul, arc4random) and
+  fdv_glibc_compat.c (__isoc23_strtoul, arc4random) with -Wl,--wrap. For a system older
+  than glibc 2.35 build on that system.
+  The Windows build (build.sh, build_win.sh) is not changed.
+
+Files changed / added for Linux
+  FT_src:     build_linux.sh, c/fftwf_pocketfft.cpp, c/fftw/fftw3.h, c/pocketfft/,
+              c/glibc_compat.c, ftx_api.f90 + ftx_api.h (1.21: nzhsym = 0), test/test_ftx.c
+  JS8_src:    build_linux.sh, fft/ (pocketfft + the FFTW shim), glibc_compat.c
+              (JS8core.cpp, js8_api.h not changed)
+  FreeDV_src: build_linux.sh, fdv_glibc_compat.c, test_fdv.cpp (paths as arguments)
+  Details: README.txt / README_ru.txt in each source folder.
+
+Licenses
+  libftx.so: GPL-3 (WSJT-X, FT_src\COPYING, FT_src\AUTHORS); pocketfft BSD-3.
+  libjs8.so: GPL-3 (JS8Call, W6BAZ); boost BSL-1.0, Eigen MPL-2.0, pocketfft BSD-3.
+  libfdv.so: wrapper BSD-2, rade_c BSD-2, Opus BSD-3, rade_text / LDPC BSD-2;
+  libcodec2.so: LGPL-2.1 (a separate library, may be replaced by the user).

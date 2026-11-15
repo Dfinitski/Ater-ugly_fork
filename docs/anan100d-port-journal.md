@@ -7675,6 +7675,25 @@ cty.dat не клались вовсе — FTX на Linux не работал. �
 
 Проверено компиляцией и загрузкой модулей; AppImage — CI.
 
+## 416. Сборка 443 — libjs8.so для Linux; DRM на Linux
+
+Оператор, 15.11: `JS8_src\linux\` готов (libjs8.so, test_js8, LINUX_MODULES.txt — общий журнал трёх
+модулей); «что по DRM».
+
+- libjs8.so: экспорт js8_version / js8_period_samples / js8_decode / js8_encode, NEEDED libm / libc,
+  GLIBC_2.35; js8_api.h совпадает с third_party/libjs8. test_js8 здесь: все подрежимы, 3 из 3
+  кадров (Turbo на −18 дБ — тоже 3 из 3, q 0,97..1,00).
+- third_party/libjs8/linux64/libjs8.so; LINUX_MODULES.txt (новая редакция с JS8) во всех трёх
+  linux64; README.
+- appimage.yml: libjs8.so в usr/bin; проверка — файл, ldd, `js8_version`.
+- CMakeLists.txt: на Linux libjs8.so к исполняемому файлу.
+
+DRM на Linux: декодер Dream собран в программу (third_party/dream), FDK-AAC v3.0.0 (закреплённый
+коммит a68a51aa) собирается в CI и кладётся в usr/lib как libfdk-aac.so.2; `fdk_dyn.cpp` ищет его в
+системном пути, затем в ../lib и рядом с программой. В прогонах CI шаг «Build FDK-AAC» — success.
+Отдельного модуля не нужно. Линейная фаза приёма для DRM (сборка 440) — на main, в следующий
+релиз.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

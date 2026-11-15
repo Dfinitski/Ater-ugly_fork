@@ -383,18 +383,19 @@ jobs:
       # next to the executable, where FtUnit / FdvEngine / CtyDat look first.
       # libfdv.so's RUNPATH is $ORIGIN; linuxdeploy may rewrite it to
       # $ORIGIN/../lib, so codec2 goes in usr/lib as well. A missing module
-      # fails the job: the release notes promise these modes. (JS8 has no
-      # Linux module yet.)
-      - name: Stage FTX / FreeDV modules (libftx.so, libfdv.so, libcodec2, cty.dat)
+      # fails the job: the release notes promise these modes. Build 443:
+      # libjs8.so (JS8) as well.
+      - name: Stage FTX / JS8 / FreeDV modules (libftx.so, libjs8.so, libfdv.so, libcodec2, cty.dat)
         run: |
           set -e
           cp -v third_party/libftx/linux64/libftx.so AppDir/usr/bin/
+          cp -v third_party/libjs8/linux64/libjs8.so AppDir/usr/bin/
           cp -v third_party/libftx/win64/cty.dat AppDir/usr/bin/
           cp -v third_party/libfdv/linux64/libfdv.so AppDir/usr/bin/
           cp -v third_party/libfdv/linux64/libcodec2.so.1.2 AppDir/usr/bin/
           mkdir -p AppDir/usr/lib
           cp -v third_party/libfdv/linux64/libcodec2.so.1.2 AppDir/usr/lib/
-          chmod 755 AppDir/usr/bin/libftx.so AppDir/usr/bin/libfdv.so AppDir/usr/bin/libcodec2.so.1.2
+          chmod 755 AppDir/usr/bin/libftx.so AppDir/usr/bin/libjs8.so AppDir/usr/bin/libfdv.so AppDir/usr/bin/libcodec2.so.1.2
 
       # Build 238: DRM audio. AetherSDR does not link FDK-AAC; it loads
       # libfdk-aac.so.2 at run time (third_party/dream/aether/fdk_dyn.cpp:
@@ -474,14 +475,14 @@ jobs:
       # release notes claim native Wayland is worse than a red run.
       # ANAN fork build 442: the FTX / FreeDV modules survived linuxdeploy and
       # resolve inside the AppDir (codec2 found by libfdv's RUNPATH).
-      - name: Assert the FTX / FreeDV modules
+      - name: Assert the FTX / JS8 / FreeDV modules
         run: |
           set -e
-          for f in libftx.so libfdv.so libcodec2.so.1.2 cty.dat; do
+          for f in libftx.so libjs8.so libfdv.so libcodec2.so.1.2 cty.dat; do
             test -f "AppDir/usr/bin/$f" || { echo "::error::AppDir/usr/bin/$f missing"; exit 1; }
           done
           readelf -d AppDir/usr/bin/libfdv.so | grep -E 'RUNPATH|RPATH' || true
-          for f in libftx.so libfdv.so; do
+          for f in libftx.so libjs8.so libfdv.so; do
             if ldd "AppDir/usr/bin/$f" | grep -q 'not found'; then
               ldd "AppDir/usr/bin/$f"; echo "::error::$f has unresolved dependencies"; exit 1
             fi
@@ -489,6 +490,7 @@ jobs:
           python3 - <<'PY'
           import ctypes
           ftx = ctypes.CDLL('AppDir/usr/bin/libftx.so'); print('libftx', ftx.ftx_version())
+          js8 = ctypes.CDLL('AppDir/usr/bin/libjs8.so'); print('libjs8', js8.js8_version())
           fdv = ctypes.CDLL('AppDir/usr/bin/libfdv.so'); print('libfdv', fdv.fdv_version())
           fdv.fdv_create.restype = ctypes.c_void_p
           for m in range(4):
