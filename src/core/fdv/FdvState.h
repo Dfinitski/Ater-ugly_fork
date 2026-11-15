@@ -68,8 +68,18 @@ inline void fdvTxBandHz(int subMode, int* lo, int* hi)
     // bandwidth of the signal is effectively set by the SSB radio Tx
     // filter" -- this filter is that. The transmit panadapter shows the DUC
     // I/Q as sent (AnanTxScope), i.e. after it.
+    //
+    // Build 412 -- OUR ERROR in 405 for RADE: 700 .. 2300 is narrower than
+    // the modem's own transmit filter. RADE's carriers are 750 .. 2200 Hz
+    // (rade_ofdm.c: 30 x 50 Hz from 1500 - 750), and its own Tx BPF
+    // (rade_tx.c) is 1.2 x that span about its centre: 1740 Hz at 1475 Hz,
+    // 605 .. 2345 Hz. With 700 the edge stood 50 Hz under the first carrier.
+    // Measured on the operator's radio, 14.11 20:37, 700 .. 2300: WDSP's ALC
+    // at work in 97 % of the blocks, mean -2.2 dB, dips to -5 dB (the peaks
+    // behind the filter 5 dB over full scale; in: envelope crest about 2 dB).
+    // Now the modem's own figures: 600 .. 2350.
     static const int band[kFdvSubModeCount][2] = {
-        {900, 2100}, {950, 2050}, {700, 2300}, {700, 2300}};   // 1600, 700D, 700E, RADE
+        {900, 2100}, {950, 2050}, {700, 2300}, {600, 2350}};   // 1600, 700D, 700E, RADE
     const int m = std::clamp(subMode, 0, kFdvSubModeCount - 1);
     *lo = band[m][0];
     *hi = band[m][1];
