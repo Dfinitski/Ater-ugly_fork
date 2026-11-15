@@ -96,6 +96,8 @@ QVariant FreeDvReporterModel::data(const QModelIndex& index, int role) const
                 ? QStringLiteral("---")
                 : QString::number(static_cast<int>(info.snr));
         case LastUpdate:
+            // Build 416: the time itself for sorting and the age filter
+            if (role == Qt::UserRole) return info.lastUpdate;
             return info.lastUpdate.isValid()
                 ? info.lastUpdate.toUTC().toString("MM/dd/yyyy HH:mm:ss 'Z'")
                 : QString{};

@@ -10,6 +10,9 @@
 #include <QSet>
 #include <QSortFilterProxyModel>
 
+class QComboBox;   // build 416
+class QTimer;
+
 class QTableView;
 class QCheckBox;
 class QLabel;
@@ -106,6 +109,9 @@ private:
     QButtonGroup*  m_bandGroup{nullptr};
     QVector<QPushButton*> m_bandBtns;
     QPushButton*   m_enableBtn{nullptr};   // build 398
+    QComboBox*     m_ageCombo{nullptr};   // build 416: heard within (minutes, 0 = any time)
+    QTimer*        m_ageTimer{nullptr};
+    void applyAgeFilter();
 
     QPointer<SliceModel> m_slice;
     QMetaObject::Connection m_sliceFreqConn;

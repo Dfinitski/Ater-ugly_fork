@@ -21,6 +21,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include <QComboBox>
+#include <QTimer>
 #include <cmath>
 
 namespace AetherSDR {
@@ -47,6 +49,22 @@ public:
         endFilterChange(QSortFilterProxyModel::Direction::Rows);
     }
 
+    // Build 416: stations not updated within this many seconds are hidden
+    // (0 = any time). Re-run as time passes (refreshAge).
+    void setMaxAge(int secs)
+    {
+        beginFilterChange();
+        m_maxAgeSec = secs;
+        endFilterChange(QSortFilterProxyModel::Direction::Rows);
+    }
+    void refreshAge()
+    {
+        if (m_maxAgeSec <= 0)
+            return;
+        beginFilterChange();
+        endFilterChange(QSortFilterProxyModel::Direction::Rows);
+    }
+
     void setFreqFilter(double hz)
     {
         beginFilterChange();
@@ -61,6 +79,14 @@ protected:
         const QModelIndex mhzIdx = sourceModel()->index(
             sourceRow, FreeDvReporterModel::MHz, sourceParent);
         const double mhz = sourceModel()->data(mhzIdx, Qt::UserRole).toDouble();
+
+        if (m_maxAgeSec > 0) {
+            const QDateTime t = sourceModel()->data(
+                sourceModel()->index(sourceRow, FreeDvReporterModel::LastUpdate, sourceParent),
+                Qt::UserRole).toDateTime();
+            if (t.isValid() && t.secsTo(QDateTime::currentDateTimeUtc()) > m_maxAgeSec)
+                return false;
+        }
 
         if (m_mode == Band) {
             if (m_bands.isEmpty()) return true;   // "All"
@@ -90,6 +116,7 @@ protected:
 
 private:
     FilterMode                    m_mode{Band};
+    int                           m_maxAgeSec{0};
     QVector<QPair<double,double>> m_bands;   // empty = "All"
     double                        m_freqHz{0.0};
 };
@@ -287,6 +314,29 @@ void FreeDvReporterDialog::buildBody()
     m_freqRadio->setToolTip("Track: only the stations on exactly this receiver's frequency");
     ThemeManager::instance().applyStyleSheet(m_freqRadio, filterChoiceStyle);
     bottom->addWidget(m_freqRadio);
+
+    // Build 416 (operator, 15.11): a filter by time -- the stations heard
+    // from (any update: frequency, status, RX report) within the chosen time.
+    m_ageCombo = new QComboBox;
+    m_ageCombo->setObjectName(QStringLiteral("freedvReporterAgeCombo"));
+    m_ageCombo->setToolTip("Only the stations heard from (any update) within this time");
+    m_ageCombo->setFocusPolicy(Qt::NoFocus);
+    for (const auto& [label, minutes] : {std::pair<const char*, int>{"Any time", 0}, {"5 min", 5},
+                                         {"15 min", 15}, {"30 min", 30}, {"1 hour", 60},
+                                         {"3 hours", 180}, {"12 hours", 720}})
+        m_ageCombo->addItem(QString::fromLatin1(label), minutes);
+    ThemeManager::instance().applyStyleSheet(m_ageCombo,
+        "QComboBox { background-color: {{color.background.2}}; color: {{color.text.primary}};"
+        " border: 1px solid {{color.background.2}}; padding: 1px 6px; min-width: 64px; }");
+    connect(m_ageCombo, &QComboBox::currentIndexChanged, this, [this] {
+        applyAgeFilter();
+        persistSettings();
+    });
+    bottom->addWidget(m_ageCombo);
+    m_ageTimer = new QTimer(this);
+    m_ageTimer->setInterval(15000);
+    connect(m_ageTimer, &QTimer::timeout, this,
+            [this] { static_cast<FreeDvReporterProxy*>(m_proxy)->refreshAge(); });
 
     m_bandGroup = new QButtonGroup(this);
     m_bandGroup->setExclusive(false);
@@ -555,6 +605,16 @@ void FreeDvReporterDialog::syncButtonStates()
     }
 }
 
+void FreeDvReporterDialog::applyAgeFilter()
+{
+    const int minutes = m_ageCombo ? m_ageCombo->currentData().toInt() : 0;
+    static_cast<FreeDvReporterProxy*>(m_proxy)->setMaxAge(minutes * 60);
+    if (minutes > 0)
+        m_ageTimer->start();
+    else
+        m_ageTimer->stop();
+}
+
 void FreeDvReporterDialog::applyFreqFilter(double hz)
 {
     m_activeFreqHz = hz;
@@ -602,6 +662,7 @@ void FreeDvReporterDialog::persistSettings() const
     for (int idx : std::as_const(m_activeBandIndices))
         indices.append(idx);
     obj["bandIndices"] = indices;
+    obj["maxAgeMin"]   = m_ageCombo ? m_ageCombo->currentData().toInt() : 0;   // build 416
 
     AppSettings::instance().setValue(
         "FreeDvReporter",
@@ -637,6 +698,12 @@ void FreeDvReporterDialog::restoreSettings()
         const int oldIdx = obj.value("bandIndex").toInt(BandCount - 1);
         if (oldIdx >= 0 && oldIdx <= 8)
             m_activeBandIndices.insert(oldIdx);
+    }
+
+    if (m_ageCombo) {   // build 416
+        const int i = m_ageCombo->findData(obj.value("maxAgeMin").toInt(0));
+        m_ageCombo->setCurrentIndex(i >= 0 ? i : 0);
+        applyAgeFilter();
     }
 
     m_trackCheck->setChecked(track);
