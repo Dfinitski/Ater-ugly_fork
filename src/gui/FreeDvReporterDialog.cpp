@@ -313,14 +313,18 @@ void FreeDvReporterDialog::buildBody()
         return b;
     };
     m_trackCheck = filterButton("Track", "Follow the receiver: its band (Band) or its exact frequency (Freq)");
-    m_bandRadio = filterButton("Band", "Track: the stations on this receiver's band. "
-                                       "Ctrl+click band buttons to select multiple bands");
-    m_freqRadio = filterButton("Freq", "Track: only the stations on exactly this receiver's frequency");
-    auto* modeGroup = new QButtonGroup(this);
-    modeGroup->setExclusive(true);
-    modeGroup->addButton(m_bandRadio);
-    modeGroup->addButton(m_freqRadio);
+    // Build 420 (operator, 15.11: "Band does nothing -- remove it"): Freq is
+    // one button on its own -- with Track, on: the receiver's exact
+    // frequency, off: its band. The band mode stays as a hidden state (the
+    // logic and the stored "bandMode" read it) and follows Freq.
+    m_freqRadio = filterButton("Freq", "With Track -- on: only the stations on exactly this receiver's "
+                                       "frequency; off: the stations on its band");
+    m_bandRadio = new QPushButton(this);
+    m_bandRadio->setCheckable(true);
+    m_bandRadio->hide();
     m_bandRadio->setChecked(true);
+    connect(m_freqRadio, &QPushButton::toggled, m_bandRadio,
+            [this](bool on) { m_bandRadio->setChecked(!on); });
 
     // Build 416 (operator, 15.11): a filter by time -- the stations heard
     // from (any update: frequency, status, RX report) within the chosen time.
@@ -383,13 +387,14 @@ void FreeDvReporterDialog::buildBody()
 #endif
                 ;
 
-            if (isAllBtn || !ctrl) {
-                // Plain click on any button, or Ctrl+click on "All": single-select
+            // Build 420 (operator, 15.11: "the band buttons filter the spots
+            // independently; All resets the band buttons"): a plain click
+            // toggles its band in or out; All clears them all.
+            Q_UNUSED(ctrl);
+            if (isAllBtn) {
                 m_activeBandIndices.clear();
-                if (!isAllBtn)
-                    m_activeBandIndices.insert(idx);
             } else {
-                // Ctrl+click on a named band: toggle in/out of active set
+                // A named band: toggle in/out of the active set
                 if (m_activeBandIndices.contains(idx))
                     m_activeBandIndices.remove(idx);
                 else
@@ -714,8 +719,8 @@ void FreeDvReporterDialog::restoreSettings()
     }
 
     m_trackCheck->setChecked(track);
-    if (bandMode) m_bandRadio->setChecked(true);
-    else          m_freqRadio->setChecked(true);
+    m_freqRadio->setChecked(!bandMode);   // build 420: Band follows Freq
+    m_bandRadio->setChecked(bandMode);
 
     applyBandFilter();   // applies filter + syncs button checked states
 }
