@@ -65,21 +65,21 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 372
+## Build 413
 
-Full notes: [docs/release-notes-build-372.md](docs/release-notes-build-372.md).
+Full notes: [docs/release-notes-build-413.md](docs/release-notes-build-413.md).
 
-- **FreeDV:** a mode of its own with the modem's filter on the panadapter, received text, SNR and
-  offset on the flag, a MOD gauge, and the transmit chain put right.
-- **Transmit panadapter:** full resolution, 0 ... -80 dB scale with a TX drive peak line; drive
-  held just under the firmware's full scale.
-- **Panadapter:** no level jump after a drag; AUTO attenuator independent of the FFT average;
-  zoom without retuning; Center Lock zoom and drag-to-tune.
-- **Transverters:** LO entry, LO error in Hz, live validity, working RX Gain and Max Power,
-  PA calibration by the IF.
-- **Mode buttons:** SSB entry and new defaults; floating applet windows remember being closed.
+- **FTX:** FT8, FT4, WSPR and JS8 in windows of their own (from MicronSDR), decoders on the
+  receiver's I/Q, the mode's own transmitter, JTDX highlighting, its waterfall under the
+  panadapter, transverter bands, two-receiver rules.
+- **FreeDV:** Reporter / Enable / Visible buttons, receive reports from the local FDV; transmit
+  filter per sub-mode; RADE level set so the ALC is idle.
+- **Transmit:** microphone profiles per mode group (part of a TX Profile); PureSignal filter
+  bypass on transmit; transmit region in Radio Setup.
+- **Audio on its own thread:** the interface no longer stops the sound; reconnect without a hang.
+- **Display:** waterfall average; settings windows with a larger title bar and rounded corners.
 
-Earlier notes: [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Windows portable build
 
