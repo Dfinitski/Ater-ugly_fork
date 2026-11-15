@@ -1,0 +1,75 @@
+macOS modules of MicronSDR: libftx.dylib, libjs8.dylib, libfdv.dylib + libcodec2.1.2.dylib
+==========================================================================================
+Russian version: MACOS_MODULES_ru.txt
+Journal, 2026-11-15. The same file is in FT_src, JS8_src and FreeDV_src.
+
+Status
+  The build scripts are written; the libraries are NOT built yet: they need a Mac (Apple
+  silicon). There is no Mac in this build environment and the macOS SDK may not be used on
+  other hardware. Run the three scripts on an arm64 Mac (or a GitHub Actions macos-14 runner)
+  and send the logs (build_macos.log) if something fails.
+
+Scripts
+  C:\Users\user\Desktop\MicronSDR_64\FT_src\build_macos.sh       -> libftx.dylib
+  C:\Users\user\Desktop\MicronSDR_64\JS8_src\build_macos.sh      -> libjs8.dylib
+  C:\Users\user\Desktop\MicronSDR_64\FreeDV_src\build_macos.sh   -> libfdv.dylib, libcodec2.1.2.dylib
+  The sources are the same as for Windows and Linux; nothing in them was changed for macOS.
+
+What is needed on the Mac (once)
+  xcode-select --install                 clang, ld, otool, install_name_tool, codesign
+  brew install gcc                       gfortran (libftx only)
+  brew install boost eigen               headers only (libjs8 only)
+  brew install cmake git                 (libfdv only; it fetches codec2, rade_c, opus and
+                                          183 MB of opus model data)
+
+Building
+  cd FT_src     && ./build_macos.sh
+  cd JS8_src    && ./build_macos.sh
+  cd FreeDV_src && ./build_macos.sh ~/fdv_deps
+  Each script ends with "== OK: ..." and runs its test (as on Linux). After copying from
+  Windows: chmod +x build_macos.sh.
+
+The requirements and how the scripts meet them
+  Architecture       arm64 only: -arch arm64 (clang), gfortran of Homebrew on arm64; checked with
+                     lipo -archs.
+  Minimum macOS      14.4: MACOSX_DEPLOYMENT_TARGET=14.4 and -mmacosx-version-min=14.4 (clang,
+                     gfortran, CMake: CMAKE_OSX_DEPLOYMENT_TARGET); checked: minos in otool -l.
+                     Not lower: Qt 6.12 itself needs 14.4.
+  File names         libftx.dylib, libjs8.dylib, libfdv.dylib, libcodec2.1.2.dylib.
+  install_name       @rpath/<name>.dylib for each (-install_name, then install_name_tool -id).
+  libfdv -> codec2   @loader_path/libcodec2.1.2.dylib (install_name_tool -change): codec2 is
+                     found next to libfdv.dylib, like $ORIGIN on Linux.
+  Static inside      libgfortran, libgcc (-static-libgfortran -static-libgcc), libquadmath
+                     (-static-libquadmath, where GCC has it: GCC for arm64 macOS usually has no
+                     libquadmath, then it is not needed), opus, rade_c, pocketfft instead of
+                     FFTW (no FFTW of Homebrew is used).
+  Dependencies       only /usr/lib/libSystem.B.dylib and /usr/lib/libc++.1.dylib (and libfdv:
+                     its codec2); checked with otool -L: nothing from /opt/homebrew.
+  Exports            the C API only: _ftx_* / _wspr_* (libftx), _js8_* (libjs8), _fdv_* (libfdv)
+                     by -exported_symbols_list; checked with nm -gU. libcodec2 keeps its own API.
+  Signature          after install_name_tool: codesign -s - -f (ad hoc); checked: codesign -v.
+                     The test programs are signed too.
+  Every check prints "!! ..." and stops the build if a requirement is not met; at the end of each
+  library: "OK: arm64, macOS 14.4, @rpath/..., signed" and its otool -L / exports.
+
+How to use from a program
+  Put the dylibs where the program's rpath points (an app bundle: Contents/Frameworks, with
+  -Wl,-rpath,@executable_path/../Frameworks), libfdv.dylib and libcodec2.1.2.dylib in the same
+  folder. Headers: FT_src/ftx_api.h, JS8_src/js8_api.h, FreeDV_src/fdv_api.h - the same C API as
+  on Windows and Linux; link with -L<dir> -lftx / -ljs8 / -lfdv, or dlopen("@rpath/libftx.dylib").
+  If the app is signed for distribution (Developer ID, notarization), sign the dylibs again with
+  that identity: the ad hoc signature is enough to load them on Apple silicon, not to notarize.
+  Notes as on Linux: FT8 nzhsym = 0 (version 1.21); libjs8: one thread; libfdv: FIFO calls are
+  safe in the audio callback. See LINUX_MODULES.txt in the linux folders.
+
+If something fails
+  - "ld: ... built for macOS 15.x which is newer than being linked (14.4)": a warning from the
+    static libgfortran.a of Homebrew (built for the Homebrew system's macOS); the library still
+    has minos 14.4. Only the GCC runtime parts are affected; tell us if it does not load on 14.4.
+  - the new Xcode linker refuses GCC objects: EXTRA_LDFLAGS=-Wl,-ld_classic ./build_macos.sh
+  - "!! dependency /opt/homebrew/...": a runtime was not linked statically - send the log.
+  - another gfortran: FC=/opt/homebrew/bin/gfortran-15 ./build_macos.sh
+  - headers elsewhere (JS8): BOOST_INC=... EIGEN_INC=... ./build_macos.sh
+
+Licenses: as in LINUX_MODULES.txt (libftx, libjs8 GPL-3; libfdv BSD-2 + BSD-3 parts;
+libcodec2 LGPL-2.1, separate and replaceable).
