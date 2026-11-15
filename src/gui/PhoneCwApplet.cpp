@@ -22,6 +22,11 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSignalBlocker>
+#include <QCursor>
+#include <QDebug>
+#include <QJsonDocument>
+#include <QMenu>
+#include <QToolTip>
 #include <QTimer>
 #include <QDir>
 #include <QStandardPaths>
@@ -676,6 +681,163 @@ void PhoneCwApplet::buildPhonePanel()
             m_model->setTxFilterHigh(std::max(snapped, m_model->txFilterLow()
                                                        + m_model->txFilterMinWidthHz()));
     });
+
+    // Build 405: microphone profiles (see PhoneCwApplet.h).
+    {
+        auto* row = new QHBoxLayout;
+        row->setSpacing(4);
+        for (int i = 0; i < 4; ++i) {
+            auto* b = new QPushButton(QStringLiteral("Profile %1").arg(i + 1));
+            b->setObjectName(QStringLiteral("micProfileButton%1").arg(i + 1));
+            b->setCheckable(true);
+            b->setFixedHeight(22);
+            b->setFocusPolicy(Qt::NoFocus);
+            b->setStyleSheet(QString(kButtonBase) + kBlueActive);
+            b->setContextMenuPolicy(Qt::CustomContextMenu);
+            connect(b, &QPushButton::clicked, this, [this, i] { recallMicProfile(i, true); });
+            connect(b, &QPushButton::customContextMenuRequested, this, [this, i, b](const QPoint& pos) {
+                if (m_profileGroup.isEmpty())
+                    return;
+                QMenu menu(this);
+                QAction* save = menu.addAction(
+                    QStringLiteral("Save current to Profile %1 (%2)").arg(i + 1).arg(m_profileGroup));
+                if (menu.exec(b->mapToGlobal(pos)) == save)
+                    saveMicProfile(i);
+            });
+            m_profileBtn[i] = b;
+            row->addWidget(b, 1);
+        }
+        vbox->addLayout(row);
+        refreshProfileButtons();
+    }
+}
+
+// ── Build 405: microphone profiles ───────────────────────────────────────────
+
+QString PhoneCwApplet::profileKey(int slot) const
+{
+    return QStringLiteral("MicProfile_%1_%2").arg(m_profileGroup).arg(slot + 1);
+}
+
+QJsonObject PhoneCwApplet::captureMicProfile() const
+{
+    QJsonObject p;
+    p[QStringLiteral("version")] = 1;
+    p[QStringLiteral("micSource")] = m_micSourceCombo->currentText();
+    p[QStringLiteral("micLevel")] = m_micLevelSlider->value();
+    p[QStringLiteral("boost")] = m_accBtn->isChecked();
+    p[QStringLiteral("proc")] = m_procBtn->isChecked();
+    p[QStringLiteral("procLevel")] = m_procSlider->value();
+    p[QStringLiteral("txLow")] = m_txLowSlider->value();
+    p[QStringLiteral("txHigh")] = m_txHighSlider->value();
+    if (captureAetherTx)
+        p[QStringLiteral("aetherTx")] = captureAetherTx();
+    return p;
+}
+
+// Through the applet's own controls: each one already knows how to reach the
+// radio, the settings and the model, so a profile cannot drift from what the
+// controls do by hand.
+void PhoneCwApplet::applyMicProfile(const QJsonObject& p)
+{
+    if (p.contains(QStringLiteral("micSource"))) {
+        const int idx = m_micSourceCombo->findText(p.value(QStringLiteral("micSource")).toString());
+        if (idx >= 0 && idx != m_micSourceCombo->currentIndex())
+            m_micSourceCombo->setCurrentIndex(idx);
+    }
+    if (p.contains(QStringLiteral("micLevel")))
+        m_micLevelSlider->setValue(p.value(QStringLiteral("micLevel")).toInt(m_micLevelSlider->value()));
+    if (p.contains(QStringLiteral("boost")))
+        m_accBtn->setChecked(p.value(QStringLiteral("boost")).toBool());
+    if (p.contains(QStringLiteral("proc")))
+        m_procBtn->setChecked(p.value(QStringLiteral("proc")).toBool());
+    if (p.contains(QStringLiteral("procLevel")))
+        m_procSlider->setValue(p.value(QStringLiteral("procLevel")).toInt(m_procSlider->value()));
+    // High, low, high: each cut is clamped against the other by the model.
+    const int hi = p.value(QStringLiteral("txHigh")).toInt(m_txHighSlider->value());
+    const int lo = p.value(QStringLiteral("txLow")).toInt(m_txLowSlider->value());
+    m_txHighSlider->setValue(hi);
+    m_txLowSlider->setValue(lo);
+    m_txHighSlider->setValue(hi);
+    if (applyAetherTx && p.value(QStringLiteral("aetherTx")).isObject())
+        applyAetherTx(p.value(QStringLiteral("aetherTx")).toObject());
+}
+
+void PhoneCwApplet::saveMicProfile(int slot)
+{
+    if (m_profileGroup.isEmpty() || slot < 0 || slot > 3)
+        return;
+    auto& st = AppSettings::instance();
+    st.setValue(profileKey(slot),
+                QString::fromUtf8(QJsonDocument(captureMicProfile()).toJson(QJsonDocument::Compact)));
+    st.setValue(QStringLiteral("MicProfileLast_%1").arg(m_profileGroup), slot + 1);
+    st.save();
+    qInfo().noquote() << "Mic profile saved:" << m_profileGroup << slot + 1;
+    refreshProfileButtons();
+}
+
+void PhoneCwApplet::recallMicProfile(int slot, bool byOperator)
+{
+    if (m_profileGroup.isEmpty() || slot < 0 || slot > 3) {
+        refreshProfileButtons();
+        return;
+    }
+    auto& st = AppSettings::instance();
+    const QJsonObject p = QJsonDocument::fromJson(st.value(profileKey(slot), "").toString().toUtf8()).object();
+    if (p.isEmpty()) {
+        if (byOperator)
+            QToolTip::showText(QCursor::pos(),
+                               QStringLiteral("Profile %1 (%2) is empty -- right click: Save current")
+                                   .arg(slot + 1).arg(m_profileGroup), m_profileBtn[slot]);
+        refreshProfileButtons();
+        return;
+    }
+    applyMicProfile(p);
+    st.setValue(QStringLiteral("MicProfileLast_%1").arg(m_profileGroup), slot + 1);
+    if (byOperator)
+        st.save();
+    qInfo().noquote() << "Mic profile applied:" << m_profileGroup << slot + 1
+                      << (byOperator ? "(button)" : "(mode change)");
+    refreshProfileButtons();
+}
+
+void PhoneCwApplet::refreshProfileButtons()
+{
+    auto& st = AppSettings::instance();
+    const bool on = !m_profileGroup.isEmpty();
+    const int last = on ? st.value(QStringLiteral("MicProfileLast_%1").arg(m_profileGroup), 0).toInt() : 0;
+    for (int i = 0; i < 4; ++i) {
+        QPushButton* b = m_profileBtn[i];
+        if (!b)
+            continue;
+        const bool saved = on && !st.value(profileKey(i), "").toString().isEmpty();
+        b->setEnabled(on);
+        const QSignalBlocker block(b);
+        b->setChecked(on && saved && last == i + 1);
+        b->setToolTip(!on ? QStringLiteral("Microphone profiles: SSB, AM, FM and FDV on the transmitting receiver")
+                          : saved ? QStringLiteral("%1, profile %2: click to apply; right click: Save current")
+                                        .arg(m_profileGroup).arg(i + 1)
+                                  : QStringLiteral("%1, profile %2: empty -- right click: Save current")
+                                        .arg(m_profileGroup).arg(i + 1));
+    }
+}
+
+void PhoneCwApplet::setMicProfileGroup(const QString& group)
+{
+    if (group == m_profileGroup && m_profileGroupSeen)
+        return;
+    const bool first = !m_profileGroupSeen;
+    m_profileGroupSeen = true;
+    m_profileGroup = group;
+    refreshProfileButtons();
+    // The first group after start is the state the program was closed in:
+    // the controls already hold it. After that, entering a group applies the
+    // profile used last there.
+    if (first || group.isEmpty())
+        return;
+    const int last = AppSettings::instance().value(QStringLiteral("MicProfileLast_%1").arg(group), 0).toInt();
+    if (last >= 1 && last <= 4)
+        recallMicProfile(last - 1, false);
 }
 
 void PhoneCwApplet::syncTxFilterFromModel()

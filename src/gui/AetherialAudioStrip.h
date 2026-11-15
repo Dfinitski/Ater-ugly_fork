@@ -45,6 +45,9 @@ public:
 
     void setAudioPathNotice(const QString& text, bool warning);
     void closeSettingsIfOpen();
+    // Build 405: the engine's TX chain was changed from outside (a microphone
+    // profile): every panel and the stage tabs shown again from the engine.
+    void refreshAfterProfile();
 
     // Forward radio TX filter cutoffs to the embedded EQ canvas so the
     // dashed yellow filter-edge guide lines render here too.  MainWindow

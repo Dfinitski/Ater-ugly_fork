@@ -94,6 +94,7 @@
 #include "ClientPuduEditor.h"
 #include "ClientReverbApplet.h"
 #include "AetherialAudioStrip.h"
+#include "core/ChannelStripPresets.h"
 #include "StripFinalOutputPanel.h"
 #include "ClientChainApplet.h"
 #include "core/ClientComp.h"
@@ -5725,6 +5726,48 @@ void MainWindow::buildUI()
     // Right — applet panel (includes S-Meter)
     m_appletPanel = new AppletPanel(splitter);
     splitter->addWidget(m_appletPanel);
+    // Build 405: microphone profiles of the Mic applet -- the AetherTX chain
+    // through the engine, and the group of modes from the transmitting
+    // receiver (polled: its mode, the receiver that transmits and FDV on it
+    // all change in different places).
+    if (PhoneCwApplet* mic = m_appletPanel->phoneCwApplet()) {
+        mic->captureAetherTx = [this] {
+            return m_audio ? ChannelStripPresets::captureTxJson(m_audio) : QJsonObject();
+        };
+        mic->applyAetherTx = [this](const QJsonObject& tx) {
+            if (!m_audio)
+                return;
+            ChannelStripPresets::applyTxJson(m_audio, tx);
+            if (m_aetherialStrip)
+                m_aetherialStrip->refreshAfterProfile();
+        };
+        auto* groupTimer = new QTimer(this);
+        groupTimer->setInterval(300);
+        connect(groupTimer, &QTimer::timeout, this, [this] {
+            PhoneCwApplet* applet = m_appletPanel ? m_appletPanel->phoneCwApplet() : nullptr;
+            if (!applet || !m_radioModel.isConnected())
+                return;
+            QString group;
+            if (const SliceModel* tx = m_radioModel.txSlice()) {
+                const QString mode = tx->mode().toUpper();
+                bool fdvOnTx = false;
+#ifdef HAVE_RADE
+                fdvOnTx = m_radeSliceId >= 0 && m_radeSliceId == tx->sliceId();
+#endif
+                if (fdvOnTx)
+                    group = QStringLiteral("FDV");
+                else if (mode == QLatin1String("USB") || mode == QLatin1String("LSB"))
+                    group = QStringLiteral("SSB");
+                else if (mode == QLatin1String("AM") || mode == QLatin1String("SAM"))
+                    group = QStringLiteral("AM");
+                else if (mode == QLatin1String("FM") || mode == QLatin1String("NFM")
+                         || mode == QLatin1String("DFM"))
+                    group = QStringLiteral("FM");
+            }
+            applet->setMicProfileGroup(group);
+        });
+        groupTimer->start();
+    }
 #if defined(HAVE_RADE) && defined(HAVE_WEBSOCKETS)
     // Build 396: the FDV applet's "Reporter" button.
     if (auto* fdvApplet = m_appletPanel->radeApplet())

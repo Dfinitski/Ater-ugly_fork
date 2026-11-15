@@ -465,6 +465,12 @@ void AetherialAudioStrip::showSettings()
     dlg.exec();
 }
 
+void AetherialAudioStrip::refreshAfterProfile()
+{
+    refreshAllPanelsFromEngine();
+    if (m_tabs) m_tabs->refreshFromHost();
+}
+
 void AetherialAudioStrip::closeSettingsIfOpen()
 {
     if (AetherTxSettingsDialog* dlg = findChild<AetherTxSettingsDialog*>()) {

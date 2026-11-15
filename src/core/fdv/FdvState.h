@@ -53,8 +53,23 @@ inline void fdvRxBandHz(int subMode, int* lo, int* hi)
 // these edges; RADE: 99 % of the power in 100 .. 3070 Hz).
 inline void fdvTxBandHz(int subMode, int* lo, int* hi)
 {
+    // Build 405 (operator, 14.11: "the transmit filter in FDV by the
+    // specifications, cutting off what is not the signal -- and I must see
+    // the result in the transmit spectrum"). It was the whole modem output
+    // with its skirts (339: RADE 100 .. 3000, 99 % of the power). Now the
+    // RF bandwidth of the mode around 1500 Hz plus one carrier spacing
+    // (50 Hz) on each side:
+    //   1600  1125 Hz (codec2 README_freedv)          ->  900 .. 2100
+    //   700D  1000 Hz                                  ->  950 .. 2050
+    //   700E  1500 Hz                                  ->  700 .. 2300
+    //   RADE  1500 Hz at -6 dB, 30 carriers x 50 Hz    ->  700 .. 2300
+    // RADE V1's own document (FreeDV-036): "spectral 'grass' at the low and
+    // high frequency edges is high at around -12 dB from the peak ... the
+    // bandwidth of the signal is effectively set by the SSB radio Tx
+    // filter" -- this filter is that. The transmit panadapter shows the DUC
+    // I/Q as sent (AnanTxScope), i.e. after it.
     static const int band[kFdvSubModeCount][2] = {
-        {700, 2300}, {600, 2400}, {400, 2600}, {100, 3000}};   // 1600, 700D, 700E, RADE
+        {900, 2100}, {950, 2050}, {700, 2300}, {700, 2300}};   // 1600, 700D, 700E, RADE
     const int m = std::clamp(subMode, 0, kFdvSubModeCount - 1);
     *lo = band[m][0];
     *hi = band[m][1];

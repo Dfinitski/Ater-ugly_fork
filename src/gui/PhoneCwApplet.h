@@ -2,6 +2,9 @@
 
 #include <QWidget>
 #include <QPointer>
+#include <QJsonObject>
+#include <QString>
+#include <functional>
 
 class QPushButton;
 class QLabel;
@@ -43,6 +46,17 @@ public:
     explicit PhoneCwApplet(QWidget* parent = nullptr);
 
     void setTransmitModel(TransmitModel* model);
+
+    // Build 405 (operator, 14.11): microphone profiles -- four buttons under
+    // the applet, a set of four for each group of modes (SSB, AM, FM, FDV).
+    // A profile is the whole path from the microphone to the modulator: the
+    // source, MIC gain, +20 dB, PROC and its level, the transmit filter cuts
+    // and the AetherTX chain. Right click: "Save current"; click: apply. The
+    // group follows the transmitting receiver's mode (MainWindow); on a
+    // change of group the profile used last in it is applied.
+    void setMicProfileGroup(const QString& group);   // "SSB" / "AM" / "FM" / "FDV" / "" (none)
+    std::function<QJsonObject()> captureAetherTx;             // set by MainWindow
+    std::function<void(const QJsonObject&)> applyAetherTx;
     void setTransmitControlsAvailable(bool available);
 
     // Bind the active slice.  TransmitModel is radio-global TX state; APF is a
@@ -153,6 +167,17 @@ private:
     bool m_hasAlcGainMeter{false};
 
     QComboBox* m_micProfileCombo{nullptr};
+
+    // Build 405: the profile buttons.
+    QPushButton* m_profileBtn[4]{};
+    QString m_profileGroup;
+    bool m_profileGroupSeen{false};
+    [[nodiscard]] QJsonObject captureMicProfile() const;
+    void applyMicProfile(const QJsonObject& p);
+    void saveMicProfile(int slot);
+    void recallMicProfile(int slot, bool byOperator);
+    void refreshProfileButtons();
+    [[nodiscard]] QString profileKey(int slot) const;
 
     QComboBox*   m_micSourceCombo{nullptr};
     bool          m_selectableMicInputs{true};
