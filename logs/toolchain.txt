@@ -1,0 +1,19 @@
+ProductName:		macOS
+ProductVersion:		15.8.2
+BuildVersion:		24H232
+Xcode 16.4
+*** Terminating app due to uncaught exception 'NSFileHandleOperationException', reason: '*** -[_NSStdIOFileHandle writeData:]: Broken pipe'
+*** First throw call stack:
+(
+	0   CoreFoundation                      0x00000001980503b0 __exceptionPreprocess + 176
+	1   libobjc.A.dylib                     0x0000000197b12b90 objc_exception_throw + 88
+	2   Foundation                          0x0000000199dc97b4 -[NSConcreteFileHandle readDataUpToLength:error:] + 0
+	3   Foundation                          0x00000001995a0428 -[NSConcreteFileHandle writeData:] + 300
+	4   xcodebuild                          0x0000000104059b24 -[XcodebuildPreIDEHandler handleVersionWithArguments:] + 612
+	5   xcodebuild                          0x00000001040595d8 -[XcodebuildPreIDEHandler runWithArguments:] + 116
+	6   xcodebuild                          0x0000000104059198 main + 512
+	7   dyld                                0x0000000197b52b98 start + 6076
+)
+libc++abi: terminating due to uncaught exception of type NSException
+GNU Fortran (Homebrew GCC 16.2.0) 16.2.0
+Apple clang version 17.0.0 (clang-1700.0.13.5)

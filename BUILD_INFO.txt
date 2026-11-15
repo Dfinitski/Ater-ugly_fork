@@ -1,0 +1,1 @@
+MicronSDR macOS arm64 modules built by run 43776337353 from 82eb09929a577b59919e53da0e95db996dc10e8f

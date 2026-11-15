@@ -1,0 +1,10 @@
+bccba3f777e8ac9cdf74c13ebbbf9ea871e48ebd2612b5284f42810a1ecc674c  ./FreeDV_src/macos/libcodec2.1.2.dylib
+03bf41cfda8e70e2bd2faf1aad610c9a1c0c68919fc681d237abbc7cd9993615  ./FreeDV_src/macos/libfdv.dylib
+691560dbdc00e17b458db07781c1e719ad306662c696ea6ae6fdf4d2dacc4fba  ./FreeDV_src/macos/test_fdv
+810395c8201fffd51aaeef10bbb1c3e1d984838118b3815ae356e5d6ffccc5e8  ./FT_src/macos/ft4sim
+af509aadd3f2eca7b1d03ed52e561b7d0f9fadff778b78ef34b38c640541da6c  ./FT_src/macos/ft8sim
+8c99365e901f498acf31164e66cbd68f10efb4ec4881c986d0ea7fb5d0b6e837  ./FT_src/macos/libftx.dylib
+4243e4ddac44cd9b609f8fc8e5dd8f315aba74f68353d538fd294f2f63eaac4c  ./FT_src/macos/test_ftx
+d484d054dfa599a5d060d3872bc54d02b8a4aaf18cea09b2e9b6118792f416d2  ./FT_src/macos/wsprgen
+e4bf650a3bf2305ce31391602ec0457955c53baeee75d3df72c003b4e2b2bd85  ./JS8_src/macos/libjs8.dylib
+af8468880c6efc50b159271f77ce8604840a8d96e7552e436c330a71259760d4  ./JS8_src/macos/test_js8

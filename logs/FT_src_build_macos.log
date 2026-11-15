@@ -1,0 +1,307 @@
+== Sun Nov 15 23:44:18 UTC 2026
+== Darwin iad20-gt1023-b6433d9a-4a0e-4db5-85ec-c74711d5a66d-D66581C0E72A.local 24.6.0 Darwin Kernel Version 24.6.0: Sun Oct 11 23:44:11 PDT 2026; root:xnu-11417.140.69.713.47~2/RELEASE_ARM64_VMAPPLE arm64
+== GNU Fortran (Homebrew GCC 16.2.0) 16.2.0
+== Apple clang version 17.0.0 (clang-1700.0.13.5)
+== libgfortran.a: /opt/homebrew/Cellar/gcc/16.2.0/bin/../lib/gcc/current/gcc/aarch64-apple-darwin24/16/../../../libgfortran.a
+FC  lib/fftw3mod.f90
+FC  lib/packjt.f90
+FC  lib/ft8var/packjt77var.f90
+FC  lib/77bit/packjt77.f90
+FC  lib/crc.f90
+FC  lib/timer_module.f90
+FC  lib/ft4_decode.f90
+FC  lib/ft8/ft8_a7.f90
+FC  lib/shmem.f90
+FC  lib/ft8_decode.f90
+FC  lib/bpdecode144.f90
+FC  lib/chkcall.f90
+FC  lib/db.f90
+FC  lib/deg2grid.f90
+FC  lib/determ.f90
+FC  lib/fmtmsg.f90
+FC  lib/four2a.f90
+FC  lib/gfsk_pulse.f90
+FC  lib/ft4/ft4_baseline.f90
+FC  lib/ft4/ft4_downsample.f90
+FC  lib/ft4/gen_ft4wave.f90
+FC  lib/ft4/genft4.f90
+FC  lib/ft4/get_ft4_bitmetrics.f90
+FC  lib/ft4/getcandidates4.f90
+FC  lib/ft4/subtractft4.f90
+FC  lib/ft4/sync4d.f90
+FC  lib/ft8/baseline.f90
+FC  lib/ft8/decode174_91.f90
+FC  lib/ft8/encode174_91.f90
+FC  lib/ft8/encode174_91_nocrc.f90
+FC  lib/ft8/ft8_a8d.f90
+FC  lib/ft8/ft8_downsample.f90
+FC  lib/ft8/ft8apset.f90
+FC  lib/ft8/ft8b.f90
+FC  lib/ft8/gen_ft8wave.f90
+FC  lib/ft8/genft8.f90
+FC  lib/ft8/get_crc14.f90
+FC  lib/ft8/get_spectrum_baseline.f90
+FC  lib/ft8/osd174_91.f90
+FC  lib/ft8/subtractft8.f90
+FC  lib/ft8/sync8.f90
+FC  lib/ft8/sync8d.f90
+FC  lib/ft8/twkfreq1.f90
+FC  lib/grid2deg.f90
+FC  lib/indexx.f90
+FC  lib/nuttal_window.f90
+FC  lib/pctile.f90
+FC  lib/peakup.f90
+FC  lib/polyfit.f90
+FC  lib/shell.f90
+FC  lib/smo121.f90
+FC  lib/stdcall.f90
+FC  lib/wsprd/osdwspr.f90
+FC  ftx_api.f90
+CC  c/crc.c
+CC  c/fftw_shim.c
+CC  c/shmem_stub.c
+CC  c/gran.c
+CC  c/sgran.c
+CC  c/wspr_api.c
+CC  lib/wsprd/wsprd.c
+CC  lib/wsprd/wsprd_utils.c
+CC  lib/wsprd/wsprsim_utils.c
+CC  lib/wsprd/fano.c
+CC  lib/wsprd/jelinek.c
+CC  lib/wsprd/nhash.c
+CC  lib/wsprd/tab.c
+CXX c/fftwf_pocketfft.cpp
+== 53 Fortran files compiled
+== libquadmath: -static-libquadmath
+LD  libftx.dylib
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[2](bounds.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[3](compile_options.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[5](memory.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[6](string.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[8](backtrace.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[10](environ.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[11](error.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[12](fpu.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[13](main.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[15](stop.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[439](cshift0_i1.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[440](cshift0_i2.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[441](cshift0_i4.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[442](cshift0_i8.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[443](cshift0_i16.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[444](cshift0_r4.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[445](cshift0_r8.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[449](cshift0_c4.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[450](cshift0_c8.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[638](size_from_kind.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[641](format.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[644](list_read.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[645](lock.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[646](open.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[647](read.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[648](transfer.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[650](unit.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[651](unix.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[652](write.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[653](fbuf.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[654](async.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[658](cshift0.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[671](size.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[673](string_intrinsics.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[694](date_and_time.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[894](lt1-backtrace.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[895](dwarf.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[896](fileline.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[897](macho.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[898](mmap.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[899](mmapio.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[900](posix.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[902](simple.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[903](sort.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[904](state.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[14](isinfq.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[17](isnanq.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[24](signbitq.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[97](addmul_1.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[98](add_n.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[99](cmp.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[100](divrem.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[101](flt1282mpn.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[102](fpioconst.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[103](lshift.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[104](mul_1.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[105](mul_n.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[106](mul.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[107](printf_fphex.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[108](printf_fp.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[109](quadmath-printf.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[110](rshift.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[111](submul_1.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[112](sub_n.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[113](strtoflt128.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[114](mpn2flt128.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[115](tens_in_limb.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+libftx.dylib: replacing existing signature
+== check libftx.dylib
+   libftx.dylib:
+   	@rpath/libftx.dylib (compatibility version 0.0.0, current version 0.0.0)
+   	/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 1900.180.0)
+   	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)
+   exports: ___emutls_get_address ___emutls_register_common ___gcc_nested_func_ptr_created ___gcc_nested_func_ptr_deleted _ftx_decode _ftx_encode _ftx_version _wspr_decode _wspr_encode 
+   OK: arm64, macOS 14.4, @rpath/libftx.dylib, signed
+CC  test_ftx
+CC  wsprgen
+FC  simulators
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[2](bounds.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[3](compile_options.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[5](memory.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[6](string.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[8](backtrace.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[10](environ.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[11](error.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[12](fpu.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[13](main.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[15](stop.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[439](cshift0_i1.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[440](cshift0_i2.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[441](cshift0_i4.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[442](cshift0_i8.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[443](cshift0_i16.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[444](cshift0_r4.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[445](cshift0_r8.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[449](cshift0_c4.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[450](cshift0_c8.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[638](size_from_kind.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[639](close.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[641](format.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[644](list_read.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[645](lock.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[646](open.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[647](read.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[648](transfer.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[650](unit.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[651](unix.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[652](write.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[653](fbuf.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[654](async.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[657](args.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[658](cshift0.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[671](size.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[673](string_intrinsics.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[694](date_and_time.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[894](lt1-backtrace.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[895](dwarf.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[896](fileline.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[897](macho.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[898](mmap.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[899](mmapio.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[900](posix.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[902](simple.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[903](sort.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[904](state.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[14](isinfq.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[17](isnanq.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[24](signbitq.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[97](addmul_1.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[98](add_n.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[99](cmp.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[100](divrem.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[101](flt1282mpn.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[102](fpioconst.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[103](lshift.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[104](mul_1.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[105](mul_n.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[106](mul.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[107](printf_fphex.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[108](printf_fp.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[109](quadmath-printf.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[110](rshift.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[111](submul_1.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[112](sub_n.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[113](strtoflt128.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[114](mpn2flt128.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[115](tens_in_limb.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[2](bounds.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[3](compile_options.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[5](memory.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[6](string.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[8](backtrace.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[10](environ.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[11](error.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[12](fpu.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[13](main.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[15](stop.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[439](cshift0_i1.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[440](cshift0_i2.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[441](cshift0_i4.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[442](cshift0_i8.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[443](cshift0_i16.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[444](cshift0_r4.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[445](cshift0_r8.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[449](cshift0_c4.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[450](cshift0_c8.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[638](size_from_kind.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[639](close.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[641](format.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[644](list_read.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[645](lock.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[646](open.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[647](read.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[648](transfer.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[650](unit.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[651](unix.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[652](write.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[653](fbuf.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[654](async.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[657](args.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[658](cshift0.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[671](size.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[673](string_intrinsics.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[694](date_and_time.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[894](lt1-backtrace.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[895](dwarf.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[896](fileline.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[897](macho.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[898](mmap.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[899](mmapio.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[900](posix.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[902](simple.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[903](sort.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libgfortran.a[904](state.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[14](isinfq.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[17](isnanq.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[24](signbitq.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[97](addmul_1.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[98](add_n.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[99](cmp.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[100](divrem.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[101](flt1282mpn.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[102](fpioconst.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[103](lshift.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[104](mul_1.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[105](mul_n.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[106](mul.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[107](printf_fphex.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[108](printf_fp.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[109](quadmath-printf.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[110](rshift.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[111](submul_1.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[112](sub_n.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[113](strtoflt128.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[114](mpn2flt128.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+ld: warning: object file (/opt/homebrew/Cellar/gcc/16.2.0/lib/gcc/current/libquadmath.a[115](tens_in_limb.o)) was built for newer 'macOS' version (15.0) than being linked (14.4)
+test_ftx: replacing existing signature
+wsprgen: replacing existing signature
+ft8sim: replacing existing signature
+ft4sim: replacing existing signature
+
+== OK: libftx.dylib 1106272 bytes (arm64, macOS 14.4+)
+-rwxr-xr-x  1 runner  staff  1340128 Nov 15 23:44 ft4sim
+-rwxr-xr-x  1 runner  staff  1340160 Nov 15 23:44 ft8sim
+-rwxr-xr-x  1 runner  staff  1106272 Nov 15 23:44 libftx.dylib
+-rwxr-xr-x  1 runner  staff    52624 Nov 15 23:44 test_ftx
+-rwxr-xr-x  1 runner  staff    70288 Nov 15 23:44 wsprgen
+== quick test:
+libftx 121, 000000_000001.wav: 180000 samples, 12000 S/s, 1 channel(s), 16 bit
+   0.00 s   -15 dB  DT  0.00   1500 Hz  CQ N7DDC CN87
+1 messages, the slowest window 426 ms
