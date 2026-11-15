@@ -227,6 +227,11 @@ private:
     std::atomic<double> m_hwMeasured{0.0};
     std::atomic<long long> m_hwMeasuredMs{0};
     int m_hwVotes = 0;
+    // Build 423: the HW peak a radio starts from (Thetis' per protocol and
+    // board, clsHardwareSpecific.PSDefaultPeak); key = board * 2 + P1.
+    int m_hwSessionKey = -1;
+    bool m_hwMeasLogged = false;
+    void checkSessionHwPeak();
     long long m_hwLastUsedMs = 0;
     bool m_singleRunning = false;
     static constexpr int kBlock = 1024;

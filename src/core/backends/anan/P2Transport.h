@@ -194,6 +194,9 @@ public:
     Q_INVOKABLE void setForcedBoardId(int reportedBoardId, int forcedBoardId);
     // The board this session's radio reported (0 = none yet).
     [[nodiscard]] int reportedBoardId() const noexcept { return m_reportedBoardId.load(std::memory_order_relaxed); }
+    // Build 423: the board this session drives (after a forced assignment),
+    // -1 before the first configured session. Any thread.
+    [[nodiscard]] int sessionBoardId() const noexcept { return m_sessionBoardId.load(std::memory_order_relaxed); }
     // ANAN-100D port: Transmitter Specific bytes 57..59 -- the ADC step
     // attenuators while transmitting (default 31 dB, as Thetis).
     Q_INVOKABLE void setTxAttenuation(int db);
@@ -707,6 +710,7 @@ private:
     [[nodiscard]] bool psBypassesBank(int adc) const;
     std::array<std::atomic<int>, 32> m_forcedBoardFor{};   // reported id -> forced id
     std::atomic<int> m_reportedBoardId{0};
+    std::atomic<int> m_sessionBoardId{-1};   // build 423
     // Build 267: the reported profile, or the forced one when it can run over
     // this session's protocol.
     [[nodiscard]] BoardProfile forcedProfileOr(const BoardProfile& reported) const;

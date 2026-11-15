@@ -517,6 +517,7 @@ void P2Transport::configureSession(const BoardProfile& profile, bool fromReply)
     m_reportedBoardId.store(profile.boardId, std::memory_order_relaxed);
     m_profile = forcedProfileOr(profile);   // build 267
     m_configured = true;
+    m_sessionBoardId.store(m_profile.boardId, std::memory_order_relaxed);   // build 423
     // Build 213: over Protocol 1 every board this backend drives has the
     // Thetis PureSignal pair (Hermes DDC2/DDC3, Hermes II DDC0/DDC1 while
     // transmitting, the others DDC3/DDC4), single-ADC boards included.
@@ -2083,8 +2084,16 @@ void P2Transport::setMicControl(int bits)
 
 bool P2Transport::psBypassesBank(int adc) const
 {
-    return m_mox && m_psEnabled
-        && m_profile.alexScheme == AlexScheme::Orion2BandPass && m_psAdc == adc;
+    // Build 423 (operator, 15.11: a 7000DLE on Protocol 1 -- "the relay that
+    // takes the coupler's signal does not switch"). OUR ERROR in 396 / 397:
+    // the bypass followed the PS feedback ADC's bank only. Thetis
+    // (console.cs setBPF1ForOrionIISaturn, both protocols) bypasses BPF1 --
+    // the ADC1 bank, SetAlexHPFBits(0x20) -- on MOX with PureSignal on,
+    // whichever ADC the feedback is read from; the internal coupler comes in
+    // through that bank. ADC2's bank is bypassed as well when the feedback is
+    // read on ADC2 (ours, as before).
+    return m_mox && m_psEnabled && m_profile.alexScheme == AlexScheme::Orion2BandPass
+        && (adc == 0 || m_psAdc == adc);
 }
 
 void P2Transport::setAdc1GroundOnTx(bool on)

@@ -284,6 +284,51 @@ void AnanPureSignal::control(int reset, int mancal, int automode, int turnon)
     SetPSControl(m_channel, reset, mancal, automode, turnon);
 }
 
+// Build 423 (operator, 15.11: "some radios show IMD3 -30 / -40, some -70;
+// different firmware, transmit paths, CICs, P1 and P2?"). Every radio
+// started from 0.2899 -- Thetis' figure for Protocol 2 boards other than the
+// G2 -- and relied on the measurement to find its own. Thetis
+// (clsHardwareSpecific.PSDefaultPeak): Protocol 1, every board, 0.4072
+// (Thetis runs no CFIR there, cmaster.cs); Protocol 2: G2 / G2-1K (Saturn)
+// 0.6121, the rest 0.2899. We run the TXA CFIR on Protocol 1 too, so its
+// passband gain (0.9143) is in our P1 figure: 0.4072 x 0.9143 = 0.3723. Off
+// by 22 % (P1) or 2.1 x (G2) the calibration is built on the wrong scale
+// until the measurement corrects it (a 5 % error held IMD3 at -42 dBc instead
+// of -80); if the measurement never comes, for good.
+void AnanPureSignal::checkSessionHwPeak()
+{
+    auto* t = qobject_cast<P2Transport*>(m_transport);
+    if (!t)
+        return;
+    const int board = t->sessionBoardId();
+    if (board < 0)
+        return;
+    const bool p1 = t->isProtocol1();
+    const int key = board * 2 + (p1 ? 1 : 0);
+    if (key == m_hwSessionKey)
+        return;
+    m_hwSessionKey = key;
+    double def = 0.2899;
+    if (p1)
+        def = 0.4072 * cfirPassbandGain();
+    else if (board == kBoardIdSaturn || board == kBoardIdSaturnMkII)
+        def = 0.6121;
+    qCInfo(lcAnanPs).nospace() << "PureSignal: board " << board << ", Protocol " << (p1 ? 1 : 2)
+                               << ": HW peak starts at " << def << " (was " << m_s.hwPeak
+                               << "; Thetis " << (p1 ? 0.4072 : def) << (p1 ? " without the CFIR" : "")
+                               << "), then follows the measurement";
+    if (std::abs(def / m_s.hwPeak - 1.0) < 0.001)
+        return;
+    m_s.hwPeak = def;
+    applyWdspParams();
+    if (m_s.enabled) {
+        control(1, m_s.mode == Mode::Single ? 1 : 0, m_s.mode == Mode::Auto ? 1 : 0, 0);
+        if (m_s.mode == Mode::Single)
+            m_singleRunning = true;
+    }
+    emit statusChanged();
+}
+
 void AnanPureSignal::setTxChannel(int channel, unsigned generation)
 {
     // The TX DSP re-creates its channel with the same id on a (re)connect:
@@ -326,6 +371,8 @@ void AnanPureSignal::setKeyed(bool keyed, bool cw)
         m_calcFails = 0;
         m_calcDrops = 0;
         m_lastCalcFail.clear();
+        m_hwMeasLogged = false;
+        checkSessionHwPeak();   // build 423
     }
     m_keyed = keyed;
     m_cw = cw;
@@ -1613,6 +1660,11 @@ void AnanPureSignal::tick()
         const double meas = m_hwMeasured.load(std::memory_order_relaxed);
         if (t > m_hwLastUsedMs && meas > 0.01) {
             m_hwLastUsedMs = t;
+            if (!m_hwMeasLogged) {   // build 423: once per transmission
+                m_hwMeasLogged = true;
+                qCInfo(lcAnanPs).nospace() << "PureSignal: HW peak measured " << meas
+                                           << ", in use " << m_s.hwPeak;
+            }
             if (std::abs(meas / m_s.hwPeak - 1.0) > 0.015) {
                 if (++m_hwVotes >= 2) {
                     m_hwVotes = 0;
