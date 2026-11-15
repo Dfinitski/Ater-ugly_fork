@@ -3222,6 +3222,9 @@ QJsonObject captureAnanTxProfile(RadioModel* model)
     p.insert(QStringLiteral("eqBands"), bands);
     p.insert(QStringLiteral("pureSignal"), capturePs(model));
     p.insert(QStringLiteral("micProfiles"), captureMicProfileSet());
+    // Build 437: RF Delay, the transmitter's readiness delay (all modes).
+    p.insert(QStringLiteral("rfDelayMs"),
+             std::clamp(st.value(QStringLiteral("AnanRfDelayMs"), 25).toInt(), 1, 255));
     return p;
 }
 
@@ -3238,6 +3241,9 @@ void applyAnanTxProfile(RadioModel* model, const QJsonObject& p)
         st.setValue(QStringLiteral("AnanMicBoost"),
                     p.value(QStringLiteral("micBoost")).toBool() ? QStringLiteral("True")
                                                                   : QStringLiteral("False"));
+    // Build 437: a profile stored before has none -- the present delay stays.
+    if (p.contains(QStringLiteral("rfDelayMs")))
+        st.setValue(QStringLiteral("AnanRfDelayMs"), std::clamp(p.value(QStringLiteral("rfDelayMs")).toInt(), 1, 255));
     st.save();
     if (p.contains(QStringLiteral("rfPower")))
         tx.setRfPower(p.value(QStringLiteral("rfPower")).toInt());

@@ -810,6 +810,7 @@ void SpectrumOverlayMenu::buildAntPanel()
                     "QSpinBox::down-arrow { image: url(\"%2\"); width: 8px; height: 5px; }")
                     .arg(up, down));
             }
+            m_ananRfDelay = delay;   // build 437: syncAttOwnership keeps it in step
             delay->setValue(std::clamp(
                 AppSettings::instance().value(QStringLiteral("AnanRfDelayMs"), 25).toInt(), 1, 255));
             connect(delay, QOverload<int>::of(&QSpinBox::valueChanged), this, [](int v) {
@@ -1068,28 +1069,31 @@ void SpectrumOverlayMenu::buildAntPanel()
         "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px;"
         " color: #c8d8e8; font-size: 10px; font-weight: bold; padding: 0px; }"
         "QPushButton:hover { border: 1px solid #0090e0; }");
-    for (int rx = 0; rx < 2; ++rx) {
-        auto* lbl = new QLabel(rx == 0 ? QStringLiteral("RX1:") : QStringLiteral("RX2:"));
-        lbl->setStyleSheet(kLabelStyle);
-        adcRow->addWidget(lbl);
+    // Build 437 (operator, 15.11: "each receiver's ANT menu sets the ADC of
+    // every receiver -- that is wrong; only the one of the receiver whose menu
+    // it is"): one label RXn: and one ADC button, for this pan's receiver
+    // (AnanUiState::rxForPan; syncAttOwnership keeps them current).
+    m_adcLabel = new QLabel(QStringLiteral("RX1:"));
+    m_adcLabel->setStyleSheet(kLabelStyle);
+    adcRow->addWidget(m_adcLabel);
+    m_adcBtn = new QPushButton;
+    m_adcBtn->setObjectName(QStringLiteral("antennaRxAdcBtn"));
+    m_adcBtn->setAccessibleName(QStringLiteral("Receiver ADC"));
+    m_adcBtn->setMinimumHeight(18);
+    m_adcBtn->setStyleSheet(adcBtnStyle);
+    m_adcBtn->setToolTip(QStringLiteral("ADC feeding this receiver; click to switch ADC1 / ADC2"));
+    m_adcBtn->setText(QStringLiteral("ADC1"));
+    connect(m_adcBtn, &QPushButton::clicked, this, [this] {
+        const int rx = AetherSDR::anan::AnanUiState::instance().rxForPan(m_panId);
+        if (rx < 0 || rx > 1)
+            return;
         const QString key = rx == 0 ? QStringLiteral("AnanRx1Adc") : QStringLiteral("AnanRx2Adc");
-        auto* btn = new QPushButton;
-        btn->setObjectName(rx == 0 ? QStringLiteral("antennaRx1AdcBtn")
-                                   : QStringLiteral("antennaRx2AdcBtn"));
-        btn->setAccessibleName(rx == 0 ? QStringLiteral("RX1 ADC") : QStringLiteral("RX2 ADC"));
-        btn->setMinimumHeight(18);
-        btn->setStyleSheet(adcBtnStyle);
-        btn->setToolTip(QStringLiteral("ADC feeding this receiver; click to switch ADC1 / ADC2"));
-        const int adc = std::clamp(AppSettings::instance().value(key, 0).toInt(), 0, 1);
-        btn->setText(adc == 0 ? QStringLiteral("ADC1") : QStringLiteral("ADC2"));
-        connect(btn, &QPushButton::clicked, this, [btn, key] {
-            const int next = AppSettings::instance().value(key, 0).toInt() == 0 ? 1 : 0;
-            AppSettings::instance().setValue(key, next);
-            AppSettings::instance().save();
-            btn->setText(next == 0 ? QStringLiteral("ADC1") : QStringLiteral("ADC2"));
-        });
-        adcRow->addWidget(btn, 1);
-    }
+        const int next = AppSettings::instance().value(key, 0).toInt() == 0 ? 1 : 0;
+        AppSettings::instance().setValue(key, next);
+        AppSettings::instance().save();
+        m_adcBtn->setText(next == 0 ? QStringLiteral("ADC1") : QStringLiteral("ADC2"));
+    });
+    adcRow->addWidget(m_adcBtn, 1);
     m_adcRow->setVisible(false);
     vbox->addWidget(m_adcRow);
 
@@ -3511,6 +3515,30 @@ void SpectrumOverlayMenu::syncAttOwnership()
 {
     if (m_rfGainIsAttenuator)
         syncAnanAntennas();
+    // Build 437: RF Delay is one transmitter setting -- every pan's field
+    // shows it (one changed in another pan's menu, or by a TX profile).
+    if (m_ananRfDelay && !m_ananRfDelay->hasFocus()) {
+        const int v = std::clamp(AppSettings::instance().value(QStringLiteral("AnanRfDelayMs"), 25).toInt(), 1, 255);
+        if (m_ananRfDelay->value() != v) {
+            const QSignalBlocker b(m_ananRfDelay);
+            m_ananRfDelay->setValue(v);
+        }
+    }
+    // Build 437: the ADC row is this pan's receiver's.
+    if (m_adcLabel && m_adcBtn) {
+        const int rx = AetherSDR::anan::AnanUiState::instance().rxForPan(m_panId);
+        const int r = (rx == 1) ? 1 : 0;
+        const QString lbl = r == 0 ? QStringLiteral("RX1:") : QStringLiteral("RX2:");
+        if (m_adcLabel->text() != lbl)
+            m_adcLabel->setText(lbl);
+        const int adc = std::clamp(AppSettings::instance()
+                                       .value(r == 0 ? QStringLiteral("AnanRx1Adc") : QStringLiteral("AnanRx2Adc"), 0)
+                                       .toInt(), 0, 1);
+        const QString t = adc == 0 ? QStringLiteral("ADC1") : QStringLiteral("ADC2");
+        if (m_adcBtn->text() != t)
+            m_adcBtn->setText(t);
+        m_adcBtn->setEnabled(rx == 0 || rx == 1);
+    }
     // Build 277: the ADC count is known once the backend has the board.
     if (m_adcRow) {
         const bool show = m_rfGainIsAttenuator

@@ -19,6 +19,7 @@ class QCheckBox;
 class FrontEndOverloadIndicator;
 namespace AetherSDR { struct FrontEndOverload; }
 class QDoubleSpinBox;
+class QSpinBox;
 class QScrollArea;
 class QHBoxLayout;
 
@@ -427,6 +428,9 @@ private:
     QWidget*     m_attTargetRow{nullptr};       // ANAN: AUTO ATT noise-floor target
     QSlider*     m_attTargetSlider{nullptr};
     QWidget*     m_adcRow{nullptr};             // ANAN: RX1 / RX2 ADC select
+    QLabel*      m_adcLabel{nullptr};           // build 437: "RXn:" of this pan's receiver
+    QPushButton* m_adcBtn{nullptr};             // build 437: its ADC
+    QSpinBox*    m_ananRfDelay{nullptr};        // build 437: kept in step with the setting
     // ANAN-100D port: Alex antenna rows (RX ANT / TX ANT: ANT1..ANT3)
     // replacing the Flex receive-antenna combo.
     QWidget*     m_ananAntRows{nullptr};
