@@ -2522,6 +2522,25 @@ void limitTxDrive(std::complex<float>* buf, int n) noexcept
 // the CFIR: they are shown as they are.
 constexpr double kCfirPassbandPower = 0.9143298 * 0.9143298;
 
+void P2Transport::setTestWireGain(double gain) noexcept
+{
+    const float g = static_cast<float>(std::clamp(gain, 0.0, 1.0));
+    if (m_testWireGain.exchange(g, std::memory_order_relaxed) != g)
+        qCInfo(lcAnanP2T).nospace() << "ANAN transport: TEST wire level " << QString::number(100.0 * g, 'f', 0)
+                                    << " % (" << (g > 0.0f ? QString::number(20.0 * std::log10(g), 'f', 1)
+                                                           : QStringLiteral("-inf"))
+                                    << " dB)";
+}
+
+void P2Transport::applyTestWireGain(std::complex<float>* buf, int n) const noexcept
+{
+    const float g = m_testWireGain.load(std::memory_order_relaxed);
+    if (g >= 1.0f)
+        return;
+    for (int i = 0; i < n; ++i)
+        buf[i] *= g;
+}
+
 void P2Transport::accountTxSamples(const std::complex<float>* buf, int n)
 {
     // Live = primed and 25 ms past the RF Delay (the start and the 2 ms
@@ -2628,6 +2647,7 @@ void P2Transport::txPumpLocked()
     int burst = 0;
     while (m_txPacketsSent < due && burst < 32) {
         fillTxPacket(buf);
+        applyTestWireGain(buf, kDucSamplesPerPacket);   // build 433
         accountTxSamples(buf, kDucSamplesPerPacket);
         limitTxDrive(buf, kDucSamplesPerPacket);   // build 348
         const auto pkt = buildDucIq(m_txSeq++, std::span<const std::complex<float>>(buf, kDucSamplesPerPacket));
@@ -3007,6 +3027,7 @@ void P2Transport::sendP1Ep2()
             std::array<std::complex<float>, kIn> buf;
             std::array<std::complex<float>, hl2::kTxSamplesPerPacket> iq48;
             fillTxPacket(buf.data(), kIn);
+            applyTestWireGain(buf.data(), kIn);   // build 433
             accountTxSamples(buf.data(), kIn);
             m_p1TxDec.process(buf.data(), kIn, iq48.data());
             limitTxDrive(iq48.data(), static_cast<int>(iq48.size()));   // build 348

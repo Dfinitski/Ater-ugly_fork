@@ -928,6 +928,15 @@ void AnanPureSignal::setTransport(QObject* transport)
 {
     m_transport = transport;
     m_p2 = qobject_cast<P2Transport*>(transport);
+    if (m_p2)
+        m_p2->setTestWireGain(m_testWirePercent / 100.0);   // build 433
+}
+
+void AnanPureSignal::setTestWireLevel(int percent)
+{
+    m_testWirePercent = std::clamp(percent, 0, 100);
+    if (m_p2)
+        m_p2->setTestWireGain(m_testWirePercent / 100.0);
 }
 
 void AnanPureSignal::setFeedbackAdc(int adc)

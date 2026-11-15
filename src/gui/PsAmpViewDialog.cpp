@@ -16,6 +16,7 @@
 #include <QPainterPath>
 #include <QPushButton>
 #include <QSignalBlocker>
+#include <QSlider>
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QTimer>
@@ -270,6 +271,33 @@ PsAmpViewDialog::PsAmpViewDialog(PsApplet* applet, QWidget* parent)
     m_status->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     m_status->setWordWrap(true);
     m_status->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    // Build 433 (operator, 15.11): a test engine -- the level of every
+    // transmitted sample on the wire, 100 % down to 0, to watch the radio for
+    // an overflow anywhere. Not saved; 100 % = off.
+    {
+        auto* row = new QHBoxLayout;
+        m_wireLabel = new QLabel;
+        m_wireLabel->setMinimumWidth(150);
+        m_wire = new QSlider(Qt::Horizontal);
+        m_wire->setRange(0, 100);
+        m_wire->setValue(100);
+        m_wire->setToolTip(tr("TEST: the level of the transmitted samples on the wire, 100 % (off) .. 0.\n"
+                              "After the modulator, TUNE and CW included; the TX panorama and its\n"
+                              "peak line show it. Not saved: 100 % at every start."));
+        auto* full = new QPushButton(tr("100 %"));
+        full->setFixedWidth(52);
+        row->addWidget(m_wireLabel);
+        row->addWidget(m_wire, 1);
+        row->addWidget(full);
+        sv->addLayout(row);
+        connect(m_wire, &QSlider::valueChanged, this, [this](int v) {
+            if (auto* ps = m_applet ? m_applet->pureSignal() : nullptr)
+                ps->setTestWireLevel(v);
+            showWireLevel(v);
+        });
+        connect(full, &QPushButton::clicked, this, [this] { m_wire->setValue(100); });
+        showWireLevel(100);
+    }
     sv->addWidget(m_status);
     sv->addStretch(1);
     side->addWidget(stat, 1);
@@ -386,6 +414,11 @@ void PsAmpViewDialog::refresh()
     if (!have) {
         m_status->setText(tr("<b>No radio connected.</b>"));
         return;
+    }
+    if (m_wire && m_wire->value() != ps->testWireLevel()) {   // build 433
+        const QSignalBlocker b(m_wire);
+        m_wire->setValue(ps->testWireLevel());
+        showWireLevel(ps->testWireLevel());
     }
     const auto st = ps->status();
     if (st.feeding)
@@ -746,6 +779,17 @@ void PsSpectrumView::paintEvent(QPaintEvent*)
         p.setPen(QPen(QColor(255, 170, 60), 1.5));
         p.drawPolyline(b);
     }
+}
+
+void PsAmpViewDialog::showWireLevel(int percent)
+{
+    if (!m_wireLabel)
+        return;
+    const QString db = percent > 0 ? QString::number(20.0 * std::log10(percent / 100.0), 'f', 1)
+                                   : QStringLiteral("-inf");
+    m_wireLabel->setText(tr("Wire level (test): %1 % (%2 dB)").arg(percent).arg(db));
+    m_wireLabel->setStyleSheet(percent < 100 ? QStringLiteral("color:#ff5050; font-weight:bold;")
+                                             : QString());
 }
 
 } // namespace AetherSDR

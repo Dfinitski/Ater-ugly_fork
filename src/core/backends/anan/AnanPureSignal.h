@@ -151,6 +151,10 @@ public:
     // correction off, and fix it as the band's amp delay (saved, used
     // unchanged at any power). False if not now.
     bool startDelayMeasure();
+    // Build 433: the test wire level, 0..100 % (P2Transport::setTestWireGain);
+    // kept here so a new transport gets it. Not saved.
+    void setTestWireLevel(int percent);
+    int testWireLevel() const { return m_testWirePercent; }
     bool loopbackTest() const { return m_loopback; }
     // calcc info[6] (the classic scheck bits) in words, "" when 0.
     static QString scheckText(int info6);
@@ -240,6 +244,7 @@ private:
     int m_accN = 0;
     // The transport (overload latch), set before it starts.
     class P2Transport* m_p2 = nullptr;
+    int m_testWirePercent = 100;           // build 433
     double m_fbEma = 0.0;                  // feedback level, smoothed over calibrations (0 = none)
     double m_scheckSeen = 0.0;
     // Heat drift of the amp delay (anan162, see heatTick()).

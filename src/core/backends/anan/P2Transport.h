@@ -200,6 +200,13 @@ public:
     // ANAN-100D port: Transmitter Specific bytes 57..59 -- the ADC step
     // attenuators while transmitting (default 31 dB, as Thetis).
     Q_INVOKABLE void setTxAttenuation(int db);
+    // Build 433 (operator, 15.11: a test -- "reduce the signal on the wire
+    // down to 0 and watch the radio for an overflow anywhere"): every
+    // transmitted sample times this gain, 0..1, after the modulator (CFIR,
+    // TUNE and CW included), before the TX panorama, its peak line and the
+    // wire limiter. Not saved: 1 at every start. Any thread.
+    void setTestWireGain(double gain) noexcept;
+    [[nodiscard]] double testWireGain() const noexcept { return m_testWireGain.load(std::memory_order_relaxed); }
     // ANAN-100D port: High Priority byte 1400 bit 2 (tuner start) while TUNE
     // is on, and the Alex "6M Preamp" bit 3 (the LNA button).
     Q_INVOKABLE void setTunerStart(bool on);
@@ -658,6 +665,8 @@ private:
     void emitTxScopeFrame(double hz);
     std::vector<float> m_txScopeBins;
     std::atomic<int> m_txScopeAvgMs{0};   // build 346: the receiver's FFT AVG, ms
+    std::atomic<float> m_testWireGain{1.0f};   // build 433: setTestWireGain
+    void applyTestWireGain(std::complex<float>* buf, int n) const noexcept;
     // Fwd / rev / exciter power from the status packet (raw ADC counts).
     int m_fwdRaw = 0;
     int m_revRaw = 0;

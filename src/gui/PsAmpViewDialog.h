@@ -18,6 +18,8 @@
 
 #include <vector>
 
+class QSlider;   // build 433
+
 class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
@@ -105,6 +107,10 @@ private:
     QPushButton* m_save = nullptr;
     QPushButton* m_load = nullptr;
     QLabel* m_status = nullptr;
+    // Build 433: the test wire level (Status group).
+    QSlider* m_wire = nullptr;
+    QLabel* m_wireLabel = nullptr;
+    void showWireLevel(int percent);
     int m_lastCal = -1;
 };
 
