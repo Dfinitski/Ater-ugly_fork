@@ -103,9 +103,9 @@ private:
     QLabel*        m_msgLabel{nullptr};
     QLineEdit*     m_msgEdit{nullptr};
     QPushButton*   m_msgSendBtn{nullptr};
-    QCheckBox*     m_trackCheck{nullptr};
-    QRadioButton*  m_bandRadio{nullptr};
-    QRadioButton*  m_freqRadio{nullptr};
+    QPushButton*   m_trackCheck{nullptr};   // build 417: buttons (names kept)
+    QPushButton*   m_bandRadio{nullptr};
+    QPushButton*   m_freqRadio{nullptr};
     QButtonGroup*  m_bandGroup{nullptr};
     QVector<QPushButton*> m_bandBtns;
     QPushButton*   m_enableBtn{nullptr};   // build 398

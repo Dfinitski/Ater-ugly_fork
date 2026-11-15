@@ -12,10 +12,8 @@
 #include <QGuiApplication>
 #include <QTableView>
 #include <QHeaderView>
-#include <QCheckBox>
 #include <QLabel>
 #include <QLineEdit>
-#include <QRadioButton>
 #include <QPushButton>
 #include <QButtonGroup>
 #include <QJsonArray>
@@ -287,33 +285,42 @@ void FreeDvReporterDialog::buildBody()
     auto* bottom = new QHBoxLayout;
     bottom->setSpacing(6);
 
-    m_trackCheck = new QCheckBox("Track");
-    ThemeManager::instance().applyStyleSheet(m_trackCheck,
-        "QCheckBox { color: {{color.text.primary}}; spacing: 8px; }"
-        + ThemeManager::checkBoxIndicatorStyle());
-    bottom->addWidget(m_trackCheck);
-
-    // Build 415 (operator, 15.11: "Band is written there, but it is not a
-    // button and has no tick"): the theme drew the two choices as bare text.
-    // They get the Track box's indicator -- one of the two is always ticked.
-    const QString filterChoiceStyle =
-        "QRadioButton { color: {{color.text.primary}}; spacing: 8px; }"
-        "QRadioButton::indicator { width: 14px; height: 14px; "
-        "border: 2px solid {{color.background.3}}; border-radius: 3px; background: {{color.background.0}}; }"
-        "QRadioButton::indicator:hover { border-color: {{color.accent}}; background: {{color.background.1}}; }"
-        "QRadioButton::indicator:checked { border: 2px solid {{color.accent}}; background: {{color.accent}}; }";
-
-    m_bandRadio = new QRadioButton("Band");
+    // Build 417 (operator, 15.11: "replace the ticks with buttons, like the
+    // band buttons"): Track, Band and Freq are checkable buttons in the band
+    // buttons' style. Band and Freq stay one-of-two.
+    const QString filterBtnStyle =
+        "QPushButton {"
+        "  background-color: {{color.background.2}};"
+        "  color: {{color.text.primary}};"
+        "  border: 1px solid {{color.background.2}};"
+        "  padding: 2px 6px;"
+        "  min-width: 36px;"
+        "}"
+        "QPushButton:checked {"
+        "  background-color: {{color.accent}};"
+        "  color: {{color.background.0}};"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: {{color.background.2}};"
+        "}";
+    auto filterButton = [&](const char* text, const char* tip) {
+        auto* b = new QPushButton(QString::fromLatin1(text));
+        b->setCheckable(true);
+        b->setFocusPolicy(Qt::NoFocus);
+        b->setToolTip(QString::fromLatin1(tip));
+        ThemeManager::instance().applyStyleSheet(b, filterBtnStyle);
+        bottom->addWidget(b);
+        return b;
+    };
+    m_trackCheck = filterButton("Track", "Follow the receiver: its band (Band) or its exact frequency (Freq)");
+    m_bandRadio = filterButton("Band", "Track: the stations on this receiver's band. "
+                                       "Ctrl+click band buttons to select multiple bands");
+    m_freqRadio = filterButton("Freq", "Track: only the stations on exactly this receiver's frequency");
+    auto* modeGroup = new QButtonGroup(this);
+    modeGroup->setExclusive(true);
+    modeGroup->addButton(m_bandRadio);
+    modeGroup->addButton(m_freqRadio);
     m_bandRadio->setChecked(true);
-    m_bandRadio->setToolTip("Track: the stations on this receiver's band. "
-                            "Ctrl+click band buttons to select multiple bands");
-    ThemeManager::instance().applyStyleSheet(m_bandRadio, filterChoiceStyle);
-    bottom->addWidget(m_bandRadio);
-
-    m_freqRadio = new QRadioButton("Freq");
-    m_freqRadio->setToolTip("Track: only the stations on exactly this receiver's frequency");
-    ThemeManager::instance().applyStyleSheet(m_freqRadio, filterChoiceStyle);
-    bottom->addWidget(m_freqRadio);
 
     // Build 416 (operator, 15.11): a filter by time -- the stations heard
     // from (any update: frequency, status, RX report) within the chosen time.
@@ -428,9 +435,9 @@ void FreeDvReporterDialog::buildBody()
     root->addLayout(bottom);
 
     // ── Signal wiring ──────────────────────────────────────────────────────
-    connect(m_trackCheck, &QCheckBox::toggled,   this, &FreeDvReporterDialog::onTrackToggled);
-    connect(m_bandRadio,  &QRadioButton::toggled, this, &FreeDvReporterDialog::onBandModeToggled);
-    connect(m_freqRadio,  &QRadioButton::toggled, this, &FreeDvReporterDialog::onFreqModeToggled);
+    connect(m_trackCheck, &QPushButton::toggled,   this, &FreeDvReporterDialog::onTrackToggled);
+    connect(m_bandRadio,  &QPushButton::toggled, this, &FreeDvReporterDialog::onBandModeToggled);
+    connect(m_freqRadio,  &QPushButton::toggled, this, &FreeDvReporterDialog::onFreqModeToggled);
 
     // Apply the default "All" filter (empty set = All)
     applyBandFilter();
