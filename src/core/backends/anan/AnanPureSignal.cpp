@@ -1063,6 +1063,9 @@ void AnanPureSignal::setAttenuation(int db)
         return;
     m_s.attDb = db;
     m_s.attDbByAdc[std::size_t(m_s.feedbackAdc)] = db;
+    // Build 429: every change in the log (the slider of the PS window too).
+    qCInfo(lcAnanPs) << "PureSignal: attenuator" << db << "dB, feedback ADC" << m_s.feedbackAdc + 1
+                     << (m_keyed ? "(transmitting)" : "");
     save();
     pushTransport();
     emit statusChanged();

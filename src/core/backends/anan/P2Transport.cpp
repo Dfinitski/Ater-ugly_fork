@@ -2916,7 +2916,17 @@ void P2Transport::sendP1Ep2()
     // ADC1, "the bypass relay does not switch"): what the radio is told on
     // transmit, once per transmission -- the board profile and the C&C bytes
     // that select the receive filters and the PureSignal inputs.
-    if (st.mox && m_p1CcLogPending.exchange(false, std::memory_order_relaxed)) {
+    // Build 429 (operator, 15.11: the feedback comes now, but "no ATT RX1
+    // control from the PS window"): the attenuators too -- 0x1C C3 the ADC0
+    // transmit attenuator (the PS one), 0x14 C4 ADC0's receive one, 0x16 C1
+    // ADC1's -- and the line again whenever the transmit attenuator changes.
+    const bool attChanged = st.mox && st.txAdc0AttDb != m_p1CcLoggedAtt;
+    if (!st.mox)
+        m_p1CcLoggedAtt = -1;
+    if (st.mox && (m_p1CcLogPending.exchange(false, std::memory_order_relaxed) || attChanged)) {
+        m_p1CcLoggedAtt = st.txAdc0AttDb;
+        const hl2::Cc at = p1Cc(4, st);   // C0 0x1C: C3 ADC0 transmit attenuator
+        const hl2::Cc a1 = p1Cc(12, st);  // C0 0x16: C1 ADC1 attenuator
         const hl2::Cc g = p1Cc(0, st);    // C0 0x00: C3 bit 7 RX bypass out, bits 5-6 RX inputs
         const hl2::Cc f = p1Cc(10, st);   // C0 0x12: C3 BPF1 / HPF (bit 5 bypass), C4 LPF
         const hl2::Cc p = p1Cc(11, st);   // C0 0x14: C2 bit 6 PureSignal
@@ -2931,7 +2941,8 @@ void P2Transport::sendP1Ep2()
             << "), PureSignal " << (m_psEnabled ? "on" : "off") << ", feedback ADC"
             << m_psAdc + 1 << ", source " << m_psSource << ": 0x00 C3=" << hx(g[3])
             << ", 0x12 C3=" << hx(f[3]) << " C4=" << hx(f[4]) << ", 0x14 C2=" << hx(p[2])
-            << ", 0x24 C1=" << hx(f2[1]) << " C2=" << hx(f2[2]);
+            << ", 0x24 C1=" << hx(f2[1]) << " C2=" << hx(f2[2]) << "; PS att " << m_psAttDb
+            << " dB: 0x1C C3=" << hx(at[3]) << ", 0x14 C4=" << hx(p[4]) << ", 0x16 C1=" << hx(a1[1]);
     }
     auto pkt = hl2::ep2Packet(m_p1Seq++, a, b);
     // Speaker audio, 126 stereo frames, if the mixer has produced them.
