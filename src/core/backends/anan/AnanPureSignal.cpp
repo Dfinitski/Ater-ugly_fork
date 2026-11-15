@@ -555,13 +555,6 @@ bool AnanPureSignal::startDelayMeasure()
         emit statusChanged();
         return false;
     }
-    // Build 434 (log 15.11 15:01): not with the test wire level below 100 %.
-    if (m_testWirePercent < 100) {
-        m_measResult = tr("the test wire level is %1 % -- set it to 100 % first").arg(m_testWirePercent);
-        m_measOk = false;
-        emit statusChanged();
-        return false;
-    }
     if (m_twoTone && std::abs(m_s.ttFreq2 - m_s.ttFreq1) < 1000.0) {
         m_measResult = tr("use the 700/1900 Hz pair: a 300 Hz beat is too slow to time");
         m_measOk = false;
@@ -622,11 +615,6 @@ void AnanPureSignal::measTick()
     if (t > kMeasTimeoutMs) {
         measFinish(tr("no steady reading in %1 s (envelope correlation below 0.95), amp delay kept")
                        .arg(kMeasTimeoutMs / 1000), false);
-        return;
-    }
-    if (m_testWirePercent < 100) {   // build 434: moved during the measurement
-        measFinish(tr("aborted (the test wire level was changed), amp delay kept at %1 ns")
-                       .arg(m_s.ampDelayNs, 0, 'f', 0), false);
         return;
     }
     if (t < kMeasSettleMs || m_info[14] != 0 || m_delaySeq == m_measSeqSeen)
@@ -929,15 +917,6 @@ void AnanPureSignal::setTransport(QObject* transport)
 {
     m_transport = transport;
     m_p2 = qobject_cast<P2Transport*>(transport);
-    if (m_p2)
-        m_p2->setTestWireGain(m_testWirePercent / 100.0);   // build 433
-}
-
-void AnanPureSignal::setTestWireLevel(int percent)
-{
-    m_testWirePercent = std::clamp(percent, 0, 100);
-    if (m_p2)
-        m_p2->setTestWireGain(m_testWirePercent / 100.0);
 }
 
 void AnanPureSignal::setFeedbackAdc(int adc)
@@ -1241,6 +1220,7 @@ AnanPureSignal::Status AnanPureSignal::status() const
     s.available = m_channel >= 0;
     s.enabled = m_s.enabled;
     s.twoTone = m_twoTone;
+    s.keyed = m_keyed;   // build 435
     s.attDb = m_s.attDb;
     s.calibrating = m_singleRunning;
     s.delayNs = m_delayNs;

@@ -398,6 +398,16 @@ void PsApplet::refresh()
         if ((m_sawTx && !tx) || !allowed || refused)
             requestTwoTone(false);
     }
+    // Build 435 (operator, 15.11: "the 2 Tone buttons in the window and in the
+    // applet are not in step"): both show m_twoToneKeyed on every tick -- the
+    // window's button was left pressed when a press was refused, and a window
+    // opened later started released.
+    if (m_twoToneBtn->isChecked() != m_twoToneKeyed) {
+        const QSignalBlocker b(m_twoToneBtn);
+        m_twoToneBtn->setChecked(m_twoToneKeyed);
+    }
+    if (m_ampView)
+        m_ampView->syncTwoTone(m_twoToneKeyed);
 
     if (!ps) {
         setLamp(m_feedLamp, QStringLiteral("#1a2028"), QStringLiteral("#607080"));
@@ -430,11 +440,17 @@ void PsApplet::refresh()
         }
     }
     const QString off = QStringLiteral("#1a2028");
-    setLamp(m_feedLamp, st.feeding ? QStringLiteral("#30c060") : off,
-            st.feeding ? QStringLiteral("#0b0e12") : QStringLiteral("#607080"));
+    // Build 435 (operator, 15.11: "the feedback and correction lamps stay lit
+    // with no transmission and PS off"): calcc's info[] keeps the last
+    // transmission's figures; the lamps are lit only while transmitting with
+    // PureSignal on.
+    const bool live = st.enabled && st.keyed;
+    const bool feeding = live && st.feeding;
+    setLamp(m_feedLamp, feeding ? QStringLiteral("#30c060") : off,
+            feeding ? QStringLiteral("#0b0e12") : QStringLiteral("#607080"));
     const int fb = st.feedbackLevel;
     QString fbColor = off;
-    if (st.enabled && fb > 0) {
+    if (live && fb > 0) {
         if (fb > 181)
             fbColor = QStringLiteral("#3090ff");
         else if (fb > 128)
@@ -445,9 +461,9 @@ void PsApplet::refresh()
             fbColor = QStringLiteral("#e03030");
     }
     setLamp(m_fbLamp, fbColor, fbColor == off ? QStringLiteral("#607080") : QStringLiteral("#0b0e12"));
-    m_fbLamp->setText(st.enabled && fb > 0 ? QStringLiteral("FB %1").arg(fb) : tr("FB"));
-    setLamp(m_corrLamp, st.enabled && st.correcting ? QStringLiteral("#30e030") : off,
-            st.enabled && st.correcting ? QStringLiteral("#0b0e12") : QStringLiteral("#607080"));
+    m_fbLamp->setText(live && fb > 0 ? QStringLiteral("FB %1").arg(fb) : tr("FB"));
+    setLamp(m_corrLamp, live && st.correcting ? QStringLiteral("#30e030") : off,
+            live && st.correcting ? QStringLiteral("#0b0e12") : QStringLiteral("#607080"));
     const int si = std::clamp(st.state, 0, 9);
     m_stateLabel->setText(st.enabled ? tr("State: %1").arg(QLatin1String(kStateNames[si]))
                                      : tr("PureSignal off"));
