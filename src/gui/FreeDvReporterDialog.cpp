@@ -266,16 +266,26 @@ void FreeDvReporterDialog::buildBody()
         + ThemeManager::checkBoxIndicatorStyle());
     bottom->addWidget(m_trackCheck);
 
+    // Build 415 (operator, 15.11: "Band is written there, but it is not a
+    // button and has no tick"): the theme drew the two choices as bare text.
+    // They get the Track box's indicator -- one of the two is always ticked.
+    const QString filterChoiceStyle =
+        "QRadioButton { color: {{color.text.primary}}; spacing: 8px; }"
+        "QRadioButton::indicator { width: 14px; height: 14px; "
+        "border: 2px solid {{color.background.3}}; border-radius: 3px; background: {{color.background.0}}; }"
+        "QRadioButton::indicator:hover { border-color: {{color.accent}}; background: {{color.background.1}}; }"
+        "QRadioButton::indicator:checked { border: 2px solid {{color.accent}}; background: {{color.accent}}; }";
+
     m_bandRadio = new QRadioButton("Band");
     m_bandRadio->setChecked(true);
-    m_bandRadio->setToolTip("Ctrl+click band buttons to select multiple bands");
-    ThemeManager::instance().applyStyleSheet(m_bandRadio,
-        "QRadioButton { color: {{color.text.primary}}; }");
+    m_bandRadio->setToolTip("Track: the stations on this receiver's band. "
+                            "Ctrl+click band buttons to select multiple bands");
+    ThemeManager::instance().applyStyleSheet(m_bandRadio, filterChoiceStyle);
     bottom->addWidget(m_bandRadio);
 
     m_freqRadio = new QRadioButton("Freq");
-    ThemeManager::instance().applyStyleSheet(m_freqRadio,
-        "QRadioButton { color: {{color.text.primary}}; }");
+    m_freqRadio->setToolTip("Track: only the stations on exactly this receiver's frequency");
+    ThemeManager::instance().applyStyleSheet(m_freqRadio, filterChoiceStyle);
     bottom->addWidget(m_freqRadio);
 
     m_bandGroup = new QButtonGroup(this);

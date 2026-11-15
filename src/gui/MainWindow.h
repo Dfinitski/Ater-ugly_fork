@@ -1010,6 +1010,7 @@ private:
     QString netScheduleFilePath() const;
 #ifdef HAVE_WEBSOCKETS
     void showFreeDvReporter();
+    void toggleFreeDvReporter();   // build 415: the FDV applet's "Reporter" button
     void setFreeDvVisible(bool on);          // build 399 / 400
 
 #endif

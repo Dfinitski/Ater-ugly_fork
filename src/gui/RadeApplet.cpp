@@ -74,7 +74,7 @@ RadeApplet::RadeApplet(QWidget* parent)
         reporterBtn->setObjectName(QStringLiteral("fdvReporterButton"));
         reporterBtn->setFixedSize(72, 20);   // build 399: one width with "Visible" under it
         reporterBtn->setFocusPolicy(Qt::NoFocus);
-        reporterBtn->setToolTip(tr("Open FreeDV Reporter (the stations on FreeDV now)"));
+        reporterBtn->setToolTip(tr("Open / close FreeDV Reporter (the stations on FreeDV now)"));
         ThemeManager::instance().applyStyleSheet(reporterBtn, QStringLiteral(
             "QPushButton { background: {{color.background.1}}; border: 1px solid {{color.background.2}};"
             " border-radius: 3px; padding: 0px 8px; font-size: 11px; font-weight: bold;"

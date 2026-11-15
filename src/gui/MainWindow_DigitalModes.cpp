@@ -1496,6 +1496,18 @@ void MainWindow::setFreeDvVisible(bool on)
         stopFreeDvReporting(m_radeSliceId);
 }
 
+// Build 415 (operator, 15.11): the applet's "Reporter" button opens the window
+// and, when it is open, closes it. The menus keep showFreeDvReporter (open /
+// bring to front).
+void MainWindow::toggleFreeDvReporter()
+{
+    if (m_freedvReporterDialog && m_freedvReporterDialog->isVisible()) {
+        m_freedvReporterDialog->close();
+        return;
+    }
+    showFreeDvReporter();
+}
+
 void MainWindow::showFreeDvReporter()
 {
     if (!m_freedvReporterDialog) {

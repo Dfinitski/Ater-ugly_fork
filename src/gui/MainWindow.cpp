@@ -5810,7 +5810,7 @@ void MainWindow::buildUI()
 #if defined(HAVE_RADE) && defined(HAVE_WEBSOCKETS)
     // Build 396: the FDV applet's "Reporter" button.
     if (auto* fdvApplet = m_appletPanel->radeApplet())
-        connect(fdvApplet, &RadeApplet::reporterRequested, this, &MainWindow::showFreeDvReporter);
+        connect(fdvApplet, &RadeApplet::reporterRequested, this, &MainWindow::toggleFreeDvReporter);
     // Build 400: "Visible" = this station shown on FreeDV Reporter (the
     // setting FreeDvAutoReport).
     if (auto* fdvApplet = m_appletPanel->radeApplet()) {
