@@ -765,6 +765,7 @@ private:
     // ANAN-100D port: the CW applet's keyer settings -> the FPGA keyer.
     void ananPushCwKeyer();
     void ananPushAdcDitherRandom();   // build 439
+    const void* m_fdvLinearDsp = nullptr;   // build 441: the receiver chain FreeDV holds linear
     int m_ananDitherRandomSig = -1;    // build 439
     // ANAN-100D port, unkey test (31.10): what the receivers do from the key
     // to 6 s after the unkey -- 25 ms rows of S-meter, panadapter, AGC gain,

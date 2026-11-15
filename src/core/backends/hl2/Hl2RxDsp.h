@@ -83,8 +83,11 @@ public:
     // Dream's 0.8 s of buffering.
     [[nodiscard]] static constexpr bool rxMinimumPhaseFor(WdspChannel::Mode mode) noexcept
     {
+        // Build 441: DIGU / DIGL too (sound-card data modes, OFDM among
+        // them), as on transmit since build 418.
         return mode != WdspChannel::Mode::Cwl && mode != WdspChannel::Mode::Cwu
-            && mode != WdspChannel::Mode::Drm;
+            && mode != WdspChannel::Mode::Drm && mode != WdspChannel::Mode::Digu
+            && mode != WdspChannel::Mode::Digl;
     }
 
     // RXA panel gain, applied after the AGC: unity removes WDSP's x4, which put
@@ -107,7 +110,8 @@ public:
     {
         // Build 440: DRM (linear) keeps the long filter -- its latency costs
         // nothing there; the short one is CW's.
-        if (rxMinimumPhaseFor(mode) || notchCount > 0 || mode == WdspChannel::Mode::Drm)
+        if (rxMinimumPhaseFor(mode) || notchCount > 0 || mode == WdspChannel::Mode::Drm
+            || mode == WdspChannel::Mode::Digu || mode == WdspChannel::Mode::Digl)
             return kRxFilterTaps;
         const double width = highHz >= lowHz ? highHz - lowHz : lowHz - highHz;
         const bool shortening = currentTaps <= 0 || currentTaps > kRxShortFilterTaps;
@@ -414,6 +418,13 @@ public:
     // decoder, and the decoder's audio replaces it. I/O thread only (call
     // through QMetaObject::invokeMethod); nullptr detaches.
     void setDrmEngine(std::shared_ptr<aether_drm::DrmEngine> engine);
+    // ANAN fork build 441 (operator, 15.11): linear phase whatever the mode --
+    // set by the backend while FreeDV decodes this receiver (USB / LSB with
+    // the sub-mode's band). The minimum-phase mask spread the modem carriers'
+    // group delay by 6..8 ms (RADE / 700E 650..2350: 2.9..9.0 ms over
+    // 775..2225 Hz; 1600 3.3..11.6 ms; 700D 4.0..10.7 ms), past RADE's 4 ms
+    // cyclic prefix -- the receive half of build 418.
+    Q_INVOKABLE void setLinearPhaseWanted(bool on);
     [[nodiscard]] bool anfRequested() const noexcept { return m_anfOn; }
     [[nodiscard]] int anfLevel() const noexcept { return m_anfLevel; }
     [[nodiscard]] bool anfInCircuit() const noexcept
@@ -628,6 +639,7 @@ private:
     // Pushes rxMinimumPhaseFor(m_config.mode) to the live channel. Only
     // called where the control verbs may reach it (setMode, installChannel).
     void applyMinimumPhaseForMode();
+    bool m_linearWanted = false;   // build 441: setLinearPhaseWanted
     // Pushes rxFilterTapsFor(mode, passband, notchCount) to the live channel;
     // notchCount is passed so addNotch() can raise for the notch it is about to
     // add. hysteresisFromTaps (> 0) is the length the hysteresis is measured

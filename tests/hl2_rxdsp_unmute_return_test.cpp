@@ -225,8 +225,11 @@ int main(int argc, char** argv)
     // ANAN fork build 440: DRM is linear as well (its OFDM carriers must not
     // spread past the guard interval).
     check(!Hl2RxDsp::rxMinimumPhaseFor(M::Drm), "ANAN build 440: DRM keeps LINEAR phase");
+    // ANAN fork build 441: DIGU / DIGL as well (sound-card data modes).
+    check(!Hl2RxDsp::rxMinimumPhaseFor(M::Digu) && !Hl2RxDsp::rxMinimumPhaseFor(M::Digl),
+          "ANAN build 441: DIGU / DIGL keep LINEAR phase");
     bool othersMp = true;
-    for (M m : {M::Lsb, M::Usb, M::Dsb, M::Fm, M::Am, M::Digu, M::Spec, M::Digl,
+    for (M m : {M::Lsb, M::Usb, M::Dsb, M::Fm, M::Am, M::Spec,
                 M::Sam, M::Wbfm}) {
         othersMp = othersMp && Hl2RxDsp::rxMinimumPhaseFor(m);
     }

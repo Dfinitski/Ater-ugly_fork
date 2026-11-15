@@ -499,6 +499,15 @@ void Hl2RxDsp::applyApf()
     }
 }
 
+void Hl2RxDsp::setLinearPhaseWanted(bool on)
+{
+    if (on == m_linearWanted)
+        return;
+    m_linearWanted = on;
+    if (canPushToChannel())
+        applyMinimumPhaseForMode();   // installChannel() re-applies it after a rebuild
+}
+
 void Hl2RxDsp::setDrmEngine(std::shared_ptr<aether_drm::DrmEngine> engine)
 {
     m_drm = std::move(engine);
@@ -582,7 +591,7 @@ void Hl2RxDsp::applyMinimumPhaseForMode()
     // control-path work measured on a cold cache (the design FFTs plan with
     // FFTW_ESTIMATE, WDSP patch 12 -- a measured plan here took over a minute,
     // on the thread that paces EP2), and the notch database survives it.
-    const bool wanted = rxMinimumPhaseFor(m_config.mode);
+    const bool wanted = rxMinimumPhaseFor(m_config.mode) && !m_linearWanted;   // build 441
     if (!m_channel->setMinimumPhase(wanted)) {
         qCWarning(lcHl2RxDsp) << "could not switch the RX filter to"
                               << (wanted ? "minimum" : "linear")

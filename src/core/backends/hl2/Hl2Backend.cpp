@@ -3081,6 +3081,26 @@ void Hl2Backend::fdvTick()
             txRx ? averageTimeMsForStep(txRx->panAverage) : 0);
     }
     auto& st = fdv::FdvState::instance();
+    // Build 441: the receiver FreeDV decodes runs a linear-phase filter
+    // (Hl2RxDsp::setLinearPhaseWanted); the one it leaves goes back to its
+    // mode's phase. Followed every tick -- a rebuilt receiver has a new chain.
+    {
+        const Receiver* fr = (m_fdv && st.sliceId >= 0) ? rx(ddcForSlice(st.sliceId)) : nullptr;
+        Hl2RxDsp* want = fr ? fr->dsp : nullptr;
+        if (static_cast<const void*>(want) != m_fdvLinearDsp) {
+            for (const Receiver& r : m_rx) {
+                if (r.dsp && static_cast<const void*>(r.dsp) == m_fdvLinearDsp)
+                    QMetaObject::invokeMethod(r.dsp, "setLinearPhaseWanted", Qt::QueuedConnection,
+                                              Q_ARG(bool, false));
+            }
+            if (want)
+                QMetaObject::invokeMethod(want, "setLinearPhaseWanted", Qt::QueuedConnection,
+                                          Q_ARG(bool, true));
+            m_fdvLinearDsp = want;
+            qCInfo(lcHl2) << "ANAN: FreeDV receive filter" << (want ? "linear phase on receiver" : "back to the mode's phase")
+                          << (want ? ddcForSlice(st.sliceId) + 1 : 0);
+        }
+    }
     // Build 339: FreeDV on / off on the transmitting receiver, or another
     // sub-mode -- push the transmit filter that now applies.
     {
