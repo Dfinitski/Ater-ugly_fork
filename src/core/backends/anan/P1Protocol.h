@@ -88,6 +88,9 @@ struct P1CcState {
     int lineInGain = 0;
     bool pureSignal = false;
     std::array<int, 3> rxAttDb{};          // step attenuator ADC0..ADC2, 0..31 dB
+    // C0 0x16 C1 while transmitting: 31 dB as Thetis, the PureSignal
+    // attenuator when ADC1 carries the feedback (build 430).
+    int txAdc1AttDb = 31;
     // CW keyer (C0 0x16 / 0x1E / 0x20).
     bool cwKeyer = false;
     bool cwPaddleSwap = false;

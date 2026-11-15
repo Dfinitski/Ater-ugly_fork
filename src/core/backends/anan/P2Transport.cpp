@@ -2872,6 +2872,22 @@ P1CcState P2Transport::p1State() const
                                              | ((m_micControl & kMicBiasOn) ? 0x20 : 0)
                                              | ((m_micControl & kMicPttDisabled) ? 0x40 : 0));
     s.rxAttDb = {m_adcAtt[0], m_adcAtt[1], 0};
+    // Build 430 (operator, 15.11: a 7000DLE on Protocol 1, firmware 2.1 --
+    // the user watches the attenuator's bus on the board: the receive
+    // setting reaches the chip, the PS slider does not on transmit). The log
+    // of build 429 shows C0 0x1C C3 (the transmit attenuator, as Thetis
+    // sends it) following the slider 0..31, so this firmware does not apply
+    // it. While transmitting with PureSignal the feedback ADC's own step
+    // attenuator byte (C0 0x14 C4 for ADC0, C0 0x16 C1 for ADC1) carries the
+    // PS attenuation too: a firmware that uses 0x1C C3 on transmit ignores
+    // these then, one that does not gets the PS value from them. The receive
+    // values come back with MOX off.
+    if (psTx) {
+        if (m_psAdc == 0)
+            s.rxAttDb[0] = m_psAttDb;
+        else if (m_psAdc == 1)
+            s.txAdc1AttDb = m_psAttDb;
+    }
     s.cwKeyer = effectiveCwKeyer().enabled;   // build 224: off outside the amateur bands
     s.cwPaddleSwap = m_cwKeyer.paddleSwap;
     s.cwMode = m_cwKeyer.mode;

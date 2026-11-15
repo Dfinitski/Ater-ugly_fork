@@ -131,7 +131,7 @@ hl2::Cc p1Cc(int index, const P1CcState& s) noexcept
     case 12:  // ADC1 / ADC2 attenuators, keyer speed and weight
         c[0] |= 0x16;
         // Thetis: ADC1 at 31 dB while transmitting (Red Pitaya excepted).
-        c[1] = static_cast<std::uint8_t>((s.mox ? 0x1F : att5(s.rxAttDb[1])) | 0x20);
+        c[1] = static_cast<std::uint8_t>((s.mox ? att5(s.txAdc1AttDb) : att5(s.rxAttDb[1])) | 0x20);
         c[2] = static_cast<std::uint8_t>(att5(s.rxAttDb[2]) | 0x20 | (s.cwPaddleSwap ? 0x40 : 0));
         c[3] = static_cast<std::uint8_t>((std::clamp(s.cwSpeedWpm, 1, 60) & 0x3F)
                                          | (s.cwMode == 0 ? 0x00 : s.cwMode == 1 ? 0x40 : 0x80));
