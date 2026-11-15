@@ -41,6 +41,9 @@ public:
     void setRunning(bool on);           // takes the lines of the unit
     // AetherSDR, build 395: held while the transmitter is on (no lines of the own signal)
     void setPaused(bool on);
+    // AetherSDR, build 409: the JS8 window's waterfall -- one frequency (it
+    // transmits where it receives): one band drawn, both mouse buttons set it
+    void setSingle(bool on) { single = on; update(); }
     void clear();
 
 signals:
@@ -60,6 +63,7 @@ private:
     FtUnit *unit;
     QTimer *timer;
     bool runWanted = false, paused = false;   // AetherSDR, 395
+    bool single = false;                      // AetherSDR, 409
     void applyRun();
     QImage img;                         // the waterfall (without the scale)
     int f0 = 0, f1 = 4000;

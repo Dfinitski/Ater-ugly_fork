@@ -120,6 +120,10 @@ public:
     void txNote(const QString &text);           // a word of the main window on the TX (shown)
     void notePower(double watts);               // the power meter while FTX transmits (the log)
     int waterfallHeight() const { return wfHeight; }
+    // AetherSDR, build 409: the JS8 window's waterfall is shown with these
+    bool waterfallOn() const;
+    void waterfallRange(int &fromHz, int &toHz) const;
+    void setWaterfallHeight(int h) { wfHeight = qBound(60, h, 2000); }
     static const int PANEL_WIDTH = 600;         // (not used: both decoder windows are windows of their own)
 
 signals:

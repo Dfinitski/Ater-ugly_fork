@@ -38,6 +38,8 @@
 #include <QQueue>
 #include "FtUnit.h"
 #include "FtTx.h"
+#include "FtWaterfall.h"   // AetherSDR, build 409
+#include <QPointer>
 
 class QTableWidget;
 class QComboBox;
@@ -85,6 +87,9 @@ public:
     void txAborted();                           // MOX released by hand (or refused): the message stopped
     void txNote(const QString &text);           // a word of the main window on the TX (shown)
     void setTxAllowed(bool on);                 // SDR-Micron: no transmitter
+    // AetherSDR, build 409 (operator, 14.11): a waterfall of its own, as the
+    // FTX window's -- the main window puts it under its panorama while JS8 is on
+    FtWaterfall *waterfall() const { return wf; }
 
 signals:
     void tuneRequest(qint64 dialHz);
@@ -129,6 +134,8 @@ private:
         QDateTime last;
     };
     FtUnit *unit;
+    QPointer<FtWaterfall> wf;           // AetherSDR, build 409
+    void wfSettings();
     PskReporter *psk;
     int curMode;
     qint64 dial;

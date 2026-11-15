@@ -2166,6 +2166,7 @@ private:
     bool m_ftxJs8{false};          // ... which is the one shown
     void ftxSwitchWindow(bool js8);
     void ftxSetTxSource();
+    void ftxPlaceWaterfall();   // build 409
     void ftxTxAborted(const QString& why);
     double m_ftxSavedFreqMhz{0.0};
     // Build 386: the FTX receiver's frequency belongs to the FTX window alone.

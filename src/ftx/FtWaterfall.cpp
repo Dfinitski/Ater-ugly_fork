@@ -53,6 +53,15 @@ void FtWaterfall::setMode(int m)
 {
     mode = m;
     bw = (m == FtUnit::FT4) ? 4 * 12000.0 / 576.0 : (m == FtUnit::WSPR) ? 6.0 : 8 * 6.25;
+    // AetherSDR, build 409: JS8 -- 8 tones of 12000 / (the samples of a symbol):
+    // Normal 1920 (50 Hz), Fast 1200 (80 Hz), Turbo 600 (160 Hz), Slow 3840 (25 Hz)
+    switch(m)
+    {
+        case FtUnit::JS8F: bw = 80.0; break;
+        case FtUnit::JS8T: bw = 160.0; break;
+        case FtUnit::JS8S: bw = 25.0; break;
+        default: break;
+    }
     lastPeriod = -1;
     update();
 }
@@ -248,15 +257,19 @@ void FtWaterfall::paintEvent(QPaintEvent *)
         p.drawLine(xa, y - 3, xa, y + 1);
         p.drawLine(xb, y - 3, xb, y + 1);
     };
-    band(tx, 15, QColor(255, 60, 60));
+    if(!single)
+        band(tx, 15, QColor(255, 60, 60));
     band(rx, 20, QColor(60, 230, 60));
     // the waterfall
     if(!img.isNull())
         p.drawImage(0, SCALE_PX, img);
     // the RX and TX bands: two lines each, the start and the end of the signal
-    p.setPen(QPen(QColor(255, 60, 60), 1));
-    p.drawLine(hzToX(tx), SCALE_PX, hzToX(tx), height());
-    p.drawLine(hzToX(tx + bw), SCALE_PX, hzToX(tx + bw), height());
+    if(!single)
+    {
+        p.setPen(QPen(QColor(255, 60, 60), 1));
+        p.drawLine(hzToX(tx), SCALE_PX, hzToX(tx), height());
+        p.drawLine(hzToX(tx + bw), SCALE_PX, hzToX(tx + bw), height());
+    }
     p.setPen(QPen(QColor(60, 230, 60), 1));
     p.drawLine(hzToX(rx), SCALE_PX, hzToX(rx), height());
     p.drawLine(hzToX(rx + bw), SCALE_PX, hzToX(rx + bw), height());
@@ -296,12 +309,12 @@ void FtWaterfall::mousePressEvent(QMouseEvent *e)
 void FtWaterfall::setFreqAt(int x)
 {
     const int hz = qBound(f0, (int)lround(xToHz(x) - bw / 2.0), (int)(f1 - bw));
-    if(freqDrag == Qt::LeftButton && hz != rx)
+    if((freqDrag == Qt::LeftButton || single) && hz != rx)
     {
         rx = hz;
         emit rxClicked(hz);
     }
-    else if(freqDrag == Qt::RightButton && hz != tx)
+    else if(!single && freqDrag == Qt::RightButton && hz != tx)
     {
         tx = hz;
         emit txClicked(hz);

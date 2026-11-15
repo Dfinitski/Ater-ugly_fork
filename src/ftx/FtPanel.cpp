@@ -424,6 +424,18 @@ FtPanel::~FtPanel()
     delete wf;                          // (gone already when the main window took it)
 }
 
+// AetherSDR, build 409
+bool FtPanel::waterfallOn() const
+{
+    return pbWf->isChecked();
+}
+
+void FtPanel::waterfallRange(int &fromHz, int &toHz) const
+{
+    fromHz = sbWf0->value();
+    toHz = qMax(sbWf0->value() + 500, sbWf1->value());
+}
+
 // the waterfall strip shown (in the main window)
 void FtPanel::showWaterfall()
 {

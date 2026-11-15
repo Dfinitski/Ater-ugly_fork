@@ -352,10 +352,27 @@ Js8Panel::Js8Panel(FtUnit *u, QWidget *parent)
         onDecoded(p, m, l, ms, true); }, Qt::QueuedConnection);
     bgMode->button(curMode)->setChecked(true);
     fillBands();
+    // AetherSDR, build 409: the waterfall (see Js8Panel.h). JS8 transmits on
+    // the frequency it receives on: one band, set by either mouse button.
+    wf = new FtWaterfall(unit, 0);
+    wf->hide();
+    wf->setSingle(true);
+    connect(wf, &FtWaterfall::rxClicked, this, [this](int hz) { rxFreq = hz; applySettings(); });
 }
 
 Js8Panel::~Js8Panel()
 {
+    delete wf;                          // (gone already when the main window took it)
+}
+
+void Js8Panel::wfSettings()
+{
+    if(!wf)
+        return;
+    wf->setSearch(sbFa->value(), qMax(sbFa->value() + 200, sbFb->value()));
+    wf->setMode(curMode);
+    wf->setRx(rxFreq);
+    wf->setTx(rxFreq);
 }
 
 // ---- settings --------------------------------------------------------------------------------------
@@ -486,6 +503,7 @@ void Js8Panel::applySettings()
         sbOff->setValue(rxFreq);
         sbOff->blockSignals(false);
     }
+    wfSettings();                       // AetherSDR, build 409
     if(!running)
         return;                         // the unit belongs to the window that runs
     FtUnit::Settings s;
@@ -590,6 +608,8 @@ void Js8Panel::start()
     unit->setAutoOffset(autoSaved);
     applySettings();
     unit->setActive(true);
+    if(wf)
+        wf->setRunning(true);           // AetherSDR, build 409
     tuneBand();
     tick->start();
     txTick->start();
@@ -605,6 +625,8 @@ void Js8Panel::stop()
     haltTx();                           // (MOX off)
     txTick->stop();
     unit->setActive(false);
+    if(wf)
+        wf->setRunning(false);          // AetherSDR, build 409
     psk->setEnabled(false);
     tick->stop();
     saveSettings();

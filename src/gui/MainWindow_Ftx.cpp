@@ -34,6 +34,7 @@
 #include <cmath>
 
 #include <memory>
+#include <algorithm>
 #include <QEvent>
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -250,6 +251,17 @@ void MainWindow::activateFtx(int sliceId)
         ThemeManager::instance().applyStyleSheet(m_js8Panel, ftxWindowStyle);
         new FtxCaptionColour(m_js8Panel);
         m_js8Panel->loadSettings();
+        // Build 409: the strip's height dragged by its scale -- one height
+        // for both waterfalls, kept by the FTX window (Options.ini).
+        for (FtWaterfall* wf : {m_ftPanel->waterfall(), m_js8Panel->waterfall()}) {
+            if (!wf)
+                continue;
+            connect(wf, &FtWaterfall::heightRequested, this, [this, wf](int h) {
+                if (m_ftPanel)
+                    m_ftPanel->setWaterfallHeight(h);
+                wf->setFixedHeight(std::clamp(h, 60, 600));
+            });
+        }
         m_js8Panel->hide();
         connect(m_ftPanel, &FtPanel::js8Requested, this, [this] { ftxSwitchWindow(true); }, Qt::QueuedConnection);
         connect(m_js8Panel, &Js8Panel::ftxRequested, this, [this] { ftxSwitchWindow(false); }, Qt::QueuedConnection);
@@ -289,7 +301,10 @@ void MainWindow::activateFtx(int sliceId)
             if (!m_ftPanel || !m_ftPanel->waterfall())
                 return;
             const TransmitModel& model = m_radioModel.transmitModel();
-            m_ftPanel->waterfall()->setPaused(model.isTransmitting() || model.isMox() || model.isTuning());
+            const bool hold = model.isTransmitting() || model.isMox() || model.isTuning();
+            m_ftPanel->waterfall()->setPaused(hold);
+            if (m_js8Panel && m_js8Panel->waterfall())
+                m_js8Panel->waterfall()->setPaused(hold);   // build 409
         };
         connect(&m_radioModel.transmitModel(), &TransmitModel::transmittingChanged, this, [wfHold](bool) { wfHold(); });
         connect(&m_radioModel.transmitModel(), &TransmitModel::moxChanged, this, [wfHold](bool) { wfHold(); });
@@ -508,6 +523,31 @@ void MainWindow::ftxTxAborted(const QString& why)
     }
 }
 
+// Build 409: the waterfall of the window that is on goes under the
+// panadapter; the other one is taken out (hidden, no parent). The JS8 one is
+// shown with the FTX window's settings: Waterfall on / off, the range, the
+// height.
+void MainWindow::ftxPlaceWaterfall()
+{
+    auto* view = qobject_cast<FtxView*>(m_ftxView.data());
+    if (!view || !m_ftPanel || !m_js8Panel)
+        return;
+    FtWaterfall* wf = m_ftxJs8 ? m_js8Panel->waterfall() : m_ftPanel->waterfall();
+    if (!wf) {
+        view->takeWaterfall();
+        return;
+    }
+    if (m_ftxJs8) {
+        int from = 0;
+        int to = 4000;
+        m_ftPanel->waterfallRange(from, to);
+        wf->setRange(from, to);
+    }
+    view->setWaterfall(wf, m_ftPanel->waterfallHeight());
+    if (!m_ftPanel->waterfallOn())
+        wf->hide();
+}
+
 // Build 406: FT8 / FT4 / WSPR <-> JS8 while the mode is on (MicronSDR:
 // ftEnter with the other window). The receiver stays as it is; the windows
 // and their decoders change places.
@@ -537,14 +577,14 @@ void MainWindow::ftxSwitchWindow(bool js8)
     auto& as = AppSettings::instance();
     as.setValue(QStringLiteral("FtxLastWindowJs8"), js8 ? "True" : "False");
     as.save();
+    // Build 409 (operator, 14.11: "no waterfall in JS8"): hiding the FTX
+    // window hides its waterfall (FtPanel::hideWindow), so the strip under
+    // the panadapter was empty in JS8. Each window has its own now.
+    ftxPlaceWaterfall();
     if (js8) {
         ftx::FtxState::instance().setSubMode(ftx::kJs8);
         m_js8Panel->showWindow(geometry());
         m_js8Panel->start();       // -> tuneRequest: the JS8 frequency of its band
-        // The waterfall under the panadapter is the FTX window's; its stop()
-        // above has stopped it.
-        if (FtWaterfall* wf = m_ftPanel->waterfall())
-            wf->setRunning(true);
     } else {
         ftx::FtxState::instance().setSubMode(m_ftPanel->mode());
         m_ftPanel->showWindow(geometry());
