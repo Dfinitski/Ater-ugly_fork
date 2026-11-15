@@ -2882,12 +2882,15 @@ P1CcState P2Transport::p1State() const
     // PS attenuation too: a firmware that uses 0x1C C3 on transmit ignores
     // these then, one that does not gets the PS value from them. The receive
     // values come back with MOX off.
-    if (psTx) {
-        if (m_psAdc == 0)
-            s.rxAttDb[0] = m_psAttDb;
-        else if (m_psAdc == 1)
-            s.txAdc1AttDb = m_psAttDb;
-    }
+    // Build 431 (operator, 15.11: "there is also the attenuator value during
+    // transmission"): the same for it -- with PureSignal off, ADC0's byte
+    // carries the transmit attenuator (Radio Setup) while transmitting, the
+    // value 0x1C C3 carries; so ADC0 is attenuated on transmit as the
+    // operator set it whichever byte the firmware takes.
+    if (m_mox)
+        s.rxAttDb[0] = s.txAdc0AttDb;
+    if (psTx && m_psAdc == 1)
+        s.txAdc1AttDb = m_psAttDb;
     s.cwKeyer = effectiveCwKeyer().enabled;   // build 224: off outside the amateur bands
     s.cwPaddleSwap = m_cwKeyer.paddleSwap;
     s.cwMode = m_cwKeyer.mode;
