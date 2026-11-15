@@ -7,7 +7,9 @@
  *            directory first: LoadLibrary's own search order)
  *   Linux:   libfdk-aac.so.2, libfdk-aac.so -- the executable's ../lib (the
  *            AppImage's usr/lib) and its own directory, then the system
- *   macOS:   libfdk-aac.2.dylib, libfdk-aac.dylib
+ *   macOS:   libfdk-aac.2.dylib, libfdk-aac.dylib -- the app bundle's
+ *            Contents/Frameworks (the executable's ../Frameworks) and its own
+ *            directory, then the system (AetherSDR fork build 444)
  * Without it every call fails cleanly: aacDecoder_GetLibInfo reports no
  * modules, so FdkAacCodec::CanDecode() is false and DRM runs without audio
  * for AAC / xHE-AAC services (sync, labels, text and data still work).
@@ -32,6 +34,10 @@
 # include <dlfcn.h>
 # include <string>
 # include <unistd.h>
+# ifdef __APPLE__
+#  include <mach-o/dyld.h>
+#  include <stdint.h>
+# endif
 #endif
 
 namespace {
@@ -64,6 +70,18 @@ void* openLibrary()
 #else
 # ifdef __APPLE__
     const char* const names[] = {"libfdk-aac.2.dylib", "libfdk-aac.dylib"};
+    // The bundled copy first (AetherSDR.app/Contents/MacOS/AetherSDR +
+    // Contents/Frameworks/...): dlopen() of a bare name does not look there.
+    char exe[4096];
+    uint32_t size = sizeof exe;
+    if (_NSGetExecutablePath(exe, &size) == 0) {
+        std::string dir(exe);
+        dir.erase(dir.find_last_of('/') + 1);
+        for (const char* sub : {"../Frameworks/", ""})
+            for (const char* name : names)
+                if (void* h = dlopen((dir + sub + name).c_str(), RTLD_NOW | RTLD_LOCAL))
+                    return h;
+    }
 # else
     const char* const names[] = {"libfdk-aac.so.2", "libfdk-aac.so"};
     // The bundled copy first (AppImage: usr/bin/AetherSDR + usr/lib/...):

@@ -1,0 +1,354 @@
+name: macOS app (arm64)
+
+# The macOS DMG of the ANAN fork: Apple silicon only (M1 ... M5), macOS 14.4 or
+# newer (Qt 6.12's own floor). Taken from upstream's macos-dmg.yml (fork build
+# 169), with these differences:
+#   - one leg, arm64; no Intel build;
+#   - no Apple Developer ID: the app is signed ad hoc and not notarized, so
+#     Gatekeeper asks once (right click -> Open, or System Settings -> Privacy &
+#     Security -> Open Anyway); the DMG carries a README saying so;
+#   - no DAX audio driver package (it needs a Developer ID installer signature);
+#   - MicronSDR's modules go into the bundle: libftx / libjs8 / libfdv +
+#     libcodec2 in Contents/Frameworks, cty.dat in Contents/Resources (the
+#     program looks there on macOS, fork build 444), and FDK-AAC for DRM audio,
+#     built here at the deployment target.
+# Runs by hand (workflow_dispatch) and on a build-NNN tag (the DMG is attached
+# to that release); release_tag attaches a hand run to an existing release.
+
+on:
+  push:
+    tags: ['build-*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Attach the DMG to this existing release (e.g. build-444); empty = artifact only'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-dmg:
+    runs-on: macos-15   # Apple silicon
+    timeout-minutes: 120
+
+    env:
+      QT_VERSION: '6.12.0'
+      QT_PACKAGE_REVISION: '202609280346'
+      AQTINSTALL_VERSION: '3.3.0'
+      DEPLOY_TARGET: '14.4'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          clean: false
+          persist-credentials: false
+
+      - name: Install dependencies via Homebrew
+        # Build tooling only: nothing of Homebrew is linked into the app (its
+        # bottles are built for the runner's macOS, above our floor).
+        run: brew install ninja create-dmg autoconf automake libtool pkg-config
+
+      - name: Install Qt LTS via aqtinstall
+        run: |
+          set -o pipefail
+          python3 -m venv "$RUNNER_TEMP/aqtvenv"
+          "$RUNNER_TEMP/aqtvenv/bin/pip" install -q "aqtinstall==${AQTINSTALL_VERSION}"
+          "$RUNNER_TEMP/aqtvenv/bin/aqt" install-qt mac desktop "$QT_VERSION" clang_64 \
+            -m qtmultimedia qtwebsockets qtserialport qtshadertools \
+            --outputdir "${{ github.workspace }}/Qt"
+          QT_ROOT="${{ github.workspace }}/Qt/$QT_VERSION/macos"
+          if [ ! -x "$QT_ROOT/bin/qmake" ]; then
+            echo "ERROR: no qmake at $QT_ROOT - aqt layout changed"
+            ls -la "${{ github.workspace }}/Qt/$QT_VERSION/" || true
+            exit 1
+          fi
+          {
+            echo "QT_ROOT=$QT_ROOT"
+            echo "CMAKE_PREFIX_PATH=$QT_ROOT"
+          } >> "$GITHUB_ENV"
+          echo "$QT_ROOT/bin" >> "$GITHUB_PATH"
+          "$QT_ROOT/bin/qmake" -query QT_VERSION
+
+      - name: Assert no Homebrew Qt is discoverable
+        run: |
+          if brew list --formula 2>/dev/null | grep -qE '^(qt|qt@[0-9]+|qtbase)$'; then
+            echo "ERROR: a Homebrew Qt is installed alongside the aqt Qt"; exit 1
+          fi
+          if [ -f "$(brew --prefix)/lib/cmake/Qt6/Qt6Config.cmake" ]; then
+            echo "ERROR: a Qt6 CMake config exists under $(brew --prefix)"; exit 1
+          fi
+
+      - name: Cache macOS deps (fftw, portaudio, hidapi)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        id: cache-macos-deps
+        with:
+          path: third_party/macos-deps
+          key: macos-deps-apple-silicon-deploy${{ env.DEPLOY_TARGET }}-${{ hashFiles('scripts/setup/setup-macos-deps.sh', 'scripts/setup/setup-rtl-deps.sh', 'scripts/setup/rtl-dependencies.json') }}
+
+      - name: Build macOS deps at the deployment target
+        if: steps.cache-macos-deps.outputs.cache-hit != 'true'
+        env:
+          MACOS_DEPLOYMENT_TARGET: ${{ env.DEPLOY_TARGET }}
+        run: bash scripts/setup/setup-macos-deps.sh
+
+      - name: Cache qtkeychain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        id: cache-qtkeychain-mac
+        with:
+          path: third_party/qtkeychain
+          key: qtkeychain-macos-arm64-qt${{ env.QT_VERSION }}-${{ env.QT_PACKAGE_REVISION }}-deploy${{ env.DEPLOY_TARGET }}-${{ hashFiles('scripts/setup/setup-qtkeychain.sh') }}
+
+      - name: Setup qtkeychain (SmartLink credential persistence)
+        if: steps.cache-qtkeychain-mac.outputs.cache-hit != 'true'
+        env:
+          MACOS_DEPLOYMENT_TARGET: ${{ env.DEPLOY_TARGET }}
+        run: bash scripts/setup/setup-qtkeychain.sh
+
+      - name: Cache DeepFilterNet3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        id: cache-deepfilter
+        with:
+          path: third_party/deepfilter
+          key: deepfilter-${{ runner.os }}-${{ runner.arch }}-deploy${{ env.DEPLOY_TARGET }}-${{ hashFiles('scripts/setup/setup-deepfilter.sh') }}
+
+      - name: Setup DeepFilterNet3 (DFNR)
+        if: steps.cache-deepfilter.outputs.cache-hit != 'true'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: ${{ env.DEPLOY_TARGET }}
+        run: bash scripts/setup/setup-deepfilter.sh
+
+      - name: Setup ONNX Runtime (Silero VAD + speaker labeling + signal classifier)
+        run: bash scripts/setup/setup-onnxruntime.sh
+
+      - name: Setup sherpa-onnx (non-whisper ASR backend)
+        run: bash scripts/setup/setup-sherpa-onnx.sh
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d
+        with:
+          key: ccache-macos-apple-silicon-anan
+          max-size: 500M
+
+      - name: Ensure offline Metal toolchain
+        run: |
+          xcrun -sdk macosx metal --version >/dev/null 2>&1 || \
+            sudo xcodebuild -downloadComponent MetalToolchain
+
+      - name: Configure
+        run: |
+          set -o pipefail
+          DEPS_PREFIX="$PWD/third_party/macos-deps"
+          export PKG_CONFIG_PATH="$DEPS_PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          cmake -B build -G "Unix Makefiles" \
+            -DCMAKE_BUILD_TYPE=Release \
+            "-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG -g" \
+            "-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG -g" \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DENABLE_RTL=ON -DREQUIRE_RTL=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOY_TARGET" \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT;$DEPS_PREFIX;$(brew --prefix)" \
+            -DMQTT_TLS=OFF \
+            -DREQUIRE_ASR_GPU=ON -DREQUIRE_ASR_ONNX=ON -DREQUIRE_ASR_SHERPA=ON \
+            -DREQUIRE_KEYCHAIN=ON \
+            -DAETHER_GPU_SPECTRUM=ON 2>&1 | tee configure.log
+
+      - name: Assert GPU spectrum rendering actually enabled
+        run: |
+          grep -q "GPU spectrum rendering enabled" configure.log || {
+            echo "ERROR: -DAETHER_GPU_SPECTRUM=ON but CMake disabled it."
+            grep -iE "GPU spectrum|Qt6GuiPrivate|private headers" configure.log || true
+            exit 1
+          }
+
+      - name: Build Opus (RADE dependency)
+        run: cmake --build build --target build_opus -j$(sysctl -n hw.ncpu)
+
+      - name: Build
+        run: |
+          set -o pipefail
+          cmake --build build --target AetherSDR aether-dv-waveform -j$(sysctl -n hw.ncpu) 2>&1 | tee build.log
+
+      - name: Show the first compile errors
+        if: failure()
+        run: grep -nE 'error:|Error [0-9]' build.log | head -60 || true
+
+      - name: Split debug symbols
+        continue-on-error: true
+        run: |
+          bash scripts/build/split-debug-symbols.sh symbols \
+            build/AetherSDR.app/Contents/MacOS/AetherSDR \
+            build/AetherSDR.app/Contents/MacOS/aether-dv-waveform
+
+      - name: Bundle DFNR model
+        run: |
+          if [ -f third_party/deepfilter/models/DeepFilterNet3_onnx.tar.gz ]; then
+            mkdir -p build/AetherSDR.app/Contents/Resources
+            cp third_party/deepfilter/models/DeepFilterNet3_onnx.tar.gz \
+              build/AetherSDR.app/Contents/Resources/
+          fi
+
+      - name: Verify binaries
+        run: |
+          file build/AetherSDR.app/Contents/MacOS/AetherSDR
+          lipo -info build/AetherSDR.app/Contents/MacOS/AetherSDR
+
+      - name: Bundle Qt frameworks
+        run: |
+          "$QT_ROOT/bin/macdeployqt" build/AetherSDR.app -verbose=1 -always-overwrite
+          mkdir -p build/AetherSDR.app/Contents/Resources
+          cp -R third_party/macos-deps/share/aethersdr-rtl-sources build/AetherSDR.app/Contents/Resources/
+          python3 tools/check_rtl_package.py build/AetherSDR.app --platform macos
+
+      - name: Assert the bundled Qt is the pinned Qt
+        run: |
+          FW="build/AetherSDR.app/Contents/Frameworks/QtCore.framework/Versions/A/QtCore"
+          [ -f "$FW" ] || { echo "ERROR: no QtCore framework at $FW"; exit 1; }
+          ID_LINE="$(otool -L "$FW" | sed -n '2p')"
+          BUILD_STR="$(strings -a "$FW" | grep -m1 -oE 'Qt [0-9]+\.[0-9]+\.[0-9]+' || true)"
+          printf '%s\n%s\n' "$ID_LINE" "$BUILD_STR" | grep -qF "$QT_VERSION" || {
+            echo "ERROR: the staged QtCore is not the pinned Qt $QT_VERSION"; exit 1; }
+
+      - name: Build FDK-AAC (libfdk-aac.2.dylib, DRM audio)
+        run: |
+          set -e
+          git clone --depth 1 --branch v3.0.0 https://github.com/mstorsjo/fdk-aac.git "$RUNNER_TEMP/fdk-aac"
+          test "$(git -C "$RUNNER_TEMP/fdk-aac" rev-parse HEAD)" = a68a51aa45d86a43c7b228e3d45624af09dcdd8d
+          cmake -S "$RUNNER_TEMP/fdk-aac" -B "$RUNNER_TEMP/fdk-aac/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DBUILD_PROGRAMS=OFF \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOY_TARGET"
+          cmake --build "$RUNNER_TEMP/fdk-aac/build" --target fdk-aac -j$(sysctl -n hw.ncpu)
+          ls -l "$RUNNER_TEMP"/fdk-aac/build/libfdk-aac*
+          F=build/AetherSDR.app/Contents/Frameworks
+          cp "$(realpath "$RUNNER_TEMP/fdk-aac/build/libfdk-aac.2.dylib")" $F/libfdk-aac.2.dylib
+          chmod u+w $F/libfdk-aac.2.dylib
+          install_name_tool -id @rpath/libfdk-aac.2.dylib $F/libfdk-aac.2.dylib
+          cp "$RUNNER_TEMP/fdk-aac/NOTICE" build/AetherSDR.app/Contents/Resources/libfdk-aac.NOTICE
+          otool -L $F/libfdk-aac.2.dylib
+
+      - name: Stage FTX / JS8 / FreeDV modules (MicronSDR) and cty.dat
+        run: |
+          set -e
+          F=build/AetherSDR.app/Contents/Frameworks
+          cp -v third_party/libftx/macos-arm64/libftx.dylib $F/
+          cp -v third_party/libjs8/macos-arm64/libjs8.dylib $F/
+          cp -v third_party/libfdv/macos-arm64/libfdv.dylib third_party/libfdv/macos-arm64/libcodec2.1.2.dylib $F/
+          cp -v third_party/libftx/win64/cty.dat build/AetherSDR.app/Contents/Resources/
+          cp -v third_party/libftx/macos-arm64/MACOS_MODULES.txt build/AetherSDR.app/Contents/Resources/
+
+      - name: Assert nothing in the bundle outranks the deployment target
+        run: bash scripts/build/assert-macos-deployment-floor.sh build/AetherSDR.app "$DEPLOY_TARGET"
+
+      - name: Sign ad hoc
+        run: |
+          set -e
+          APP=build/AetherSDR.app
+          # inside out: loose dylibs, frameworks, helper executables, the app
+          find "$APP" -name "*.dylib" -type f -print0 | xargs -0 -n1 codesign --force --sign -
+          find "$APP/Contents/Frameworks" -name "*.framework" -type d -maxdepth 1 | while read -r fw; do
+            codesign --force --sign - "$fw"
+          done
+          find "$APP/Contents/MacOS" -maxdepth 1 -type f ! -name AetherSDR -print0 |
+            while IFS= read -r -d '' bin; do
+              if file "$bin" | grep -q "Mach-O"; then codesign --force --sign - "$bin"; fi
+            done
+          codesign --force --sign - --entitlements packaging/macos/AetherSDR.entitlements "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Check the modules load from the bundle
+        run: |
+          set -e
+          F=$PWD/build/AetherSDR.app/Contents/Frameworks
+          python3 - "$F" <<'PY'
+          import ctypes, sys
+          F = sys.argv[1]
+          ftx = ctypes.CDLL(F + '/libftx.dylib'); ftx.ftx_version.restype = ctypes.c_int
+          print('libftx', ftx.ftx_version())
+          js8 = ctypes.CDLL(F + '/libjs8.dylib'); js8.js8_version.restype = ctypes.c_int
+          print('libjs8', js8.js8_version())
+          fdv = ctypes.CDLL(F + '/libfdv.dylib')
+          fdv.fdv_create.restype = ctypes.c_void_p
+          for m in range(4):
+              o = fdv.fdv_create(m); assert o, m; fdv.fdv_destroy(ctypes.c_void_p(o))
+          print('libfdv: RADE / 1600 / 700D / 700E created')
+          aac = ctypes.CDLL(F + '/libfdk-aac.2.dylib'); assert aac.aacDecoder_Open
+          print('libfdk-aac loaded')
+          PY
+          test -f build/AetherSDR.app/Contents/Resources/cty.dat
+
+      - name: Start the app (offscreen, 20 s)
+        continue-on-error: true
+        run: |
+          export QT_QPA_PLATFORM=offscreen
+          build/AetherSDR.app/Contents/MacOS/AetherSDR > start.log 2>&1 &
+          pid=$!; sleep 20
+          if kill -0 $pid 2>/dev/null; then echo "still running after 20 s: OK"; kill $pid; else echo "exited early:"; fi
+          head -80 start.log
+          L=$(ls -t ~/Library/Application\ Support/AetherSDR/logs/*.log ~/Library/Logs/AetherSDR/*.log 2>/dev/null | head -1)
+          [ -n "$L" ] && { echo "== $L"; grep -E 'FT:|JS8:|FreeDV|cty|fdk|AAC|error|Error' "$L" | head -40; } || true
+
+      - name: Create DMG
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -e
+          REF="${RELEASE_TAG:-$GITHUB_REF_NAME}"; SAFE_REF="${REF//[^A-Za-z0-9._-]/_}"
+          DMG="$GITHUB_WORKSPACE/out/AetherSDR-ANAN-${SAFE_REF}-macOS-arm64.dmg"
+          mkdir -p out dmg-stage
+          ditto build/AetherSDR.app dmg-stage/AetherSDR.app
+          cat > "dmg-stage/READ ME FIRST.txt" <<'TXT'
+          AetherSDR - ANAN fork (Ater-ugly_fork), macOS on Apple silicon (M1 ... M5), macOS 14.4+
+
+          1. Drag AetherSDR.app to Applications.
+          2. The app is not notarized by Apple (no Developer ID): the first time, right click
+             AetherSDR in Applications -> Open -> Open. If macOS says it "is damaged" or
+             cannot be opened, run once in Terminal:
+                 xattr -dr com.apple.quarantine /Applications/AetherSDR.app
+             or allow it in System Settings -> Privacy & Security -> Open Anyway.
+          3. Allow the microphone when asked (transmit audio).
+
+          FT8 / FT4 / WSPR / JS8 and FreeDV modules (MicronSDR) and FDK-AAC (DRM audio) are inside.
+          Logs: Tools -> Open Logs. Source: https://github.com/Dfinitski/Ater-ugly_fork (GPL v3).
+          TXT
+          sed -i '' 's/^          //' "dmg-stage/READ ME FIRST.txt"
+          create-dmg \
+            --volname "AetherSDR ANAN" \
+            --volicon "build/AetherSDR.icns" \
+            --window-pos 200 120 --window-size 600 400 --icon-size 100 \
+            --icon "AetherSDR.app" 150 120 --hide-extension "AetherSDR.app" \
+            --app-drop-link 450 120 \
+            --icon "READ ME FIRST.txt" 300 290 \
+            "$DMG" dmg-stage/ || true
+          [ -f "$DMG" ] || { echo "::error::create-dmg did not produce $DMG"; exit 1; }
+          codesign --force --sign - "$DMG"
+          ls -l out
+          shasum -a 256 out/*.dmg
+
+      - name: Package debug symbols
+        continue-on-error: true
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          REF="${RELEASE_TAG:-$GITHUB_REF_NAME}"; SAFE_REF="${REF//[^A-Za-z0-9._-]/_}"
+          tar -cJf "$GITHUB_WORKSPACE/out/AetherSDR-ANAN-${SAFE_REF}-macOS-arm64-symbols.tar.xz" -C symbols .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: macOS-DMG-arm64
+          path: |
+            out/AetherSDR-*.dmg
+            out/AetherSDR-*-symbols.tar.xz
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
+        with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          files: |
+            out/AetherSDR-*.dmg
+            out/AetherSDR-*-symbols.tar.xz

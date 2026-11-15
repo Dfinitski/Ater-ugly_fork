@@ -1208,6 +1208,10 @@ void FtPanel::loadCty()
 {
     ctyLoaded = true;
     QFile f(QCoreApplication::applicationDirPath() + "/cty.dat");
+#ifdef Q_OS_MACOS
+    if(!f.exists())     // AetherSDR, 444: macOS app bundle - Contents/Resources
+        f.setFileName(QCoreApplication::applicationDirPath() + "/../Resources/cty.dat");
+#endif
     if(!f.open(QIODevice::ReadOnly | QIODevice::Text))
     {
         qWarning() << "FT: no cty.dat next to the program (no countries)";

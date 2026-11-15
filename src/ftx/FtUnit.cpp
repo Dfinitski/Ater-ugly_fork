@@ -162,12 +162,19 @@ bool FtUnit::load()
         return false;
     // AetherSDR, build 442: next to the program first (Linux: dlopen does
     // not search the executable's directory), then the search path.
+    // Build 444: macOS app bundle - Contents/Frameworks.
     QLibrary lib(QDir(QCoreApplication::applicationDirPath()).filePath("libftx"));
     if(!lib.load())
+    {
+#ifdef Q_OS_MACOS
+        lib.setFileName(QDir(QCoreApplication::applicationDirPath() + "/../Frameworks").filePath("libftx"));
+        if(!lib.load())
+#endif
         lib.setFileName("libftx");
+    }
     if(!lib.isLoaded() && !lib.load())
     {
-        err = "libftx (.dll / .so) not loaded: " + lib.errorString();
+        err = "libftx (.dll / .so / .dylib) not loaded: " + lib.errorString();
         qWarning() << "FT:" << err;
         return false;
     }
@@ -197,10 +204,17 @@ bool FtUnit::loadJs8()
         return false;
     QLibrary lib(QDir(QCoreApplication::applicationDirPath()).filePath("libjs8"));   // AetherSDR, 442
     if(!lib.load())
+    {
+#ifdef Q_OS_MACOS
+        // AetherSDR, 444: macOS app bundle - Contents/Frameworks
+        lib.setFileName(QDir(QCoreApplication::applicationDirPath() + "/../Frameworks").filePath("libjs8"));
+        if(!lib.load())
+#endif
         lib.setFileName("libjs8");
+    }
     if(!lib.isLoaded() && !lib.load())
     {
-        errJs8 = "libjs8 (.dll / .so) not loaded: " + lib.errorString();
+        errJs8 = "libjs8 (.dll / .so / .dylib) not loaded: " + lib.errorString();
         qWarning() << "JS8:" << errJs8;
         return false;
     }

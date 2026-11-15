@@ -236,7 +236,7 @@ void MainWindow::onDrmStatus(int sliceId, const QVariantMap& m)
 #ifdef Q_OS_WIN
         st.note = QStringLiteral("No AAC decoder: put fdk-aac.dll next to AetherSDR.exe for audio.");
 #elif defined(Q_OS_MACOS)
-        st.note = QStringLiteral("No AAC decoder: install fdk-aac (brew install fdk-aac) for audio.");
+        st.note = QStringLiteral("No AAC decoder: libfdk-aac.2.dylib not found (app Frameworks, brew install fdk-aac) - no audio.");
 #else
         st.note = QStringLiteral("No AAC decoder: libfdk-aac.so.2 not found (package libfdk-aac2) - no audio.");
 #endif

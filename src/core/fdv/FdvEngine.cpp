@@ -123,9 +123,15 @@ bool FdvEngine::load()
     auto* lib = new QLibrary(QDir(appDir).filePath(QStringLiteral("libfdv")));
     if (!lib->load()) {
         const QString firstErr = lib->errorString();
+#ifdef Q_OS_MACOS
+        // Build 444: macOS app bundle - libfdv.dylib and libcodec2.1.2.dylib in
+        // Contents/Frameworks (libfdv finds codec2 next to itself).
+        lib->setFileName(QDir(appDir + QStringLiteral("/../Frameworks")).filePath(QStringLiteral("libfdv")));
+        if (!lib->load())
+#endif
         lib->setFileName(QStringLiteral("libfdv"));
-        if (!lib->load()) {
-            m_err = QStringLiteral("libfdv / libcodec2 (.dll / .so) not found next to the program (%1): %2")
+        if (!lib->isLoaded() && !lib->load()) {
+            m_err = QStringLiteral("libfdv / libcodec2 (.dll / .so / .dylib) not found next to the program (%1): %2")
                         .arg(QDir::toNativeSeparators(appDir), firstErr);
             qCWarning(lcFdv).noquote() << "FreeDV:" << m_err;
             delete lib;
