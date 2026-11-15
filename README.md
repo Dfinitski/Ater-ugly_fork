@@ -74,21 +74,20 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 413
+## Build 439
 
-Full notes: [docs/release-notes-build-413.md](docs/release-notes-build-413.md).
+Full notes: [docs/release-notes-build-439.md](docs/release-notes-build-439.md).
 
-- **FTX:** FT8, FT4, WSPR and JS8 in windows of their own (from MicronSDR), decoders on the
-  receiver's I/Q, the mode's own transmitter, JTDX highlighting, its waterfall under the
-  panadapter, transverter bands, two-receiver rules.
-- **FreeDV:** Reporter / Enable / Visible buttons, receive reports from the local FDV; transmit
-  filter per sub-mode; RADE level set so the ALC is idle.
-- **Transmit:** microphone profiles per mode group (part of a TX Profile); PureSignal filter
-  bypass on transmit; transmit region in Radio Setup.
-- **Audio on its own thread:** the interface no longer stops the sound; reconnect without a hang.
-- **Display:** waterfall average; settings windows with a larger title bar and rounded corners.
+- **Transmit level:** SSB, 2 Tone, FreeDV and digital modes reach full scale like TUNE (the CIC
+  compensation filter's -0.78 dB made up); RF Delay shared and saved in TX Profiles.
+- **FreeDV:** linear-phase transmit filter (RADE SNR 22 -> 34 dB in a test), level per sub-mode,
+  codec2 bands; Reporter filters.
+- **PureSignal:** ORION MkII feedback relays (EXT1 / RX Bypass) as in Thetis, on every
+  transmission; Protocol 1 attenuator for the 7000DLE; amp delay by hand / previous.
+- **Receive:** the ANT menu sets only its receiver's ADC, with Dither / Random per ADC.
+- **FTX:** a taller waterfall in a frame.
 
-Earlier notes: [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Windows portable build
 

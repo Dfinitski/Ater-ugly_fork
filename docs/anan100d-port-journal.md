@@ -7575,6 +7575,24 @@ Thetis: `SetADCDither` / `SetADCRandom` — одно значение для в�
 
 Проверено компиляцией; на радио не проверялось.
 
+## 412. Релиз сборки 439 подготовлен (15.11.2026)
+
+- docs/release-notes-build-439.md: сборки 414–439 по темам — уровень передачи (компенсация CFIR
+  +0,78 дБ, линия пика, RF Delay общий и в профилях TX), FreeDV (линейно-фазовый фильтр — SNR RADE
+  22 → 34 дБ, уровни и полосы подмод, Reporter), профили микрофона с эквалайзерами, PureSignal
+  (входные реле ORION MkII как у Thetis и на каждой передаче, обход BPF, аттенюатор на P1 для
+  7000DLE, стартовый HW peak, задержка вручную / предыдущая, синхронные 2 Tone, лампы), приём (АЦП
+  своего приёмника, Dither / Random по АЦП), водопад FTX, диагностика P1. README.md: раздел «Build
+  413» заменён на «Build 439», build 413 — в «Earlier notes».
+- Архив AetherSDR-ANAN-build439-win64-portable.zip: архив build 413 с exe сборки 439
+  (Desktop\AetherSDR-Release\AetherSDR.exe, 15.11 16:28:53 местного, 90664448 байт; что это 439 —
+  в exe есть строки «Dith:» и setAdcDitherRandom сборки 439), README-build439.md вместо
+  README-build413.md, верхняя папка AetherSDR-ANAN-build439; 93 записи, 164772531 байт, SHA-256
+  1b1bdba4284ffc82ebf3e1b458394d13da2bae7cc716fb5bf8e442023cb4a335. Сохранён в
+  Desktop\AetherSDR-Release.
+- Обновление с 413: достаточно заменить AetherSDR.exe.
+- Релиз (тег build-439 на main) создаётся в веб-интерфейсе GitHub; AppImage для Linux собирает CI.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
