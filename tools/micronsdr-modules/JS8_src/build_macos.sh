@@ -38,7 +38,8 @@ check_dylib() {
     done
     [ -f "$f.bad" ] && { bad=1; rm -f "$f.bad"; }
     # exports: only the C API functions
-    local ex; ex=$(nm -gU "$f" | awk '{print $3}' | grep -vE "^_($rx)" || true)
+    # ALLOW_EXPORTS: the exact names of other symbols allowed (one regex, whole name)
+    local ex; ex=$(nm -gU "$f" | awk '{print $3}' | grep -vE "^_($rx)" | grep -vxE "${ALLOW_EXPORTS:-^$}" || true)
     [ -z "$ex" ] || { echo "!! other exported symbols:"; echo "$ex" | head -20; bad=1; }
     codesign -v "$f" 2>/dev/null || { echo "!! not signed (codesign -s - -f $f)"; bad=1; }
     otool -L "$f" | sed 's/^/   /'

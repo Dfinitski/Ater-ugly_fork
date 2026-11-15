@@ -1,82 +1,142 @@
-Модули MicronSDR для macOS: libftx.dylib, libjs8.dylib, libfdv.dylib + libcodec2.1.2.dylib
-==========================================================================================
+Модули MicronSDR для macOS: libftx.dylib (FT8 / FT4 / WSPR), libjs8.dylib (JS8), libfdv.dylib (FreeDV)
+=====================================================================================================
 English: MACOS_MODULES.txt
-Журнал, 2026-11-15. Этот же файл лежит в FT_src, JS8_src и FreeDV_src.
+Журнал, 2026-11-15. Этот же файл лежит в трёх папках macos и в FT_src, JS8_src, FreeDV_src.
 
 Состояние
-  Скрипты сборки написаны; библиотеки ЕЩЁ НЕ собраны: для этого нужен Mac (Apple silicon).
-  В среде, где собирались Linux-версии, Mac нет, а macOS SDK нельзя использовать на другом
-  железе. Запустить три скрипта на Mac arm64 (или на раннере GitHub Actions macos-14) и прислать
-  логи (build_macos.log), если что-то не так.
+  Собраны и проверены на Apple silicon (раннер GitHub Actions macos-15: macOS 15.8.2, Xcode 16.4,
+  Apple clang 17.0.0, gfortran из Homebrew GCC 16.2.0) скриптами build_macos.sh из папок с
+  исходниками. Каждая библиотека прошла все проверки своего скрипта (ниже); тесты - в конце.
+  На настоящем Mac с macOS 14.4 (минимальная поддерживаемая версия) ещё не запускались.
 
-Скрипты
-  C:\Users\user\Desktop\MicronSDR_64\FT_src\build_macos.sh       -> libftx.dylib
-  C:\Users\user\Desktop\MicronSDR_64\JS8_src\build_macos.sh      -> libjs8.dylib
-  C:\Users\user\Desktop\MicronSDR_64\FreeDV_src\build_macos.sh   -> libfdv.dylib, libcodec2.1.2.dylib
-  Исходники те же, что для Windows и Linux; для macOS в них ничего не менялось.
+Где
+  C:\Users\user\Desktop\MicronSDR_64\FT_src\macos\      готовый модуль FTX и его тесты
+  C:\Users\user\Desktop\MicronSDR_64\JS8_src\macos\     готовый модуль JS8 и его тест
+  C:\Users\user\Desktop\MicronSDR_64\FreeDV_src\macos\  готовый модуль FreeDV и его тест
+  Исходники и скрипты сборки - в родительских папках (FT_src, JS8_src, FreeDV_src).
 
-Что нужно на Mac (один раз)
-  xcode-select --install                 clang, ld, otool, install_name_tool, codesign
-  brew install gcc                       gfortran (только libftx)
-  brew install boost eigen               только заголовки (только libjs8)
-  brew install cmake git                 (только libfdv; скачивает codec2, rade_c, opus и
-                                          183 МБ данных моделей opus)
+Что там
+  FT_src\macos\
+    libftx.dylib       декодеры и кодеры FT8 / FT4 / WSPR из WSJT-X (GPL-3).
+                       API: FT_src\ftx_api.h (чистый C), версия 1.21 (ftx_version() = 121).
+                       Экспортирует ftx_version, ftx_decode, wspr_decode, ftx_encode, wspr_encode
+                       и четыре служебные функции рантайма GCC (см. "Экспорт" ниже).
+    test_ftx           декодирует WAV (12000 S/s, моно, 16 бит) через libftx.dylib
+    ft8sim, ft4sim     генераторы тестовых сигналов WSJT-X (WAV FT8 / FT4)
+    wsprgen            генератор тестового сигнала WSPR (WAV на 2 мин)
+  JS8_src\macos\
+    libjs8.dylib       декодер JS8 из JS8Call 2.3+ (GPL-3), подрежимы Normal / Fast / Turbo / Slow.
+                       API: JS8_src\js8_api.h. Экспортирует только js8_version, js8_period_samples,
+                       js8_decode, js8_encode. Вызывать из ОДНОГО потока (хранит планы FFT).
+    test_js8           кодирует, модулирует и декодирует тестовые кадры во всех подрежимах
+  FreeDV_src\macos\
+    libfdv.dylib       FreeDV: RADE V1, 1600, 700D, 700E. Звук 48 кГц float на входе и выходе,
+                       работает в своём потоке. API: FreeDV_src\fdv_api.h. Экспортирует только fdv_*.
+    libcodec2.1.2.dylib codec2 (LGPL-2.1), нужен libfdv.dylib. Держать в одной папке с
+                       libfdv.dylib (libfdv.dylib ссылается на @loader_path/libcodec2.1.2.dylib).
+    test_fdv           тест по эфирной записи и по петле
 
-Сборка
-  cd FT_src     && ./build_macos.sh
-  cd JS8_src    && ./build_macos.sh
-  cd FreeDV_src && ./build_macos.sh ~/fdv_deps
-  Каждый скрипт заканчивается "== OK: ..." и запускает свой тест (как в Linux). После
-  копирования с Windows: chmod +x build_macos.sh.
+Свойства библиотек (проверяет build_macos.sh, иначе сборка останавливается)
+  Архитектура     только arm64 (Apple M1 ... M5). Кода для Intel (x86_64) нет.
+  Минимальная macOS 14.4 (minos в LC_BUILD_VERSION); сам Qt 6.12 требует 14.4.
+  install_name    @rpath/libftx.dylib, @rpath/libjs8.dylib, @rpath/libfdv.dylib,
+                  @rpath/libcodec2.1.2.dylib.
+  Зависимости     только /usr/lib/libSystem.B.dylib и /usr/lib/libc++.1.dylib (libfdv - ещё свой
+                  codec2). libgfortran, libquadmath, libgcc, opus и rade_c влинкованы; FFT -
+                  pocketfft внутри; на целевом Mac ничего из Homebrew не нужно.
+  Подпись         ad hoc (codesign -s -), этого достаточно для загрузки на Apple silicon.
+  Экспорт         libftx: кроме пяти функций API драйвер GCC экспортирует четыре функции своего
+                  рантайма, которые -exported_symbols_list не скрывает:
+                    ___emutls_get_address, ___emutls_register_common   (переменные потоков)
+                    ___gcc_nested_func_ptr_created, ___gcc_nested_func_ptr_deleted (трамплины
+                    вложенных процедур Фортрана)
+                  Они разрешены (утверждено 2026-11-15): программа ищет только ftx_* / wspr_*, а
+                  двухуровневое пространство имён macOS привязывает каждый символ к библиотеке,
+                  с которой программа слинкована, - конфликта с такими же именами в других
+                  библиотеках быть не может.
+                  libjs8 / libfdv: только свой API. libcodec2 - свой полный API.
 
-Требования и как скрипты их выполняют
-  Архитектура        только arm64: -arch arm64 (clang), gfortran из Homebrew на arm64;
-                     проверка: lipo -archs.
-  Минимальная macOS  14.4: MACOSX_DEPLOYMENT_TARGET=14.4 и -mmacosx-version-min=14.4 (clang,
-                     gfortran, CMake: CMAKE_OSX_DEPLOYMENT_TARGET); проверка: minos в otool -l.
-                     Ниже нельзя: сам Qt 6.12 требует 14.4.
-  Имена файлов       libftx.dylib, libjs8.dylib, libfdv.dylib, libcodec2.1.2.dylib.
-  install_name       у каждой @rpath/<имя>.dylib (-install_name, затем install_name_tool -id).
-  libfdv -> codec2   @loader_path/libcodec2.1.2.dylib (install_name_tool -change): codec2
-                     ищется рядом с libfdv.dylib, как $ORIGIN в Linux.
-  Статически внутрь  libgfortran, libgcc (-static-libgfortran -static-libgcc), libquadmath
-                     (-static-libquadmath, если она есть у GCC: у GCC для arm64 macOS её обычно
-                     нет, тогда она и не нужна), opus, rade_c, pocketfft вместо FFTW (FFTW из
-                     Homebrew не используется).
-  Зависимости        только /usr/lib/libSystem.B.dylib и /usr/lib/libc++.1.dylib (и у libfdv -
-                     её codec2); проверка otool -L: ничего из /opt/homebrew.
-  Экспорт            только C API: _ftx_* / _wspr_* (libftx), _js8_* (libjs8), _fdv_* (libfdv)
-                     через -exported_symbols_list; проверка nm -gU. У libcodec2 - её собственный API.
-                     libftx: GCC на macOS дополнительно оставляет видимыми 4 символа своего
-                     рантайма - ___emutls_get_address, ___emutls_register_common (эмуляция
-                     thread-local переменных), ___gcc_nested_func_ptr_created / _deleted
-                     (трамплины вложенных функций). Они разрешены по именам (ALLOW_EXPORTS в
-                     build_macos.sh): безвредны, программа их не вызывает, а при двухуровневом
-                     пространстве имён macOS каждая dylib пользуется своей копией.
-  Подпись            после install_name_tool: codesign -s - -f (ad hoc); проверка codesign -v.
-                     Тестовые программы тоже подписываются.
-  Каждая проверка пишет "!! ..." и останавливает сборку, если требование не выполнено; в конце
-  по каждой библиотеке: "OK: arm64, macOS 14.4, @rpath/..., signed" и её otool -L / экспорт.
+Как использовать в программе
+  1. Положить dylib туда, куда указывает rpath программы. В app bundle - Contents/Frameworks, а
+     программу линковать с -Wl,-rpath,@executable_path/../Frameworks. FreeDV: libfdv.dylib и
+     libcodec2.1.2.dylib в одной папке.
+  2. Подключить ftx_api.h / js8_api.h / fdv_api.h; линковать -L<папка> -lftx / -ljs8 / -lfdv,
+     или загружать при работе: dlopen("@rpath/libftx.dylib") (или полный путь) и dlsym. API тот
+     же, что на Windows и Linux.
+  3. Приложение, подписываемое для распространения (Developer ID, нотаризация): переподписать
+     dylib этим сертификатом (codesign --force --timestamp --options runtime -s "Developer ID ...");
+     подпись ad hoc нотаризацию не проходит.
+  Заметки:
+    - FT8 / FT4: ftx_decode с nzhsym = 0 декодирует весь период за один вызов (версия 1.21), как
+      на Linux (см. LINUX_MODULES_ru.txt).
+    - JS8: кадры - 12 символов алфавита JS8; распаковка в текст - varicode JS8Call, делается
+      программой (MicronSDR: Js8Panel).
+    - FreeDV: вызовы write / read только перекладывают отсчёты через FIFO, их можно вызывать из
+      аудио-callback.
 
-Как подключить к программе
-  Положить dylib туда, куда указывает rpath программы (в app bundle: Contents/Frameworks, с
-  -Wl,-rpath,@executable_path/../Frameworks), libfdv.dylib и libcodec2.1.2.dylib в одну папку.
-  Заголовки: FT_src/ftx_api.h, JS8_src/js8_api.h, FreeDV_src/fdv_api.h - тот же C API, что в
-  Windows и Linux; линковать с -L<папка> -lftx / -ljs8 / -lfdv, или dlopen("@rpath/libftx.dylib").
-  Если приложение подписывается для распространения (Developer ID, нотаризация), dylib нужно
-  переподписать этим сертификатом: ad hoc подписи хватает для загрузки на Apple silicon, но не
-  для нотаризации.
-  Замечания как для Linux: FT8 nzhsym = 0 (версия 1.21); libjs8 - один поток; libfdv - вызовы
-  FIFO можно делать из аудио-callback. См. LINUX_MODULES_ru.txt в папках linux.
+Копирование на Mac
+  При копировании с Windows файлы теряют признак "исполняемый", а скачанные браузером получают
+  атрибут карантина. В папке macos на Mac:
+    chmod +x test_ftx ft8sim ft4sim wsprgen       (test_js8, test_fdv - в своих папках)
+    xattr -dr com.apple.quarantine .              только если macOS отказывается их открывать
 
-Если что-то не так
-  - "ld: ... built for macOS 15.x which is newer than being linked (14.4)": предупреждение от
-    статической libgfortran.a из Homebrew (собранной под macOS системы Homebrew); у библиотеки
-    всё равно minos 14.4. Касается только частей рантайма GCC; сообщить, если не грузится на 14.4.
-  - новый линкер Xcode не принимает объекты GCC: EXTRA_LDFLAGS=-Wl,-ld_classic ./build_macos.sh
-  - "!! dependency /opt/homebrew/...": рантайм не вшился статически - прислать лог.
-  - другой gfortran: FC=/opt/homebrew/bin/gfortran-15 ./build_macos.sh
-  - заголовки в другом месте (JS8): BOOST_INC=... EIGEN_INC=... ./build_macos.sh
+Проверка (в папке macos; dylib находится рядом с тестом)
+  FTX:
+    ./ft8sim "CQ N7DDC CN87" 1500 0.0 0.1 1.0 1 -15     -> 000000_000001.wav
+    ./test_ftx ft8 000000_000001.wav
+    ./ft4sim "CQ N7DDC CN87" 1500 0.0 0.1 1.0 1 -12     -> ./test_ftx ft4 000000_000001.wav
+    ./wsprgen "N7DDC CN87 37" -26 1500                  -> wspr_test.wav
+    ./test_ftx wspr wspr_test.wav 14.0956 3
+  JS8:
+    ./test_js8                           все подрежимы при 0 / -12 / -18 дБ
+  FreeDV (для тестовой записи нужны исходники rade_c; build_macos.sh их скачивает):
+    ./test_fdv offair <deps>/rade_c      декодирует FDV_offair.wav из rade_c -> offair_dec.wav
+    ./test_fdv loop   <deps>/rade_c      петля TX -> RX во всех режимах -> loop_*.wav
 
-Лицензии: как в LINUX_MODULES_ru.txt (libftx, libjs8 GPL-3; libfdv BSD-2 + части BSD-3;
-libcodec2 LGPL-2.1, отдельная и заменяемая).
+Результаты (2026-11-15, сборка файлов из папок macos)
+  Симуляторы берут seed шума от времени, поэтому каждый SNR пробовался 10 раз (WSPR - 3 раза) и
+  считались декодирования ("декодировано / попыток"):
+    FT8 глубина 1:  -15 дБ 9/10, -19 дБ 8/10, -20 дБ 1/10, -21 дБ 0/10
+    FT8 глубина 3:  -15 дБ 10/10, -19 дБ 9/10, -20 дБ 5/10, -21 дБ 3/10, -22 дБ 0/10
+    FT4 глубина 3:  -12, -14, -16 дБ - по 10/10
+    WSPR глубина 3: -26 дБ 3/3, -28 дБ 3/3
+    Самое медленное окно FT8 на глубине 3: около 0.4 - 0.7 с.
+  (В Linux-журнале - одиночные попытки; "-22 дБ на глубине 3" там - удачная реализация шума:
+  предел FT8 около -21 дБ.)
+  JS8: Normal и Slow - 3 из 3 кадров при 0 / -12 / -18 дБ; Fast - 3 / 3 / 1, Turbo - 3 / 3 / 0
+  (-18 дБ ниже их предела) - так же, как на Windows и Linux.
+  FreeDV, эфирная запись RADE: синхронизация через 0.48 с, 91 % в синхронизации, SNR 28 дБ,
+  позывные VK5KVA / VK3TPM.
+  FreeDV, петля: RADE SNR 35.4 дБ, позывной N7DDC; речь 1600 / 700D / 700E декодируется.
+
+Пересборка (на Mac с Apple silicon, или workflow ниже)
+  Один раз: xcode-select --install; brew install gcc boost eigen cmake
+  FTX:    cd FT_src;     ./build_macos.sh
+  JS8:    cd JS8_src;    ./build_macos.sh
+  FreeDV: cd FreeDV_src; ./build_macos.sh ~/fdv_deps   (скачивает закреплённые версии codec2,
+          rade_c, opus и 183 МБ данных моделей opus)
+  Каждый в конце пишет "== OK: ..."; результаты - в самой папке с исходниками (скопировать в
+  macos\, чтобы обновить её). Лог: build_macos.log.
+  Без Mac: workflow GitHub .github/workflows/macos-modules.yml в
+  github.com/Dfinitski/Ater-ugly_fork собирает копии из tools/micronsdr-modules/ на раннере
+  macos-15, запускает тесты выше и выкладывает файлы в ветку macos-modules-bin (и в артефакт
+  запуска micronsdr-macos-arm64-modules).
+  Известное безвредное предупреждение: "object file (libgfortran.a ...) was built for newer
+  'macOS' version (15.0) than being linked (14.4)" - рантайм GCC из Homebrew; у библиотеки
+  minos всё равно 14.4.
+
+Изменённые для macOS файлы (2026-11-15, после первой сборки на Mac)
+  FT_src\c\wspr_api.c     WSPR на macOS ничего не декодировал: wspr_decode перезапускает getopt
+                          wsprd через optind = 0; так перезапускается getopt glibc и mingw-w64,
+                          а BSD getopt в macOS после этого принимает argv[0] ("wsprd") за WAV
+                          ("Error: Failed to open wsprd"). На macOS (и BSD) теперь
+                          optreset = 1; optind = 1. Windows и Linux: код прежний.
+  FT_src\build_macos.sh   проверка экспорта libftx пропускает четыре функции рантайма GCC по
+                          точным именам (ALLOW_EXPORTS; проверка всех трёх скриптов его понимает).
+  JS8_src, FreeDV_src     без изменений.
+
+Лицензии
+  libftx.dylib: GPL-3 (WSJT-X, FT_src\COPYING, FT_src\AUTHORS); pocketfft BSD-3.
+  libjs8.dylib: GPL-3 (JS8Call, W6BAZ); boost BSL-1.0, Eigen MPL-2.0, pocketfft BSD-3.
+  libfdv.dylib: обёртка BSD-2, rade_c BSD-2, Opus BSD-3, rade_text / LDPC BSD-2;
+  libcodec2.1.2.dylib: LGPL-2.1 (отдельная библиотека, пользователь может её заменить).
