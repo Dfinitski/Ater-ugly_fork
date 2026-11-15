@@ -96,6 +96,9 @@ signals:
     void sidetoneVolumeChanged(int pct);     // 0..100
 
 public slots:
+    // Build 407: the stored microphone profiles were replaced as a whole (a TX
+    // profile of Radio Setup was applied) -- show the buttons anew.
+    void micProfilesReloaded() { refreshProfileButtons(); }
     // Phone meters (mic level / compression)
     void updateMeters(float micLevel, float compLevel,
                       float micPeak, float compPeak);

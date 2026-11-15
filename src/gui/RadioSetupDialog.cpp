@@ -3143,6 +3143,60 @@ void applyPs(RadioModel* model, const QJsonObject& o)
     st.save();
 }
 
+// Build 407 (operator, 14.11): the microphone profiles of the Mic applet
+// (four per group, "MicProfile_<group>_<N>", the last used in
+// "MicProfileLast_<group>") are a part of a TX profile: {group: {"1".."4":
+// {...}, "last": N}}.
+const char* const kMicProfileGroups[] = {"SSB", "AM", "FM", "FDV"};
+
+QJsonObject captureMicProfileSet()
+{
+    auto& st = AppSettings::instance();
+    QJsonObject all;
+    for (const char* g : kMicProfileGroups) {
+        const QString group = QLatin1String(g);
+        QJsonObject o;
+        for (int n = 1; n <= 4; ++n) {
+            const QJsonObject slot = QJsonDocument::fromJson(
+                st.value(QStringLiteral("MicProfile_%1_%2").arg(group).arg(n), QString())
+                    .toString().toUtf8()).object();
+            if (!slot.isEmpty())
+                o.insert(QString::number(n), slot);
+        }
+        o.insert(QStringLiteral("last"),
+                 st.value(QStringLiteral("MicProfileLast_%1").arg(group), 0).toInt());
+        all.insert(group, o);
+    }
+    return all;
+}
+
+// The set replaces the stored one as a whole: a slot the TX profile holds
+// empty becomes empty. The controls are not touched here -- the TX profile
+// carries its own values of them.
+void applyMicProfileSet(const QJsonObject& all)
+{
+    auto& st = AppSettings::instance();
+    for (const char* g : kMicProfileGroups) {
+        const QString group = QLatin1String(g);
+        const QJsonObject o = all.value(group).toObject();
+        for (int n = 1; n <= 4; ++n) {
+            const QJsonObject slot = o.value(QString::number(n)).toObject();
+            st.setValue(QStringLiteral("MicProfile_%1_%2").arg(group).arg(n),
+                        slot.isEmpty() ? QString()
+                                       : QString::fromUtf8(QJsonDocument(slot).toJson(QJsonDocument::Compact)));
+        }
+        st.setValue(QStringLiteral("MicProfileLast_%1").arg(group),
+                    std::clamp(o.value(QStringLiteral("last")).toInt(), 0, 4));
+    }
+    st.save();
+    const auto widgets = QApplication::allWidgets();
+    for (QWidget* w : widgets) {
+        if (w->inherits("AetherSDR::PhoneCwApplet"))
+            QMetaObject::invokeMethod(w, "micProfilesReloaded", Qt::QueuedConnection);
+    }
+    qInfo().noquote() << "Mic profiles replaced by the TX profile";
+}
+
 QJsonObject captureAnanTxProfile(RadioModel* model)
 {
     auto& tx = model->transmitModel();
@@ -3167,6 +3221,7 @@ QJsonObject captureAnanTxProfile(RadioModel* model)
         bands.append(eq.txBand(static_cast<EqualizerModel::Band>(b)));
     p.insert(QStringLiteral("eqBands"), bands);
     p.insert(QStringLiteral("pureSignal"), capturePs(model));
+    p.insert(QStringLiteral("micProfiles"), captureMicProfileSet());
     return p;
 }
 
@@ -3212,6 +3267,9 @@ void applyAnanTxProfile(RadioModel* model, const QJsonObject& p)
         eq.setTxEnabled(p.value(QStringLiteral("eqOn")).toBool());
     if (p.contains(QStringLiteral("pureSignal")))
         applyPs(model, p.value(QStringLiteral("pureSignal")).toObject());
+    // A TX profile stored before build 407 has none: the stored ones stay.
+    if (p.value(QStringLiteral("micProfiles")).isObject())
+        applyMicProfileSet(p.value(QStringLiteral("micProfiles")).toObject());
 }
 } // namespace
 
@@ -3252,7 +3310,9 @@ QWidget* RadioSetupDialog::buildTxTab()
         auto* hint = new QLabel(
             "A profile holds: RF power, TUNE power, microphone source (PC / MIC / TEST), "
             "mic gain, +20 dB, PROC on and level, TX filter low/high, monitor level and "
-            "the TX equalizer and the PureSignal settings. Choosing a profile applies it at once.");
+            "the TX equalizer, the PureSignal settings and the microphone profiles of the Mic "
+            "applet (Profile 1-4 of SSB, AM, FM and FDV, with AetherTX). Choosing a profile "
+            "applies it at once.");
         setTone(hint, Tone::Hint);
         hint->setWordWrap(true);
         gvb->addWidget(hint);
