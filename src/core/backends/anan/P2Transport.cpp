@@ -2593,9 +2593,23 @@ void P2Transport::accountTxSamples(const std::complex<float>* buf, int n)
     m_txScope.setAverageMs(m_txScopeAvgMs.load(std::memory_order_relaxed));   // build 346
     if (!m_scopeFromFb.load(std::memory_order_relaxed)
         && m_txScope.push(buf, n, m_txScopeBins)) {
-        emit txScopeFrameReady(QList<float>(m_txScopeBins.begin(), m_txScopeBins.end()),
-                               static_cast<double>(m_txHz));
+        emitTxScopeFrame(static_cast<double>(m_txHz));
     }
+}
+
+// Build 432 (operator, 15.11: two tones, the line at -0.9 dB "though we
+// measure before the correction"). OUR ERROR in 425: the TX drive peak line
+// is drawn from the TX scope's frame (its last value, TxScope's envelope
+// peak of the wire samples: SpectrumWidget::setTxScopeFrame), not from
+// txEnvelopePeak, where 425 put the CFIR correction. Here it is: the peak
+// divided by the CFIR's passband power (-0.78 dB), TUNE's tone and the host
+// CW (made after the CFIR) as they are. The bins stay the wire's.
+void P2Transport::emitTxScopeFrame(double hz)
+{
+    if (!m_txScopeBins.empty() && !m_cwMode && m_toneAmp <= 0.0
+        && m_txScopeBins.back() > anan::TxScope::kFloorDbfs)
+        m_txScopeBins.back() -= static_cast<float>(10.0 * std::log10(kCfirPassbandPower));
+    emit txScopeFrameReady(QList<float>(m_txScopeBins.begin(), m_txScopeBins.end()), hz);
 }
 
 void P2Transport::txPumpLocked()
@@ -3054,10 +3068,8 @@ void P2Transport::deliverPsPairs()
         m_scopeFromFb.store(true, std::memory_order_relaxed);
         m_scopeFbMs.store(steadyMs(), std::memory_order_relaxed);
         std::lock_guard<std::mutex> txLock(m_txMutex);   // m_txScope is TX state
-        if (m_txScope.push(m_scopeFbBuf.data(), pairs, m_txScopeBins)) {
-            emit txScopeFrameReady(QList<float>(m_txScopeBins.begin(), m_txScopeBins.end()),
-                                   static_cast<double>(m_txHz ? m_txHz : m_rxHz[0]));
-        }
+        if (m_txScope.push(m_scopeFbBuf.data(), pairs, m_txScopeBins))
+            emitTxScopeFrame(static_cast<double>(m_txHz ? m_txHz : m_rxHz[0]));
     }
 }
 

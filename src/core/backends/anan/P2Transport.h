@@ -654,6 +654,8 @@ private:
     double m_cwEnv = 0.0;
     // Spectrum of what is actually sent (txScopeFrameReady).
     TxScope m_txScope;
+    // Build 432: the frame out, its envelope peak on the scale before the CFIR.
+    void emitTxScopeFrame(double hz);
     std::vector<float> m_txScopeBins;
     std::atomic<int> m_txScopeAvgMs{0};   // build 346: the receiver's FFT AVG, ms
     // Fwd / rev / exciter power from the status packet (raw ADC counts).
