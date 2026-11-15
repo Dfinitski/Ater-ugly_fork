@@ -154,6 +154,12 @@ public:
     // Build 433: the test wire level, 0..100 % (P2Transport::setTestWireGain);
     // kept here so a new transport gets it. Not saved.
     void setTestWireLevel(int percent);
+    // Build 434: the band's amp delay set by hand, and the one it replaced
+    // (kept at every change: a measurement, a manual value, a restore).
+    void setBandDelayManual(double ns);
+    bool hasPreviousDelay() const;
+    QString previousDelayText() const;        // "3520 ns (measured 07.11.2026 19:04)", "" if none
+    bool restorePreviousDelay();              // swaps the band's delay with the previous one
     int testWireLevel() const { return m_testWirePercent; }
     bool loopbackTest() const { return m_loopback; }
     // calcc info[6] (the classic scheck bits) in words, "" when 0.
@@ -245,6 +251,8 @@ private:
     // The transport (overload latch), set before it starts.
     class P2Transport* m_p2 = nullptr;
     int m_testWirePercent = 100;           // build 433
+    void keepPreviousDelay();              // build 434: the band's stored delay -> the Prev keys
+    void storeBandDelay(double ns, const QString& at, double compDb);   // build 434
     double m_fbEma = 0.0;                  // feedback level, smoothed over calibrations (0 = none)
     double m_scheckSeen = 0.0;
     // Heat drift of the amp delay (anan162, see heatTick()).

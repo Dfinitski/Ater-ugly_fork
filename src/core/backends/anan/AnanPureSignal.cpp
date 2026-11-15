@@ -555,6 +555,13 @@ bool AnanPureSignal::startDelayMeasure()
         emit statusChanged();
         return false;
     }
+    // Build 434 (log 15.11 15:01): not with the test wire level below 100 %.
+    if (m_testWirePercent < 100) {
+        m_measResult = tr("the test wire level is %1 % -- set it to 100 % first").arg(m_testWirePercent);
+        m_measOk = false;
+        emit statusChanged();
+        return false;
+    }
     if (m_twoTone && std::abs(m_s.ttFreq2 - m_s.ttFreq1) < 1000.0) {
         m_measResult = tr("use the 700/1900 Hz pair: a 300 Hz beat is too slow to time");
         m_measOk = false;
@@ -617,6 +624,11 @@ void AnanPureSignal::measTick()
                        .arg(kMeasTimeoutMs / 1000), false);
         return;
     }
+    if (m_testWirePercent < 100) {   // build 434: moved during the measurement
+        measFinish(tr("aborted (the test wire level was changed), amp delay kept at %1 ns")
+                       .arg(m_s.ampDelayNs, 0, 'f', 0), false);
+        return;
+    }
     if (t < kMeasSettleMs || m_info[14] != 0 || m_delaySeq == m_measSeqSeen)
         return;   // correction still applied, or no new reading
     m_measSeqSeen = m_delaySeq;
@@ -674,19 +686,8 @@ void AnanPureSignal::measTick()
     }
     const double newNs = 10.0 * std::round(d / 10.0);
     const double old = m_s.ampDelayNs;
-    m_s.ampDelayNs = newNs;
-    m_delayMeasured = true;
-    m_delayMeasuredAt = QDateTime::currentDateTime().toString(QStringLiteral("dd.MM.yyyy HH:mm"));
-    m_delayMeasuredCompDb = c;
-    auto& st = AppSettings::instance();
-    const QString k = bandKey(m_band.isEmpty() ? QStringLiteral("unknown") : m_band);
-    st.setValue(delayKey("AnanPsDelayNs_", k), m_s.ampDelayNs);
-    st.setValue(delayKey("AnanPsDelayAt_", k), m_delayMeasuredAt);
-    st.setValue(delayKey("AnanPsDelayCompDb_", k), c);
-    m_heatAtMeas = m_heat;
-    st.setValue(delayKey("AnanPsDelayHeat_", k), QString::number(m_heatAtMeas, 'f', 3));
-    save();
-    applyWdspParams();
+    keepPreviousDelay();   // build 434
+    storeBandDelay(newNs, QDateTime::currentDateTime().toString(QStringLiteral("dd.MM.yyyy HH:mm")), c);
     measFinish(tr("%1: amp delay %2 -> %3 ns (%4, spread %5 ns, fit residual %6 -> %7 dB, peak gain %8 dB)")
                    .arg(m_band).arg(old, 0, 'f', 0).arg(m_s.ampDelayNs, 0, 'f', 0)
                    .arg(fitOk ? tr("fit") : tr("envelope"))
@@ -1013,6 +1014,98 @@ void AnanPureSignal::loadBandDelay()
     if (m_s.ampDelayNs != old || !std::isfinite(m_delayAppliedNs))
         applyWdspParams();
     emit statusChanged();
+}
+
+// Build 434 (operator, 15.11: PureSignal stopped working after Measure delay
+// at full power -- 3520 -> 8330 ns, then 3640 / 5290 / 7750 ns -- "and I do
+// not know how to restore it"). The band's delay before every change is kept
+// (the Prev keys), can be restored, and a delay can be typed in.
+void AnanPureSignal::storeBandDelay(double ns, const QString& at, double compDb)
+{
+    m_s.ampDelayNs = ns;
+    m_delayMeasured = true;
+    m_delayMeasuredAt = at;
+    m_delayMeasuredCompDb = compDb;
+    auto& st = AppSettings::instance();
+    const QString k = bandKey(m_band.isEmpty() ? QStringLiteral("unknown") : m_band);
+    st.setValue(delayKey("AnanPsDelayNs_", k), m_s.ampDelayNs);
+    st.setValue(delayKey("AnanPsDelayAt_", k), m_delayMeasuredAt);
+    st.setValue(delayKey("AnanPsDelayCompDb_", k), std::isfinite(compDb) ? QString::number(compDb) : QString());
+    m_heatAtMeas = m_heat;
+    st.setValue(delayKey("AnanPsDelayHeat_", k), QString::number(m_heatAtMeas, 'f', 3));
+    save();
+    applyWdspParams();
+}
+
+void AnanPureSignal::keepPreviousDelay()
+{
+    if (!m_delayMeasured)
+        return;   // the default is not worth keeping
+    auto& st = AppSettings::instance();
+    const QString k = bandKey(m_band.isEmpty() ? QStringLiteral("unknown") : m_band);
+    st.setValue(delayKey("AnanPsDelayPrevNs_", k), m_s.ampDelayNs);
+    st.setValue(delayKey("AnanPsDelayPrevAt_", k), m_delayMeasuredAt);
+    st.setValue(delayKey("AnanPsDelayPrevCompDb_", k),
+                std::isfinite(m_delayMeasuredCompDb) ? QString::number(m_delayMeasuredCompDb) : QString());
+}
+
+void AnanPureSignal::setBandDelayManual(double ns)
+{
+    ns = 10.0 * std::round(std::clamp(ns, 0.0, 19990.0) / 10.0);
+    if (m_measStep >= 0)
+        return;
+    const double old = m_s.ampDelayNs;
+    keepPreviousDelay();
+    storeBandDelay(ns, tr("set by hand %1").arg(QDateTime::currentDateTime().toString(QStringLiteral("dd.MM.yyyy HH:mm"))),
+                   NAN);
+    m_measResult = tr("%1: amp delay %2 -> %3 ns (set by hand)").arg(m_band).arg(old, 0, 'f', 0).arg(ns, 0, 'f', 0);
+    m_measOk = true;
+    qCInfo(lcAnanPs).noquote() << "PureSignal:" << m_measResult;
+    if (m_s.enabled && m_s.mode == Mode::Auto)
+        control(0, 0, 1, 0);   // re-learn with the new delay
+    emit statusChanged();
+}
+
+bool AnanPureSignal::hasPreviousDelay() const
+{
+    return !previousDelayText().isEmpty();
+}
+
+QString AnanPureSignal::previousDelayText() const
+{
+    auto& st = AppSettings::instance();
+    const QString k = bandKey(m_band.isEmpty() ? QStringLiteral("unknown") : m_band);
+    bool ok = false;
+    const double v = st.value(delayKey("AnanPsDelayPrevNs_", k), QString()).toString().toDouble(&ok);
+    if (!ok || std::abs(v) >= 20000.0)
+        return QString();
+    const QString at = st.value(delayKey("AnanPsDelayPrevAt_", k), QString()).toString();
+    return at.isEmpty() ? tr("%1 ns").arg(v, 0, 'f', 0) : tr("%1 ns (%2)").arg(v, 0, 'f', 0).arg(at);
+}
+
+bool AnanPureSignal::restorePreviousDelay()
+{
+    if (m_measStep >= 0)
+        return false;
+    auto& st = AppSettings::instance();
+    const QString k = bandKey(m_band.isEmpty() ? QStringLiteral("unknown") : m_band);
+    bool ok = false;
+    const double v = st.value(delayKey("AnanPsDelayPrevNs_", k), QString()).toString().toDouble(&ok);
+    if (!ok || std::abs(v) >= 20000.0)
+        return false;
+    const QString at = st.value(delayKey("AnanPsDelayPrevAt_", k), QString()).toString();
+    bool okC = false;
+    const double c = st.value(delayKey("AnanPsDelayPrevCompDb_", k), QString()).toString().toDouble(&okC);
+    const double old = m_s.ampDelayNs;
+    keepPreviousDelay();   // a swap: restoring again goes back
+    storeBandDelay(v, at, okC ? c : NAN);
+    m_measResult = tr("%1: amp delay %2 -> %3 ns (the previous one restored)").arg(m_band).arg(old, 0, 'f', 0).arg(v, 0, 'f', 0);
+    m_measOk = true;
+    qCInfo(lcAnanPs).noquote() << "PureSignal:" << m_measResult;
+    if (m_s.enabled && m_s.mode == Mode::Auto)
+        control(0, 0, 1, 0);
+    emit statusChanged();
+    return true;
 }
 
 double AnanPureSignal::effectiveDelayNs() const
