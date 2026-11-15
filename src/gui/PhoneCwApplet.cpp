@@ -728,8 +728,11 @@ QJsonObject PhoneCwApplet::captureMicProfile() const
     p[QStringLiteral("boost")] = m_accBtn->isChecked();
     p[QStringLiteral("proc")] = m_procBtn->isChecked();
     p[QStringLiteral("procLevel")] = m_procSlider->value();
-    p[QStringLiteral("txLow")] = m_txLowSlider->value();
-    p[QStringLiteral("txHigh")] = m_txHighSlider->value();
+    // Build 422: not in FDV -- the sliders show the sub-mode's band there.
+    if (m_profileGroup != QLatin1String("FDV")) {
+        p[QStringLiteral("txLow")] = m_txLowSlider->value();
+        p[QStringLiteral("txHigh")] = m_txHighSlider->value();
+    }
     if (captureAetherTx)
         p[QStringLiteral("aetherTx")] = captureAetherTx();
     if (captureEq)
@@ -756,11 +759,15 @@ void PhoneCwApplet::applyMicProfile(const QJsonObject& p)
     if (p.contains(QStringLiteral("procLevel")))
         m_procSlider->setValue(p.value(QStringLiteral("procLevel")).toInt(m_procSlider->value()));
     // High, low, high: each cut is clamped against the other by the model.
-    const int hi = p.value(QStringLiteral("txHigh")).toInt(m_txHighSlider->value());
-    const int lo = p.value(QStringLiteral("txLow")).toInt(m_txLowSlider->value());
-    m_txHighSlider->setValue(hi);
-    m_txLowSlider->setValue(lo);
-    m_txHighSlider->setValue(hi);
+    // Build 422: an FDV profile saved before 422 holds the sub-mode's band
+    // here; it must not become the SSB filter.
+    if (m_profileGroup != QLatin1String("FDV") && p.contains(QStringLiteral("txHigh"))) {
+        const int hi = p.value(QStringLiteral("txHigh")).toInt(m_txHighSlider->value());
+        const int lo = p.value(QStringLiteral("txLow")).toInt(m_txLowSlider->value());
+        m_txHighSlider->setValue(hi);
+        m_txLowSlider->setValue(lo);
+        m_txHighSlider->setValue(hi);
+    }
     if (applyAetherTx && p.value(QStringLiteral("aetherTx")).isObject())
         applyAetherTx(p.value(QStringLiteral("aetherTx")).toObject());
     // After AetherTX: the 8-band EQ shares slots 0..7 of the transmit ClientEq
@@ -831,6 +838,22 @@ void PhoneCwApplet::refreshProfileButtons()
 
 void PhoneCwApplet::setMicProfileGroup(const QString& group)
 {
+    // Build 422 (operator, 15.11): in FreeDV the transmit filter is the
+    // sub-mode's band (Hl2Backend::effectiveTxPassband) and nothing filters
+    // the microphone -- the sliders did nothing and a move was stored as the
+    // SSB filter. Locked while FDV is on the transmitting receiver, showing
+    // the band the model echoes.
+    const bool fdv = group == QLatin1String("FDV");
+    if (m_txLowSlider && m_txHighSlider && m_txFilterFdvLocked != fdv) {
+        m_txFilterFdvLocked = fdv;
+        const QString tip = fdv ? QStringLiteral("FreeDV: the transmit filter is the sub-mode's band; "
+                                                 "the SSB filter comes back on leaving FreeDV")
+                                : QString();
+        m_txLowSlider->setEnabled(!fdv);
+        m_txHighSlider->setEnabled(!fdv);
+        m_txLowSlider->setToolTip(fdv ? tip : QStringLiteral("SSB transmit filter low cut, Hz"));
+        m_txHighSlider->setToolTip(fdv ? tip : QStringLiteral("SSB transmit filter high cut, Hz"));
+    }
     if (group == m_profileGroup && m_profileGroupSeen)
         return;
     const bool first = !m_profileGroupSeen;

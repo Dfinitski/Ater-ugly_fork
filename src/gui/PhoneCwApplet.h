@@ -180,6 +180,7 @@ private:
     QPushButton* m_profileBtn[4]{};
     QString m_profileGroup;
     bool m_profileGroupSeen{false};
+    bool m_txFilterFdvLocked{false};   // build 422
     [[nodiscard]] QJsonObject captureMicProfile() const;
     void applyMicProfile(const QJsonObject& p);
     void saveMicProfile(int slot);
