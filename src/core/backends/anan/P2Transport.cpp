@@ -2840,7 +2840,11 @@ P1CcState P2Transport::p1State() const
     // on ORION MkII (Thetis "Rx BYPASS on Tx" = Ext2OutOnTx). Build 427: OUR
     // ERROR -- ORION MkII got bit 7 only for both, so its input relay never
     // switched (operator, 15.11, a 7000DLE on Protocol 1).
-    if (psTx && m_psSource != 0) {
+    // Build 438 (operator, 15.11: the user watches his own signal in duplex):
+    // the chosen feedback input is switched on every transmission, PureSignal
+    // on or off -- as Thetis' "Ext 1 on Tx" / "Rx BYPASS on Tx", which are
+    // independent of PS.
+    if (m_mox && m_psSource != 0) {
         s.rxInputBits = 0x80;
         if (m_psSource == 1)
             s.rxInputBits |= 0x40;

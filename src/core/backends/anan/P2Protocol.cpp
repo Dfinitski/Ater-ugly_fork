@@ -645,13 +645,14 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
         const std::uint32_t txAnt = legacyAlexAntennaBit(opts.txAntenna);
         if (run && opts.transmitting) {
             alex0 |= txAnt | txLpf | relay;
-            if (opts.psEnabled) {
+            if (opts.psEnabled)
                 alex0 |= kAlexPsBit;
-                if (opts.psFeedbackSource == 1)
-                    alex0 |= kAlexRxExt1 | kAlexRxBypass;   // EXT1 (old PA board)
-                else if (opts.psFeedbackSource == 2)
-                    alex0 |= kAlexRxBypass;                 // RX bypass input
-            }
+            // Build 438: the feedback input on every transmission, PS on or
+            // off (duplex monitoring; Thetis' Ext1/Ext2 Out on Tx).
+            if (opts.psFeedbackSource == 1)
+                alex0 |= kAlexRxExt1 | kAlexRxBypass;   // EXT1 (old PA board)
+            else if (opts.psFeedbackSource == 2)
+                alex0 |= kAlexRxBypass;                 // RX bypass input
         } else
             alex0 |= legacyAlexAntennaBit(opts.rxAntenna) | lpf
                      | (opts.alexPreamp ? std::uint32_t{1} << 3 : 0u);
@@ -720,7 +721,8 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
         // input bit; EXT1 = _Rx_2_In + _Rx_1_Out; RX bypass = _Rx_1_In +
         // _Rx_1_Out. Build 427: OUR ERROR -- both sent only _Rx_1_Out, so the
         // input relay never switched to the chosen feedback port.
-        if (tx && opts.psEnabled && opts.psFeedbackSource != 0)
+        // Build 438: PS on or off (duplex monitoring of the own signal).
+        if (tx && opts.psFeedbackSource != 0)
             alex0 |= kAlexRxBypass | (opts.psFeedbackSource == 1 ? kAlexRxExt1 : kAlexRxExt2);
         // Antennas: Alex0 the receive antenna (the TX one while transmitting),
         // Alex1 always the TX antenna.
