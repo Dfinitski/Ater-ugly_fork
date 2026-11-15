@@ -308,14 +308,19 @@ void AnanPureSignal::checkSessionHwPeak()
     if (key == m_hwSessionKey)
         return;
     m_hwSessionKey = key;
-    double def = 0.2899;
+    // Build 436: the TXA output is made up for the CFIR (Hl2TxDsp), so one
+    // unit at the correction is one unit on the wire. Thetis' Protocol 2
+    // figures hold its CFIR's 0.9143 (not made up there): divided by it.
+    // Protocol 1 in Thetis has no CFIR: its figure as it is.
+    double def = 0.2899 / cfirPassbandGain();
     if (p1)
-        def = 0.4072 * cfirPassbandGain();
+        def = 0.4072;
     else if (board == kBoardIdSaturn || board == kBoardIdSaturnMkII)
-        def = 0.6121;
+        def = 0.6121 / cfirPassbandGain();
     qCInfo(lcAnanPs).nospace() << "PureSignal: board " << board << ", Protocol " << (p1 ? 1 : 2)
                                << ": HW peak starts at " << def << " (was " << m_s.hwPeak
-                               << "; Thetis " << (p1 ? 0.4072 : def) << (p1 ? " without the CFIR" : "")
+                               << "; Thetis " << (p1 ? def : def * cfirPassbandGain())
+                               << (p1 ? ", no CFIR" : " with its CFIR, ours made up")
                                << "), then follows the measurement";
     if (std::abs(def / m_s.hwPeak - 1.0) < 0.001)
         return;
@@ -385,7 +390,8 @@ void AnanPureSignal::feed(const double* tx, const double* rx, int n, double hwPe
     if (!txaHold)
         return;
     if (hwPeak > 0.0) {
-        hwPeak *= cfirPassbandGain();   // DDC1 / DUC -> DDC1 per unit at the correction
+        // Build 436: DDC1 / DUC = DDC1 per unit at the correction (the CFIR
+        // is made up in Hl2TxDsp; before, x cfirPassbandGain()).
         m_hwMeasured.store(hwPeak, std::memory_order_relaxed);
         m_hwMeasuredMs.store(nowMs(), std::memory_order_relaxed);
     }

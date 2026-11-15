@@ -420,6 +420,23 @@ void Hl2TxDsp::exchangeDueBlocks()
             off += block;
             continue;
         }
+        // Build 436 (operator, 15.11: TUNE 60 W, SSB 54 W, 2 Tone 42 W on a
+        // peak-reading wattmeter, the drive line at -0.2 dB). WDSP's TXA CFIR
+        // (the DUC CIC's pre-compensation) has a passband gain of
+        // 1 / droop(20 kHz)^5 = 0.9143 (CIC R 640, 5 stages at 192 kHz): every
+        // TXA signal reached at most -0.78 dB on the wire while TUNE and CW,
+        // made after it in the transport, reach full scale. Made up here, so
+        // the wire is on the scale before the CFIR (the ALC's maximum = full
+        // scale); the transport's radial limiter (envelope <= 1, x 0.99:
+        // P2Transport limitTxDrive, build 348) still holds the CORDIC ceiling,
+        // and takes the CFIR's rare overshoot above that.
+        if (m_cfirOn) {
+            constexpr float kCfirMakeUp = static_cast<float>(1.0 / 0.9143298);
+            for (std::size_t k = 0; k < outBlock; ++k) {
+                m_outI[k] *= kCfirMakeUp;
+                m_outQ[k] *= kCfirMakeUp;
+            }
+        }
         noteTxaLevels(m_exchangePending.data() + off, block, outBlock);   // build 410
         for (std::size_t k = 0; k < outBlock; ++k) {
             // No conjugation (opposite of the phasing build): the signed

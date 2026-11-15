@@ -2520,7 +2520,8 @@ void limitTxDrive(std::complex<float>* buf, int n) noexcept
 // shows the modulator's samples on the scale before it: the most the ALC
 // lets through reads 0 dB. TUNE's tone and the host CW are made here, after
 // the CFIR: they are shown as they are.
-constexpr double kCfirPassbandPower = 0.9143298 * 0.9143298;
+// Build 436: superseded -- the CFIR's gain is made up in Hl2TxDsp, so the
+// wire samples themselves are on that scale.
 
 void P2Transport::accountTxSamples(const std::complex<float>* buf, int n)
 {
@@ -2553,7 +2554,9 @@ void P2Transport::accountTxSamples(const std::complex<float>* buf, int n)
             m_hwDucN = 0;
         }
         m_ovWinSumSq += p;
-        m_envPeak = std::max(m_envPeak, (m_cwMode || m_toneAmp > 0.0) ? p : p / kCfirPassbandPower);
+        // Build 436: the TXA output is made up for the CFIR (Hl2TxDsp), so
+        // the wire is on the scale before it: no correction here any more.
+        m_envPeak = std::max(m_envPeak, p);
         if (++m_envN == kDucSampleRateHz / 20) {   // 50 ms
             emit txEnvelopePeak(static_cast<float>(10.0 * std::log10(std::max(m_envPeak, 1e-14))));
             m_envPeak = 0.0;
@@ -2604,11 +2607,10 @@ void P2Transport::accountTxSamples(const std::complex<float>* buf, int n)
 // txEnvelopePeak, where 425 put the CFIR correction. Here it is: the peak
 // divided by the CFIR's passband power (-0.78 dB), TUNE's tone and the host
 // CW (made after the CFIR) as they are. The bins stay the wire's.
+// Build 436: no correction any more -- the TXA output is made up for the
+// CFIR in Hl2TxDsp, so the wire itself is on the scale before it.
 void P2Transport::emitTxScopeFrame(double hz)
 {
-    if (!m_txScopeBins.empty() && !m_cwMode && m_toneAmp <= 0.0
-        && m_txScopeBins.back() > anan::TxScope::kFloorDbfs)
-        m_txScopeBins.back() -= static_cast<float>(10.0 * std::log10(kCfirPassbandPower));
     emit txScopeFrameReady(QList<float>(m_txScopeBins.begin(), m_txScopeBins.end()), hz);
 }
 
