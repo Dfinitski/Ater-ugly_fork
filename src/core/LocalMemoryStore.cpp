@@ -1,4 +1,5 @@
 #include "core/LocalMemoryStore.h"
+#include "core/ForkDataDir.h"
 
 #include <QDir>
 #include <QFile>
@@ -208,7 +209,7 @@ QString LocalMemoryStore::defaultFilePath()
         QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
     if (base.isEmpty())
         return {};
-    return base + QStringLiteral("/AetherSDR/memories.json");
+    return base + AetherSDR::forkDataDir() + QStringLiteral("/memories.json");
 }
 
 LocalMemoryStore::ParseResult LocalMemoryStore::load(const QString& path)

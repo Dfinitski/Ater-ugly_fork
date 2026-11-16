@@ -1,4 +1,5 @@
 #include "TestEventLoop.h"
+#include "core/ForkDataDir.h"
 #include "TestSettingsProfile.h"
 #include "core/ThemeManager.h"
 #include "core/AppSettings.h"
@@ -122,7 +123,7 @@ int main(int argc, char** argv)
         const QString sandboxAppDir =
             QStandardPaths::writableLocation(
                 QStandardPaths::GenericConfigLocation)
-            + QStringLiteral("/AetherSDR");
+            + AetherSDR::forkDataDir();
         QDir(sandboxAppDir).removeRecursively();
     }
 

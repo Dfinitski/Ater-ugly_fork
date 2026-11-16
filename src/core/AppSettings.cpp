@@ -1,4 +1,5 @@
 #include "AppSettings.h"
+#include "core/ForkDataDir.h"
 #include "GuiClientIdentityPolicy.h"
 #include "SettingsCredentialPolicy.h"
 #include "SettingsDatabase.h"
@@ -1508,7 +1509,7 @@ void AppSettings::migrateFromQSettings()
         const QString isolatedLegacyPath = explicitProfile
             ? SettingsPaths::configDir() + QStringLiteral("/legacy-qsettings.ini")
             : QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-                + QStringLiteral("/AetherSDR/legacy-qsettings.ini");
+                + AetherSDR::forkDataDir() + QStringLiteral("/legacy-qsettings.ini");
         old = std::make_unique<QSettings>(isolatedLegacyPath, QSettings::IniFormat);
     } else {
         old = std::make_unique<QSettings>(QStringLiteral("AetherSDR"),

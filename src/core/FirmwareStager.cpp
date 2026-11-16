@@ -1,4 +1,5 @@
 #include "FirmwareStager.h"
+#include "core/ForkDataDir.h"
 #include "CabExtractor.h"
 #include "FirmwareCurrency.h"   // compareReleases() — one definition of "newer"
 #include "LogManager.h"
@@ -53,7 +54,7 @@ QString FirmwareStager::stagingDir()
     // AppSettings + the log dir already use, avoiding the double-nested
     // ~/.config/AetherSDR/AetherSDR/ path that AppConfigLocation produces.
     const QString dir = QStandardPaths::writableLocation(
-        QStandardPaths::GenericConfigLocation) + "/AetherSDR/firmware";
+        QStandardPaths::GenericConfigLocation) + AetherSDR::forkDataDir() + "/firmware";
     QDir().mkpath(dir);
     return dir;
 }

@@ -1,4 +1,5 @@
 #include "core/VoiceKeyerSettings.h"
+#include "core/ForkDataDir.h"
 
 #include "core/AppSettings.h"
 
@@ -73,7 +74,7 @@ void VoiceKeyerSettings::setSlotName(int id, const QString& name)
 QString VoiceKeyerSettings::recordingsDir()
 {
     return QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
-           + QStringLiteral("/AetherSDR/VoiceKeyer");
+           + AetherSDR::forkDataDir() + QStringLiteral("/VoiceKeyer");
 }
 
 } // namespace AetherSDR

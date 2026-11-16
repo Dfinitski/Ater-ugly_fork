@@ -969,7 +969,13 @@ void MainWindow::maybeAutoConnectAnan(const RadioInfo& info)
     if (info.inUse) {
         const QString lastSerial =
             AppSettings::instance().value("LastConnectedRadioSerial").toString();
+        // Build 449: and only if that run did not end normally (a normal exit
+        // stops the stream, so the busy session is then another program's --
+        // with the fork and the original AetherSDR on one computer, both may
+        // know this radio).
         const bool previousRun = !lastSerial.isEmpty() && lastSerial == info.serial
+            && AppSettings::instance().value("RadioSessionOpen", "True").toString()
+                   == QLatin1String("True")
             && m_appStartClock.isValid()
             && m_appStartClock.elapsed() < kStartupTakeoverWindowMs;
         const bool ourDroppedSession = m_linkLostClock.isValid()

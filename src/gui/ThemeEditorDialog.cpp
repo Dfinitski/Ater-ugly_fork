@@ -1,4 +1,5 @@
 #include "ThemeEditorDialog.h"
+#include "core/ForkDataDir.h"
 #include "ScopedChildWidget.h"
 #include "Theme.h"
 #include "ThemeInspector.h"
@@ -56,7 +57,7 @@ QString userThemesDir()
 {
     return QDir::toNativeSeparators(
         QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-        + QStringLiteral("/AetherSDR/themes"));
+        + AetherSDR::forkDataDir() + QStringLiteral("/themes"));
 }
 
 QMessageBox::StandardButton showModalMessage(

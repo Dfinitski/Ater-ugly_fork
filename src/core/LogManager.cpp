@@ -1,4 +1,5 @@
 #include "LogManager.h"
+#include "core/ForkDataDir.h"
 #include "AppSettings.h"
 
 #include <QDateTime>
@@ -316,7 +317,7 @@ QString LogManager::logFilePath() const
         return m_activeLogFilePath;
     }
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-           + "/AetherSDR/logs/aethersdr.log";
+           + AetherSDR::forkDataDir() + "/logs/aethersdr.log";
 }
 
 void LogManager::setActiveLogFilePath(const QString& path)

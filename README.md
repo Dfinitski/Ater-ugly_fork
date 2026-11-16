@@ -114,8 +114,9 @@ session where the problem happened.
 1. Reproduce the problem, then close AetherSDR (the log is complete once the program exits).
 2. Open the log folder:
    - from the program: **Tools → Open Logs**, or
-   - in Explorer: `%LOCALAPPDATA%\AetherSDR\logs`
-     (usually `C:\Users\<you>\AppData\Local\AetherSDR\logs`);
+   - in Explorer: `%LOCALAPPDATA%\AetherSDR_ugly_fork\logs`
+     (usually `C:\Users\<you>\AppData\Local\AetherSDR_ugly_fork\logs`; builds before 449:
+     `...\AetherSDR\logs`);
    - Linux and macOS: Tools → Open Logs shows the folder.
 3. Attach the newest file, `aethersdr-YYYYMMDD-HHMMSS.log`. A new file is started each time the
    program runs, named by date and time. If the program closed unexpectedly, also attach the

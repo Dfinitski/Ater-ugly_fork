@@ -1,4 +1,5 @@
 #include "SpotCollectorClient.h"
+#include "core/ForkDataDir.h"
 #include "LogManager.h"
 
 #include <QRegularExpression>
@@ -31,7 +32,7 @@ SpotCollectorClient::~SpotCollectorClient()
 QString SpotCollectorClient::logFilePath() const
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-           + "/AetherSDR/spothub/spotcollector.log";
+           + AetherSDR::forkDataDir() + "/spothub/spotcollector.log";
 }
 
 void SpotCollectorClient::startListening(quint16 port)

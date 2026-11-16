@@ -80,7 +80,8 @@ bool CatPort::start(quint16 port)
         m_tcpServer = new QTcpServer(this);
         if (!m_tcpServer->listen(QHostAddress::Any, port)) {
             qCWarning(lcCat) << "CatPort: failed to bind port" << port
-                             << m_tcpServer->errorString();
+                             << m_tcpServer->errorString()
+                             << "- another program (the original AetherSDR?) may use it";
             delete m_tcpServer;
             m_tcpServer = nullptr;
             // The serial endpoint (and, off Windows, the PTY) does not depend

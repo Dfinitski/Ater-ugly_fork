@@ -1,4 +1,5 @@
 #include "WsjtxClient.h"
+#include "core/ForkDataDir.h"
 #include "LogManager.h"
 
 #include <QDataStream>
@@ -35,7 +36,7 @@ WsjtxClient::~WsjtxClient()
 QString WsjtxClient::logFilePath() const
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-           + "/AetherSDR/spothub/wsjtx.log";
+           + AetherSDR::forkDataDir() + "/spothub/wsjtx.log";
 }
 
 void WsjtxClient::startListening(const QString& address, quint16 port)

@@ -1,4 +1,5 @@
 #include "ThemeManager.h"
+#include "core/ForkDataDir.h"
 #include "AppSettings.h"
 #include "LogManager.h"
 
@@ -414,7 +415,7 @@ void ThemeManager::scanAvailableThemes()
     // user file is skipped with a warning so a stale copy can't shadow the bundled
     // theme; users Save As under a new name.
     const QString userDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-                                + QStringLiteral("/AetherSDR/themes");
+                                + AetherSDR::forkDataDir() + QStringLiteral("/themes");
     QDir d(userDir);
     if (d.exists()) {
         const auto entries = d.entryList({"*.json"}, QDir::Files);
@@ -1150,7 +1151,7 @@ bool ThemeManager::saveCurrentThemeAs(const QString& newThemeName)
     // (singular path, not the double-nested AppConfigLocation form).
     const QString userDir = QStandardPaths::writableLocation(
                                 QStandardPaths::GenericConfigLocation)
-                            + QStringLiteral("/AetherSDR/themes");
+                            + AetherSDR::forkDataDir() + QStringLiteral("/themes");
     QDir().mkpath(userDir);
     const QString path = userDir + QLatin1Char('/')
                        + name + QStringLiteral(".json");
@@ -1280,7 +1281,7 @@ QString ThemeManager::importThemeFromFile(const QString& filePath,
 
     const QString userDir = QStandardPaths::writableLocation(
                                 QStandardPaths::GenericConfigLocation)
-                            + QStringLiteral("/AetherSDR/themes");
+                            + AetherSDR::forkDataDir() + QStringLiteral("/themes");
     QDir().mkpath(userDir);
     const QString destPath = userDir + QLatin1Char('/')
                            + name + QStringLiteral(".json");

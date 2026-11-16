@@ -1,4 +1,5 @@
 #include "gui/PsAmpViewDialog.h"
+#include "core/ForkDataDir.h"
 
 #include "gui/PsApplet.h"
 #include "core/backends/anan/AnanPureSignal.h"
@@ -35,7 +36,7 @@ const char* kStateNames[] = {"RESET", "WAIT", "MOXDELAY", "SETUP", "COLLECT",
 QString psDir()
 {
     const QString d = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
-                      + QStringLiteral("/AetherSDR/PureSignal");
+                      + AetherSDR::forkDataDir() + QStringLiteral("/PureSignal");
     QDir().mkpath(d);
     return d;
 }

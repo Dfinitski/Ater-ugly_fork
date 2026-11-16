@@ -27,6 +27,7 @@
 // link is what this test covers.
 
 #include "TestSettingsProfile.h"
+#include "core/ForkDataDir.h"
 #include "core/ThemeManager.h"
 
 #include <QApplication>
@@ -80,7 +81,7 @@ int main(int argc, char** argv)
         const QString sandboxAppDir =
             QStandardPaths::writableLocation(
                 QStandardPaths::GenericConfigLocation)
-            + QStringLiteral("/AetherSDR");
+            + AetherSDR::forkDataDir();
         QDir(sandboxAppDir).removeRecursively();
     }
 

@@ -1,4 +1,5 @@
 #include "gui/MainWindow.h"
+#include "core/ForkDataDir.h"
 #include "gui/ConnectionPanel.h"
 #include "gui/FramelessMessageBox.h"
 #include "gui/SliceColorManager.h"
@@ -120,8 +121,10 @@ static void messageHandler(QtMsgType type, const QMessageLogContext& ctx, const 
 static int runConfigCli(int argc, char* argv[])
 {
     QCoreApplication app(argc, argv);
-    QCoreApplication::setApplicationName(QStringLiteral("AetherSDR"));
-    QCoreApplication::setOrganizationName(QStringLiteral("AetherSDR"));
+    // ANAN fork, build 449: its own name, so its data stays apart from the
+    // original AetherSDR's (core/ForkDataDir.h).
+    QCoreApplication::setApplicationName(QString::fromLatin1(AetherSDR::kForkAppName));
+    QCoreApplication::setOrganizationName(QString::fromLatin1(AetherSDR::kForkAppName));
     QCoreApplication::setApplicationVersion(QStringLiteral(AETHERSDR_VERSION));
 
     const QStringList args = QCoreApplication::arguments();
@@ -268,6 +271,11 @@ static const char* displayPresenceName(AetherSDR::DisplayPresence p)
 
 int main(int argc, char* argv[])
 {
+    // ANAN fork, build 449: the fork keeps its data in its own directory
+    // (AetherSDR_ugly_fork); the first start copies the user's settings from
+    // the original program's directory. Before anything opens the store.
+    AetherSDR::SettingsPaths::copyFromUpstreamOnce();
+
     if (argc >= 2 && qstrcmp(argv[1], "--config") == 0) {
         return runConfigCli(argc, argv);
     }
@@ -456,7 +464,10 @@ int main(int argc, char* argv[])
     // disconnected; see Hl2EmergencyStop.h for why it acts inside the handler.
     AetherSDR::hl2::installEmergencyStopSignalHandlers();
 
-    app.setApplicationName("AetherSDR");
+    // ANAN fork, build 449: its own application / organization name, so the
+    // AppData / AppConfig / cache locations (and QSettings) are not the
+    // original AetherSDR's. The desktop file name stays (Linux icon match).
+    app.setApplicationName(QString::fromLatin1(AetherSDR::kForkAppName));
     app.setApplicationVersion(AETHERSDR_VERSION);
 #if AETHER_UPDATE_DEV_OVERRIDES
     // Run as an older release, so an update to this build's own release can
@@ -469,7 +480,7 @@ int main(int argc, char* argv[])
         app.setApplicationVersion(pretend);
     }
 #endif
-    app.setOrganizationName("AetherSDR");
+    app.setOrganizationName(QString::fromLatin1(AetherSDR::kForkAppName));
     app.setDesktopFileName("AetherSDR");  // matches .desktop file for taskbar icon
 
     // ── Main-thread stall watchdog (diagnostic, log-only) ─────────────────
@@ -589,7 +600,7 @@ int main(int argc, char* argv[])
     if (qEnvironmentVariableIsEmpty("AETHER_SETTINGS_DIR")) {
         const QString newDir = QStandardPaths::writableLocation(
                                    QStandardPaths::GenericConfigLocation)
-                               + QStringLiteral("/AetherSDR");
+                               + AetherSDR::forkDataDir();
         const QString oldDir = QStandardPaths::writableLocation(
                                    QStandardPaths::AppConfigLocation);
         if (newDir != oldDir && QDir(oldDir).exists()) {

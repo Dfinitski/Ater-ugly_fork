@@ -317,6 +317,12 @@ void TciApplet::buildUI()
                     m_tciEnable->setChecked(false);
                     m_tciEnable->setText("Disabled");
                     m_tciStatus->setText("(port in use)");
+                    // Build 449: the likely culprit when the fork and the
+                    // original AetherSDR (or another TCI program) both run.
+                    m_tciStatus->setToolTip(QStringLiteral(
+                        "Port %1 is used by another program (the original "
+                        "AetherSDR, another SDR program...). Close it or choose "
+                        "another port here and in the TCI client.").arg(port));
                     m_tciStatus->setStyleSheet(
                         "QLabel { color: #cc3333; font-size: 10px; }");
                     ss.setValue("AutoStartTCI", "False");
@@ -420,6 +426,7 @@ void TciApplet::updateTciStatus()
         m_tciStatus->setText("(stopped)");
         AetherSDR::ThemeManager::instance().applyStyleSheet(m_tciStatus, "QLabel { color: {{color.background.3}}; font-size: 10px; }");
     } else {
+        m_tciStatus->setToolTip(QString());   // build 449: drop a "port in use" hint
         int n = m_tciServer->clientCount();
         m_tciStatus->setText(
             QStringLiteral(":%1 (%2 client%3)")

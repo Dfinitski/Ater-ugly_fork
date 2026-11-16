@@ -1,6 +1,7 @@
 #ifdef HAVE_MIDI
 
 #include "MidiSettings.h"
+#include "core/ForkDataDir.h"
 
 #include <QDir>
 #include <QFile>
@@ -466,13 +467,13 @@ MidiSettings& MidiSettings::instance()
 QString MidiSettings::settingsFilePath() const
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-           + "/AetherSDR/midi.settings";
+           + AetherSDR::forkDataDir() + "/midi.settings";
 }
 
 QString MidiSettings::profileDir()
 {
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-           + "/AetherSDR/midi";
+           + AetherSDR::forkDataDir() + "/midi";
 }
 
 // ── Load / Save ─────────────────────────────────────────────────────────────

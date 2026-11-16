@@ -13,6 +13,7 @@
 // and keep Qt's own drawing rather than name a file that is not there.
 
 #include <QDir>
+#include "core/ForkDataDir.h"
 #include <QFile>
 #include <QPainter>
 #include <QPixmap>
@@ -40,7 +41,7 @@ inline QString themedImagePath(const QString& subdir, const QString& name,
     QString root = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
     if (root.isEmpty()) {
         root = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
-             + QStringLiteral("/AetherSDR");
+             + AetherSDR::forkDataDir();
     }
     const QString dir = root + QLatin1Char('/') + subdir;
     if (!QDir().mkpath(dir)) {

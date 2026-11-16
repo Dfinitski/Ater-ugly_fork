@@ -7823,6 +7823,32 @@ MicronSDR невозможна. Сделано вместо этого:
 
 FTX по умолчанию — на кнопке второго ряда вкладки мод (сборка 447).
 
+## 422. Сборка 449 — форк и оригинальный AetherSDR на одном компьютере
+
+Оператор, 16.11: «можно ли сделать, чтобы наша прога и оригинал работали на одном компе и при
+этом не мешали друг другу?» — «да, делаем. Порты оставляем прежние. Но называть себя следует
+AetherSDR_ugly_fork. И ты забыл, что оригинальная прога работала и с ананом тоже и с HL2…, так
+что борьба за девайс возможна».
+
+Что мешало: обе программы — «AetherSDR», каталог данных `%LOCALAPPDATA%\AetherSDR`
+(`~/.config/AetherSDR`, `~/Library/Preferences/AetherSDR`): общая база настроек (вторая
+открывается «locked by another process» без сохранения; по очереди — пишут свои ключи в одну
+базу), общие логи, темы, пресеты, модели, кэш; Qt-имя приложения / организации — общие AppData
+и QSettings; порты TCI / CAT, если включены в обеих; и радио — оригинал тоже работает с ANAN / HL2.
+
+| Файл | Что сделано |
+|---|---|
+| `src/core/ForkDataDir.h` (новый) | `kForkAppName = "AetherSDR_ugly_fork"`, `forkDataDir()` = "/AetherSDR_ugly_fork", `upstreamDataDir()` = "/AetherSDR". |
+| `src/main.cpp` | Имя приложения и организации — `AetherSDR_ugly_fork` (и в `--config`); имя .desktop прежнее (иконка Linux). В начале `main()` — `SettingsPaths::copyFromUpstreamOnce()`. |
+| `src/core/SettingsPaths.cpp/.h` | `configDir()` = `<GenericConfigLocation>/AetherSDR_ugly_fork`. `copyFromUpstreamOnce()`: если своего каталога нет, а в `…/AetherSDR` есть `AetherSDR.db` (или старый XML) — копирует всё, кроме logs, cache, spothub, firmware, settings-quarantine, вложенного `AetherSDR` (AppData оригинала), `*.lock`, `*-shm` и логов в корне; WAL копируется. Копия: каталог оригинала не трогается. Не работает при `AETHER_SETTINGS_DIR` (тесты). |
+| `MainWindow.cpp`, `ThemeEditorDialog.cpp`, `PsAmpViewDialog.cpp`, `ThemedImageCache.h`, `AppSettings.cpp` (legacy-qsettings.ini), `MidiSettings.cpp`, `LocalMemoryStore.cpp`, `VoiceKeyerSettings.cpp`, `ChannelStripPresets.cpp`, `ThemeManager.cpp` (3 места), `LogManager.cpp`, клиенты спотов (`PotaClient`, `WsjtxClient`, `FreeDvClient`, `DxClusterClient`, `N1MMSpotClient`, `SpotCollectorClient`), `FirmwareStager.cpp` | `+ "/AetherSDR…"` → `+ AetherSDR::forkDataDir() + "…"`. Не менялись: записи QSO в «Документы/AetherSDR/Recordings» (файлы пользователя, не конфликтуют), старая миграция AppConfigLocation в `AppSettings.cpp`, поиск модели DeepFilter. Ключи keychain («AetherSDR») общие — это учётные данные, не конфликт. |
+| `src/gui/MainWindow.cpp`, `MainWindow_Session.cpp` | **Борьба за радио.** `RadioSessionOpen` в настройках: «True» при соединении, «False» при разъединении и при обычном выходе (closeEvent). Автоподключение при старте забирает занятое радио как «свою прежнюю сессию» только если прошлый запуск закончился не штатно (`RadioSessionOpen` = True; по умолчанию True — прежнее поведение); после обычного выхода занятое радио — чужое (оригинал, Thetis…), остаётся «in use by another program — click to take it over». Раньше признаком был только `LastConnectedRadioSerial` в общей базе — его мог записать и оригинал. |
+| `src/gui/TciApplet.cpp`, `src/core/CatPort.cpp` | Порты прежние; «(port in use)» TCI с подсказкой: порт занят другой программой (оригинальный AetherSDR…), закрыть её или сменить порт; лог CAT — то же. |
+| `tests/theme_seed_test.cpp`, `tests/theme_manager_test.cpp` | Очищают каталог форка. |
+
+Логи оператора теперь: `C:\Users\user\AppData\Local\AetherSDR_ugly_fork\logs` (README обновлён).
+Проверено errcheck (без новых ошибок, проверка подставным символом).
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

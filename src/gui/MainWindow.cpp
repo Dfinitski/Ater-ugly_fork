@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "MainWindow.h"
+#include "core/ForkDataDir.h"
 #include <utility>
 #include "core/AppActivity.h"
 #include "core/backends/AutoRfGainControl.h"
@@ -3941,6 +3942,17 @@ void MainWindow::showEvent(QShowEvent* event)
     // correct blob is the one that gets re-applied. (#3319)
     QTimer::singleShot(0, this, &MainWindow::reapplyStartupGeometryAfterShow);
 
+    // ANAN fork, build 449: whether this program's radio session was open
+    // (streaming) when it last stopped. A crash or a kill leaves it "True", and
+    // only then may the start-up auto-connect take over a busy radio as this
+    // program's own leftover session; after a normal exit a busy radio belongs
+    // to another program (the original AetherSDR, Thetis, ...) and is left alone.
+    connect(&m_radioModel, &RadioModel::connectionStateChanged, this, [](bool on) {
+        auto& st = AppSettings::instance();
+        st.setValue("RadioSessionOpen", on ? "True" : "False");
+        st.save();
+    });
+
     // ANAN fork, build 446: MicronSDR's modules and cty.dat are separate files;
     // a user who copied only the program, ran it from inside the ZIP, or whose
     // antivirus removed a module got only "not loaded" deep in the FTX panel.
@@ -4178,6 +4190,9 @@ void MainWindow::closeEvent(QCloseEvent* event)
     // the last tune/drive edit before quit is remembered (RFC #4603 PR 3;
     // PR #4619 review).
     m_radioModel.flushPendingOperatingState();
+    // ANAN fork, build 449: a normal exit stops the radio's stream (run = 0),
+    // so a radio busy at the next start is not this program's session.
+    AppSettings::instance().setValue("RadioSessionOpen", "False");
 
     // Same reason as the TGXL/PGXL sockets above: the D-STAR helper is stopped
     // by the queued RadioModel::connectionStateChanged(false) handler, which
@@ -6699,7 +6714,7 @@ void MainWindow::buildUI()
         // AppConfigLocation produces when both org and app names are "AetherSDR".
         const QString cfgDir  = QStandardPaths::writableLocation(
                                     QStandardPaths::GenericConfigLocation)
-                              + QStringLiteral("/AetherSDR");
+                              + AetherSDR::forkDataDir();
         const QString modelFile = QStringLiteral("signal_classifier.onnx");
         QString modelPath;
         if (QFile::exists(exeDir + QLatin1Char('/') + modelFile)) {
