@@ -25,8 +25,7 @@
   take the receiver's I/Q, the transmit waveform goes straight to the modulator, and the mode's
   waterfall replaces the panadapter while FTX is on (decoders and window from MicronSDR, N7DDC)
 - **FreeDV built in** — RADE, 1600, 700D and 700E as an FDV mode on the VFO flag, with FreeDV
-  Reporter (Windows build; in the Linux AppImage FTX and FreeDV are not available yet — their
-  decoder libraries are Windows DLLs for now)
+  Reporter — on Windows, Linux and macOS (MicronSDR's modules for each system are included)
 
 ![FT8 in the FTX window of the program: the decodes on the left, the mode's waterfall in place of the panadapter on the right (ANAN-100D, 40 m)](docs/screenshots/ftx-ft8-anan100d.png)
 
@@ -74,20 +73,28 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 439
+## Build 444
 
-Full notes: [docs/release-notes-build-439.md](docs/release-notes-build-439.md).
+Full notes: [docs/release-notes-build-444.md](docs/release-notes-build-444.md).
 
-- **Transmit level:** SSB, 2 Tone, FreeDV and digital modes reach full scale like TUNE (the CIC
-  compensation filter's -0.78 dB made up); RF Delay shared and saved in TX Profiles.
-- **FreeDV:** linear-phase transmit filter (RADE SNR 22 -> 34 dB in a test), level per sub-mode,
-  codec2 bands; Reporter filters.
-- **PureSignal:** ORION MkII feedback relays (EXT1 / RX Bypass) as in Thetis, on every
-  transmission; Protocol 1 attenuator for the 7000DLE; amp delay by hand / previous.
-- **Receive:** the ANT menu sets only its receiver's ADC, with Dither / Random per ADC.
-- **FTX:** a taller waterfall in a frame.
+- **Linux:** FTX (FT8 / FT4 / WSPR), JS8 and FreeDV work in the AppImage (MicronSDR's Linux
+  modules).
+- **macOS, first build:** Apple silicon (M1 ... M5), macOS 14.4+, with the FTX / JS8 / FreeDV
+  modules and FDK-AAC inside; signed ad hoc, not notarized (right click → Open the first time).
+- **Receive:** linear-phase receive filter in DRM, DIGU / DIGL and while FreeDV decodes.
 
-Earlier notes: [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+
+## Downloads
+
+From the [Releases](https://github.com/Dfinitski/Ater-ugly_fork/releases) page:
+
+- **Windows 10 / 11 x64:** `AetherSDR-ANAN-buildNNN-win64-portable.zip` (below).
+- **Linux x86_64:** `AetherSDR-ANAN-build-NNN-x86_64.AppImage` — `chmod +x` and run; glibc 2.35 or
+  newer (Ubuntu 22.04+, Debian 12+, Fedora 36+).
+- **macOS 14.4+ on Apple silicon:** `AetherSDR-ANAN-build-NNN-macOS-arm64.dmg` — drag AetherSDR
+  to Applications. It is not notarized: the first time, right click it → **Open** → **Open**, or
+  run `xattr -dr com.apple.quarantine /Applications/AetherSDR.app` in Terminal.
 
 ## Windows portable build
 
@@ -108,7 +115,8 @@ session where the problem happened.
 2. Open the log folder:
    - from the program: **Tools → Open Logs**, or
    - in Explorer: `%LOCALAPPDATA%\AetherSDR\logs`
-     (usually `C:\Users\<you>\AppData\Local\AetherSDR\logs`).
+     (usually `C:\Users\<you>\AppData\Local\AetherSDR\logs`);
+   - Linux and macOS: Tools → Open Logs shows the folder.
 3. Attach the newest file, `aethersdr-YYYYMMDD-HHMMSS.log`. A new file is started each time the
    program runs, named by date and time. If the program closed unexpectedly, also attach the
    `aethersdr-crash-*.txt` and `aethersdr-crash-*.dmp` files from the same folder.
