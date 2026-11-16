@@ -7988,8 +7988,8 @@ bool MainWindow::activateMemorySpot(int memoryIndex, const QString& preferredPan
         return false;
     }
     // ANAN fork, build 452: the rest of the memory's snapshot (volume, NB / NR,
-    // AGC, antennas, LNA, attenuator, view ...) after its own frequency, mode,
-    // filter and step have been set by the recall above.
+    // AGC, antennas, LNA, attenuator, view ...) after its own frequency, mode
+    // and filter have been set by the recall above (no step, build 453).
     if (!m_radioModel.usesFlexCommandPlane()) {
         const QString snap = m_radioModel.memories().value(memoryIndex).recallJson;
         if (!snap.isEmpty()) {

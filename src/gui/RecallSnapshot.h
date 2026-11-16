@@ -6,7 +6,10 @@
 // receiver rate; the memories the step, squelch, FM repeater and RTTY / DIG
 // offsets); now each stores this one snapshot and recalls it the same way
 // (MainWindow::applyRecallSnapshot). A station memory keeps its own frequency
-// and name (and its mode / filter / step, which the memory editor can change).
+// and name (and its mode / filter, which the memory editor can change).
+// Build 453 (operator, 16.11): no tuning step in the snapshot -- the step is
+// the mode group's only (RadioModel, build 445); a recall that set it would
+// rewrite the group's step.
 //
 // Only for radios without a command plane (ANAN / HL2: the program is the
 // band stack); a Flex keeps its radio-side band stack and memories.
@@ -37,7 +40,7 @@ inline QJsonObject capture(const RadioModel& model, const SliceModel* s)
     o.insert(QStringLiteral("mode"), s->mode());
     o.insert(QStringLiteral("lo"), s->filterLow());
     o.insert(QStringLiteral("hi"), s->filterHigh());
-    o.insert(QStringLiteral("step"), s->stepHz());
+    // No tuning step (build 453): it belongs to the mode group (build 445).
     o.insert(QStringLiteral("agc"), s->agcMode());
     o.insert(QStringLiteral("agcT"), s->agcThreshold());
     o.insert(QStringLiteral("vol"), static_cast<int>(s->audioGain()));

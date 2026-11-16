@@ -3803,7 +3803,8 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
     double freqMhz = s->frequency();
     if (tuneAndMode) {
         // Mode first (the backend adopts a mode passband on a mode change),
-        // then the frequency, the stored filter and the step.
+        // then the frequency and the stored filter. No step (build 453): the
+        // mode change has set the mode group's own.
         if (!mode.isEmpty() && s->mode() != mode)
             s->setMode(mode);
         const double f = mem.value(QStringLiteral("freq")).toDouble();
@@ -3814,9 +3815,6 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
         const int lo = mem.value(QStringLiteral("lo")).toInt(), hi = mem.value(QStringLiteral("hi")).toInt();
         if (hi > lo)
             s->setFilterWidth(lo, hi);
-        const int step = mem.value(QStringLiteral("step")).toInt();
-        if (step > 0)
-            s->applyRecalledStepHz(step);
     }
     // AGC, volume, NB / NR, squelch.
     const QString agc = mem.value(QStringLiteral("agc")).toString();
@@ -3895,7 +3893,7 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
     qCInfo(lcProtocol).noquote().nospace()
         << "MainWindow: recall snapshot -> slice " << sid << ": "
         << QString::number(freqMhz, 'f', 6) << " MHz " << s->mode()
-        << (tuneAndMode ? "" : " (memory: its own frequency / mode / filter / step)");
+        << (tuneAndMode ? "" : " (memory: its own frequency / mode / filter)");
 }
 
 void MainWindow::selectBand(const QString& panId, const QString& bandName, double freqMhz,

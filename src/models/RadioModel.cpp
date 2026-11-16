@@ -9376,7 +9376,10 @@ bool RadioModel::recallCachedMemory(int index)
     // comes back as status; on a host-bank backend that command has no command
     // plane to travel on and is dropped, so nothing was setting the step and a
     // recalled channel tuned in whatever increment happened to be current.
-    if (memory.step > 0)
+    // ANAN fork, build 453 (operator, 16.11): where the step is the client's,
+    // it is the mode group's (build 445) and the mode set above has applied
+    // it; the memory's step would rewrite the group's. A Flex keeps its own.
+    if (memory.step > 0 && !clientOwnsSliceStep())
         target->applyRecalledStepHz(memory.step);
 
     // Tune BEFORE applying the repeater configuration.  The IC-705 has a
