@@ -3151,6 +3151,11 @@ void VfoWidget::buildTabContent()
                         if (m == QLatin1String("SSB"))
                             assign = m_slice ? ssbSidebandFor(m_slice->frequency())
                                              : QStringLiteral("USB");
+                        // Build 450: "DIGI" assigns DIGU (the digital modes'
+                        // usual sideband on every band); a second click on
+                        // the button swaps to DIGL, as SSB does.
+                        else if (m == QLatin1String("DIGI"))
+                            assign = QStringLiteral("DIGU");
                         m_quickModeAssign[i] = assign;
                         AppSettings::instance().setValue(quickModeKey(i), assign);
                         AppSettings::instance().save();
@@ -3160,6 +3165,8 @@ void VfoWidget::buildTabContent()
                     const QString& cur = m_quickModeAssign[i];
                     act->setChecked(m == QLatin1String("SSB")
                                         ? (cur == QLatin1String("USB") || cur == QLatin1String("LSB"))
+                                    : m == QLatin1String("DIGI")
+                                        ? (cur == QLatin1String("DIGU") || cur == QLatin1String("DIGL"))
                                         : m == cur);
                 }
                 menu.exec(btn->mapToGlobal(pos));
@@ -6429,6 +6436,22 @@ QStringList VfoWidget::quickModeChoices() const
             modes.insert(std::clamp(at, 0, static_cast<int>(modes.size())), QStringLiteral("SSB"));
         if (modes.contains("CW") || modes.contains("CWU"))
             modes.removeAll(QStringLiteral("CWL"));
+        // Build 450 (operator, 16.11): DIGU / DIGL are one "DIGI" entry where
+        // the first of them stood (a second click swaps the sideband, as for
+        // SSB), and DSB is not offered.
+        const bool dig = modes.contains("DIGU") || modes.contains("DIGL");
+        int digAt = -1;
+        for (int k = 0; k < modes.size(); ++k) {
+            if (modes[k] == QLatin1String("DIGU") || modes[k] == QLatin1String("DIGL")) {
+                digAt = k;
+                break;
+            }
+        }
+        modes.removeAll(QStringLiteral("DIGU"));
+        modes.removeAll(QStringLiteral("DIGL"));
+        if (dig)
+            modes.insert(std::clamp(digAt, 0, static_cast<int>(modes.size())), QStringLiteral("DIGI"));
+        modes.removeAll(QStringLiteral("DSB"));
     }
 #ifdef HAVE_RADE
     if (!modes.contains("FDV"))
