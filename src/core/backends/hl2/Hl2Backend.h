@@ -1779,6 +1779,16 @@ private:
     bool m_lnaSessionPin = false;
     int m_driveDefaultPercent = -1;  // <0: no restored default; leave drive alone
     QString m_currentBandKey;
+    // ANAN fork, build 451 (operator, 16.11): drive and TUNE power are
+    // remembered per MODE GROUP of the transmit receiver ("mode:SSB",
+    // "mode:CW", "mode:AM", "mode:FM", "mode:DIGI" -- the same groups as the
+    // tuning step), not per band: band buttons, memories and quick memories
+    // change the band and keep the power, so they never fight it. The maps
+    // m_driveByBand / m_tuneByBand keep their names and persisted keys but hold
+    // these group keys; LNA stays per band.
+    QString m_currentPowerKey;
+    static QString powerGroupKey(const QString& mode);
+    void applyPowerGroupFor(const QString& mode, const char* reason);
     // True while band-memory/restore code drives setTxPower(): only operator intent
     // bootstraps the baseline or records into the per-band map.
     bool m_applyingBandMemory = false;

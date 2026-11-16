@@ -4181,16 +4181,20 @@ void Hl2Backend::connectRadio(const RadioConnectRequest& request)
     // the stored per-band drive on every reconnect; Ozy311 traced the same
     // seam). With the model seeded, that push becomes a value-identical echo
     // — which setTxPower() now recognizes and declines to record.
+    // Build 451: drive and TUNE power by the start receiver's mode group.
+    m_currentPowerKey = powerGroupKey(m_haveRestoredState && !m_restoredState.mode.isEmpty()
+                                          ? m_restoredState.mode
+                                          : QStringLiteral("USB"));
     if (m_haveRestoredState) {
         const int drive =
-            m_driveByBand.value(m_currentBandKey, m_driveDefaultPercent);
+            m_driveByBand.value(m_currentPowerKey, m_driveDefaultPercent);
         if (drive >= 0) {
             m_rfPowerPercent = drive;
             TransmitDelta delta;
             delta.rfPower = drive;
             emit transmitChanged(delta);
         }
-        applyTuneMemoryFor(m_currentBandKey);
+        applyTuneMemoryFor(m_currentPowerKey);
     }
 
     // Receiver count: the smallest of what the operator asked for, what the
@@ -5054,8 +5058,10 @@ void Hl2Backend::setSliceMode(int sliceId, const QString& requested)
             Q_ARG(WdspChannel::Mode, wdsp));
         pushTxPassband(mode);
     }
-    if (ddc == m_txDdc)
+    if (ddc == m_txDdc) {
         ananPushCwKeyer();   // keyer + host-IQ gate follow the mode at once
+        applyPowerGroupFor(mode, "mode");   // build 451: drive / TUNE per mode group
+    }
     emitSliceState(ddc);
     ctunCenter(ddc);   // build 326: the passband moved with the mode
     notifyOperatingStateChanged();
@@ -5622,6 +5628,7 @@ void Hl2Backend::setTxSlice(int sliceId)
     // remembered drive/LNA and re-key later edits — the band key belongs to
     // the transmit-owning slice, not to whichever slice tuned last.
     applyPerBandStateFor(r->sliceFreqHz, "tx slice move");
+    applyPowerGroupFor(r->mode, "tx slice move");   // build 451
     if (m_txDsp) {
         QMetaObject::invokeMethod(m_txDsp, "setMode", Qt::QueuedConnection,
             Q_ARG(WdspChannel::Mode, modeFromString(r->mode)));
@@ -8493,9 +8500,9 @@ void Hl2Backend::setTune(bool on, int tunePowerPercent, const AetherSDR::TxCoord
         if (m_metis)
             QMetaObject::invokeMethod(m_metis, "setTunerStart", Qt::QueuedConnection,
                                       Q_ARG(bool, false));
-        // A band changed under the carrier held its TUNE power back
+        // A mode group changed under the carrier held its TUNE power back
         // (applyTuneMemoryFor); with the carrier down it applies now.
-        applyTuneMemoryFor(m_currentBandKey);
+        applyTuneMemoryFor(m_currentPowerKey);
     }
 }
 
@@ -8522,8 +8529,8 @@ bool Hl2Backend::recordTunePower(int percent)
         return false;
     }
     m_tunePowerPercent = clamped;
-    if (!m_currentBandKey.isEmpty()) {
-        m_tuneByBand.insert(m_currentBandKey, clamped);
+    if (!m_currentPowerKey.isEmpty()) {
+        m_tuneByBand.insert(m_currentPowerKey, clamped);
     }
     // First-set-wins baseline for bands never tuned, as for drive.
     if (m_tuneDefaultPercent < 0) {
@@ -8828,9 +8835,9 @@ void Hl2Backend::setTxPower(int percent)
                                 && clamped != m_rfPowerPercent;
     m_rfPowerPercent = clamped;
     if (operatorChange) {
-        // The operator's drive belongs to the band they set it on.
-        if (!m_currentBandKey.isEmpty())
-            m_driveByBand.insert(m_currentBandKey, m_rfPowerPercent);
+        // The operator's drive belongs to the mode group they set it on (build 451).
+        if (!m_currentPowerKey.isEmpty())
+            m_driveByBand.insert(m_currentPowerKey, m_rfPowerPercent);
         // The FIRST drive an operator sets becomes the radio's baseline for
         // bands never visited (PR #4619 review: nothing else can ever raise
         // the sentinel, so the unvisited-band fallback was dead and a new
@@ -10326,6 +10333,7 @@ void Hl2Backend::applyRestoredState(const RestoredRadioState& state)
     m_sampleRateHz = 48000;       // construction default — radio B must not
                                   // inherit radio A's span (PR #4619 review)
     m_currentBandKey.clear();
+    m_currentPowerKey.clear();
     // Same rule for the TX passband: a same-family swap must not carry radio A's
     // eSSB cuts onto radio B. Back to virgin defaults, which for this pair means
     // "the operator has chosen nothing" — so effectiveTxPassband() resumes
@@ -10461,15 +10469,19 @@ void Hl2Backend::applyRestoredState(const RestoredRadioState& state)
             0, txSetpoints.value(QStringLiteral("defaultPercent")).toInt(), 100);
     const QJsonObject driveByBand =
         txSetpoints.value(QStringLiteral("driveByBand")).toObject();
+    // Build 451: only the mode-group keys; the per-band drives of older builds
+    // are dropped (the first save no longer writes them).
     for (auto it = driveByBand.constBegin(); it != driveByBand.constEnd(); ++it)
-        m_driveByBand.insert(it.key(), qBound(0, it.value().toInt(), 100));
+        if (it.key().startsWith(QLatin1String("mode:")))
+            m_driveByBand.insert(it.key(), qBound(0, it.value().toInt(), 100));
     if (txSetpoints.contains(QStringLiteral("tuneDefaultPercent")))
         m_tuneDefaultPercent = qBound(
             0, txSetpoints.value(QStringLiteral("tuneDefaultPercent")).toInt(), 100);
     const QJsonObject tuneByBand =
         txSetpoints.value(QStringLiteral("tuneByBand")).toObject();
     for (auto it = tuneByBand.constBegin(); it != tuneByBand.constEnd(); ++it)
-        m_tuneByBand.insert(it.key(), qBound(0, it.value().toInt(), 100));
+        if (it.key().startsWith(QLatin1String("mode:")))   // build 451
+            m_tuneByBand.insert(it.key(), qBound(0, it.value().toInt(), 100));
 
     // Mic level is dropped, not clamped, when out of range: the floor is mute,
     // so a clamped bad value would silently take the operator off the air.
@@ -10858,8 +10870,9 @@ RestoredRadioState Hl2Backend::currentOperatingState() const
                 m_lnaGainDb, m_lnaSessionPin,
                 m_lnaDbByBand.contains(m_currentBandKey),
                 m_lnaDbByBand.value(m_currentBandKey)));
-        driveByBand.insert(m_currentBandKey, m_rfPowerPercent);
     }
+    if (!m_currentPowerKey.isEmpty())   // build 451: drive is per mode group
+        driveByBand.insert(m_currentPowerKey, m_rfPowerPercent);
 
     // The auto-gain switch is persisted here, not in AppSettings (docs/HERMES.md:
     // values the radio cannot store go in OperatingState). Only the switch: the
@@ -11876,7 +11889,8 @@ void Hl2Backend::rememberCurrentBandState()
             m_lnaGainDb, m_lnaSessionPin,
             m_lnaDbByBand.contains(m_currentBandKey),
             m_lnaDbByBand.value(m_currentBandKey)));
-    m_driveByBand.insert(m_currentBandKey, m_rfPowerPercent);
+    if (!m_currentPowerKey.isEmpty())   // build 451: drive is per mode group
+        m_driveByBand.insert(m_currentPowerKey, m_rfPowerPercent);
 }
 
 void Hl2Backend::applyPerBandStateFor(double freqHz, const char* reason)
@@ -11905,21 +11919,48 @@ void Hl2Backend::applyPerBandStateFor(double freqHz, const char* reason)
     if (lna != m_lnaGainDb)
         applyLnaGainDb(lna);
 
-    // NEVER inherit the previous band's drive (nigelfenton's RFC rationale:
-    // the drive that makes 5 W on 80 m is amplifier-input-unsafe on 10 m).
-    // Remembered value first, then the operator's baseline default, and — for
-    // a band never visited before any baseline exists — a deliberate 0:
-    // conservative once per band per radio, instead of hot once per mistake.
-    int drive = m_driveByBand.value(newBand, m_driveDefaultPercent);
-    if (drive < 0) {
-        drive = 0;
-        qCInfo(lcHl2) << "HL2 band memory: first visit to" << newBand
-                      << "with no drive baseline — drive set to 0 until the"
-                         " operator chooses one";
-    }
-    if (drive != m_rfPowerPercent) {
-        // A drive SETPOINT — applyDrive() itself stays behind the TX gate, so
-        // a transmit-blocked session records the value without touching the PA.
+    // Build 451 (operator, 16.11): drive and TUNE power are no longer per
+    // band but per mode group (applyPowerGroupFor): band buttons, memories and
+    // quick memories change the band and must not change the power.
+
+    qCInfo(lcHl2) << "HL2 band memory (" << reason << "):" << oldBand << "->"
+                  << newBand << "lna" << m_lnaGainDb << "dB";
+    notifyOperatingStateChanged();
+}
+
+QString Hl2Backend::powerGroupKey(const QString& mode)
+{
+    // The tuning step's groups (RadioModel, build 445).
+    const QString m = mode.toUpper();
+    QString g = QStringLiteral("DIGI");
+    if (m == QLatin1String("USB") || m == QLatin1String("LSB"))
+        g = QStringLiteral("SSB");
+    else if (m.startsWith(QLatin1String("CW")))
+        g = QStringLiteral("CW");
+    else if (m == QLatin1String("AM") || m == QLatin1String("SAM") || m == QLatin1String("DSB")
+             || m == QLatin1String("DRM"))
+        g = QStringLiteral("AM");
+    else if (m == QLatin1String("FM") || m == QLatin1String("NFM") || m == QLatin1String("FMN")
+             || m == QLatin1String("WFM") || m == QLatin1String("WBFM") || m == QLatin1String("DFM"))
+        g = QStringLiteral("FM");
+    return QStringLiteral("mode:") + g;
+}
+
+void Hl2Backend::applyPowerGroupFor(const QString& mode, const char* reason)
+{
+    // Build 451: leaving a mode group records its drive (TUNE power is
+    // recorded as it changes); entering one applies what it remembered. A
+    // group never set keeps the drive (the band is the same, so no safety
+    // floor is needed) unless a baseline exists; TUNE likewise.
+    const QString key = powerGroupKey(mode);
+    if (key == m_currentPowerKey)
+        return;
+    if (!m_currentPowerKey.isEmpty())
+        m_driveByBand.insert(m_currentPowerKey, m_rfPowerPercent);
+    const QString oldKey = m_currentPowerKey;
+    m_currentPowerKey = key;
+    const int drive = m_driveByBand.value(key, m_driveDefaultPercent);
+    if (drive >= 0 && drive != m_rfPowerPercent) {
         m_applyingBandMemory = true;
         setTxPower(drive);
         m_applyingBandMemory = false;
@@ -11927,11 +11968,9 @@ void Hl2Backend::applyPerBandStateFor(double freqHz, const char* reason)
         delta.rfPower = drive;
         emit transmitChanged(delta);
     }
-    applyTuneMemoryFor(newBand);
-
-    qCInfo(lcHl2) << "HL2 band memory (" << reason << "):" << oldBand << "->"
-                  << newBand << "lna" << m_lnaGainDb << "dB drive"
-                  << m_rfPowerPercent << "% tune" << m_tunePowerPercent << '%';
+    applyTuneMemoryFor(key);
+    qCInfo(lcHl2) << "Power by mode group (" << reason << "):" << oldKey << "->" << key
+                  << "drive" << m_rfPowerPercent << "% tune" << m_tunePowerPercent << '%';
     notifyOperatingStateChanged();
 }
 
@@ -12001,7 +12040,7 @@ void Hl2Backend::pushInitialState()
             // register. After RadioModel's own connect-time power push, so
             // the remembered per-band value wins over the session default.
             const int drive =
-                m_driveByBand.value(m_currentBandKey, m_driveDefaultPercent);
+                m_driveByBand.value(m_currentPowerKey, m_driveDefaultPercent);
             if (drive >= 0) {
                 m_applyingBandMemory = true;
                 setTxPower(drive);
