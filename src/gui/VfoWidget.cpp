@@ -3033,13 +3033,15 @@ void VfoWidget::buildTabContent()
         // defaults"): the operator's own set, read from his settings --
         // SSB, AM, SAM, FDV / CWL, SAM, DIGU, FM. The sideband buttons swap on
         // a second click (LSB <-> USB, CWL <-> CW), so one of each is enough.
+        // Build 447 (operator, 16.11, the same request again): row 2's second
+        // button is FTX (his settings: ModeButton5 = FTX).
         static const char* kDefaults[kQuickModeButtons] = {
 #ifdef HAVE_RADE
             "LSB", "AM", "SAM", "FDV",     // row 1
 #else
             "LSB", "AM", "SAM", "CW",      // row 1 (no FreeDV in this build)
 #endif
-            "CWL", "SAM", "DIGU", "FM"};   // row 2
+            "CWL", "FTX", "DIGU", "FM"};   // row 2
         for (int i = 0; i < kQuickModeButtons; ++i) {
             QString a = settings.value(quickModeKey(i), QString::fromLatin1(kDefaults[i])).toString();
             // ANAN-100D port: the RADE pseudo-mode is now "FDV" (FreeDV).
