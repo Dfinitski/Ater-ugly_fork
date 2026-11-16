@@ -146,7 +146,6 @@ jobs:
             "-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG -g" \
             "-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG -g" \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DENABLE_RTL=ON -DREQUIRE_RTL=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOY_TARGET" \
@@ -199,9 +198,9 @@ jobs:
       - name: Bundle Qt frameworks
         run: |
           "$QT_ROOT/bin/macdeployqt" build/AetherSDR.app -verbose=1 -always-overwrite
+          # The fork has no RTL-SDR support (ENABLE_RTL is not an option of its
+          # CMakeLists): no RTL package to stage or check.
           mkdir -p build/AetherSDR.app/Contents/Resources
-          cp -R third_party/macos-deps/share/aethersdr-rtl-sources build/AetherSDR.app/Contents/Resources/
-          python3 tools/check_rtl_package.py build/AetherSDR.app --platform macos
 
       - name: Assert the bundled Qt is the pinned Qt
         run: |
