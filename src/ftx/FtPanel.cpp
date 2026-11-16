@@ -1214,7 +1214,8 @@ void FtPanel::loadCty()
 #endif
     if(!f.open(QIODevice::ReadOnly | QIODevice::Text))
     {
-        qWarning() << "FT: no cty.dat next to the program (no countries)";
+        qWarning().noquote() << "FT: cty.dat not found (no countries):"
+                             << QDir::toNativeSeparators(f.fileName());   // build 446
         return;
     }
     const QString all = QString::fromLatin1(f.readAll());

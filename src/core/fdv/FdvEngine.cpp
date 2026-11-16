@@ -1,6 +1,7 @@
 // FreeDV digital voice engine (libfdv wrapper), see FdvEngine.h.
 // Ported from MicronSDR FdvUnit.cpp.
 #include "FdvEngine.h"
+#include "core/ModuleFiles.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -131,8 +132,15 @@ bool FdvEngine::load()
 #endif
         lib->setFileName(QStringLiteral("libfdv"));
         if (!lib->isLoaded() && !lib->load()) {
-            m_err = QStringLiteral("libfdv / libcodec2 (.dll / .so / .dylib) not found next to the program (%1): %2")
-                        .arg(QDir::toNativeSeparators(appDir), firstErr);
+            // Build 446: which file is missing (libfdv, or the codec2 it
+            // needs), or that it is there but refused, and what to do.
+            const QString fdvFile = ModuleFiles::fileName(QStringLiteral("libfdv"));
+            const QString c2File = ModuleFiles::fileName(QStringLiteral("libcodec2"));
+            const bool fdvThere = QFileInfo::exists(QDir(ModuleFiles::libDir()).filePath(fdvFile));
+            const bool c2There = QFileInfo::exists(QDir(ModuleFiles::libDir()).filePath(c2File));
+            m_err = (fdvThere && !c2There)
+                ? ModuleFiles::loadFailureText(c2File, firstErr)
+                : ModuleFiles::loadFailureText(fdvFile, firstErr);
             qCWarning(lcFdv).noquote() << "FreeDV:" << m_err;
             delete lib;
             return false;

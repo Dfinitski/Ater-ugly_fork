@@ -253,6 +253,7 @@
 #include <QToolTip>
 #include <QMediaDevices>
 #include "core/AppSettings.h"
+#include "core/ModuleFiles.h"
 #include "core/AudioDevicePreferencePolicy.h"
 #include "core/NnrSettings.h"
 #include "core/AutomationServer.h"
@@ -3939,6 +3940,41 @@ void MainWindow::showEvent(QShowEvent* event)
     // finalized (swapped to the MinimalModeGeometry blob when present), so the
     // correct blob is the one that gets re-applied. (#3319)
     QTimer::singleShot(0, this, &MainWindow::reapplyStartupGeometryAfterShow);
+
+    // ANAN fork, build 446: MicronSDR's modules and cty.dat are separate files;
+    // a user who copied only the program, ran it from inside the ZIP, or whose
+    // antivirus removed a module got only "not loaded" deep in the FTX panel.
+    // Once after start, list what is missing and where it should be; the user
+    // can silence the warning for exactly that set of files.
+    QTimer::singleShot(1500, this, [this]() {
+        const QList<ModuleFiles::Entry> gone = ModuleFiles::missing();
+        if (gone.isEmpty())
+            return;
+        QStringList lines, names;
+        for (const auto& e : gone) {
+            lines << QStringLiteral("%1  (%2) - %3")
+                         .arg(e.file, e.feature, QDir::toNativeSeparators(e.dir));
+            names << e.file;
+        }
+        qCWarning(lcGui).noquote() << "Module files missing:" << names.join(QStringLiteral(", "))
+                                   << "in" << QDir::toNativeSeparators(ModuleFiles::libDir());
+        auto& st = AppSettings::instance();
+        const QString key = QStringLiteral("ModuleFilesWarningDismissed");
+        if (st.value(key).toString() == names.join(QLatin1Char(',')))
+            return;
+        QMessageBox box(QMessageBox::Warning, QStringLiteral("AetherSDR - files missing"),
+                        QStringLiteral("These files were not found, so the modes that need them "
+                                       "will not work:\n\n%1\n\n%2")
+                            .arg(lines.join(QLatin1Char('\n')), ModuleFiles::missingAdvice()),
+                        QMessageBox::Ok, this);
+        auto* dontShow = new QCheckBox(QStringLiteral("Do not warn again about these files"), &box);
+        box.setCheckBox(dontShow);
+        box.exec();
+        if (dontShow->isChecked()) {
+            st.setValue(key, names.join(QLatin1Char(',')));
+            st.save();
+        }
+    });
 }
 
 void MainWindow::reapplyStartupGeometryAfterShow()

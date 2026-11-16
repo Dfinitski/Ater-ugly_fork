@@ -4,6 +4,7 @@
 // FT8 / FT4 / WSPR / JS8 receiving: see FtUnit.h
 #define _USE_MATH_DEFINES
 #include "FtUnit.h"
+#include "core/ModuleFiles.h"
 #include <QLibrary>
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -164,8 +165,10 @@ bool FtUnit::load()
     // not search the executable's directory), then the search path.
     // Build 444: macOS app bundle - Contents/Frameworks.
     QLibrary lib(QDir(QCoreApplication::applicationDirPath()).filePath("libftx"));
+    QString firstErr;   // build 446: the error of the load next to the program
     if(!lib.load())
     {
+        firstErr = lib.errorString();
 #ifdef Q_OS_MACOS
         lib.setFileName(QDir(QCoreApplication::applicationDirPath() + "/../Frameworks").filePath("libftx"));
         if(!lib.load())
@@ -174,7 +177,8 @@ bool FtUnit::load()
     }
     if(!lib.isLoaded() && !lib.load())
     {
-        err = "libftx (.dll / .so / .dylib) not loaded: " + lib.errorString();
+        // Build 446: say whether the file is missing or refused, and what to do.
+        err = ModuleFiles::loadFailureText(ModuleFiles::fileName("libftx"), firstErr);
         qWarning() << "FT:" << err;
         return false;
     }
@@ -203,8 +207,10 @@ bool FtUnit::loadJs8()
     if(!errJs8.isEmpty())
         return false;
     QLibrary lib(QDir(QCoreApplication::applicationDirPath()).filePath("libjs8"));   // AetherSDR, 442
+    QString firstErr;   // build 446: the error of the load next to the program
     if(!lib.load())
     {
+        firstErr = lib.errorString();
 #ifdef Q_OS_MACOS
         // AetherSDR, 444: macOS app bundle - Contents/Frameworks
         lib.setFileName(QDir(QCoreApplication::applicationDirPath() + "/../Frameworks").filePath("libjs8"));
@@ -214,7 +220,7 @@ bool FtUnit::loadJs8()
     }
     if(!lib.isLoaded() && !lib.load())
     {
-        errJs8 = "libjs8 (.dll / .so / .dylib) not loaded: " + lib.errorString();
+        errJs8 = ModuleFiles::loadFailureText(ModuleFiles::fileName("libjs8"), firstErr);
         qWarning() << "JS8:" << errJs8;
         return false;
     }

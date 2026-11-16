@@ -4,6 +4,7 @@
 #define _USE_MATH_DEFINES
 #include "CtyDat.h"
 #include <QCoreApplication>
+#include <QDir>
 #include <QFile>
 #include <QStringList>
 #include <QRegularExpression>
@@ -26,7 +27,8 @@ void CtyDat::load()
 #endif
     if(!f.open(QIODevice::ReadOnly | QIODevice::Text))
     {
-        qWarning() << "cty.dat: not next to the program (no countries)";
+        qWarning().noquote() << "cty.dat: not found (no countries):"
+                             << QDir::toNativeSeparators(f.fileName());   // build 446
         return;
     }
     const QString all = QString::fromLatin1(f.readAll());
