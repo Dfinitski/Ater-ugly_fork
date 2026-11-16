@@ -7765,6 +7765,19 @@ libfdv 4 режима, libfdk-aac), запуск приложения 20 с. DMG
 и DMG прикрепятся по тегу `build-444`. Release notes: `docs/release-notes-build-444.md`.
 Не проверено на радио: всё на macOS; модули Linux — только загрузка и тесты MicronSDR.
 
+## 418. Сборка 445 — шаг перестройки по группам мод
+
+Оператор, 15.11: «а Step запоминается по модам?» — нет: на радио без командной плоскости (ANAN)
+шаг клиентский, один на все моды (`TuningStepSize` и `RestoredRadioState::tuningStepHz`); Flex
+хранит шаг по модам сам. «Делаем, для каждой группы своё, делить не нужно».
+
+| Файл | Что сделано |
+|---|---|
+| `src/models/RadioModel.cpp/.h` | `tuningStepGroup()`: SSB (USB / LSB), CW (CW / CWL / CWU), AM (AM / SAM / DSB / DRM), FM (FM / NFM / WFM / WBFM), DIGI (DIGU / DIGL и прочие). `clientStepForMode()` / `storeClientStepForMode()` — AppSettings `TuningStepByModeGroup`, JSON `{"семейство/id радио": {группа: Гц}}`. Любое изменение шага слайса (stepChanged) запоминается для группы его моды; смена моды (modeChanged, подключён после первого состояния слайса) ставит шаг группы. Группа, где шаг не выбирали: SSB 100 Гц, CW 10, AM 1000, FM 5000, DIGI 10. Новый слайс: шаг группы, если записан, иначе прежний общий шаг. Только при `clientOwnsSliceStep()` (не Flex). |
+
+Тест `radio_model_client_state_test` (восстановленный шаг 2500, радио B без документа — 100)
+разобран по коду: память групп привязана к радио, создание слайса сменой моды не считается.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

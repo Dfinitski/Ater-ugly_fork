@@ -2169,6 +2169,11 @@ private:
     // This radio's client-owned tuning step: restored at connect, seeded into
     // each new slice, and updated by any slice's step change. 0 = none.
     int         m_clientStepHz{0};
+    // ANAN fork, build 445: the client-owned step per mode group (SSB, CW, AM,
+    // FM, DIGI), in AppSettings "TuningStepByModeGroup". withDefault: a group
+    // never set gives its usual step (else 0).
+    int         clientStepForMode(const QString& mode, bool withDefault = true) const;
+    void        storeClientStepForMode(const QString& mode, int hz);
     bool        m_lineoutMute{false};
     int         m_headphoneGain{50};
     bool        m_headphoneMute{false};

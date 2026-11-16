@@ -544,6 +544,74 @@ bool RadioModel::clientOwnsSliceStep() const
             RadioCapabilities::ClientSettingsDomain::Tuning);
 }
 
+// ANAN fork, build 445 (operator, 15.11): the tuning step per mode group on a
+// radio whose step is client-owned (no command plane; Flex radios keep their
+// own per mode). The groups: SSB (USB / LSB), CW (CW / CWL / CWU), AM (AM / SAM
+// / DSB / DRM), FM (FM / NFM / WFM / WBFM), DIGI (DIGU / DIGL and the rest).
+// Stored per radio as JSON {"family/radioId": {group: Hz}} in
+// "TuningStepByModeGroup"; a group never set starts at a usual step for it.
+static QString tuningStepGroup(const QString& mode)
+{
+    const QString m = mode.toUpper();
+    if (m == QLatin1String("USB") || m == QLatin1String("LSB"))
+        return QStringLiteral("SSB");
+    if (m.startsWith(QLatin1String("CW")))
+        return QStringLiteral("CW");
+    if (m == QLatin1String("AM") || m == QLatin1String("SAM") || m == QLatin1String("DSB")
+        || m == QLatin1String("DRM"))
+        return QStringLiteral("AM");
+    if (m == QLatin1String("FM") || m == QLatin1String("NFM") || m == QLatin1String("FMN")
+        || m == QLatin1String("WFM") || m == QLatin1String("WBFM") || m == QLatin1String("DFM"))
+        return QStringLiteral("FM");
+    return QStringLiteral("DIGI");
+}
+
+static int tuningStepGroupDefault(const QString& group)
+{
+    if (group == QLatin1String("SSB")) return 100;
+    if (group == QLatin1String("CW"))  return 10;
+    if (group == QLatin1String("AM"))  return 1000;
+    if (group == QLatin1String("FM"))  return 5000;
+    return 10;   // DIGI
+}
+
+int RadioModel::clientStepForMode(const QString& mode, bool withDefault) const
+{
+    if (mode.isEmpty())
+        return 0;
+    const QString group = tuningStepGroup(mode);
+    const RadioSettingsScope scope = settingsScope();
+    const QJsonObject all = QJsonDocument::fromJson(
+        AppSettings::instance().value(QStringLiteral("TuningStepByModeGroup"), QStringLiteral("{}"))
+            .toString().toUtf8()).object();
+    const int hz = all.value(scope.family() + QLatin1Char('/') + scope.radioId())
+                       .toObject().value(group).toInt(0);
+    if (hz >= 1 && hz <= 1'000'000)
+        return hz;
+    return withDefault ? tuningStepGroupDefault(group) : 0;
+}
+
+void RadioModel::storeClientStepForMode(const QString& mode, int hz)
+{
+    if (mode.isEmpty() || hz < 1 || hz > 1'000'000)
+        return;
+    auto& st = AppSettings::instance();
+    QJsonObject all = QJsonDocument::fromJson(
+        st.value(QStringLiteral("TuningStepByModeGroup"), QStringLiteral("{}")).toString().toUtf8())
+                          .object();
+    const QString group = tuningStepGroup(mode);
+    const RadioSettingsScope scope = settingsScope();
+    const QString radioKey = scope.family() + QLatin1Char('/') + scope.radioId();
+    QJsonObject radio = all.value(radioKey).toObject();
+    if (radio.value(group).toInt(0) == hz)
+        return;
+    radio.insert(group, hz);
+    all.insert(radioKey, radio);
+    st.setValue(QStringLiteral("TuningStepByModeGroup"),
+                QString::fromUtf8(QJsonDocument(all).toJson(QJsonDocument::Compact)));
+    st.save();
+}
+
 void RadioModel::restoreClientOwnedStep(const RestoredRadioState& state)
 {
     // Refused, not clamped, outside 1 Hz..1 MHz. Seeded into each slice as it
@@ -1633,7 +1701,9 @@ void RadioModel::wireBackendReceiverState()
             });
 
             // Tuning capture of the client-owned step, whatever moved it.
-            connect(s, &SliceModel::stepChanged, this, [this](int hz) {
+            connect(s, &SliceModel::stepChanged, this, [this, s](int hz) {
+                if (hz > 0 && clientOwnsSliceStep())
+                    storeClientStepForMode(s->mode(), hz);   // ANAN fork, build 445
                 if (hz > 0 && hz != m_clientStepHz && clientOwnsSliceStep()) {
                     m_clientStepHz = hz;
                     scheduleOperatingStateSave();
@@ -1644,9 +1714,24 @@ void RadioModel::wireBackendReceiverState()
             m_slices.append(s);
             s->applyChanges(mapped);
             // Before sliceAdded, so the UI never shows the default first.
-            if (m_clientStepHz > 0 && clientOwnsSliceStep()) {
-                s->applyRecalledStepHz(m_clientStepHz);
+            // Build 445: the step of the slice's mode group when one is stored.
+            if (clientOwnsSliceStep()) {
+                const int modeHz = clientStepForMode(s->mode(), false);
+                if (modeHz > 0)
+                    s->applyRecalledStepHz(modeHz);
+                else if (m_clientStepHz > 0)
+                    s->applyRecalledStepHz(m_clientStepHz);
             }
+            // ANAN fork, build 445: the step of the new mode's group (SSB, CW,
+            // AM, FM, digital) when the mode changes. Connected after the
+            // slice's first state, so creating it does not count as a change.
+            connect(s, &SliceModel::modeChanged, this, [this, s](const QString& mode) {
+                if (!clientOwnsSliceStep())
+                    return;
+                const int hz = clientStepForMode(mode);
+                if (hz > 0 && hz != s->stepHz())
+                    s->applyRecalledStepHz(hz);
+            });
             m_meterModel.setActiveTxSlice(activeTxSliceNum());
             refreshTxPowerLimit();
             emit sliceAdded(s);
