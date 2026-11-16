@@ -278,10 +278,11 @@ jobs:
           PY
           test -f build/AetherSDR.app/Contents/Resources/cty.dat
 
-      - name: Start the app (offscreen, 20 s)
+      - name: Start the app (20 s)
         continue-on-error: true
+        # The bundle has only Qt's cocoa platform plugin (no offscreen); the
+        # runner has a logged-in GUI session, so the app starts as on a Mac.
         run: |
-          export QT_QPA_PLATFORM=offscreen
           build/AetherSDR.app/Contents/MacOS/AetherSDR > start.log 2>&1 &
           pid=$!; sleep 20
           if kill -0 $pid 2>/dev/null; then echo "still running after 20 s: OK"; kill $pid; else echo "exited early:"; fi
