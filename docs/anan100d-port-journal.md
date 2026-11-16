@@ -7711,6 +7711,60 @@ DRM на Linux: декодер Dream собран в программу (third_p
 Отдельного модуля не нужно. Линейная фаза приёма для DRM (сборка 440) — на main, в следующий
 релиз.
 
+## 417. Модули MicronSDR для macOS; сборка 444 — первая сборка для macOS (15.11.2026)
+
+Оператор, 15.11: MicronSDR подготовил `build_macos.sh` для трёх модулей; Mac нет — собрать на
+GitHub. Затем: «эти имена разрешены», «оформи готовые модули в папке с micronsdr по аналогии с
+линукс версиями»; «давай сделаем релиз ... для линукс и впервые для мак».
+
+**Модули (CI `macos-modules.yml`, раннер macos-15, Apple silicon).** Исходники трёх папок MicronSDR
+скопированы в `tools/micronsdr-modules/` (123 файла), workflow запускает их `build_macos.sh` без
+изменений, полный набор тестов и выкладывает результат в ветку `macos-modules-bin` (артефакты
+GitHub отсюда не скачиваются — хранилище закрыто прокси).
+- libjs8, libfdv + libcodec2 прошли все проверки сразу. libftx: драйвер gfortran экспортирует
+  четыре функции рантайма GCC (`___emutls_get_address`, `___emutls_register_common`,
+  `___gcc_nested_func_ptr_created / _deleted`) мимо `-exported_symbols_list`; `-ld_classic` не
+  помог. Безвредны (двухуровневое пространство имён). Оператор разрешил; MicronSDR сам добавил в
+  скрипты `ALLOW_EXPORTS` (точные имена) — взяты в репозиторий.
+- **Найдена ошибка libftx на macOS:** WSPR не декодировал ничего ("Error: Failed to open wsprd").
+  `wspr_decode` перезапускает getopt wsprd через `optind = 0` — так работает glibc и mingw-w64,
+  а BSD getopt macOS берёт тогда argv[0] за файл. Исправлено в `FT_src/c/wspr_api.c`: на macOS /
+  BSD `optreset = 1; optind = 1`, на Windows / Linux код прежний (пересобирать их не нужно).
+- Тесты (симуляторы берут шум от времени — по 10 попыток): FT8 глубина 3: −19 дБ 9/10, −20 дБ
+  5/10, −21 дБ 3/10, −22 дБ 0/10 (в Linux-журнале «−22 дБ» — одна удачная попытка); FT4 −16 дБ
+  10/10; WSPR −28 дБ 3/3; JS8 как на Windows / Linux; FreeDV off-air RADE SNR 28 дБ, позывные.
+- Разложено у оператора: `FT_src\macos\`, `JS8_src\macos\`, `FreeDV_src\macos\` (dylib, тестовые
+  программы, `MACOS_MODULES.txt` / `_ru.txt` — общий журнал); журнал заменил и прежний
+  `MACOS_MODULES*.txt` в папках исходников; `FT_src\c\wspr_api.c` исправлен.
+- В репозитории: `third_party/libftx|libjs8|libfdv/macos-arm64/`.
+
+**Сборка 444 — пути в app bundle (код Windows / Linux не меняется):**
+
+| Файл | Что сделано |
+|---|---|
+| `src/ftx/FtUnit.cpp` | libftx / libjs8: рядом с программой, на macOS — `Contents/Frameworks` (`../Frameworks`), затем системный путь; сообщения «.dll / .so / .dylib». |
+| `src/core/fdv/FdvEngine.cpp` | libfdv так же (codec2 он находит рядом с собой, `@loader_path`). |
+| `src/ftx/CtyDat.cpp`, `src/ftx/FtPanel.cpp` | cty.dat: на macOS, если нет рядом с программой, — `Contents/Resources`. |
+| `third_party/dream/aether/fdk_dyn.cpp` | macOS: `_NSGetExecutablePath`, сначала `../Frameworks/libfdk-aac.2.dylib`, потом системный. |
+| `src/gui/MainWindow_Drm.cpp` | Подсказка macOS про libfdk-aac.2.dylib. |
+
+**`macos-app.yml`** (из upstream `macos-dmg.yml` сборки 169): только arm64, macOS 14.4+, без
+Developer ID — подпись ad hoc, без нотаризации, без пакета драйвера DAX; в bundle: модули
+MicronSDR в `Frameworks`, cty.dat в `Resources`, FDK-AAC v3.0.0 (собирается здесь под 14.4,
+`@rpath/libfdk-aac.2.dylib`). Проверки: Qt — закреплённый 6.12.0, ничего в bundle не выше 14.4,
+`codesign --verify --deep --strict`, загрузка модулей ctypes из Frameworks (libftx 121, libjs8 100,
+libfdv 4 режима, libfdk-aac), запуск приложения 20 с. DMG с «READ ME FIRST.txt» (Gatekeeper).
+- Первая сборка: код форка скомпилировался на macOS без ошибок; упала проверка пакета RTL —
+  RTL в форке удалён, а флаги `ENABLE_RTL` и проверка пришли из upstream. Убраны; список остатков
+  RTL для чистки записан в разделе 3.
+- Вторая: успех, DMG ≈157 МБ. Запуск с `QT_QPA_PLATFORM=offscreen` невозможен (в bundle только
+  плагин cocoa) — запуск переделан на обычный; третья сборка: приложение работает 20 с (экран
+  раннера 1024x768), настройки созданы.
+
+Релиз сборки 444: Windows-архив из exe оператора (проверено — в нём строки сборки 444), AppImage
+и DMG прикрепятся по тегу `build-444`. Release notes: `docs/release-notes-build-444.md`.
+Не проверено на радио: всё на macOS; модули Linux — только загрузка и тесты MicronSDR.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
