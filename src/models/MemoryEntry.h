@@ -37,6 +37,12 @@ struct MemoryEntry {
     int     rttyShift{170};
     int     diglOffset{2210};
     int     diguOffset{1500};
+    // ANAN fork, build 452: the common recall snapshot (gui/RecallSnapshot.h,
+    // compact JSON) -- the volume, NB / NR, AGC, squelch, antennas, LNA,
+    // attenuator, receiver rate, view, WNB and SSB TX filter a band button and
+    // a quick memory keep too. The memory's own frequency, name, mode, filter
+    // and step stay in the fields above. Empty on a Flex and on older entries.
+    QString recallJson;
 
     // Field-wise equality. The local memory bank uses it to skip re-saving a
     // slot that did not actually change — the memory dialog re-asserts the

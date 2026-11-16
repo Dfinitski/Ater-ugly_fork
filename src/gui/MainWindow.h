@@ -1143,6 +1143,12 @@ private:
     // Entering a band (button, typed frequency, spot): its antennas, LNA and
     // RX2 attenuator, as Thetis applies them on any band change.
     void ananBandMemApplyHardware(SliceModel* s, const QJsonObject& mem);
+    // Build 452: recall the common snapshot (gui/RecallSnapshot.h) of a band
+    // button, a quick memory or a station memory. tuneAndMode: also the
+    // frequency, mode, filter and step (not for a station memory, whose own
+    // fields set those); attempt: 1 after a receiver-rate change.
+    void applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool tuneAndMode,
+                             int attempt = 0);
     static constexpr int kLinkLostGraceMs = 1000;   // build 377: was 3000, see m_linkLostClock
     // A busy ANAN is taken over only when the busy session is plausibly ours:
     // the previous run of this program right after start-up (closed or stopped

@@ -1,6 +1,7 @@
 #include "MemoryCommands.h"
 
 #include "models/SliceModel.h"
+#include "gui/RecallSnapshot.h"
 
 namespace AetherSDR {
 
@@ -44,6 +45,9 @@ MemoryEntry captureMemoryFromSlice(const RadioModel& model,
     memory.rttyShift = slice.rttyShift();
     memory.diglOffset = slice.diglOffset();
     memory.diguOffset = slice.diguOffset();
+    // ANAN fork, build 452: the rest of what a band button and a quick memory
+    // keep (empty on a Flex).
+    memory.recallJson = RecallSnapshot::toText(RecallSnapshot::capture(model, &slice));
     return memory;
 }
 

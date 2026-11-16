@@ -50,6 +50,8 @@ QJsonObject entryToJson(const MemoryEntry& m)
     o["rttyShift"] = m.rttyShift;
     o["diglOffset"] = m.diglOffset;
     o["diguOffset"] = m.diguOffset;
+    if (!m.recallJson.isEmpty())
+        o["recallJson"] = m.recallJson;   // ANAN fork, build 452
     return o;
 }
 
@@ -85,6 +87,7 @@ MemoryEntry entryFromJson(const QJsonObject& o)
     m.rttyShift = o.value("rttyShift").toInt(m.rttyShift);
     m.diglOffset = o.value("diglOffset").toInt(m.diglOffset);
     m.diguOffset = o.value("diguOffset").toInt(m.diguOffset);
+    m.recallJson = o.value("recallJson").toString();   // ANAN fork, build 452
     return m;
 }
 

@@ -32,6 +32,10 @@ struct BandStackEntry {
     int sampleRateHz{0};
     double panCenterMhz{0.0};
     double panBandwidthMhz{0.0};
+    // Build 452: the common recall snapshot (gui/RecallSnapshot.h, compact
+    // JSON) -- the same set a band button and a station memory keep. Empty on
+    // older entries and on a Flex: the fields above are recalled then.
+    QString recallJson;
     qint64 createdAtMs{0};  // epoch ms; 0 = legacy entry (never auto-expires)
     bool autoSaved{false};  // true if added by auto-save dwell; false = manual
 };

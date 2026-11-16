@@ -51,6 +51,8 @@ QJsonObject entryToJson(const BandStackEntry& e)
         o.insert(QStringLiteral("panCenterMhz"), e.panCenterMhz);
         o.insert(QStringLiteral("panBandwidthMhz"), e.panBandwidthMhz);
     }
+    if (!e.recallJson.isEmpty())
+        o.insert(QStringLiteral("recallJson"), e.recallJson);   // build 452
     if (e.createdAtMs > 0) {
         o.insert(QStringLiteral("createdAtMs"), static_cast<double>(e.createdAtMs));
     }
@@ -81,6 +83,7 @@ BandStackEntry entryFromJson(const QJsonObject& o)
     e.sampleRateHz = o.value(QStringLiteral("sampleRateHz")).toInt(0);
     e.panCenterMhz = o.value(QStringLiteral("panCenterMhz")).toDouble(0.0);
     e.panBandwidthMhz = o.value(QStringLiteral("panBandwidthMhz")).toDouble(0.0);
+    e.recallJson = o.value(QStringLiteral("recallJson")).toString();   // build 452
     e.createdAtMs =
         static_cast<qint64>(o.value(QStringLiteral("createdAtMs")).toDouble());
     e.autoSaved = o.value(QStringLiteral("autoSaved")).toBool();

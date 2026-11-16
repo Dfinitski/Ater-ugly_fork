@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "MainWindow.h"
+#include "gui/RecallSnapshot.h"
 #include "core/ForkDataDir.h"
 #include <utility>
 #include "core/AppActivity.h"
@@ -5570,6 +5571,8 @@ void MainWindow::buildUI()
             entry.wnbLevel = pan->wnbLevel();
         }
         captureBandStackView(slice, entry);   // build 269
+        // Build 452: the common recall snapshot (empty on a Flex).
+        entry.recallJson = RecallSnapshot::toText(RecallSnapshot::capture(m_radioModel, slice));
 
         BandStackSettings::instance().addEntry(m_radioModel.settingsScope(), entry);
         m_panStack->bandStackPanel()->loadBookmarks(
@@ -5743,6 +5746,8 @@ void MainWindow::buildUI()
             entry.wnbLevel = pan->wnbLevel();
         }
         captureBandStackView(slice, entry);   // build 269
+        // Build 452: the common recall snapshot (empty on a Flex).
+        entry.recallJson = RecallSnapshot::toText(RecallSnapshot::capture(m_radioModel, slice));
         BandStackSettings::instance().addEntry(m_radioModel.settingsScope(), entry);
         m_panStack->bandStackPanel()->loadBookmarks(
             m_radioModel.settingsScope(), m_bandPlanMgr);
@@ -7981,6 +7986,18 @@ bool MainWindow::activateMemorySpot(int memoryIndex, const QString& preferredPan
         m_pendingMemoryRevealSliceId = -1;
         m_pendingMemoryRevealTargetMhz = 0.0;
         return false;
+    }
+    // ANAN fork, build 452: the rest of the memory's snapshot (volume, NB / NR,
+    // AGC, antennas, LNA, attenuator, view ...) after its own frequency, mode,
+    // filter and step have been set by the recall above.
+    if (!m_radioModel.usesFlexCommandPlane()) {
+        const QString snap = m_radioModel.memories().value(memoryIndex).recallJson;
+        if (!snap.isEmpty()) {
+            QTimer::singleShot(60, this, [this, sliceId, snap] {
+                if (SliceModel* s = m_radioModel.slice(sliceId))
+                    applyRecallSnapshot(s, RecallSnapshot::fromText(snap), false);
+            });
+        }
     }
     QTimer::singleShot(750, this, [this, sliceId]() {
         if (m_pendingMemoryRevealSliceId != sliceId)
@@ -12020,6 +12037,12 @@ void MainWindow::recallBandStackEntry(SliceModel* slice, const BandStackEntry& e
 {
     if (!slice)
         return;
+    // Build 452: an entry with the common snapshot recalls it as a band button
+    // and a station memory do; older entries and a Flex use the fields below.
+    if (!e.recallJson.isEmpty() && !m_radioModel.usesFlexCommandPlane()) {
+        applyRecallSnapshot(slice, RecallSnapshot::fromText(e.recallJson), true);
+        return;
+    }
         int id = slice->sliceId();
 
         // Mode first (affects filter ranges). The HL2's data-mode AGC relies
