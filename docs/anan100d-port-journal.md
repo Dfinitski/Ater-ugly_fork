@@ -100,6 +100,23 @@ board type 3 в P2 discovery) по openHPSDR Protocol 2.
 |---|---|
 | `CMakeLists.txt`, блок NR4/libspecbleach: `RTL_FFTW3F_TARGET` | Переменная больше не задаётся → срабатывает обычный `find_library(fftw3f)`. На Windows NR4 использует свой блок `FFTW3F_DLL`, не затронут. Можно упростить. |
 
+**Остатки RTL, которые нужно почистить (записано 15.11.2026, при первой сборке для macOS):**
+код RTL удалён, но сборка и выпуск ещё тащат его хвосты. Убрать, не задев FFTW:
+
+| Где | Что осталось | Осторожно |
+|---|---|---|
+| `.github/workflows/appimage.yml` | `-DENABLE_RTL=ON -DREQUIRE_RTL=ON` (CMake их не знает: «Manually-specified variables were not used»), шаг «Build pinned RTL dependencies», `tools/stage_rtl_appimage.py`, копия `aethersdr-rtl-sources` в AppImage | `setup-rtl-deps.sh` собирает и **float FFTW** для NR4 — оставить FFTW (отдельным шагом), убрать librtlsdr / libusb |
+| `scripts/setup/setup-macos-deps.sh` | собирает librtlsdr и libusb вместе с fftw / portaudio / hidapi | FFTW (double и float), portaudio, hidapi нужны |
+| `scripts/setup/setup-rtl-deps.sh / .ps1`, `rtl-dependencies.json`, `tools/check_rtl_package.py`, `tools/stage_rtl_appimage.py` | скрипты RTL | float FFTW из `rtl-dependencies.json` перенести туда, где его возьмут NR4 / AppImage |
+| Windows-архив выпуска | `rtlsdr.dll`, `libusb-1.0.dll`, `licenses/rtl/` | проверить, что `libusb-1.0.dll` не нужен ничему другому (HID / CAT) |
+| `CMakeLists.txt` | `RTL_FFTW3F_TARGET` в блоке NR4 (см. выше), комментарий у строки 3700 | — |
+| `packaging/linux/70-rtl-sdr.rules`, `packaging/macos/build-installer.sh` | правило udev, упоминания в установщике | — |
+| `tests/rtl_*_test.cpp` + `tests/tests.cmake` | тесты удалённого бэкенда | — |
+| `src/aetherd/main.cpp`, `MainWindow*.cpp`, `RadioModel.*`, `RadioCapabilities.h`, `IRadioBackend.h`, `FftwPlannerLock.h`, `WaterfallLevelMap.h`, `NoiseFloorAutoAdjustGate.h`, `RadioSettingsIdentity.h` | упоминания / ветки RTL (часть — только комментарии) | просмотреть по одной |
+| `BUILD-OPTIONS.md`, `ROADMAP.md`, `.gitignore`, `scripts/build-windows-local.ps1` | описания опций RTL | — |
+
+Для macOS-сборки (`macos-app.yml`) RTL уже убран: флаги и проверка пакета RTL (она остановила первую сборку DMG).
+
 **Что ценного было в RTL и может пригодиться ANAN:**
 - `RtlReceiverRegistry`/`RtlReceivePipeline` — несколько независимых приёмников (слайсов) из одного I/Q-потока на стороне клиента. У ANAN-100D 4+ DDC в железе, поэтому многослайсовость лучше делать аппаратно (по DDC на слайс), но подход к реестру приёмников можно подсмотреть в git-истории (`git show v26.10.4:src/core/backends/rtl/RtlReceiverRegistry.cpp`).
 - Страница калибровки ppm — у ANAN есть свой путь калибровки (`hostFrequencyCalibration`, см. HL2).
