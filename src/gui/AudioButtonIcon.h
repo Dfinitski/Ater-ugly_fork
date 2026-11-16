@@ -62,14 +62,18 @@ inline QPixmap buildAudioIcon(AudioIcon kind, bool muted, const QColor& stroke, 
 
 // Set (or re-set) an audio button's icon at the current DPR and theme colour.
 // Called on construction, on every mute toggle, and on theme change.
-inline void applyAudioIcon(QPushButton* button, AudioIcon kind, bool muted, int size = 20)
+// strokeOverride (ANAN fork, build 448): a fixed colour instead of the theme's
+// secondary text colour (the VFO flag's speaker tab, drawn like the other tabs).
+inline void applyAudioIcon(QPushButton* button, AudioIcon kind, bool muted, int size = 20,
+                           const QColor& strokeOverride = QColor())
 {
     if (!button) {
         return;
     }
-    const QColor stroke =
-        AetherSDR::ThemeManager::instance().color(button,
-                                                  QStringLiteral("color.text.secondary"));
+    const QColor stroke = strokeOverride.isValid()
+        ? strokeOverride
+        : AetherSDR::ThemeManager::instance().color(button,
+                                                    QStringLiteral("color.text.secondary"));
     button->setIcon(QIcon(buildAudioIcon(kind, muted, stroke,
                                          button->devicePixelRatioF())));
     button->setIconSize(QSize(size, size));

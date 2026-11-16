@@ -429,10 +429,15 @@ static const QString kFlatBtn =
     // border to recolour, so it hovered with zero feedback before (#4036).
     "QPushButton:hover { background: rgba(255,255,255,28); border-radius: 3px; }";
 
+// ANAN fork, build 448 (operator, 16.11: new users did not take the speaker,
+// DSP, mode and X/RIT tabs for buttons -- #6888a0 looked like disabled
+// buttons): the tabs are light, brighten and underline under the mouse.
+static const char* kTabLblColor = "#c8d8e8";
 static const QString kTabLblNormal =
     "QPushButton { background: transparent; border: none; "
     "border-bottom: 2px solid transparent; "
-    "color: #6888a0; font-size: 13px; font-weight: bold; padding: 3px 0; }"
+    "color: #c8d8e8; font-size: 13px; font-weight: bold; padding: 3px 0; }"
+    "QPushButton:hover { color: #ffffff; border-bottom: 2px solid #5a7890; }"
     "QPushButton:focus { outline: none; border-bottom: 2px solid #6888a0; }";
 
 static const QString kTabLblActive =
@@ -1314,8 +1319,9 @@ void VfoWidget::buildUI()
     meterRow->addWidget(sMeterSpacer, 3);  // 75%
 
     m_dbmLabel = new QLabel("-95 dBm");
+    // Build 448: as light as the tabs (it stood out dim beside them).
     m_dbmLabel->setStyleSheet("QLabel { background: transparent; border: none; "
-                               "color: #6888a0; font-size: 11px; }");
+                               "color: #c8d8e8; font-size: 11px; }");
     m_dbmLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     m_dbmLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
     meterRow->addWidget(m_dbmLabel, 1);    // 25%
@@ -1584,7 +1590,7 @@ void VfoWidget::buildUI()
         btn->setFocusPolicy(Qt::TabFocus);
         connect(btn, &QPushButton::clicked, this, [this, i]() { showTab(i); });
         if (i == 0) {
-            applyAudioIcon(btn, AudioIcon::Speaker, false, 16);
+            applyAudioIcon(btn, AudioIcon::Speaker, false, 16, QColor(kTabLblColor));
             // Right-click on speaker tab toggles mute directly
             btn->setContextMenuPolicy(Qt::CustomContextMenu);
             connect(btn, &QPushButton::customContextMenuRequested, this, [this](const QPoint&) {
@@ -1617,6 +1623,17 @@ void VfoWidget::buildUI()
     };
     for (int i = 0; i < m_tabBtns.size(); ++i)
         m_tabBtns[i]->setAccessibleName(tabA11yNames[i]);
+    // Build 448: say what each tab opens (new users did not find FTX under
+    // the mode tab).
+    const QStringList tabTips = {
+        tr("Audio: volume, pan, mute (right-click: mute)"),
+        tr("DSP: noise reduction, noise blanker, notch, AGC"),
+        tr("Mode: SSB, CW, AM, FM, digital, FTX (FT8 / FT4 / WSPR / JS8), FreeDV"),
+        tr("X/RIT: receive and transmit offsets"),
+        tr("DAX: digital audio channel"),
+    };
+    for (int i = 0; i < m_tabBtns.size() && i < tabTips.size(); ++i)
+        m_tabBtns[i]->setToolTip(tabTips[i]);
 
     m_rxAntBtn->setAccessibleName("RX antenna");
     m_txAntBtn->setAccessibleName("TX antenna");
@@ -1697,7 +1714,7 @@ void VfoWidget::buildTabContent()
         connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this, [this] {
             const bool muted = m_slice && m_slice->audioMute();
             applyAudioIcon(m_muteBtn, AudioIcon::Speaker, muted, 16);
-            applyAudioIcon(m_tabBtns[0], AudioIcon::Speaker, muted, 16);
+            applyAudioIcon(m_tabBtns[0], AudioIcon::Speaker, muted, 16, QColor(kTabLblColor));
         });
         m_muteBtn->setAccessibleName("Slice audio mute");
         m_muteBtn->setCheckable(true);
@@ -1993,7 +2010,7 @@ void VfoWidget::buildTabContent()
                 m_slice->setAudioMute(on);
             }
             applyAudioIcon(m_muteBtn, AudioIcon::Speaker, on, 16);
-            applyAudioIcon(m_tabBtns[0], AudioIcon::Speaker, on, 16);
+            applyAudioIcon(m_tabBtns[0], AudioIcon::Speaker, on, 16, QColor(kTabLblColor));
             if (!m_updatingFromModel) emit audioMuteToggled(on);  // (#1560)
         });
         // SQL button: when wired to an RxApplet (the normal case in
@@ -5815,7 +5832,7 @@ void VfoWidget::syncFromSlice()
         bool muted = m_slice->audioMute();
         m_muteBtn->setChecked(muted);
         applyAudioIcon(m_muteBtn, AudioIcon::Speaker, muted, 16);
-        applyAudioIcon(m_tabBtns[0], AudioIcon::Speaker, muted, 16);
+        applyAudioIcon(m_tabBtns[0], AudioIcon::Speaker, muted, 16, QColor(kTabLblColor));
     }
     syncSqlVisuals();
     {
