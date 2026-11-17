@@ -394,14 +394,6 @@ static constexpr int kPanDragSettleMs = 160;
 static constexpr int kFrequencyRangeCommandMs = 33;
 static constexpr int kFrequencyRangeSettleMs = 300;
 static constexpr int kResizeBufferSettleMs = 120;
-// ANAN fork build 456 (operator, 16.11): "while resizing vertically the
-// panorama line stays where it was and is redrawn only after the release".
-// The buffers were committed only kResizeBufferSettleMs after the LAST resize
-// event, so a continuous drag never committed; the preview in between draws
-// the old logical frame with a dpr taken from the width (renderGpuFrame), so a
-// height change leaves the trace, scale and waterfall at their old place. Now
-// a drag also commits every kResizeLiveCommitMs; the settle commit stays.
-static constexpr int kResizeLiveCommitMs = 50;
 // Receiver AGC recovery window after TX→RX (#2117). Frames inside it read
 // several dB hot, so they neither feed waterfall history nor anchor a scale.
 static constexpr qint64 kPostTxAgcSettleMs = 400;
@@ -13608,14 +13600,12 @@ void SpectrumWidget::resizeEvent(QResizeEvent* ev)
     if (m_waterfall.isNull()) {
         applySettledResizeBuffers();
     } else if (m_resizeBufferSettleTimer) {
-        // Build 456: a live drag commits at most every kResizeLiveCommitMs.
-        if (!m_resizeBufferSettleTimer->isActive()) {
-            m_resizeLiveCommitClock.start();
-        } else if (m_resizeLiveCommitClock.isValid()
-                   && m_resizeLiveCommitClock.elapsed() >= kResizeLiveCommitMs) {
-            applySettledResizeBuffers();
-            m_resizeLiveCommitClock.start();
-        }
+        // Build 460: no live commit during the drag (build 456 committed every
+        // 50 ms): a commit of a new width rescales the waterfall
+        // and its history on the GUI thread, and every 50 ms that stalled the
+        // whole window's layout while the edge was dragged (the elements
+        // shook). Since build 457 the preview scales both axes correctly, so
+        // the last committed frame is stretched until the settle commit.
         m_resizeBufferSettleTimer->start();
     }
 
@@ -17200,10 +17190,7 @@ void SpectrumWidget::render(QRhiCommandBuffer* cb)
         cb->endPass();
         return;
     }
-    // Build 456: the buffers already committed at this size (a live commit,
-    // resizeEvent) -- a normal frame, overlays included.
-    if (m_resizeBufferSettleTimer && m_resizeBufferSettleTimer->isActive()
-        && m_resizePresentationSize != size()) {
+    if (m_resizeBufferSettleTimer && m_resizeBufferSettleTimer->isActive()) {
         // Keep presenting fresh FFT/waterfall data from the last settled
         // logical frame into QRhiWidget's automatically sized render target.
         // This preserves motion without recreating full-size resources at every
