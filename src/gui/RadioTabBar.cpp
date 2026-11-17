@@ -931,7 +931,7 @@ void RadioTabBar::applyActiveState()
         tab->setVisible(m_compact ? tab == shown : tab->entry().visibleInTabs);
     }
     if (m_addButton) {
-        m_addButton->setVisible(!m_compact);
+        m_addButton->setVisible(!m_compact && !m_addHidden);
     }
     updateTabViewport(shown);
     applyLinkVisuals();
@@ -947,6 +947,17 @@ void RadioTabBar::setCompactMode(bool on)
         m_popover->close();   // the "+" it belongs to is about to disappear
     }
     applyActiveState();
+}
+
+void RadioTabBar::setAddButtonHidden(bool hidden)
+{
+    if (m_addHidden == hidden)
+        return;
+    m_addHidden = hidden;
+    if (hidden && isDiscoveryPopoverVisible())
+        m_popover->close();
+    applyActiveState();
+    updateGeometry();
 }
 
 bool RadioTabBar::isDiscoveryPopoverVisible() const

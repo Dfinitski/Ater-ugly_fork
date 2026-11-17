@@ -10558,6 +10558,10 @@ void MainWindow::toggleMinimalMode(bool on)
         }
     }
 
+    // Build 465: the title bar's arrow points the way out of the mode.
+    if (m_titleBar)
+        m_titleBar->setMinimalIndicator(on);
+
     s.setValue("MinimalModeEnabled", on ? "True" : "False");
     s.save();
 }

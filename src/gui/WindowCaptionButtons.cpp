@@ -15,9 +15,12 @@ namespace {
 
 constexpr int kGlyphBox = 11;
 
-QString roleAccessibleName(CaptionButton::Role role, bool maximized)
+QString roleAccessibleName(CaptionButton::Role role, bool maximized, bool minimalActive = false)
 {
     switch (role) {
+        case CaptionButton::Role::Minimal:
+            return minimalActive ? QStringLiteral("Leave minimal mode (Ctrl+Shift+M)")
+                                 : QStringLiteral("Minimal mode: panadapters only (Ctrl+Shift+M)");
         case CaptionButton::Role::Minimize: return QStringLiteral("Minimize window");
         case CaptionButton::Role::MaximizeRestore:
             return maximized ? QStringLiteral("Restore window")
@@ -58,6 +61,18 @@ void CaptionButton::setMaximized(bool maximized)
     m_maximized = maximized;
     if (m_role == Role::MaximizeRestore) {
         setAccessibleName(roleAccessibleName(m_role, maximized));
+        setToolTip(accessibleName());
+        update();
+    }
+}
+
+void CaptionButton::setMinimalActive(bool on)
+{
+    if (m_minimalActive == on)
+        return;
+    m_minimalActive = on;
+    if (m_role == Role::Minimal) {
+        setAccessibleName(roleAccessibleName(m_role, false, on));
         setToolTip(accessibleName());
         update();
     }
@@ -119,6 +134,21 @@ void CaptionButton::paintGlyph(QPainter& p, const QColor& color) const
     const qreal b = qRound(box.bottom()) - 0.5;
 
     switch (m_role) {
+        case Role::Minimal: {
+            // Build 465: a diagonal arrow -- down to the left (into minimal
+            // mode), up to the right while the mode is on (out of it).
+            const qreal head = 5.0;
+            if (m_minimalActive) {
+                p.drawLine(QPointF(l, b), QPointF(r, t));
+                p.drawLine(QPointF(r, t), QPointF(r - head, t));
+                p.drawLine(QPointF(r, t), QPointF(r, t + head));
+            } else {
+                p.drawLine(QPointF(r, t), QPointF(l, b));
+                p.drawLine(QPointF(l, b), QPointF(l, b - head));
+                p.drawLine(QPointF(l, b), QPointF(l + head, b));
+            }
+            break;
+        }
         case Role::Minimize: {
             const qreal y = qRound(box.center().y()) + 0.5;
             p.drawLine(QPointF(l, y), QPointF(r, y));
@@ -190,14 +220,19 @@ WindowCaptionButtons::WindowCaptionButtons(QWidget* parent)
     m_layout->setContentsMargins(0, 0, 0, 0);
     m_layout->setSpacing(2);
 
+    m_minimal  = new CaptionButton(CaptionButton::Role::Minimal, this);
+    m_minimal->setVisible(false);   // build 465: shown by the main title bar
     m_minimize = new CaptionButton(CaptionButton::Role::Minimize, this);
     m_maximize = new CaptionButton(CaptionButton::Role::MaximizeRestore, this);
     m_close    = new CaptionButton(CaptionButton::Role::Close, this);
 
+    m_layout->addWidget(m_minimal);
     m_layout->addWidget(m_minimize);
     m_layout->addWidget(m_maximize);
     m_layout->addWidget(m_close);
 
+    connect(m_minimal, &QAbstractButton::clicked,
+            this, &WindowCaptionButtons::minimalRequested);
     connect(m_minimize, &QAbstractButton::clicked,
             this, &WindowCaptionButtons::minimizeRequested);
     connect(m_maximize, &QAbstractButton::clicked,
@@ -209,6 +244,23 @@ WindowCaptionButtons::WindowCaptionButtons(QWidget* parent)
 void WindowCaptionButtons::setMaximized(bool maximized)
 {
     m_maximize->setMaximized(maximized);
+}
+
+void WindowCaptionButtons::setMinimalActive(bool on)
+{
+    m_minimal->setMinimalActive(on);
+}
+
+void WindowCaptionButtons::setMinimalButtonVisible(bool visible)
+{
+    m_minimal->setVisible(visible);
+}
+
+void WindowCaptionButtons::setButtonMetrics(int width, int spacing)
+{
+    for (CaptionButton* b : {m_minimal, m_minimize, m_maximize, m_close})
+        b->setFixedSize(width, b->height());
+    m_layout->setSpacing(spacing);
 }
 
 QVariantMap WindowCaptionButtons::state() const
@@ -224,6 +276,7 @@ QVariantMap WindowCaptionButtons::state() const
     };
     return QVariantMap{
         {QStringLiteral("style"), QStringLiteral("shared")},
+        {QStringLiteral("minimal"), describe(m_minimal)},
         {QStringLiteral("minimize"), describe(m_minimize)},
         {QStringLiteral("maximize"), describe(m_maximize)},
         {QStringLiteral("close"), describe(m_close)},

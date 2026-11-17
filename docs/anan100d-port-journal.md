@@ -8024,6 +8024,20 @@ errcheck TitleBar.cpp — новых ошибок нет, проверка фи�
 
 errcheck MainWindow.cpp, MainWindow_Wiring.cpp, VfoWidget.cpp, MainWindow_Ftx.cpp — новых ошибок нет; фиктивные символы в новых участках — 1.
 
+## 438. Сборка 465 — кнопка минимального режима в заголовке, плотнее правая группа, без «+» при работе радио
+
+Оператор (16.11, после 464): минимальный режим «идеально»; но:
+1. кнопка «+» (добавить радио) наезжает на вкладку радио — убирать её, когда радио запущено;
+2. элементы справа на заголовке сблизить равномерно, чтобы поместился ещё один без увеличения ширины группы;
+3. перед «свернуть» — значок диагональной стрелки вниз справа налево: включает минимальный режим; в минимальном режиме — стрелка вверх слева направо (как pop out).
+
+Сделано:
+- `RadioTabBar::setAddButtonHidden()` (`m_addHidden`); `MainWindow::wireRadioModel` — по `connectionStateChanged` «+» скрыт, пока радио подключено.
+- `TitleBar`: три значка панели (слева / справа / pop out) и кнопки окна — одна группа `titleBarRightGroup` с шагом 34 px и зазором 1 px: прежняя ширина 3×28 + 3×16 + 112 = 244 = 7×34 + 6×1 — вошла четвёртая кнопка окна.
+- `WindowCaptionButtons`: роль `Minimal` (кнопка перед «свернуть», видима только в главном заголовке), рисунок — стрелка ↙ / ↗ тонкими линиями, как остальные значки; сигнал `minimalRequested` → `TitleBar::minimalModeRequested` → `toggleMinimalModeFromAction`; `setButtonMetrics(width, spacing)`. `TitleBar::setMinimalIndicator()` поворачивает стрелку, вызывается в конце `toggleMinimalMode`.
+
+errcheck WindowCaptionButtons, TitleBar, RadioTabBar, MainWindow_Session, MainWindow — новых ошибок нет; фиктивный символ — 1 в каждом.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

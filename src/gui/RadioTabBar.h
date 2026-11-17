@@ -164,6 +164,9 @@ public:
     // radio-link indicator with it, and minimal mode is precisely when an
     // operator has nothing else on screen to notice a dropped link with.
     void setCompactMode(bool on);
+    // ANAN fork build 465 (operator, 16.11): no "+" while a radio runs
+    // (it ran into the radio's tab and is not needed then)
+    void setAddButtonHidden(bool hidden);
 
     // Open the discovered-radios popover programmatically (the automation
     // bridge and the keyboard both need a non-mouse entry point).
@@ -228,6 +231,7 @@ private:
     bool                 m_alarm{false};
     bool                 m_alarmVisible{true};
     bool                 m_compact{false};
+    bool                 m_addHidden{false};   // build 465
 };
 
 } // namespace AetherSDR

@@ -108,6 +108,9 @@ public:
     enum class LinkTone { Busy, Good, Bad, Idle };
     void setLinkStatus(const QString& text, LinkTone tone, const QString& toolTip = {});
     QString linkStatusText() const;
+    // Build 465: the minimal-mode arrow's direction (the fork's minimal mode
+    // keeps the full title bar, so setMinimalMode() is not used for it)
+    void setMinimalIndicator(bool on);
     void setMinimalMode(bool on);
     bool isMinimalMode() const { return m_minimalMode; }
     void setBlinkEnabled(bool enabled); // Toggle heartbeat animation on/off

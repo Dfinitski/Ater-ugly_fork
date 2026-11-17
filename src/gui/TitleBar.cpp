@@ -663,6 +663,18 @@ TitleBar::TitleBar(QWidget* parent)
     AetherSDR::ThemeManager::instance().applyStyleSheet(m_dockSep, "QFrame { background: {{color.background.2}}; border: none; }");
     m_hbox->addWidget(m_dockSep);
 
+    // ANAN fork build 465 (operator, 16.11): the dock trio and the caption
+    // buttons as one group on an even pitch, packed so that a fourth caption
+    // button (minimal mode) fits in the group's old width: 3 x 28 px labels +
+    // 3 x 16 px gaps + 112 px of caption buttons = 244 px = 7 x 34 + 6 x 1.
+    constexpr int kRightCell = 34;
+    constexpr int kRightGap = 1;
+    auto* rightGroup = new QWidget(this);
+    rightGroup->setObjectName(QStringLiteral("titleBarRightGroup"));
+    auto* rightLayout = new QHBoxLayout(rightGroup);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(kRightGap);
+
     const QString dockLblStyle = QStringLiteral(
         "QLabel { padding: 0 6px; border-radius: 4px; background: transparent; }"
         "QLabel:hover { background: {{color.titlebar.caption.hover}}; }");
@@ -683,7 +695,8 @@ TitleBar::TitleBar(QWidget* parent)
     m_dockLeftLbl->setPixmap(
         buildDockSideIcon(m_dockLeftLbl, /*fillLeft=*/true, /*active=*/false));
     m_dockLeftLbl->installEventFilter(this);
-    m_hbox->addWidget(m_dockLeftLbl);
+    m_dockLeftLbl->setFixedWidth(kRightCell);   // build 465
+    rightLayout->addWidget(m_dockLeftLbl);
 
     m_dockRightLbl = new QLabel;
     m_dockRightLbl->setObjectName(QStringLiteral("appletDockRightBtn"));
@@ -699,7 +712,8 @@ TitleBar::TitleBar(QWidget* parent)
     m_dockRightLbl->setPixmap(
         buildDockSideIcon(m_dockRightLbl, /*fillLeft=*/false, /*active=*/true));
     m_dockRightLbl->installEventFilter(this);
-    m_hbox->addWidget(m_dockRightLbl);
+    m_dockRightLbl->setFixedWidth(kRightCell);   // build 465
+    rightLayout->addWidget(m_dockRightLbl);
 
     m_popOutLbl = new QLabel;
     m_popOutLbl->setObjectName(QStringLiteral("appletPopOutBtn"));
@@ -714,12 +728,19 @@ TitleBar::TitleBar(QWidget* parent)
     ThemeManager::instance().applyStyleSheet(m_popOutLbl, dockLblStyle);
     m_popOutLbl->setPixmap(buildPopOutIcon(m_popOutLbl, /*active=*/false));
     m_popOutLbl->installEventFilter(this);
-    m_hbox->addWidget(m_popOutLbl);
+    m_popOutLbl->setFixedWidth(kRightCell);   // build 465
+    rightLayout->addWidget(m_popOutLbl);
 
     m_captionButtons = new WindowCaptionButtons(this);
-    m_hbox->addWidget(m_captionButtons);
+    m_captionButtons->setButtonMetrics(kRightCell, kRightGap);   // build 465
+    m_captionButtons->setMinimalButtonVisible(true);
+    rightLayout->addWidget(m_captionButtons);
+    m_hbox->addWidget(rightGroup);
 
     if (m_captionButtons) {
+        // Build 465: the arrow before "minimize" -- minimal mode on / off.
+        connect(m_captionButtons, &WindowCaptionButtons::minimalRequested,
+                this, &TitleBar::minimalModeRequested);
         connect(m_captionButtons, &WindowCaptionButtons::minimizeRequested,
                 this, [this]() {
                     if (auto* w = window()) w->showMinimized();
@@ -1949,6 +1970,12 @@ void TitleBar::setBlinkEnabled(bool enabled)
         m_radioTabs->setPulseEnabled(enabled);
     }
     pushLinkIndicator();
+}
+
+void TitleBar::setMinimalIndicator(bool on)
+{
+    if (m_captionButtons)
+        m_captionButtons->setMinimalActive(on);
 }
 
 void TitleBar::setMinimalMode(bool on)

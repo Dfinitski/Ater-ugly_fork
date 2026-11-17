@@ -1233,6 +1233,9 @@ void MainWindow::wireRadioModel()
         m_ananDiscovery.setSweepPaused(connected);
         if (!connected)
             m_hwPttInput = {};
+        // Build 465 (operator, 16.11): no "+" (add a radio) while one runs.
+        if (m_titleBar && m_titleBar->radioTabBar())
+            m_titleBar->radioTabBar()->setAddButtonHidden(connected);
     });
     // ANAN-100D port: the radio's microphone PTT keys MOX like the MOX button
     // (through the TX coordinator, so mic capture, FDV and the interlocks
