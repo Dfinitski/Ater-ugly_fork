@@ -183,6 +183,9 @@ private:
     // system move owns the drag.
     bool         m_windowMoveActive{false};
     bool         m_windowMoveUsesSystem{false};
+    // ANAN fork build 463: the system move is started only once the pointer
+    // moved past the drag distance (a click alone moves nothing)
+    bool         m_windowMoveSystemPending{false};
     QPoint       m_windowMovePressGlobal;
     QPoint       m_windowMoveStartPos;
     void updateChromeLayout();

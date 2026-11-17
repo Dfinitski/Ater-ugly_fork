@@ -998,13 +998,23 @@ bool TitleBar::startWindowMove(QMouseEvent* ev)
     // pointer (#4827).  Only the Linux frameless fallback reaches this:
     // Cocoa and Windows draw native captions.  Same rule Qt's own
     // QSizeGrip::usePlatformSizeGrip() applies.
-    if (!FramelessMoveHelper::systemMoveResizeUnreliable(w)) {
-        if (QWindow* handle = w->windowHandle(); handle && handle->startSystemMove()) {
-            m_windowMoveActive = true;
-            m_windowMoveUsesSystem = true;
-            ev->accept();
-            return true;
-        }
+    // ANAN fork build 463 (operator, 16.11): "a short click on the title bar
+    // leaves the hand cursor everywhere until the next click". On Windows
+    // startSystemMove() hands the press to the system move loop, which eats
+    // the release of a click that never moved: Qt kept its implicit grab on
+    // the title bar, so its open-hand cursor stayed over the whole screen.
+    // The press now only arms the move; the system move starts once the
+    // pointer has moved past the drag distance (continueWindowMove), and a
+    // click alone ends as an ordinary press / release.
+    if (!FramelessMoveHelper::systemMoveResizeUnreliable(w) && w->windowHandle()) {
+        m_windowMoveActive = true;
+        m_windowMoveUsesSystem = true;
+        m_windowMoveSystemPending = true;
+        m_windowMovePressGlobal = ev->globalPosition().toPoint();
+        m_windowMoveStartPos = w->pos();
+        grabMouse();   // the moves until then reach us (see below)
+        ev->accept();
+        return true;
     }
 
     // Manual-move path: when a child-widget eventFilter consumes the press
@@ -1030,6 +1040,27 @@ bool TitleBar::continueWindowMove(QMouseEvent* ev)
     if (!(ev->buttons() & Qt::LeftButton))
         return finishWindowMove(ev);
 
+    // Build 463: the armed system move, once the pointer really drags.
+    if (m_windowMoveSystemPending) {
+        const QPoint d = ev->globalPosition().toPoint() - m_windowMovePressGlobal;
+        if (d.manhattanLength() >= QApplication::startDragDistance()) {
+            m_windowMoveSystemPending = false;
+            releaseMouse();
+            QWindow* handle = window() ? window()->windowHandle() : nullptr;
+            if (handle && handle->startSystemMove()) {
+                // The system loop moves the window and ends the press.
+                m_windowMoveActive = false;
+                m_windowMoveUsesSystem = false;
+            } else {
+                // Refused: the manual move from here on.
+                m_windowMoveUsesSystem = false;
+                grabMouse();
+            }
+        }
+        ev->accept();
+        return true;
+    }
+
     if (!m_windowMoveUsesSystem) {
         if (auto* w = window()) {
             const QPoint delta = ev->globalPosition().toPoint() - m_windowMovePressGlobal;
@@ -1047,9 +1078,11 @@ bool TitleBar::finishWindowMove(QMouseEvent* ev)
         return false;
 
     const bool wasManual = !m_windowMoveUsesSystem;
+    const bool wasPending = m_windowMoveSystemPending;   // build 463: a click, no move
     m_windowMoveActive = false;
     m_windowMoveUsesSystem = false;
-    if (wasManual)
+    m_windowMoveSystemPending = false;
+    if (wasManual || wasPending)
         releaseMouse();
     if (ev)
         ev->accept();
