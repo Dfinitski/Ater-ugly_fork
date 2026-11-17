@@ -433,10 +433,16 @@ static const QString kFlatBtn =
 // DSP, mode and X/RIT tabs for buttons -- #6888a0 looked like disabled
 // buttons): the tabs are light, brighten and underline under the mouse.
 static const char* kTabLblColor = "#c8d8e8";
+// Build 462 (operator, 16.11: "the tab texts are brighter than the speaker
+// and the frequency digits -- bring them to the speaker's colour"): all three
+// are #c8d8e8, but the bold 13 px text has far more ink than the speaker's
+// thin strokes. Measured on the operator's screenshot, the mean luminance of
+// the drawn pixels: speaker 138, DSP / LSB / X/RIT 163 - 171 (0.82 of it).
+// The texts take #c8d8e8 x 0.84: #a8b5c3. The speaker keeps kTabLblColor.
 static const QString kTabLblNormal =
     "QPushButton { background: transparent; border: none; "
     "border-bottom: 2px solid transparent; "
-    "color: #c8d8e8; font-size: 13px; font-weight: bold; padding: 3px 0; }"
+    "color: #a8b5c3; font-size: 13px; font-weight: bold; padding: 3px 0; }"
     "QPushButton:hover { color: #ffffff; border-bottom: 2px solid #5a7890; }"
     "QPushButton:focus { outline: none; border-bottom: 2px solid #6888a0; }";
 
