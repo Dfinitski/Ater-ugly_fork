@@ -240,6 +240,13 @@ public:
     // a rebuild (the I/O pacer is not held), and rebuilt with this receiver.
     Q_INVOKABLE void setSubReceiver(bool on, double shiftHz);
     Q_INVOKABLE void setSubShift(double shiftHz);
+    // Build 471 (operator, 17.11): the stereo pair -- the main and the SPLIT
+    // receiver each with its own balance (0..100, 50 = centre, the mixer's
+    // law), mixed HERE, before the rest of the audio path (mixer, codec,
+    // recording, TCI, client DSP), which the two then share. Only while the
+    // SPLIT receiver runs; the backend sets this receiver's mixer pan to the
+    // centre meanwhile.
+    Q_INVOKABLE void setSplitBalance(int mainPercent, int subPercent);
     [[nodiscard]] bool hasSubReceiver() const noexcept { return m_sub != nullptr; }
     // Cap panadapter frames per second; fps <= 0 removes the cap. The FFT is
     // skipped when a frame is not due: the natural rate is IQ rate / FFT size
@@ -655,6 +662,7 @@ private:
     std::unique_ptr<Hl2RxDsp> m_sub;
     std::vector<float> m_subPcm;   // its stereo audio not yet added to ours
     double m_subShiftHz = 0.0;
+    int m_mainBalance = 50, m_subBalance = 50;   // build 471
     std::uint64_t m_subGeneration = 0;
     // Pushes rxMinimumPhaseFor(m_config.mode) to the live channel. Only
     // called where the control verbs may reach it (setMode, installChannel).

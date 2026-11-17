@@ -3262,7 +3262,7 @@ void Hl2Backend::pushAudioMix()
         anyInMix = true;
         p.dsp[i] = r.dsp;
         p.gain[i] = r.audioGain;
-        p.pan[i] = r.audioPanPercent;
+        p.pan[i] = mixPanPercent(static_cast<int>(i));   // build 471
     }
     // The same test mixReceiverAudio() makes for the FreeDV receiver.
     const int fdvSlice = fdv::FdvState::instance().sliceId;
@@ -3361,7 +3361,7 @@ void Hl2Backend::mixReceiverAudio(int ddc, const std::vector<float>& pcm)
         if (other.dsp && !other.audioMuted)
             ++contributors;
     if (contributors <= 1 && r->audioGain == 1.0f
-        && r->audioPanPercent == kAudioPanCentre) {
+        && mixPanPercent(ddc) == kAudioPanCentre) {   // build 471
         // The queue was empty before the insert above, so it holds exactly the
         // block we were handed: emit that directly. This is the steady state and
         // the reason the fast path exists — no remix or clamp. The PCM
@@ -3432,7 +3432,7 @@ void Hl2Backend::mixReceiverAudio(int ddc, const std::vector<float>& pcm)
         // That matches what the operator expects of the Flex control this
         // mirrors, and keeps a centred slice bit-identical to no processing.
         const float g = src_rx.audioGain;
-        const int p = src_rx.audioPanPercent;
+        const int p = mixPanPercent(static_cast<int>(i));   // build 471
         const float lw = g * (p <= kAudioPanCentre
                                   ? 1.0f
                                   : static_cast<float>(100 - p) / kAudioPanCentre);
@@ -5595,6 +5595,13 @@ void Hl2Backend::setSliceAudioGain(int sliceId, int gainPercent)
 
 void Hl2Backend::setSliceAudioPan(int sliceId, int panPercent)
 {
+    if (sliceId == kSplitUi && m_split.on) {
+        // Build 471: the SPLIT receiver's balance in the owner's stereo pair.
+        m_split.panPercent = std::clamp(panPercent, 0, 100);
+        pushSplitBalance();
+        emitSplitSliceState();
+        return;
+    }
     Receiver* r = rx(ddcForSlice(sliceId));
     if (!r)
         return;
@@ -5603,6 +5610,8 @@ void Hl2Backend::setSliceAudioPan(int sliceId, int panPercent)
         return;
     }
     r->audioPanPercent = clamped;
+    if (m_split.on && sliceId == m_split.ownerUi)
+        pushSplitBalance();   // build 471: the main receiver's balance in the pair
     pushAudioMix();   // build 373
     notifyOperatingStateChanged();
 }
@@ -7611,7 +7620,7 @@ void Hl2Backend::ananPushCodecMix()
             if (!r.dsp || r.audioMuted || static_cast<int>(i) == m_ftxDdc)   // build 380
                 continue;
             const float g = r.audioGain;
-            const int pan = r.audioPanPercent;
+            const int pan = mixPanPercent(static_cast<int>(i));   // build 471
             p.dsp[i] = r.dsp;
             p.lw[i] = g * (pan <= kAudioPanCentre ? 1.0f
                                                    : static_cast<float>(100 - pan) / kAudioPanCentre);
@@ -12923,6 +12932,8 @@ void Hl2Backend::splitOn(int ownerUi, double hz)
     const double shift = dspShiftHz(hz, r->ncoHz) - cwBfoHz(r->mode);
     QMetaObject::invokeMethod(r->dsp, "setSubReceiver", Qt::QueuedConnection,
                               Q_ARG(bool, true), Q_ARG(double, shift));
+    pushSplitBalance();   // build 471: the stereo pair, made in the chain
+    pushAudioMix();       // ... and the mixers' pan for this receiver at the centre
     if (!was) {
         // A split transmits on its second VFO.
         if (m_txDdc != ddc)
@@ -12946,11 +12957,31 @@ void Hl2Backend::splitOff(const char* why)
         QMetaObject::invokeMethod(r->dsp, "setSubReceiver", Qt::QueuedConnection,
                                   Q_ARG(bool, false), Q_ARG(double, 0.0));
     emit sliceRemoved(kSplitUi);
+    pushAudioMix();   // build 471: the receiver's own pan back in the mixers
     if (r) {
         if (wasTx && ddc == m_txDdc)
             setTxFrequency(r->sliceFreqHz);
         emitSliceState(ddc);
     }
+}
+
+void Hl2Backend::pushSplitBalance()
+{
+    const Receiver* r = rx(ddcForSlice(m_split.ownerUi));
+    if (!m_split.on || !r || !r->dsp)
+        return;
+    QMetaObject::invokeMethod(r->dsp, "setSplitBalance", Qt::QueuedConnection,
+                              Q_ARG(int, r->audioPanPercent), Q_ARG(int, m_split.panPercent));
+}
+
+int Hl2Backend::mixPanPercent(int ddc) const
+{
+    const Receiver* r = rx(ddc);
+    if (!r)
+        return kAudioPanCentre;
+    if (m_split.on && ddc == ddcForSlice(m_split.ownerUi))
+        return kAudioPanCentre;
+    return r->audioPanPercent;
 }
 
 void Hl2Backend::pushSplitShift()
@@ -12978,7 +13009,7 @@ void Hl2Backend::emitSplitSliceState()
     d.filterHigh = r->filterHighHz;
     d.audioGain = qRound(r->audioGain * 100.0f);
     d.audioMute = r->audioMuted;
-    d.audioPan = r->audioPanPercent;
+    d.audioPan = m_split.panPercent;   // build 471: its own balance
     d.agcMode = r->agcMode;
     d.agcThreshold = r->agcThresholdDb;
     d.txSlice = m_split.tx && ddc == m_txDdc;

@@ -89,6 +89,11 @@ public:
     //   isTxSlice  — this VFO's slice has tx=1
     //   splitActive — TX is assigned to a different slice than the active one
     void updateSplitBadge(bool isTxSlice, bool splitActive);
+    // ANAN fork build 471: the SPLIT receiver of this one (its second VFO), or
+    // null. While there is one, the audio tab shows two balances -- "Main RX"
+    // (this slice's) and "Sub RX" (the SPLIT VFO's): the two make one stereo
+    // pair (Hl2RxDsp::setSplitBalance).
+    void setSubSlice(SliceModel* sub);
 
     // Flag direction hint. Auto/Force* flip to the other side when the panel would
     // overrun the spectrum edge (20 px). Lock* hold the side regardless; used by
@@ -600,6 +605,12 @@ private:
     // Audio tab
     QSlider* m_afGainSlider{nullptr};
     QSlider* m_panSlider{nullptr};
+    // Build 471: see setSubSlice().
+    QLabel* m_mainPanLbl{nullptr};
+    QWidget* m_subPanRow{nullptr};
+    QSlider* m_subPanSlider{nullptr};
+    SliceModel* m_subSlice{nullptr};
+    QMetaObject::Connection m_subPanConn, m_subGoneConn;
     QPushButton* m_muteBtn{nullptr};
     QPushButton* m_divBtn{nullptr};
     // ESC (Enhanced Signal Clarity) panel — shown when DIV is active (parent only)

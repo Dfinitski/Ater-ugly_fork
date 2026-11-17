@@ -9587,6 +9587,15 @@ void MainWindow::updateSplitState()
             const bool isRxSplit = paired && (s == rx);
             w->updateSplitBadge(isTxSlice, isRxSplit);
             if (paired) { pairTxId = tx->sliceId(); pairRxId = rx->sliceId(); }
+            // ANAN fork build 471: the SPLIT VFO's balance on its owner's flag.
+            {
+                SliceModel* sub = nullptr;
+                if (!m_radioModel.usesFlexCommandPlane() && s->sliceId() != 7) {
+                    if (SliceModel* split = m_radioModel.slice(7); split && split->panId() == s->panId())
+                        sub = split;
+                }
+                w->setSubSlice(sub);
+            }
         }
         sw->setSplitPair(pairRxId, pairTxId);
     };

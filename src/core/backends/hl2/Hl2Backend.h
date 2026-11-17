@@ -1398,7 +1398,12 @@ private:
         int ownerUi = -1;
         double freqHz = 0.0;
         bool tx = false;
+        int panPercent = 50;   // build 471: the SPLIT receiver's balance
     } m_split;
+    void pushSplitBalance();   // build 471
+    // Build 471: the pan the mixers apply to receiver ddc -- the centre for
+    // a receiver with a SPLIT VFO (its chain makes the stereo pair itself).
+    [[nodiscard]] int mixPanPercent(int ddc) const;
     void splitOn(int ownerUi, double hz);
     void splitOff(const char* why);
     void pushSplitShift();

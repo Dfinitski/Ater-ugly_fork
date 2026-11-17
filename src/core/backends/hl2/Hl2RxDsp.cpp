@@ -905,6 +905,12 @@ void Hl2RxDsp::setSubReceiver(bool on, double shiftHz)
     startSubBuild();
 }
 
+void Hl2RxDsp::setSplitBalance(int mainPercent, int subPercent)
+{
+    m_mainBalance = std::clamp(mainPercent, 0, 100);
+    m_subBalance = std::clamp(subPercent, 0, 100);
+}
+
 void Hl2RxDsp::setSubShift(double shiftHz)
 {
     m_subShiftHz = shiftHz;
@@ -1298,12 +1304,27 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
                 m_stereo[2 * k + 1] *= g;
             }
         }
-        if (m_sub && !m_subPcm.empty()) {
-            // Build 470: the SPLIT receiver's audio with ours (same rate and
-            // layout; what it has not produced yet waits for the next block).
-            const std::size_t take = std::min(m_stereo.size(), m_subPcm.size());
-            for (std::size_t k = 0; k < take; ++k)
-                m_stereo[k] += m_subPcm[k];
+        if (m_sub) {
+            // Build 470 / 471: the stereo pair -- ours and the SPLIT receiver's,
+            // each through its own balance (the mixer's law: centre leaves
+            // both channels at full level), summed. What the SPLIT receiver
+            // has not produced yet waits for the next block.
+            auto bal = [](int pct, float& lw, float& rw) {
+                lw = pct <= 50 ? 1.0f : static_cast<float>(100 - pct) / 50.0f;
+                rw = pct >= 50 ? 1.0f : static_cast<float>(pct) / 50.0f;
+            };
+            float ml = 1.0f, mr = 1.0f, sl = 1.0f, sr = 1.0f;
+            bal(m_mainBalance, ml, mr);
+            bal(m_subBalance, sl, sr);
+            const std::size_t take = std::min(m_stereo.size(), m_subPcm.size()) & ~std::size_t{1};
+            for (std::size_t k = 0; k + 1 < m_stereo.size(); k += 2) {
+                m_stereo[k] *= ml;
+                m_stereo[k + 1] *= mr;
+                if (k + 1 < take) {
+                    m_stereo[k] += sl * m_subPcm[k];
+                    m_stereo[k + 1] += sr * m_subPcm[k + 1];
+                }
+            }
             m_subPcm.erase(m_subPcm.begin(), m_subPcm.begin() + static_cast<std::ptrdiff_t>(take));
         }
         emit audioReady(m_stereo);

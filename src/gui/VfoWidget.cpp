@@ -1882,6 +1882,12 @@ void VfoWidget::buildTabContent()
         m_divBtn->setStyleSheet(kDspToggle);
         m_divBtn->setVisible(false);  // shown only on dual-SCU radios
         panRow->addWidget(m_divBtn);
+        // Build 471: "Main RX" while a SPLIT receiver shares this audio.
+        m_mainPanLbl = new QLabel("Main RX");
+        m_mainPanLbl->setStyleSheet(kLabelStyle);
+        m_mainPanLbl->setFixedWidth(46);
+        m_mainPanLbl->setVisible(false);
+        panRow->addWidget(m_mainPanLbl);
         auto* panL = new QLabel("L");
         panL->setStyleSheet(kLabelStyle);
         panL->setFixedWidth(10);
@@ -1898,6 +1904,41 @@ void VfoWidget::buildTabContent()
         panR->setAlignment(Qt::AlignCenter);
         panRow->addWidget(panR);
         vb->addLayout(panRow);
+
+        // Build 471: the SPLIT receiver's balance, under the main one.
+        m_subPanRow = new QWidget;
+        {
+            auto* subRow = new QHBoxLayout(m_subPanRow);
+            subRow->setContentsMargins(0, 0, 0, 0);
+            subRow->setSpacing(3);
+            auto* subLbl = new QLabel("Sub RX");
+            subLbl->setStyleSheet(kLabelStyle);
+            subLbl->setFixedWidth(46);
+            subRow->addWidget(subLbl);
+            auto* subL = new QLabel("L");
+            subL->setStyleSheet(kLabelStyle);
+            subL->setFixedWidth(10);
+            subL->setAlignment(Qt::AlignCenter);
+            subRow->addWidget(subL);
+            m_subPanSlider = new CenterMarkSlider(50, Qt::Horizontal);
+            m_subPanSlider->setRange(0, 100);
+            m_subPanSlider->setValue(50);
+            applyPrimarySliderStyle(m_subPanSlider);
+            m_subPanSlider->setToolTip("Balance of the SPLIT receiver (Sub RX) in the stereo pair.");
+            m_subPanSlider->setAccessibleName("Sub RX balance");
+            subRow->addWidget(m_subPanSlider, 1);
+            auto* subR = new QLabel("R");
+            subR->setStyleSheet(kLabelStyle);
+            subR->setFixedWidth(10);
+            subR->setAlignment(Qt::AlignCenter);
+            subRow->addWidget(subR);
+        }
+        m_subPanRow->setVisible(false);
+        vb->addWidget(m_subPanRow);
+        connect(m_subPanSlider, &QSlider::valueChanged, this, [this](int v) {
+            if (!m_updatingFromModel && m_subSlice)
+                m_subSlice->setAudioPan(v);
+        });
 
         // Audio tab tooltips
         m_muteBtn->setToolTip("Mutes this slice's audio output.");
@@ -5702,6 +5743,31 @@ void VfoWidget::updateTxBadgeStyle(bool isTx)
             "border-radius: 2px; font-size: 12px; font-weight: bold; padding: 0; }"
             "QPushButton:hover { background: #606060; color: #c0c0c0; }");
     }
+}
+
+void VfoWidget::setSubSlice(SliceModel* sub)
+{
+    if (sub == m_subSlice)
+        return;
+    QObject::disconnect(m_subPanConn);
+    QObject::disconnect(m_subGoneConn);
+    m_subSlice = sub;
+    const bool on = sub != nullptr;
+    if (m_mainPanLbl)
+        m_mainPanLbl->setVisible(on);
+    if (m_subPanRow)
+        m_subPanRow->setVisible(on);
+    if (!on)
+        return;
+    m_updatingFromModel = true;
+    m_subPanSlider->setValue(sub->audioPan());
+    m_updatingFromModel = false;
+    m_subPanConn = connect(sub, &SliceModel::audioPanChanged, this, [this](int pan) {
+        m_updatingFromModel = true;
+        m_subPanSlider->setValue(pan);
+        m_updatingFromModel = false;
+    });
+    m_subGoneConn = connect(sub, &QObject::destroyed, this, [this] { setSubSlice(nullptr); });
 }
 
 void VfoWidget::updateSplitBadge(bool isTxSlice, bool isRxSplit)
