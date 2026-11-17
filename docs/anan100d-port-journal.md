@@ -8053,6 +8053,10 @@ errcheck WindowCaptionButtons, TitleBar, RadioTabBar, MainWindow_Session, MainWi
 
 errcheck P2Protocol, P2Transport, Hl2RxDsp, Hl2Backend, MetisClient — новых ошибок нет; фиктивный символ — 1. На радио не проверено.
 
+## 440. Сборка 467 — ползунок прокрутки панели аплетов уже
+
+Оператор (16.11): ползунок прокрутки панели аплетов — убрать по 10 % ширины с каждой стороны, зазор — цвет фона. Сделано: `QScrollBar::handle:vertical` — `margin: 0px 2px` (полоса 18 px, ползунок 14 px); фон полосы (`color.background.0`) виден по бокам.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
