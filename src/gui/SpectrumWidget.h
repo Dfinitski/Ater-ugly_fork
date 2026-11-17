@@ -1950,6 +1950,9 @@ private:
     WaterfallHistoryBuffer m_waterfallHistory;
     WaterfallHistoryBuffer m_waterfallSupplementalHistory;
     QTimer* m_resizeBufferSettleTimer{nullptr};
+    // ANAN fork build 456: the last size commit during a live resize (applied
+    // at most every kResizeLiveCommitMs while the window edge is dragged)
+    QElapsedTimer m_resizeLiveCommitClock;
     quint64 m_resizeEventCount{0};
     quint64 m_resizeBufferCommitCount{0};
     quint64 m_resizeFrameHoldCount{0};
