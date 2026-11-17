@@ -194,6 +194,11 @@ public:
     Q_INVOKABLE virtual bool requestRegister(int addr, quint32 data, bool subsystemRead = false) = 0;
     Q_INVOKABLE virtual void requestIoBoardStatus() = 0;
     Q_INVOKABLE virtual void setBandscopeEnabled(bool on) = 0;
+    // ANAN fork build 466: receivers whose DDC another use holds right now
+    // (bit n = receiver n; the ANAN's RX3 / RX4 while PureSignal transmits on
+    // DDC0 / DDC1). Their blocks in iqBlocksReady are silence, not signal: no
+    // spectrum, no waterfall row. Read on the I/O thread. The HL2 has none.
+    [[nodiscard]] virtual std::uint32_t heldReceiverMask() const noexcept { return 0; }
     Q_INVOKABLE virtual void requestBandscopeFrame() = 0;
 
     // The HL2 bandscope gate's sampling period (Hl2BandscopeHeadroom.h).

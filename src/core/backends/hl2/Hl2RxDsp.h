@@ -618,7 +618,11 @@ public:
 public slots:
     // Feed one IQ block (normalized complex<float>). Emits spectrumReady per FFT
     // frame and audioReady/meterUpdate per completed WdspChannel block.
-    void processIqBlock(const std::vector<std::complex<float>>& iq);
+    // display = false (ANAN fork build 466): the block is silence standing in
+    // for a receiver whose DDC PureSignal holds -- demodulated (the audio
+    // stays clocked), but no spectrum, waterfall or FTX samples: the
+    // panadapter stands still until the receiver is given back.
+    void processIqBlock(const std::vector<std::complex<float>>& iq, bool display = true);
 
     // An EP6 sequence gap precedes the next block. Called by DirectConnection on
     // this object's I/O thread. Discards the partial panadapter frame so no FFT

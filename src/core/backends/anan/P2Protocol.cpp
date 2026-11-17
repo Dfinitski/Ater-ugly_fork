@@ -393,7 +393,8 @@ bool parseWidebandPacket(std::span<const std::uint8_t> data, std::uint32_t& seq,
 
 std::array<std::uint8_t, 1444> buildDdcSpecific(std::span<const DdcConfig> ddcs, int numAdcs,
                                                 bool ditherEnabled, bool randomEnabled,
-                                                int hwDdcBase, const PsDdcOptions& ps) noexcept
+                                                int hwDdcBase, const PsDdcOptions& ps,
+                                                int hwDdcWrap) noexcept
 {
     std::array<std::uint8_t, 1444> pkt{};  // full spec length (80 DDCs); unused DDCs
                                             // stay zero/disabled
@@ -415,9 +416,14 @@ std::array<std::uint8_t, 1444> buildDdcSpecific(std::span<const DdcConfig> ddcs,
     // DDC inside it (rxDdcBase 2 + kMaxDdcs 4 = DDC5 at most).
     const std::size_t base = static_cast<std::size_t>(std::clamp(hwDdcBase, 0, 8 - kMaxDdcs));
 
+    const std::size_t wrap = static_cast<std::size_t>(std::clamp(hwDdcWrap, 0, 8));
     std::uint8_t enableBits = 0;
     for (std::size_t n = 0; n < count; ++n) {
-        const std::size_t hw = base + n;
+        const std::size_t hw = hwDdcFor(n, base, wrap);
+        // Build 466: DDC0 / DDC1 are PureSignal's while it transmits (the rows
+        // below); a receiver wrapped onto them waits.
+        if (ps.active && hw < 2)
+            continue;
         enableBits |= static_cast<std::uint8_t>(1u << hw);
         // One 6-byte row per DDC: ADC select, 2-byte rate, CIC1, CIC2,
         // sample size. Offsets confirmed against the single-DDC layout this
@@ -607,11 +613,18 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
         std::min(ddcFreqWords.size(), static_cast<std::size_t>(kMaxDdcs));
     const std::size_t base =
         static_cast<std::size_t>(std::clamp(opts.hwDdcBase, 0, 8 - kMaxDdcs));
-    for (std::size_t n = 0; n < count; ++n)
-        writeU32be(&pkt[9 + 4 * (base + n)], ddcFreqWords[n]);
+    const std::size_t wrap = static_cast<std::size_t>(std::clamp(opts.hwDdcWrap, 0, 8));
+    std::uint8_t occupied = 0;   // build 466: the hardware DDCs that carry a receiver
+    for (std::size_t n = 0; n < count; ++n) {
+        const std::size_t hw = hwDdcFor(n, base, wrap);
+        occupied = static_cast<std::uint8_t>(occupied | (1u << hw));
+        writeU32be(&pkt[9 + 4 * hw], ddcFreqWords[n]);
+    }
     if (opts.mirrorRxWordsBelowBase && count > 0) {
-        for (std::size_t n = 0; n < base; ++n)
-            writeU32be(&pkt[9 + 4 * n], ddcFreqWords[std::min(n, count - 1)]);
+        for (std::size_t n = 0; n < base; ++n) {
+            if (!(occupied & (1u << n)))
+                writeU32be(&pkt[9 + 4 * n], ddcFreqWords[std::min(n, count - 1)]);
+        }
     }
     // PureSignal while transmitting: DDC0 and DDC1 on the transmit frequency.
     if (run && opts.transmitting && opts.psEnabled) {

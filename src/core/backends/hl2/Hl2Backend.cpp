@@ -1072,15 +1072,18 @@ Hl2Backend::Hl2Backend(QObject* parent)
         // THERE, and m_rx belongs to the GUI thread. See publishIoDsps().
         if (!blocks.empty())
             ananUnkeyIqFeed(blocks[0]);
+        // Build 466: receivers whose DDC PureSignal holds (ANAN RX3 / RX4
+        // while transmitting) get silence, demodulated but not displayed.
+        const std::uint32_t held = m_metis->heldReceiverMask();
         const std::size_t n = std::min(blocks.size(), m_ioDsps.size());
         for (std::size_t i = 0; i < n; ++i) {
             if (m_ioDsps[i])
-                m_ioDsps[i]->processIqBlock(blocks[i]);
+                m_ioDsps[i]->processIqBlock(blocks[i], !(held & (1u << i)));
         }
         // Build 222: TCI I/Q (CW Skimmer etc.), only for receivers asked for.
         const std::size_t taps = std::min(blocks.size(), kTciIqTaps);
         for (std::size_t i = 0; i < taps; ++i) {
-            if (m_tciTaps[i].channel != 0)
+            if (m_tciTaps[i].channel != 0 && !(held & (1u << i)))
                 tciIqTap(i, blocks[i]);
         }
     }, Qt::DirectConnection);

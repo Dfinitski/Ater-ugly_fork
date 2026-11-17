@@ -164,8 +164,53 @@ int P2Transport::attenuationForLnaGainDb(int gainDb) noexcept
 
 int P2Transport::receiversForBoard(const BoardProfile& profile, int numDdc) noexcept
 {
+    // Build 466 (operator, 16.11): on a PureSignal board every DDC is a
+    // receiver -- RX3 / RX4 wrap onto DDC0 / DDC1, which PureSignal takes back
+    // while it transmits (hwDdcFor(), psHoldsLowDdcs()).
+    // Only when the DDCs above the base are fewer than the receivers this
+    // backend drives: a board with room above keeps them all there.
+    if (profile.psSupported && profile.rxDdcBase >= 2 && numDdc > profile.rxDdcBase
+        && numDdc - profile.rxDdcBase < kMaxDdcs)
+        return std::clamp(numDdc, 1, kMaxDdcs);
     const int room = numDdc > 0 ? numDdc - profile.rxDdcBase : kMaxDdcs;
     return std::clamp(room, 1, kMaxDdcs);
+}
+
+int P2Transport::ddcWrap() const noexcept
+{
+    if (m_p1 || !m_profile.psSupported || m_profile.rxDdcBase < 2
+        || m_discoveredNumDdc <= m_profile.rxDdcBase
+        || m_discoveredNumDdc - m_profile.rxDdcBase >= kMaxDdcs)
+        return 0;   // no PureSignal DDCs to share, or room enough above them
+    return m_discoveredNumDdc;
+}
+
+int P2Transport::hwDdcOfRx(int rx) const noexcept
+{
+    return static_cast<int>(hwDdcFor(static_cast<std::size_t>(rx),
+                                     static_cast<std::size_t>(m_profile.rxDdcBase),
+                                     static_cast<std::size_t>(ddcWrap())));
+}
+
+bool P2Transport::psHoldsLowDdcs() const noexcept
+{
+    if (!m_psEnabled)
+        return false;
+    if (m_moxAtomic.load(std::memory_order_relaxed))
+        return true;
+    return TxCoordinator::monotonicMs() < m_psReleaseUntilMs.load(std::memory_order_relaxed);
+}
+
+void P2Transport::updateHeldMask() noexcept
+{
+    std::uint32_t mask = 0;
+    if (ddcWrap() > 0 && psHoldsLowDdcs()) {
+        for (int i = 0; i < m_numRx; ++i) {
+            if (hwDdcOfRx(i) < 2)
+                mask |= 1u << i;
+        }
+    }
+    m_heldMask.store(mask, std::memory_order_relaxed);
 }
 
 int P2Transport::rateKsps() const noexcept
@@ -562,7 +607,11 @@ void P2Transport::configureSession(const BoardProfile& profile, bool fromReply)
     qCInfo(lcAnanP2T).nospace()
         << "ANAN P2 transport: " << m_profile.modelName << " (board " << int(m_profile.boardId)
         << (fromReply ? ", from Discovery" : ", assumed") << "), receivers on DDC"
-        << m_profile.rxDdcBase << ".." << (m_profile.rxDdcBase + m_numRx - 1);
+        << m_profile.rxDdcBase << ".." << (m_profile.rxDdcBase + m_numRx - 1)
+        << (ddcWrap() > 0 ? QStringLiteral(" (build 466: RX3 / RX4 on DDC0 / DDC1 when running, "
+                                           "PureSignal's while it transmits; board has %1 DDC)")
+                                .arg(m_discoveredNumDdc)
+                          : QString());
     // Thetis' SendStart() (ChannelMaster network.c): General (1024), DDC
     // Specific (1025), Transmitter Specific (1026), High Priority with run = 1
     // (1027) -- the same four, in that order, at every start.
@@ -707,7 +756,8 @@ void P2Transport::sendDdcSpecific()
         ddcs.push_back(DdcConfig{rateKsps(), std::min(m_rxAdc[static_cast<std::size_t>(i)], lastAdc)});
     auto pkt = buildDdcSpecific(ddcs, m_profile.numAdcs, false, false, m_profile.rxDdcBase,
                                       PsDdcOptions{m_psEnabled && m_mox,
-                                                   m_psLoopback ? m_profile.numAdcs : m_psAdc});
+                                                   m_psLoopback ? m_profile.numAdcs : m_psAdc},
+                                      ddcWrap());   // build 466
     // Build 439: bytes 5 / 6 per ADC (bit N = ADC N; Thetis network.c), from
     // the ANT menus; only the ADCs this board has.
     const int adcBits = (1 << std::clamp(m_profile.numAdcs, 1, 3)) - 1;
@@ -731,6 +781,7 @@ void P2Transport::sendHighPriority(bool run)
     o.boardHasSpeakerAmpMute = m_profile.hasSpeakerAmpMute;
     o.boardHasAdc1FilterBank = m_profile.hasAdc1FilterBank;
     o.mirrorRxWordsBelowBase = m_profile.rxDdcBase >= 2;
+    o.hwDdcWrap = ddcWrap();   // build 466: RX3 / RX4 on DDC0 / DDC1
     // Transmit state (DUC0, PTT0, drive, Alex TX LPF / relay).
     o.transmitting = run && m_mox;
     o.txFrequencyHz = static_cast<double>(m_txHz ? m_txHz : m_rxHz[0]);
@@ -1364,8 +1415,34 @@ void P2Transport::handleDatagram(std::span<const std::uint8_t> bytes, quint16 se
         return;
     }
 
-    // PureSignal: the synchronised DDC0/DDC1 pairs (feedback + TX DAC).
-    if (senderPort == kDdc0DefaultPort && m_profile.rxDdcBase > 0) {
+    // Build 466: RX3 / RX4 on DDC0 / DDC1 (ddcWrap()) -- theirs unless
+    // PureSignal holds those DDCs (psHoldsLowDdcs()).
+    const int wrap = ddcWrap();
+    updateHeldMask();
+    if (wrap > 0 && senderPort >= kDdc0DefaultPort && senderPort < kDdc0DefaultPort + 2) {
+        const int hw = senderPort - kDdc0DefaultPort;
+        if (psHoldsLowDdcs()) {
+            // PureSignal: the synchronised DDC0/DDC1 pairs (feedback + TX DAC).
+            if (hw == 0 && m_psEnabled && m_mox && m_psSink
+                && TxCoordinator::monotonicMs() >= m_psAcceptFromMs.load(std::memory_order_relaxed)) {
+                m_psTxBuf.clear();
+                m_psRxBuf.clear();
+                if (decodePsPairs(bytes, m_psTxBuf, m_psRxBuf) && !m_psRxBuf.empty())
+                    deliverPsPairs();
+            }
+            return;
+        }
+        int rxOnDdc = -1;
+        for (int i = 0; i < m_numRx; ++i) {
+            if (hwDdcOfRx(i) == hw) {
+                rxOnDdc = i;
+                break;
+            }
+        }
+        if (rxOnDdc < 0)
+            return;   // no receiver there (fewer than 3 / 4 running)
+    } else if (senderPort == kDdc0DefaultPort && m_profile.rxDdcBase > 0) {
+        // PureSignal: the synchronised DDC0/DDC1 pairs (feedback + TX DAC).
         if (m_psEnabled && m_mox && m_psSink) {
             m_psTxBuf.clear();
             m_psRxBuf.clear();
@@ -1375,8 +1452,19 @@ void P2Transport::handleDatagram(std::span<const std::uint8_t> bytes, quint16 se
         }
         return;
     }
-    const std::uint16_t basePort = static_cast<std::uint16_t>(kDdc0DefaultPort + m_profile.rxDdcBase);
-    const auto rx = ddcIndexForSenderPort(senderPort, m_numRx, basePort);
+    std::optional<int> rx;
+    if (wrap > 0) {
+        const int hw = senderPort - kDdc0DefaultPort;
+        for (int i = 0; i < m_numRx && hw >= 0 && hw < wrap; ++i) {
+            if (hwDdcOfRx(i) == hw) {
+                rx = i;
+                break;
+            }
+        }
+    } else {
+        const std::uint16_t basePort = static_cast<std::uint16_t>(kDdc0DefaultPort + m_profile.rxDdcBase);
+        rx = ddcIndexForSenderPort(senderPort, m_numRx, basePort);
+    }
     if (!rx) {
         if (!m_warnedPorts.contains(senderPort)) {
             m_warnedPorts.insert(senderPort);
@@ -1431,10 +1519,34 @@ void P2Transport::deliverAlignedBlocks()
 {
     // One block per receiver per emission, as Hl2Backend expects from EP6.
     // The DDCs run at one rate, so their packets arrive in lockstep.
-    for (;;) {
+    // Build 466: a receiver PureSignal holds (heldReceiverMask()) sends nothing
+    // -- its block is silence the size of the others', so the rest keep going;
+    // its queue starts afresh, and its sequence too, when it is given back.
+    const std::uint32_t held = m_heldMask.load(std::memory_order_relaxed);
+    if (held != m_heldSeen) {
         for (int i = 0; i < m_numRx; ++i) {
+            if ((held ^ m_heldSeen) & (1u << i)) {
+                m_pending[static_cast<std::size_t>(i)].clear();
+                m_expectedSeq[static_cast<std::size_t>(i)].reset();
+            }
+        }
+        m_heldSeen = held;
+    }
+    for (;;) {
+        std::size_t blockLen = 0;
+        for (int i = 0; i < m_numRx; ++i) {
+            if (held & (1u << i))
+                continue;
             if (m_pending[static_cast<std::size_t>(i)].empty())
                 return;
+            if (!blockLen)
+                blockLen = m_pending[static_cast<std::size_t>(i)].front().size();
+        }
+        if (!blockLen)
+            return;   // every receiver held: nothing clocks them
+        for (int i = 0; i < m_numRx; ++i) {
+            if (held & (1u << i))
+                m_pending[static_cast<std::size_t>(i)].emplace_back(blockLen);
         }
         m_out.resize(static_cast<std::size_t>(m_numRx));
         for (int i = 0; i < m_numRx; ++i) {
@@ -2223,6 +2335,13 @@ void P2Transport::setMox(bool keyed, const TxCoordinator::Operation& operation)
                                 << " at " << (m_txHz ? m_txHz : m_rxHz[0]) << " Hz, drive "
                                 << m_drive;
     if (keyed) {
+        // Build 466: a receiver on DDC0 keeps sending for a moment after the
+        // DDC-Specific packet that hands it to PureSignal.
+        bool rxOnDdc0 = false;
+        for (int i = 0; i < m_numRx && ddcWrap() > 0; ++i)
+            rxOnDdc0 = rxOnDdc0 || hwDdcOfRx(i) == 0;
+        m_psAcceptFromMs.store(TxCoordinator::monotonicMs() + (rxOnDdc0 ? kPsReleaseMs : 0),
+                               std::memory_order_relaxed);
         m_hwDucPk = m_hwFbPk = 0.0;
         m_hwDucLast.store(0.0, std::memory_order_relaxed);
         m_hwDucN = m_hwFbN = 0;
@@ -2247,6 +2366,11 @@ void P2Transport::setMox(bool keyed, const TxCoordinator::Operation& operation)
         if (m_psEnabled)
             qCInfo(lcAnanP2T) << "ANAN P2 transport: PureSignal feedback packets (total):" << m_psPackets;
     }
+    // Build 466: RX3 / RX4 stay held a little after MOX, until PureSignal's
+    // last synchronised packets have gone by.
+    if (!keyed)
+        m_psReleaseUntilMs.store(TxCoordinator::monotonicMs() + kPsReleaseMs,
+                                 std::memory_order_relaxed);
     txLock.unlock();
     if (m_run && m_configured) {
         // PureSignal: DDC0/DDC1 become the feedback pair only while MOX.
@@ -2269,6 +2393,8 @@ void P2Transport::unkeyOnLinkLoss()
     }
     m_mox = false;
     m_moxAtomic.store(false, std::memory_order_relaxed);
+    m_psReleaseUntilMs.store(TxCoordinator::monotonicMs() + kPsReleaseMs,
+                             std::memory_order_relaxed);   // build 466
     qCWarning(lcAnanP2T).nospace() << "ANAN P2 transport: MOX off -- the link to the radio was lost while "
                                       "transmitting; it does not come back on by itself";
     m_txTimer->stop();

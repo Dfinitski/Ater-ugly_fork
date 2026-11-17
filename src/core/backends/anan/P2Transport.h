@@ -70,6 +70,11 @@ public:
     [[nodiscard]] static int attenuationForLnaGainDb(int gainDb) noexcept;
     // Receivers this board can stream from its DDC base, capped by kMaxDdcs.
     [[nodiscard]] static int receiversForBoard(const BoardProfile& profile, int numDdc) noexcept;
+    // Build 466: see hl2::MetisClient::heldReceiverMask().
+    [[nodiscard]] std::uint32_t heldReceiverMask() const noexcept override
+    {
+        return m_heldMask.load(std::memory_order_relaxed);
+    }
 
     QList<Discovered> discover(int timeoutMs = 2000,
                                const QHostAddress& broadcast = QHostAddress::Broadcast,
@@ -478,6 +483,21 @@ private:
     bool m_up = false;
     bool m_configured = false;
     int m_discoveredNumDdc = 0;
+    // Build 466: the hardware DDC count receivers wrap within (0 = no wrap,
+    // receivers on rxDdcBase + n): the board's DDCs on a PureSignal profile.
+    [[nodiscard]] int ddcWrap() const noexcept;
+    [[nodiscard]] int hwDdcOfRx(int rx) const noexcept;
+    // Receivers on DDC0 / DDC1 while PureSignal holds them: while MOX with PS
+    // on, and kPsReleaseMs after (the radio's last synchronised packets).
+    [[nodiscard]] bool psHoldsLowDdcs() const noexcept;
+    void updateHeldMask() noexcept;
+    static constexpr qint64 kPsReleaseMs = 60;
+    std::atomic<qint64> m_psReleaseUntilMs{0};
+    // PureSignal takes DDC0's packets only from this time on, when a receiver
+    // ran there: its last packets still in flight are not feedback.
+    std::atomic<qint64> m_psAcceptFromMs{0};
+    std::atomic<std::uint32_t> m_heldMask{0};
+    std::uint32_t m_heldSeen = 0;   // I/O thread: the mask the queues were last fitted to
     int m_numRx = 1;
     // Step attenuator per ADC (HP bytes 1443 = ADC0, 1442 = ADC1), set by
     // Hl2Backend through setAdcAttenuation(). Kept across sessions.

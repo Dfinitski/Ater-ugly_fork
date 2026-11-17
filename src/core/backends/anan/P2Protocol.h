@@ -439,12 +439,24 @@ struct PsDdcOptions {
 };
 inline constexpr int kPsFeedbackRateKsps = 192;
 
+// ANAN fork build 466 (operator, 16.11): "most of our radios have 4 receivers,
+// 2 of them used by PureSignal -- let them receive; PureSignal takes them while
+// transmitting". With `hwDdcWrap` > hwDdcBase, receiver n sits on hardware DDC
+// (hwDdcBase + n) % hwDdcWrap: on the ANGELIA/ORION/ORION2/SATURN profile
+// (base 2) with the board's 4 DDCs, RX1 / RX2 stay on DDC2 / DDC3 and RX3 / RX4
+// take DDC0 / DDC1. 0 (or <= base) keeps base + n exactly as before.
+constexpr std::size_t hwDdcFor(std::size_t n, std::size_t base, std::size_t wrap) noexcept
+{
+    return wrap > base ? (base + n) % wrap : base + n;
+}
+
 std::array<std::uint8_t, 1444> buildDdcSpecific(std::span<const DdcConfig> ddcs,
                                                 int numAdcs = 2,
                                                 bool ditherEnabled = true,
                                                 bool randomEnabled = true,
                                                 int hwDdcBase = 0,
-                                                const PsDdcOptions& ps = {}) noexcept;
+                                                const PsDdcOptions& ps = {},
+                                                int hwDdcWrap = 0) noexcept;
 
 // One synchronised DDC0/DDC1 packet (PureSignal): 238 24-bit samples
 // alternating DDC0 (feedback, rx) / DDC1 (TX DAC reference, tx). Appends the
@@ -530,6 +542,9 @@ struct HighPriorityOptions {
     // Brick3/ANAN-100D boards track the band from DDC0/DDC1 (deskHPSDR's
     // "Angelia compatibility mode", p2_angelia_ddc0_map).
     bool mirrorRxWordsBelowBase = false;
+    // Build 466: receivers wrapped below the base (hwDdcFor()); a slot below
+    // the base that carries a receiver is not mirrored.
+    int hwDdcWrap = 0;
     // LegacyHighPassLowPass only: drop speaker-mute and ADC1 filter fields the
     // board does not have (BoardProfile::hasSpeakerAmpMute/hasAdc1FilterBank).
     bool boardHasSpeakerAmpMute = true;

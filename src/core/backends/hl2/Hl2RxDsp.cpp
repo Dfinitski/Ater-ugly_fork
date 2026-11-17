@@ -999,11 +999,12 @@ void Hl2RxDsp::onSequenceGap()
     // per gap on top of the frame already lost.
 }
 
-void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq)
+void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool display)
 {
     if (!m_channel)
         return;
-    if (m_specRestoreSamples > 0) {
+    // Build 466: display = false -- the audio path only (see the header).
+    if (display && m_specRestoreSamples > 0) {
         m_specRestoreSamples -= static_cast<int>(iq.size());
         if (m_specRestoreSamples <= 0 && m_spectrum && !m_agcTxHeld)
             m_spectrum->restorePreOver();
@@ -1021,8 +1022,8 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq)
     // bounds. So the demodulator takes the raw wire and the spectrum the
     // conjugate. Conjugated before the frame-due branch because the accumulator
     // is fed on both paths.
-    m_conjugated.resize(iq.size());
-    for (std::size_t n = 0; n < iq.size(); ++n)
+    m_conjugated.resize(display ? iq.size() : 0);
+    for (std::size_t n = 0; n < m_conjugated.size(); ++n)
         m_conjugated[n] = std::conj(iq[n]);
 
     // Build 391: the FTX mode's decoders take this receiver's I/Q themselves
@@ -1032,7 +1033,7 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq)
     // filter, AGC or noise reduction of the receiver.
     {
         auto& bridge = ftx::FtxBridge::instance();
-        if (bridge.iqOwner.load(std::memory_order_relaxed) == this
+        if (display && bridge.iqOwner.load(std::memory_order_relaxed) == this
             && m_ftxTap.process(m_conjugated, m_shiftHz, m_config.inputSampleRateHz)
             && !m_ftxTap.i().empty()) {
             bridge.feedIq(m_ftxTap.q().data(), m_ftxTap.i().data(),
@@ -1046,7 +1047,9 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq)
     // independent of span; signals entirely between displayed frames are not
     // seen.
     // Build 209: IQ still on the old NCO after a retune is not spectrum.
-    if (m_specSkipSamples > 0) {
+    if (!display) {
+        // Build 466: no frame -- the panadapter stands still.
+    } else if (m_specSkipSamples > 0) {
         m_specSkipSamples -= static_cast<int>(m_conjugated.size());
     } else if (spectrumFrameDue()) {
         // "Due" STAYS true until a frame actually completes: one EP6 block is
