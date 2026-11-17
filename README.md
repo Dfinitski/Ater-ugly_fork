@@ -8,7 +8,7 @@
 
 **What the fork adds**
 
-- openHPSDR Protocol 2 and Protocol 1 backend for the ANAN radios: RX1/RX2, TX, drive, attenuators, LNA, Alex filters
+- openHPSDR Protocol 2 and Protocol 1 backend for the ANAN radios: up to 4 receivers, TX, drive, attenuators, LNA, Alex filters
 - PureSignal (WDSP calcc) with feedback attenuator auto-ranging, drive feed-forward,
   manual per-band TX delay measurement with thermal drift compensation, Thetis-style scheck
 - HW Diag, RGMII tune, PS amplifier view and wideband monitor dialogs
@@ -47,7 +47,9 @@ board, not its model, so for boards shared by several models pick yours in
 
 \* Orion MkII: supply voltage only, as in Thetis.
 
-- The number of receivers (slices) comes from the radio's own DDC count, up to 4.
+- The number of receivers (slices) comes from the radio's own DDC count, up to 4. Since build
+  466 / 468 the boards with PureSignal also receive on its two DDCs (RX3 / RX4); PureSignal
+  takes them back while it transmits.
 - PureSignal over Protocol 2 is not available on the single-ADC boards: their receivers use
   DDC0/DDC1, which PureSignal needs for the feedback and the TX reference. Over Protocol 1 it
   is (Thetis' DDC plan).
@@ -62,7 +64,7 @@ ANAN-10/100 (Hermes), ANAN-10E/100B (Hermes II), ANAN-100D (Angelia), ANAN-200D 
 ANAN-7000DLE/8000DLE (Orion MkII) with Protocol 1 firmware work as well. The radio list shows such
 a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven over Protocol 2.
 
-- Receive: RX1 and RX2 up to 384 kHz (the Protocol 1 limit), attenuators, antennas, Alex
+- Receive: up to 4 receivers (RX3 / RX4 since build 468) up to 384 kHz (the Protocol 1 limit), attenuators, antennas, Alex
   filters, open collector outputs, ADC overload warning, speaker audio to the radio, wideband
   monitor.
 - Transmit: SSB/AM/FM/digital, Tune, host CW, radio or PC microphone, radio PTT, drive and PA
@@ -73,17 +75,20 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 444
+## Build 468
 
-Full notes: [docs/release-notes-build-444.md](docs/release-notes-build-444.md).
+Full notes: [docs/release-notes-build-468.md](docs/release-notes-build-468.md).
 
-- **Linux:** FTX (FT8 / FT4 / WSPR), JS8 and FreeDV work in the AppImage (MicronSDR's Linux
-  modules).
-- **macOS, first build:** Apple silicon (M1 ... M5), macOS 14.4+, with the FTX / JS8 / FreeDV
-  modules and FDK-AAC inside; signed ad hoc, not notarized (right click → Open the first time).
-- **Receive:** linear-phase receive filter in DRM, DIGU / DIGL and while FreeDV decodes.
+- **Four receivers:** RX3 / RX4 on the DDCs PureSignal uses (Protocol 2 and 1); PureSignal takes
+  them back while it transmits, their panadapters stand still meanwhile. No network budget
+  limit any more.
+- **Runs next to the original AetherSDR:** own settings and logs (`AetherSDR_ugly_fork`).
+- **Memories:** tuning step, drive and TUNE per mode group; band buttons, quick memories and
+  station memories recall the same settings.
+- **Window:** new minimal mode (panadapters only) with a title-bar button; no shaking while
+  resizing on Windows.
 
-Earlier notes: [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Downloads
 

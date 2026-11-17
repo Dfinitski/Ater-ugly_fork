@@ -8070,6 +8070,13 @@ errcheck P2Protocol, P2Transport, Hl2RxDsp, Hl2Backend, MetisClient — новы
 
 errcheck P1Protocol, P2Transport, Hl2Backend — новых ошибок нет. На радио Protocol 1 не проверено.
 
+## 442. Релиз сборки 468 (16.11.2026)
+
+- docs/release-notes-build-468.md: сборки 445–468 по темам — четыре приёмника (RX3 / RX4 на DDC PureSignal, P2 и P1; без сетевого ограничения), работа рядом с оригинальным AetherSDR (своя папка AetherSDR_ugly_fork, однократное копирование настроек, защита от захвата занятого радио), память (шаг, Drive / TUNE по группам мод; единый набор у кнопок бендов, быстрой памяти и памяти станций), кнопки мод (DIGI, без DSB), окно (новый минимальный режим с кнопкой в заголовке, без дрожания при изменении размера — QT_D3D_NO_FLIP, курсор после клика по заголовку, правая группа, «+»), флаг VFO, проверка модулей при старте. README.md: раздел «Build 444» заменён на «Build 468», build 444 — в «Earlier notes»; «RX1/RX2» → до 4 приёмников.
+- Архив AetherSDR-ANAN-build468-win64-portable.zip: архив build 444 с exe оператора (Desktop\AetherSDR-Release\AetherSDR.exe, 16.11 21:19 местного, 90721792 байт; что это 468 — в exe строка Protocol 1 «up to %1 receivers» сборки 468), README-build468.md вместо README-build444.md, верхняя папка AetherSDR-ANAN-build468; 93 записи, 163073660 байт, SHA-256 961b3eb57c1d2bc023c2d3584054ae6215b9374ec09b73f83307478eecc8fa0b. Сохранён в Desktop\AetherSDR-Release.
+- Обновление с 444: достаточно заменить AetherSDR.exe.
+- Тег build-468; AppImage и DMG собирает CI по тегу.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
