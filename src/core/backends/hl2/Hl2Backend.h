@@ -1386,6 +1386,24 @@ private:
     // receivers.
     int m_txDdc = 0;
 
+    // ANAN fork build 470 (operator, 17.11): SPLIT -- a second VFO on one
+    // receiver's panadapter. No DDC of its own: a second demodulator on that
+    // receiver's I/Q (Hl2RxDsp::setSubReceiver), a clone of it but for the
+    // frequency, published as its own slice (kSplitUi) on the owner's pan.
+    // Transmit can sit on it (m_split.tx: the TX NCO on its frequency while
+    // the owner holds the transmitter).
+    static constexpr int kSplitUi = 7;
+    struct SplitVfo {
+        bool on = false;
+        int ownerUi = -1;
+        double freqHz = 0.0;
+        bool tx = false;
+    } m_split;
+    void splitOn(int ownerUi, double hz);
+    void splitOff(const char* why);
+    void pushSplitShift();
+    void emitSplitSliceState();
+
     // The AGC pair the operator last set, on any receiver: what
     // currentOperatingState() persists, since the restore writes every receiver.
     // Empty mode = untouched this session.

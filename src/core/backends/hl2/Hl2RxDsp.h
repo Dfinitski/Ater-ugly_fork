@@ -231,6 +231,16 @@ public:
     // slice inside the passband without moving the DDC. Kept in m_config so a
     // later reconfigure() rebuilds the channel with the operator's offset.
     Q_INVOKABLE void setShift(double shiftHz);
+
+    // ANAN fork build 470 (operator, 17.11): the SPLIT receiver -- a second
+    // demodulator on THIS receiver's I/Q (no DDC of its own), a clone of it in
+    // everything but its frequency: every control verb below is applied to it
+    // as well, its WDSP shift is its own (setSubShift). Its audio is added to
+    // this receiver's output; it draws no spectrum. Built off this thread like
+    // a rebuild (the I/O pacer is not held), and rebuilt with this receiver.
+    Q_INVOKABLE void setSubReceiver(bool on, double shiftHz);
+    Q_INVOKABLE void setSubShift(double shiftHz);
+    [[nodiscard]] bool hasSubReceiver() const noexcept { return m_sub != nullptr; }
     // Cap panadapter frames per second; fps <= 0 removes the cap. The FFT is
     // skipped when a frame is not due: the natural rate is IQ rate / FFT size
     // (47 fps at 48 kHz, 375 fps at 384 kHz), so limiting here rather than
@@ -640,6 +650,12 @@ signals:
     void meterUpdate(float dbfs);                           // audio-RMS S-meter
 
 private:
+    // Build 470: the SPLIT receiver (setSubReceiver).
+    void startSubBuild();
+    std::unique_ptr<Hl2RxDsp> m_sub;
+    std::vector<float> m_subPcm;   // its stereo audio not yet added to ours
+    double m_subShiftHz = 0.0;
+    std::uint64_t m_subGeneration = 0;
     // Pushes rxMinimumPhaseFor(m_config.mode) to the live channel. Only
     // called where the control verbs may reach it (setMode, installChannel).
     void applyMinimumPhaseForMode();

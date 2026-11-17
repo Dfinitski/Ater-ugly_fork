@@ -9514,6 +9514,11 @@ void MainWindow::disableSplit()
         if (!currentTx || currentTx->sliceId() == m_splitTxSliceId) { rxSlice->setTxSlice(true); }
     }
 
+    // ANAN fork build 470: the SPLIT VFO is the backend's -- it ends it.
+    if (m_radioModel.isConnected() && !m_radioModel.usesFlexCommandPlane())
+        m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.split"), 0,
+                                            QVariantMap{{QStringLiteral("on"), false}});
+
     // Destroy the split TX slice
     m_radioModel.removeCreatedSlice(std::exchange(m_splitCreatedSlice, {}));
     m_splitRxIdentity.clear();

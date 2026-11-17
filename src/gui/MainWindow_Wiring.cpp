@@ -6331,6 +6331,45 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
 
     // Split toggle — per-widget, slice-aware (#328)
     connect(w, &VfoWidget::splitToggled, this, [this, sliceId]() {
+        // ANAN fork build 470 (operator, 17.11): SPLIT on the ANAN starts a
+        // second VFO on this receiver's panadapter (a second demodulator on
+        // its I/Q, Hl2Backend::splitOn), and a second press ends it. It sits
+        // a tenth of the wider half of the panadapter on screen away from
+        // this VFO, on that side; transmit goes onto it.
+        if (m_radioModel.isConnected() && !m_radioModel.usesFlexCommandPlane()) {
+            constexpr int kAnanSplitUi = 7;   // Hl2Backend::kSplitUi
+            if (m_radioModel.slice(kAnanSplitUi)) {
+                m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.split"), 0,
+                                                    QVariantMap{{QStringLiteral("on"), false}});
+                return;
+            }
+            if (sliceId == kAnanSplitUi)
+                return;
+            SliceModel* s = m_radioModel.slice(sliceId);
+            if (!s)
+                return;
+            const double f = s->frequency();
+            const double c = m_radioModel.effectivePanCenterMhz(s->panId());
+            const double bw = m_radioModel.effectivePanBandwidthMhz(s->panId());
+            double target = f + 0.005;
+            if (c > 0.0 && bw > 0.0) {
+                const double below = f - (c - bw / 2.0);
+                const double above = (c + bw / 2.0) - f;
+                target = above >= below ? f + std::max(above, 0.0) / 10.0
+                                        : f - std::max(below, 0.0) / 10.0;
+            }
+            const double hz = std::round(target * 1.0e5) * 10.0;   // to 10 Hz
+            m_splitActive = true;
+            m_splitRxSliceId = sliceId;
+            m_splitRxIdentity = s;
+            m_splitTxSliceId = kAnanSplitUi;
+            m_splitRxFrequencyMhz = f;
+            m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.split"), 0,
+                                                QVariantMap{{QStringLiteral("on"), true},
+                                                            {QStringLiteral("slice"), sliceId},
+                                                            {QStringLiteral("freqHz"), hz}});
+            return;
+        }
         if (!m_splitActive) {
             enterSplit(sliceId);
         } else if (sliceId == m_splitRxSliceId) {

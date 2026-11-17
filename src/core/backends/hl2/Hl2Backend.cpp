@@ -2290,6 +2290,10 @@ void Hl2Backend::finishReceiverDspBuild(int uiNumber, quint64 generation, bool o
         }
         emit sliceLifecycleFailed(QStringLiteral("create"), removedUi,
                                   QString::fromStdString(error));
+        if (m_split.on && removedUi == m_split.ownerUi) {   // build 470
+            m_split = {};
+            emit sliceRemoved(kSplitUi);
+        }
         emit sliceRemoved(removedUi);
         emit panRemoved(removedPanId);
         applyBandFilter("receiver DSP build failed");
@@ -2450,6 +2454,10 @@ bool Hl2Backend::removePanadapter(const QString& panId)
     // panRemoved left the SliceModel behind naming a dead pan id, and the next
     // create then failed the capacity guard against a slice count that never
     // fell — "Slice capacity is full" with one receiver running.
+    if (m_split.on && removedUi == m_split.ownerUi) {   // build 470: its SPLIT VFO with it
+        m_split = {};
+        emit sliceRemoved(kSplitUi);
+    }
     emit sliceRemoved(removedUi);
     emit panRemoved(removedPanId);
     // Closing one can take the set back onto a single band.
@@ -4784,6 +4792,7 @@ void Hl2Backend::invalidateTxDspConfiguration()
 
 void Hl2Backend::disconnectRadio()
 {
+    m_split = {};   // build 470: the SPLIT VFO ends with the session
     retirePcmStreams();
     if (m_audioMixer) {   // build 373: the audio thread's stream ends with it
         pushAudioMix();
@@ -4881,6 +4890,18 @@ void Hl2Backend::withdrawSliceLevelMeter(int uiNumber)
 
 void Hl2Backend::setSliceFrequency(int sliceId, double hz)
 {
+    if (sliceId == kSplitUi && m_split.on) {
+        // Build 470: the SPLIT VFO -- its own frequency, nothing else moves
+        // (the owner's NCO stays; out of its window the VFO is not heard).
+        if (!(hz > 0.0))
+            return;
+        m_split.freqHz = hz;
+        pushSplitShift();
+        if (m_split.tx)
+            setTxFrequency(hz);
+        emitSplitSliceState();
+        return;
+    }
     ananUnkeyEvent(QStringLiteral("setSliceFrequency %1 Hz").arg(hz, 0, 'f', 0));
     const int ddc = ddcForSlice(sliceId);
     Receiver* r = rx(ddc);
@@ -4999,6 +5020,8 @@ bool Hl2Backend::followModeAgc(Receiver& r, const QString& previousMode)
 
 void Hl2Backend::setSliceMode(int sliceId, const QString& requested)
 {
+    if (sliceId == kSplitUi && m_split.on)
+        sliceId = m_split.ownerUi;   // build 470: the SPLIT VFO is a clone of its owner
     ananUnkeyEvent(QStringLiteral("setSliceMode %1").arg(requested));
     const int ddc = ddcForSlice(sliceId);
     Receiver* r = rx(ddc);
@@ -5081,6 +5104,8 @@ void Hl2Backend::setSliceMode(int sliceId, const QString& requested)
 
 void Hl2Backend::setSliceFilter(int sliceId, int lowHz, int highHz)
 {
+    if (sliceId == kSplitUi && m_split.on)
+        sliceId = m_split.ownerUi;   // build 470: the SPLIT VFO is a clone of its owner
     ananUnkeyEvent(QStringLiteral("setSliceFilter %1..%2").arg(lowHz).arg(highHz));
     const int ddc = ddcForSlice(sliceId);
     Receiver* r = rx(ddc);
@@ -5132,6 +5157,8 @@ void Hl2Backend::ctunCenter(int ddc)
 
 void Hl2Backend::setSliceAgc(int sliceId, const QString& mode, int thresholdDb)
 {
+    if (sliceId == kSplitUi && m_split.on)
+        sliceId = m_split.ownerUi;   // build 470: the SPLIT VFO is a clone of its owner
     ananUnkeyEvent(QStringLiteral("setSliceAgc %1 %2").arg(mode).arg(thresholdDb));
     const int ddc = ddcForSlice(sliceId);
     Receiver* r = rx(ddc);
@@ -5582,6 +5609,10 @@ void Hl2Backend::setSliceAudioPan(int sliceId, int panPercent)
 
 void Hl2Backend::setActiveSlice(int sliceId)
 {
+    if (sliceId == kSplitUi && m_split.on) {
+        emitSplitSliceState();   // build 470: the owner stays the active receiver
+        return;
+    }
     const int ddc = ddcForSlice(sliceId);
     if (!rx(ddc)) {
         qCWarning(lcHl2) << "HL2: cannot activate slice" << sliceId << "— no such receiver";
@@ -5608,6 +5639,26 @@ void Hl2Backend::setActiveSlice(int sliceId)
 
 void Hl2Backend::setTxSlice(int sliceId)
 {
+    // Build 470: transmit on the SPLIT VFO, or back off it.
+    if (sliceId == kSplitUi) {
+        if (!m_split.on)
+            return;
+        const int ownerDdc = ddcForSlice(m_split.ownerUi);
+        if (!rx(ownerDdc))
+            return;
+        if (m_txDdc != ownerDdc)
+            setTxSlice(m_split.ownerUi);
+        m_split.tx = true;
+        qCInfo(lcHl2) << "ANAN: transmit on the SPLIT VFO," << m_split.freqHz << "Hz";
+        setTxFrequency(m_split.freqHz);
+        emitSliceState(ownerDdc);
+        return;
+    }
+    if (m_split.on && m_split.tx) {
+        m_split.tx = false;
+        if (const Receiver* r = rx(ddcForSlice(sliceId)); r && ddcForSlice(sliceId) == m_txDdc)
+            setTxFrequency(r->sliceFreqHz);
+    }
     const int ddc = ddcForSlice(sliceId);
     const Receiver* r = rx(ddc);
     if (!r) {
@@ -7342,6 +7393,11 @@ void Hl2Backend::warnTxOutOfBand(double hz)
 
 void Hl2Backend::setTxFrequency(double hz)
 {
+    // Build 470: while transmit sits on the SPLIT VFO, every path that writes
+    // the TX register (a tune of the owner, a band move, calibration) writes
+    // the SPLIT frequency.
+    if (m_split.on && m_split.tx && m_txDdc == ddcForSlice(m_split.ownerUi))
+        hz = m_split.freqHz;
     ananUnkeyEvent(QStringLiteral("setTxFrequency %1 Hz").arg(hz, 0, 'f', 0));
     if (!m_metis || hz <= 0.0)
         return;
@@ -9164,6 +9220,18 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
                 else
                     emit extensionError(requestId, QStringLiteral("no such receiver"));
             }
+            return;
+        }
+        // Build 470: SPLIT on / off for one receiver ({slice, on, freqHz}).
+        if (verb == QLatin1String("anan.split")) {
+            const QVariantMap m = arg.toMap();
+            if (m.value(QStringLiteral("on")).toBool())
+                splitOn(m.value(QStringLiteral("slice")).toInt(),
+                        m.value(QStringLiteral("freqHz")).toDouble());
+            else
+                splitOff("operator");
+            if (requestId != 0)
+                emit extensionResult(requestId, QVariant(m_split.on));
             return;
         }
         // Build 326: CTUN OFF for one receiver (TCI "Center Lock when I/Q").
@@ -12809,7 +12877,8 @@ void Hl2Backend::emitSliceState(int ddc)
     // Exactly one slice is the TX slice (the one on m_txDdc). Unset, txSlice()
     // is null and RadioModel's interlock refuses every key; set on all, the
     // operator could key from a receiver the TX NCO is not following.
-    d.txSlice = (ddc == m_txDdc);
+    d.txSlice = (ddc == m_txDdc)
+                && !(m_split.on && m_split.tx && ids->uiNumber == m_split.ownerUi);   // build 470
     // Exactly one slice is active, so consumers (e.g. the RX Controls applet)
     // resolve the receiver the operator is working on.
     d.active = (ddc == m_activeDdc);
@@ -12828,6 +12897,93 @@ void Hl2Backend::emitSliceState(int ddc)
         d.txAntenna = ants[txAnt];
     }
     emit sliceChanged(ids->uiNumber, d);
+    // Build 470: the SPLIT VFO clones its owner -- republished with it, and its
+    // demodulator re-shifted for the owner's NCO, RIT and mode now.
+    if (m_split.on && ids->uiNumber == m_split.ownerUi) {
+        pushSplitShift();
+        emitSplitSliceState();
+    }
+}
+
+void Hl2Backend::splitOn(int ownerUi, double hz)
+{
+    const int ddc = ddcForSlice(ownerUi);
+    Receiver* r = rx(ddc);
+    if (!r || !r->dsp || !(hz > 0.0) || m_ids.byUi(kSplitUi)) {
+        qCWarning(lcHl2) << "ANAN: SPLIT refused (receiver" << ownerUi << "not running)";
+        return;
+    }
+    if (m_split.on && m_split.ownerUi != ownerUi)
+        splitOff("moved to another receiver");
+    const bool was = m_split.on;
+    m_split.on = true;
+    m_split.ownerUi = ownerUi;
+    m_split.freqHz = hz;
+    qCInfo(lcHl2) << "ANAN: SPLIT on receiver" << ddc + 1 << "at" << hz << "Hz";
+    const double shift = dspShiftHz(hz, r->ncoHz) - cwBfoHz(r->mode);
+    QMetaObject::invokeMethod(r->dsp, "setSubReceiver", Qt::QueuedConnection,
+                              Q_ARG(bool, true), Q_ARG(double, shift));
+    if (!was) {
+        // A split transmits on its second VFO.
+        if (m_txDdc != ddc)
+            setTxSlice(ownerUi);
+        m_split.tx = true;
+        setTxFrequency(hz);
+    }
+    emitSliceState(ddc);
+}
+
+void Hl2Backend::splitOff(const char* why)
+{
+    if (!m_split.on)
+        return;
+    const int ddc = ddcForSlice(m_split.ownerUi);
+    Receiver* r = rx(ddc);
+    const bool wasTx = m_split.tx;
+    qCInfo(lcHl2) << "ANAN: SPLIT off (" << why << ")";
+    m_split = {};
+    if (r && r->dsp)
+        QMetaObject::invokeMethod(r->dsp, "setSubReceiver", Qt::QueuedConnection,
+                                  Q_ARG(bool, false), Q_ARG(double, 0.0));
+    emit sliceRemoved(kSplitUi);
+    if (r) {
+        if (wasTx && ddc == m_txDdc)
+            setTxFrequency(r->sliceFreqHz);
+        emitSliceState(ddc);
+    }
+}
+
+void Hl2Backend::pushSplitShift()
+{
+    const Receiver* r = rx(ddcForSlice(m_split.ownerUi));
+    if (!m_split.on || !r || !r->dsp)
+        return;
+    QMetaObject::invokeMethod(r->dsp, "setSubShift", Qt::QueuedConnection,
+                              Q_ARG(double, dspShiftHz(m_split.freqHz, r->ncoHz) - cwBfoHz(r->mode)));
+}
+
+void Hl2Backend::emitSplitSliceState()
+{
+    const int ddc = ddcForSlice(m_split.ownerUi);
+    const Receiver* r = rx(ddc);
+    const auto* ids = m_ids.byDdc(ddc);
+    if (!m_split.on || !r || !ids)
+        return;
+    SliceDelta d;
+    d.panId = ids->panId;
+    d.modeList = publishedModeStrings();
+    d.frequency = m_split.freqHz / 1.0e6;
+    d.mode = r->mode;
+    d.filterLow = r->filterLowHz;
+    d.filterHigh = r->filterHighHz;
+    d.audioGain = qRound(r->audioGain * 100.0f);
+    d.audioMute = r->audioMuted;
+    d.audioPan = r->audioPanPercent;
+    d.agcMode = r->agcMode;
+    d.agcThreshold = r->agcThresholdDb;
+    d.txSlice = m_split.tx && ddc == m_txDdc;
+    d.active = false;
+    emit sliceChanged(kSplitUi, d);
 }
 
 int Hl2Backend::ananAntennaIndex(const QString& token)

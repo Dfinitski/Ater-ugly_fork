@@ -5,10 +5,13 @@
 
 #include <QLoggingCategory>
 #include <QMetaType>
+#include <QPointer>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <memory>
+#include <thread>
 
 Q_LOGGING_CATEGORY(lcHl2RxDsp, "aether.hl2.rxdsp")
 
@@ -367,6 +370,10 @@ void Hl2RxDsp::installChannel(RebuildResult result)
     // last good reading for the same settle as the mute's release edge. HL2
     // does not mute across a rate change (Hl2Backend's finishRateChange).
     armMeterSettle();
+    // Build 470: the SPLIT receiver follows this receiver's new geometry
+    // (rate, block size): built again for it.
+    if (m_sub)
+        startSubBuild();
 }
 
 void Hl2RxDsp::armMeterSettle()
@@ -384,6 +391,8 @@ void Hl2RxDsp::armMeterSettle()
 void Hl2RxDsp::setNoiseBlanker(WdspChannel::NoiseBlanker kind, int level,
                                WdspChannel::NoiseBlankerFill fill)
 {
+    if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
+        m_sub->setNoiseBlanker(kind, level, fill);
     m_nbKind = kind;
     m_nbLevel = std::clamp(level, 0, 100);
     m_nbFill = fill;
@@ -409,6 +418,8 @@ void Hl2RxDsp::setNoiseBlanker(WdspChannel::NoiseBlanker kind, int level,
 
 void Hl2RxDsp::setSquelch(bool on, int level, double levelOffsetDb)
 {
+    if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
+        m_sub->setSquelch(on, level, levelOffsetDb);
     m_squelchOn = on;
     m_squelchLevel = std::clamp(level, 0, 100);
     // The channel refuses a non-finite offset, and pending means busy, so an
@@ -442,6 +453,8 @@ void Hl2RxDsp::pushSquelchToChannel()
 
 void Hl2RxDsp::setMode(WdspChannel::Mode mode)
 {
+    if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
+        m_sub->setMode(mode);
     m_config.mode = mode;
     // DEFERRED, not lost, while a background rebuild is running: see
     // beginRebuild(). m_config still takes it and installChannel() re-applies
@@ -460,6 +473,8 @@ void Hl2RxDsp::setMode(WdspChannel::Mode mode)
 
 void Hl2RxDsp::setAgcOffLevel(int level)
 {
+    if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
+        m_sub->setAgcOffLevel(level);
     m_agcOffLevel = std::clamp(level, 0, 100);
     if (canPushToChannel())
         applyAgcOffLevel();
@@ -477,6 +492,8 @@ void Hl2RxDsp::applyAgcOffLevel()
 
 void Hl2RxDsp::setApf(bool on, int level, double centerHz)
 {
+    if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
+        m_sub->setApf(on, level, centerHz);
     m_apfOn = on;
     m_apfLevel = std::clamp(level, 0, 100);
     // A pitch the channel would refuse keeps the last good centre rather than
@@ -501,6 +518,8 @@ void Hl2RxDsp::applyApf()
 
 void Hl2RxDsp::setLinearPhaseWanted(bool on)
 {
+    if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
+        m_sub->setLinearPhaseWanted(on);
     if (on == m_linearWanted)
         return;
     m_linearWanted = on;
@@ -543,6 +562,8 @@ void Hl2RxDsp::applyDrm(std::size_t frames)
 
 void Hl2RxDsp::setAnf(bool on, int level)
 {
+    if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
+        m_sub->setAnf(on, level);
     m_anfOn = on;
     m_anfLevel = std::clamp(level, 0, 100);
     if (canPushToChannel())
@@ -603,6 +624,8 @@ void Hl2RxDsp::applyMinimumPhaseForMode()
 
 void Hl2RxDsp::setFilter(double lowHz, double highHz)
 {
+    if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
+        m_sub->setFilter(lowHz, highHz);
     m_config.filterLowHz = lowHz;
     m_config.filterHighHz = highHz;
     {
@@ -667,6 +690,8 @@ void Hl2RxDsp::filterWorkerLoop()
 
 void Hl2RxDsp::setAgc(int agcMode, double maximumGainDb)
 {
+    if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
+        m_sub->setAgc(agcMode, maximumGainDb);
     m_config.agcMode = agcMode;
     m_config.maximumAgcGainDb = maximumGainDb;
     if (canPushToChannel())
@@ -675,6 +700,8 @@ void Hl2RxDsp::setAgc(int agcMode, double maximumGainDb)
 
 void Hl2RxDsp::setBinaural(bool on)
 {
+    if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
+        m_sub->setBinaural(on);
     m_binaural = on;
     if (canPushToChannel())
         m_channel->setBinaural(on);
@@ -682,6 +709,8 @@ void Hl2RxDsp::setBinaural(bool on)
 
 void Hl2RxDsp::setAudioMuted(bool muted)
 {
+    if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
+        m_sub->setAudioMuted(muted);
     // On the release edge xmeter's average has integrated every zero clocked in
     // while muted (the first unmuted block read -224.5 dBFS vs -10.5 before), so
     // the S-meter would dive on unkey. Unlike the blanker it can't be skipped,
@@ -712,6 +741,8 @@ void Hl2RxDsp::setAudioMuted(bool muted)
 
 void Hl2RxDsp::setAgcTxHold(bool on)
 {
+    if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
+        m_sub->setAgcTxHold(on);
     m_hostHold = on;
     applyAgcHold();
 }
@@ -854,6 +885,87 @@ void Hl2RxDsp::dropSpectrumAverage()
     // keeping it would seed the fresh average with the old spectrum.
     m_spectrum->reset();
     m_spectrum->dropAverage();
+}
+
+void Hl2RxDsp::setSubReceiver(bool on, double shiftHz)
+{
+    ++m_subGeneration;   // a build still running for an earlier request is dropped
+    m_subPcm.clear();
+    if (!on) {
+        if (m_sub)
+            qCInfo(lcHl2RxDsp) << "split receiver off";
+        m_sub.reset();
+        return;
+    }
+    m_subShiftHz = shiftHz;
+    if (m_sub) {
+        m_sub->setShift(shiftHz);
+        return;
+    }
+    startSubBuild();
+}
+
+void Hl2RxDsp::setSubShift(double shiftHz)
+{
+    m_subShiftHz = shiftHz;
+    if (m_sub)
+        m_sub->setShift(shiftHz);
+}
+
+void Hl2RxDsp::startSubBuild()
+{
+    // A fresh Hl2RxDsp on this thread, given this receiver's state now (its
+    // setters only record while its build runs; installChannel() applies
+    // them), built on a worker thread, installed back here.
+    ++m_subGeneration;
+    m_sub.reset();
+    m_subPcm.clear();
+    auto sub = std::make_unique<Hl2RxDsp>(nullptr);
+    connect(sub.get(), &Hl2RxDsp::audioReady, this, [this](const std::vector<float>& pcm) {
+        // Same thread, called from inside m_sub->processIqBlock() below.
+        m_subPcm.insert(m_subPcm.end(), pcm.begin(), pcm.end());
+        const std::size_t cap = std::max<std::size_t>(4 * pcm.size(), 8192);
+        if (m_subPcm.size() > cap)
+            m_subPcm.erase(m_subPcm.begin(),
+                           m_subPcm.begin() + static_cast<std::ptrdiff_t>(m_subPcm.size() - cap));
+    }, Qt::DirectConnection);
+    sub->setNoiseBlanker(m_nbKind, m_nbLevel, m_nbFill);
+    sub->setSquelch(m_squelchOn, m_squelchLevel, m_squelchOffsetDb);
+    sub->setAgcOffLevel(m_agcOffLevel);
+    sub->setApf(m_apfOn, m_apfLevel, m_apfCenterHz);
+    sub->setAnf(m_anfOn, m_anfLevel);
+    sub->setLinearPhaseWanted(m_linearWanted);
+    sub->setBinaural(m_binaural);
+    sub->setAudioMuted(m_audioMuted);
+    sub->setAgcTxHold(m_hostHold);
+    sub->setShift(m_subShiftHz);
+    Config cfg = m_config;
+    cfg.blockForOutput = false;
+    sub->beginRebuild(cfg);
+    const auto nbKind = m_nbKind;
+    const int nbLevel = m_nbLevel;
+    const auto nbFill = m_nbFill;
+    const std::uint64_t gen = m_subGeneration;
+    m_sub = std::move(sub);
+    QPointer<Hl2RxDsp> self(this);
+    std::thread([self, gen, cfg, nbKind, nbLevel, nbFill] {
+        auto built = std::make_shared<RebuildResult>(buildChannel(cfg, nbKind, nbLevel, nbFill));
+        if (!self)
+            return;
+        QMetaObject::invokeMethod(self.data(), [self, gen, built] {
+            if (!self || gen != self->m_subGeneration || !self->m_sub)
+                return;   // switched off or asked again meanwhile
+            if (!built->channel) {
+                qCWarning(lcHl2RxDsp) << "split receiver: WDSP channel not built:"
+                                      << QString::fromStdString(built->error);
+                self->m_sub.reset();
+                return;
+            }
+            self->m_sub->installRebuiltChannel(std::move(*built));
+            qCInfo(lcHl2RxDsp) << "split receiver on, WDSP channel"
+                               << self->m_sub->wdspChannelId();
+        }, Qt::QueuedConnection);
+    }).detach();
 }
 
 void Hl2RxDsp::setShift(double shiftHz)
@@ -1003,6 +1115,10 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
 {
     if (!m_channel)
         return;
+    // Build 470: the SPLIT receiver hears the same I/Q (its audio is queued
+    // by its audioReady and added to ours below).
+    if (m_sub)
+        m_sub->processIqBlock(iq, false);
     // Build 466: display = false -- the audio path only (see the header).
     if (display && m_specRestoreSamples > 0) {
         m_specRestoreSamples -= static_cast<int>(iq.size());
@@ -1181,6 +1297,14 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
                 m_stereo[2 * k] *= g;
                 m_stereo[2 * k + 1] *= g;
             }
+        }
+        if (m_sub && !m_subPcm.empty()) {
+            // Build 470: the SPLIT receiver's audio with ours (same rate and
+            // layout; what it has not produced yet waits for the next block).
+            const std::size_t take = std::min(m_stereo.size(), m_subPcm.size());
+            for (std::size_t k = 0; k < take; ++k)
+                m_stereo[k] += m_subPcm[k];
+            m_subPcm.erase(m_subPcm.begin(), m_subPcm.begin() + static_cast<std::ptrdiff_t>(take));
         }
         emit audioReady(m_stereo);
         // S-meter from WDSP's average signal meter (xmeter `avg`, an EMA of
