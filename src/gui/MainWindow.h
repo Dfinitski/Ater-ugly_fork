@@ -2175,6 +2175,13 @@ private:
     void ftxSwitchWindow(bool js8);
     void ftxSetTxSource();
     void ftxPlaceWaterfall();   // build 409
+    // Build 454 (operator, 16.11): the FTX / JS8 window attached to the right
+    // of the main window (its pin; AppSettings FtxWindowAttached), its height
+    // the main window's -- the main window grows to the window's smallest.
+    bool m_ftxAttached{true};
+    bool m_ftxPlacing{false};
+    void ftxShowWindow(bool js8);
+    void ftxPlaceAttached();
     void ftxTxAborted(const QString& why);
     double m_ftxSavedFreqMhz{0.0};
     // Build 386: the FTX receiver's frequency belongs to the FTX window alone.

@@ -105,6 +105,9 @@ public:
     void stop();
     void showWindow(const QRect &mainGeom);     // shown (its place kept; the first time: next to the main window)
     void hideWindow();
+    // AetherSDR, build 454: attached to the right of the main window (the main window places it)
+    void setPinned(bool on);
+    bool isPinned() const { return pinned; }
     FtWaterfall *waterfall() const { return wf; }  // the main window puts it under its panorama
     // the transmitter: the main window plays its audio (audio thread) and keys MOX on pttRequest
     FtTx *txUnit() { return &ftx; }
@@ -129,6 +132,7 @@ public:
 signals:
     void tuneRequest(qint64 dialHz);    // the receiver to this dial frequency (USB)
     void modeChanged(int mode);
+    void pinToggled(bool on);           // AetherSDR, build 454: the pin -- attached to the main window or not
     void closed();                      // the window closed by the user: FTX off
     void pttRequest(bool on);           // the transmitter: MOX on / off
     void js8Requested();                // AetherSDR, build 406: the JS8 button
@@ -225,6 +229,8 @@ private:
     static int modeIndex(int mode) { return mode == FtUnit::FT8 ? 0 : mode == FtUnit::FT4 ? 1 : 2; }
     static QString modeKey(int mi) { return mi == 2 ? QString("W") : QString::number(mi); }   // Options.ini (2 was FT2)
     void modeUi();                             // WSPR: the controls it does not use off
+    bool pinned = false;                // build 454: attached (its place is the main window's)
+    QPushButton *pbPin = nullptr;
     QByteArray winGeom;                        // the place of the window (Options.ini FT/WindowGeometry)
     void fillBands();
     void tuneBand();

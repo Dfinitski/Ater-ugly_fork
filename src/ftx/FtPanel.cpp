@@ -6,6 +6,7 @@
 #include "core/ForkName.h"
 #include "PskReporter.h"
 #include "FtWaterfall.h"
+#include "gui/PinIcon.h"
 #include <QtWidgets>
 #include <QSettings>
 #include <QDir>
@@ -126,6 +127,18 @@ FtPanel::FtPanel(FtUnit *u, QWidget *parent)
     fu.setBold(true);
     lbUtc->setFont(fu);
     h1->addWidget(lbUtc);
+    // AetherSDR, build 454 (operator, 16.11): the pin -- attached to the right of the main
+    // window (engaged) or a window of its own
+    h1->addSpacing(6);
+    pbPin = PinIcon::makeButton();
+    pbPin->setToolTip(PinIcon::tip(false));
+    pbPin->setAccessibleName(QStringLiteral("ftxPin"));
+    connect(pbPin, &QPushButton::toggled, this, [this](bool on) {
+        pinned = on;
+        pbPin->setToolTip(PinIcon::tip(on));
+        emit pinToggled(on);
+    });
+    h1->addWidget(pbPin, 0, Qt::AlignTop);
     v->addLayout(h1);
     connect(cbBand, QOverload<int>::of(&QComboBox::activated), this, &FtPanel::onBand);
     connect(cbFreq->lineEdit(), &QLineEdit::editingFinished, this, &FtPanel::onFreqEdited);
@@ -767,6 +780,16 @@ void FtPanel::setDialShown(qint64 hz)
 
 void FtPanel::showWindow(const QRect &mainGeom)
 {
+    if(pinned)
+    {
+        // build 454: attached -- the main window gives it its place right after this
+        show();
+        raise();
+        activateWindow();
+        if(pbWf->isChecked())
+            showWaterfall();
+        return;
+    }
     if(!winGeom.isEmpty() && restoreGeometry(winGeom))
     {
         // still on a screen (a monitor gone: next to the main window again)
@@ -793,9 +816,20 @@ void FtPanel::showWindow(const QRect &mainGeom)
         showWaterfall();
 }
 
+void FtPanel::setPinned(bool on)
+{
+    pinned = on;
+    if(pbPin)
+    {
+        QSignalBlocker b(pbPin);
+        pbPin->setChecked(on);
+        pbPin->setToolTip(PinIcon::tip(on));
+    }
+}
+
 void FtPanel::hideWindow()
 {
-    if(isVisible())
+    if(isVisible() && !pinned)      // (attached: its own place is kept for when it is detached)
         winGeom = saveGeometry();
     if(wf)
         wf->hide();                     // (the button keeps its state: shown again with the FTX window)
@@ -805,7 +839,8 @@ void FtPanel::hideWindow()
 
 void FtPanel::closeEvent(QCloseEvent *e)
 {
-    winGeom = saveGeometry();
+    if(!pinned)
+        winGeom = saveGeometry();
     e->accept();
     emit closed();                      // -> FTX off (hideWindow)
 }
