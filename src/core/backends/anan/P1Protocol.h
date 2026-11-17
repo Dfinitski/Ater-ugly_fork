@@ -46,9 +46,17 @@ inline constexpr std::uint8_t kP1BoardOrion2 = 10;     // ANAN-7000DLE / 8000DLE
 //     sync partner), RX2 = DDC2, DDC3 / DDC4 the PureSignal pair.
 //   HERMES (ANAN-10 / 100): nddc 4 -- RX1 = DDC0, RX2 = DDC1, DDC2 / DDC3 PS.
 //   HERMES II (ANAN-10E / 100B): nddc 2 -- RX1 = DDC0, RX2 = DDC1.
+// ANAN fork build 468 (operator, 16.11): RX3 / RX4 as well. ANGELIA / ORION /
+// ORION MkII: RX3 = DDC1 (diversity is not used), RX4 = DDC3 -- the PureSignal
+// feedback DDC, PureSignal's while it transmits (P2Transport::updateHeldMask).
+// HERMES: RX3 / RX4 = DDC2 / DDC3 (no PureSignal on these boards here).
+// HERMES II: two DDCs, two receivers.
 struct P1DdcPlan {
     int nddc = 5;
-    std::array<int, 2> rxDdc{{0, 2}};
+    std::array<int, 4> rxDdc{{0, 2, 1, 3}};
+    int maxRx = 4;
+    // The PureSignal pair (feedback, TX DAC reference); -1 = none.
+    int psFbDdc = 3;
 };
 [[nodiscard]] P1DdcPlan p1DdcPlanFor(std::uint8_t p2BoardId) noexcept;
 

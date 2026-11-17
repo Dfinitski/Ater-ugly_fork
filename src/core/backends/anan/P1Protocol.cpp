@@ -25,15 +25,21 @@ P1DdcPlan p1DdcPlanFor(std::uint8_t p2BoardId) noexcept
     switch (p2BoardId) {
     case kBoardIdHermes:
         p.nddc = 4;
-        p.rxDdc = {{0, 1}};
+        p.rxDdc = {{0, 1, 2, 3}};
+        p.maxRx = 4;
+        p.psFbDdc = 2;
         break;
     case kBoardIdHermesII:
         p.nddc = 2;
-        p.rxDdc = {{0, 1}};
+        p.rxDdc = {{0, 1, 0, 1}};
+        p.maxRx = 2;
+        p.psFbDdc = 0;   // PureSignal borrows the receivers' DDC0 / DDC1
         break;
     default:   // ANGELIA, ORION, ORION MkII
         p.nddc = 5;
-        p.rxDdc = {{0, 2}};
+        p.rxDdc = {{0, 2, 1, 3}};
+        p.maxRx = 4;
+        p.psFbDdc = 3;
         break;
     }
     return p;

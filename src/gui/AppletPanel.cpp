@@ -438,8 +438,9 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     AetherSDR::ThemeManager::instance().applyStyleSheet(m_scrollArea, "QScrollBar:vertical { background: {{color.background.0}}; width: 18px; }"
         // ANAN fork build 467 (operator, 16.11): the handle 10 % narrower on each
         // side (2 of the bar's 18 px), the background showing in the gap.
-        "QScrollBar::handle:vertical { background: #4a6880; border-radius: 6px; min-height: 30px;"
-        " margin: 0px 2px; }"
+        // Build 468 ("still wide, again 10 %"): 4 px each side, a 10 px handle.
+        "QScrollBar::handle:vertical { background: #4a6880; border-radius: 5px; min-height: 30px;"
+        " margin: 0px 4px; }"
         "QScrollBar::handle:vertical[active=\"true\"] { background: #6a90b0; }"
         "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }");
 

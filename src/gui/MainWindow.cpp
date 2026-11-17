@@ -339,7 +339,9 @@ void reserveStatusBarStackWidth(QWidget* stack, const QStringList& samples, int 
 }
 
 // The station label's resting type size. Single-token values keep it.
-constexpr int kStationFontPx = 19;   // build 253: the box 10 % smaller (21 px)
+// Build 468 (operator, 16.11): the station box 20 % lower and its type with
+// it -- 19 -> 15 px, the box 35 -> 28 px.
+constexpr int kStationFontPx = 15;   // build 253: the box 10 % smaller (21 px)
 
 // Property carrying the size the label is currently styled at, so the
 // stylesheet is only re-applied when it actually changes.
@@ -369,7 +371,7 @@ constexpr int kStationWideTextBudgetPx = 105;
 constexpr int kStationMaxTextPx = 420;
 // Build 256 (operator, 10.11): the box's height, 17 % below the status bar's
 // full height it used to stretch to; centred in the bar.
-constexpr int kStationBoxHeightPx = 35;
+constexpr int kStationBoxHeightPx = 28;   // build 468 (was 35)
 
 // The largest size in [kStationMinFontPx, kStationFontPx] at which the text
 // still fits the budget on ONE line. Returns the floor when nothing fits;

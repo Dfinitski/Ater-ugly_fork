@@ -204,7 +204,16 @@ bool P2Transport::psHoldsLowDdcs() const noexcept
 void P2Transport::updateHeldMask() noexcept
 {
     std::uint32_t mask = 0;
-    if (ddcWrap() > 0 && psHoldsLowDdcs()) {
+    if (m_p1) {
+        // Build 468: Protocol 1 -- the receivers on the PureSignal pair.
+        if (m_profile.psSupported && m_p1Plan.psFbDdc >= 0 && psHoldsLowDdcs()) {
+            for (int i = 0; i < m_numRx; ++i) {
+                const int d = m_p1Plan.rxDdc[static_cast<std::size_t>(i)];
+                if (d == m_p1Plan.psFbDdc || d == m_p1Plan.psFbDdc + 1)
+                    mask |= 1u << i;
+            }
+        }
+    } else if (ddcWrap() > 0 && psHoldsLowDdcs()) {
         for (int i = 0; i < m_numRx; ++i) {
             if (hwDdcOfRx(i) < 2)
                 mask |= 1u << i;
@@ -282,7 +291,7 @@ QList<hl2::MetisClient::Discovered> P2Transport::discover(int timeoutMs,
                 d.reply.gatewareVersion = r1->gatewareVersion;
                 d.reply.boardId = *id;
                 d.reply.streaming = r1->streaming;
-                d.reply.numRx = 2;   // RX1 / RX2 of the Thetis DDC plan
+                d.reply.numRx = static_cast<std::uint8_t>(p1DdcPlanFor(*id).maxRx);   // build 468
                 d.address = dg.senderAddress();
                 out.append(d);
                 continue;
@@ -583,12 +592,14 @@ void P2Transport::configureSession(const BoardProfile& profile, bool fromReply)
         // assigning the 10E / 100B, which gives the HERMES II profile here
         // (AnanForcedModel.h migrates the earlier model choice to that).
         m_p1Plan = p1DdcPlanFor(m_profile.boardId);
-        m_numRx = std::clamp(m_numRx, 1, 2);
+        m_numRx = std::clamp(m_numRx, 1, m_p1Plan.maxRx);   // build 468: up to 4
         m_p1Ddc.assign(static_cast<std::size_t>(m_p1Plan.nddc), {});
         qCInfo(lcAnanP2T).nospace()
             << "ANAN P1 transport: " << m_profile.modelName << " (Protocol 1 firmware, gateware "
             << int(m_p1Gateware) << "), " << m_p1Plan.nddc << " DDC, RX1 on DDC" << m_p1Plan.rxDdc[0]
             << (m_numRx > 1 ? QStringLiteral(", RX2 on DDC%1").arg(m_p1Plan.rxDdc[1]) : QString())
+            << QStringLiteral(" (build 468: up to %1 receivers, RX3 / RX4 on DDC%2 / DDC%3)")
+                   .arg(m_p1Plan.maxRx).arg(m_p1Plan.rxDdc[2]).arg(m_p1Plan.rxDdc[3])
             << ", " << hl2::sampleRateHz(static_cast<hl2::SampleRate>(p1RateCode())) / 1000 << " ksps"
             << "";
         {
@@ -1716,7 +1727,7 @@ void P2Transport::setReceiverCount(int count)
     if (m_discoveredNumDdc > 0)
         n = std::min(n, receiversForBoard(m_profile, m_discoveredNumDdc));
     if (m_p1)
-        n = std::min(n, 2);   // RX1 / RX2 of the Protocol 1 DDC plan
+        n = std::min(n, m_p1Plan.maxRx);   // build 468: the Protocol 1 DDC plan
     if (n == m_numRx)
         return;
     // New receivers start on receiver 0's frequency until Hl2Backend tunes them.
@@ -2337,9 +2348,14 @@ void P2Transport::setMox(bool keyed, const TxCoordinator::Operation& operation)
     if (keyed) {
         // Build 466: a receiver on DDC0 keeps sending for a moment after the
         // DDC-Specific packet that hands it to PureSignal.
-        bool rxOnDdc0 = false;
-        for (int i = 0; i < m_numRx && ddcWrap() > 0; ++i)
-            rxOnDdc0 = rxOnDdc0 || hwDdcOfRx(i) == 0;
+        bool rxOnDdc0 = false;   // (Protocol 1: on the feedback DDC, build 468)
+        for (int i = 0; i < m_numRx; ++i) {
+            if (m_p1)
+                rxOnDdc0 = rxOnDdc0 || (m_p1Plan.psFbDdc >= 0 && m_p1Plan.nddc > 2
+                                        && m_p1Plan.rxDdc[static_cast<std::size_t>(i)] == m_p1Plan.psFbDdc);
+            else if (ddcWrap() > 0)
+                rxOnDdc0 = rxOnDdc0 || hwDdcOfRx(i) == 0;
+        }
         m_psAcceptFromMs.store(TxCoordinator::monotonicMs() + (rxOnDdc0 ? kPsReleaseMs : 0),
                                std::memory_order_relaxed);
         m_hwDucPk = m_hwFbPk = 0.0;
@@ -2940,9 +2956,19 @@ P1CcState P2Transport::p1State() const
     }
     s.ddcHz[static_cast<std::size_t>(m_p1Plan.rxDdc[0])] = rx0;
     s.ddcHz[static_cast<std::size_t>(m_p1Plan.rxDdc[1])] = rx1;
+    // Build 468: RX3 / RX4 on their DDCs.
+    for (int i = 2; i < m_numRx && i < m_p1Plan.maxRx; ++i)
+        s.ddcHz[static_cast<std::size_t>(m_p1Plan.rxDdc[static_cast<std::size_t>(i)])] =
+            m_rxHz[static_cast<std::size_t>(i)];
     // Hermes II (nddc 2): PureSignal borrows the receivers' DDC0/DDC1 while
     // transmitting (Thetis UpdateDDCs), both on the TX frequency.
     const bool psTx = m_psEnabled && m_mox;
+    // Build 468: the PureSignal pair back on the TX frequency while it
+    // transmits, a receiver's or not.
+    if (psTx && m_p1Plan.nddc > 2 && m_p1Plan.psFbDdc >= 0) {
+        s.ddcHz[static_cast<std::size_t>(m_p1Plan.psFbDdc)] = tx;
+        s.ddcHz[static_cast<std::size_t>(m_p1Plan.psFbDdc + 1)] = tx;
+    }
     if (s.nddc == 2 && psTx) {
         s.ddcHz[0] = tx;
         s.ddcHz[1] = tx;
@@ -2962,6 +2988,14 @@ P1CcState P2Transport::p1State() const
         setAdc(1, adcOf(0));
     if (m_numRx > 1)
         setAdc(m_p1Plan.rxDdc[1], adcOf(1));
+    // Build 468: RX3 / RX4; not the PureSignal pair while it transmits (the
+    // feedback stays where PureSignal has it).
+    for (int i = 2; i < m_numRx && i < m_p1Plan.maxRx; ++i) {
+        const int d = m_p1Plan.rxDdc[static_cast<std::size_t>(i)];
+        if (psTx && m_p1Plan.psFbDdc >= 0 && (d == m_p1Plan.psFbDdc || d == m_p1Plan.psFbDdc + 1))
+            continue;
+        setAdc(d, adcOf(i));
+    }
     s.adcControl = adc;
     // The filters follow the first receiver on ADC0, as on Protocol 2.
     std::size_t filterRx = 0;
@@ -3327,7 +3361,13 @@ void P2Transport::handleP1Ep6(std::span<const std::uint8_t> bytes)
     }
 
     // The receivers' DDCs into the same alignment queues as Protocol 2.
+    // Build 468: not a receiver whose DDC PureSignal holds (silence instead,
+    // deliverAlignedBlocks()).
+    updateHeldMask();
+    const std::uint32_t heldNow = m_heldMask.load(std::memory_order_relaxed);
     for (int i = 0; i < m_numRx; ++i) {
+        if (heldNow & (1u << i))
+            continue;
         const auto ddc = static_cast<std::size_t>(m_p1Plan.rxDdc[static_cast<std::size_t>(i)]);
         if (ddc >= m_p1Ddc.size())
             continue;
@@ -3339,7 +3379,9 @@ void P2Transport::handleP1Ep6(std::span<const std::uint8_t> bytes)
     // PureSignal (build 213, Thetis twist(): the first stream the feedback,
     // the second the TX DAC): nddc 5 DDC3 / DDC4, nddc 4 DDC2 / DDC3,
     // nddc 2 DDC0 / DDC1. Resampled to calcc's 192 ksps.
-    const bool psTx = m_psEnabled && m_mox && m_psSink;
+    const bool psTx = m_psEnabled && m_mox && m_psSink
+                      && TxCoordinator::monotonicMs()
+                             >= m_psAcceptFromMs.load(std::memory_order_relaxed);   // build 468
     if (psTx) {
         const int fbDdc = m_p1Plan.nddc == 5 ? 3 : m_p1Plan.nddc == 4 ? 2 : 0;
         const auto fb = static_cast<std::size_t>(fbDdc);

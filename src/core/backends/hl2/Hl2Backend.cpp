@@ -83,6 +83,15 @@ static_assert(AetherSDR::hl2::Hl2TxDsp::Config{}.alcTargetPeak == 0.85,
 
 namespace AetherSDR::hl2 {
 
+// ANAN fork build 468 (operator, 16.11: "do not look at the network limits,
+// let the user think about it"): the ANAN boards are gigabit and send each DDC
+// in its own UDP stream, so the HL2's 100BASE-T EP6 budget (maxReceiversAtRate)
+// no longer limits receivers or spans; the board's DDC count does.
+constexpr int ananReceiversAtRate(int /*sampleRateHz*/, int hardMax) noexcept
+{
+    return hardMax < 1 ? 1 : hardMax;
+}
+
 // Declared incomplete in the header so it keeps its forward declarations of
 // MetisClient/Hl2RxDsp/Hl2TxDsp; the async connect is the only thing that needs
 // their Config types by value. See beginDspSetup().
@@ -2008,7 +2017,7 @@ int Hl2Backend::receiverCeiling() const
     p.numRx = kMaxReceivers;
     p.boardMaxRx = m_boardMaxRx;
     const int board = MetisClient::effectiveNumRx(p);
-    return std::min(board, maxReceiversAtRate(m_sampleRateHz, board));
+    return std::min(board, ananReceiversAtRate(m_sampleRateHz, board));
 }
 
 void Hl2Backend::announceReceiverCeilingRevision()
@@ -2056,7 +2065,7 @@ bool Hl2Backend::addReceiver(const Receiver& requested)
             << "HL2: cannot add a receiver — running " << running << " of " << ceiling
             << " (board reports " << (m_boardMaxRx > 0 ? QString::number(m_boardMaxRx)
                                                        : QStringLiteral("unknown"))
-            << ", link budget allows " << maxReceiversAtRate(m_sampleRateHz, kMaxReceivers)
+            << ", link budget allows " << ananReceiversAtRate(m_sampleRateHz, kMaxReceivers)
             << " at " << m_sampleRateHz / 1000 << " kHz)";
         return false;
     }
@@ -4212,7 +4221,7 @@ void Hl2Backend::connectRadio(const RadioConnectRequest& request)
     if (m_requestedNumRx < 1)
         m_requestedNumRx = 1;
 
-    const int rateLimited = maxReceiversAtRate(m_sampleRateHz, m_requestedNumRx);
+    const int rateLimited = ananReceiversAtRate(m_sampleRateHz, m_requestedNumRx);
     if (rateLimited < m_requestedNumRx) {
         qCInfo(lcHl2) << "HL2: link budget at" << m_sampleRateHz
                       << "Hz allows" << rateLimited << "receiver(s), not"
@@ -6142,7 +6151,7 @@ int Hl2Backend::widestRateForReceiversHz() const
     const int running = m_ids.empty() ? 1 : m_ids.size();
     int widestHz = kIqSampleRatesHz[0];
     for (const int r : iqRates()) {
-        if (r <= maxIqRateHz() && maxReceiversAtRate(r, running) >= running)
+        if (r <= maxIqRateHz() && ananReceiversAtRate(r, running) >= running)
             widestHz = std::max(widestHz, r);
     }
     return widestHz;
@@ -6283,7 +6292,7 @@ void Hl2Backend::applyPanBandwidth(double hz)
     // budget where the same zoom with one receiver would not. Refusing the zoom
     // is better than taking it and dropping EP6 packets, because dropped packets
     // are a gap in every panadapter at once and nothing says why.
-    const int allowed = maxReceiversAtRate(rate, static_cast<int>(m_rx.size()));
+    const int allowed = ananReceiversAtRate(rate, static_cast<int>(m_rx.size()));
     if (allowed < static_cast<int>(m_rx.size())) {
         qCWarning(lcHl2).nospace()
             << "HL2: refusing " << rate / 1000 << " kHz span — "
