@@ -576,22 +576,22 @@ void MainWindow::ftxPlaceAttached()
     m_ftxPlacing = true;
     // The frames (title bar, borders): frame geometry minus client geometry.
     const int mainDy = frameGeometry().height() - height();
-    const int panDy = std::max(0, w->frameGeometry().height() - w->height());
-    const int panDx = std::max(0, w->frameGeometry().width() - w->width());
+    const int panDy = qMax(0, w->frameGeometry().height() - w->height());
+    const int panDx = qMax(0, w->frameGeometry().width() - w->width());
     const bool fixedSize = isMaximized() || isFullScreen();
     if (!fixedSize && height() + mainDy < w->minimumHeight() + panDy) {
         const int need = w->minimumHeight() + panDy - mainDy;
-        resize(width(), std::max(need, minimumHeight()));
+        resize(width(), qMax(need, minimumHeight()));
     }
     const QRect mf = frameGeometry();
-    const int clientH = std::max(w->minimumHeight(), mf.height() - panDy);
-    const int clientW = std::max(w->width(), w->minimumWidth());
+    const int clientH = qMax(w->minimumHeight(), mf.height() - panDy);
+    const int clientW = qMax(w->width(), w->minimumWidth());
     int x = mf.right() + 1;
     QScreen* scr = screen();
     if (scr) {
         const QRect a = scr->availableGeometry();
         if (x + clientW + panDx - 1 > a.right())
-            x = std::max(a.left(), a.right() + 1 - clientW - panDx);
+            x = qMax(a.left(), a.right() + 1 - clientW - panDx);
     }
     w->resize(clientW, clientH);
     w->move(x, mf.top());
