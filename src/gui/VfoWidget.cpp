@@ -3518,14 +3518,14 @@ void VfoWidget::deactivateTabButton(int closedTab)
     }
 }
 
-void VfoWidget::setCollapsed(bool collapsed)
+void VfoWidget::setCollapsed(bool collapsed, bool persist)
 {
     if (m_collapsed == collapsed) return;
     m_collapsed = collapsed;
     QTimer::singleShot(0, this, [this] { syncFdvTextGeometry(); });   // build 338
 
-    // Persist per-slice preference
-    if (m_slice) {
+    // Persist per-slice preference (not for minimal mode, build 464)
+    if (m_slice && persist) {
         auto& s = AppSettings::instance();
         s.setValue(QString("SliceFlagCollapsed_%1").arg(m_slice->sliceId()),
                    collapsed ? "True" : "False");

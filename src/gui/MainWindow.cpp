@@ -2519,7 +2519,7 @@ MainWindow::MainWindow(QWidget* parent)
         // post-show screen restore entirely for exactly the multi-monitor
         // minimal-mode operators this fix targets. (#3319)
         const QByteArray minimalBlob = QByteArray::fromBase64(
-            s.value("MinimalModeGeometry", "").toString().toLatin1());
+            s.value("MinimalModeGeometryV2", "").toString().toLatin1());
         if (!minimalBlob.isEmpty()) {
             m_startupGeometryForFirstShow = minimalBlob;
         }
@@ -4205,12 +4205,20 @@ void MainWindow::closeEvent(QCloseEvent* event)
 
     preparePanadapterUiForShutdown();
     auto& s = AppSettings::instance();
-    s.setValue("MainWindowGeometry", saveGeometry().toBase64());
+    // Build 464: closed in minimal mode, the main geometry is the full-mode
+    // one (the next launch restores it, then enters minimal mode and keeps it
+    // as FullModeGeometry; the minimal window comes from MinimalModeGeometryV2).
+    const QByteArray fullModeGeom = m_minimalMode
+        ? QByteArray::fromBase64(s.value("FullModeGeometry", "").toByteArray())
+        : QByteArray();
+    s.setValue("MainWindowGeometry", !fullModeGeom.isEmpty()
+                                         ? fullModeGeom.toBase64()
+                                         : saveGeometry().toBase64());
     s.setValue("MainWindowState",   saveState().toBase64());
 #ifdef Q_OS_WIN
     // Read back on the next launch by reapplyStartupGeometryAfterShow(). A
     // maximized close keeps the last normal rect rather than erasing it.
-    if (nativeClientRectRestorable()) {
+    if (nativeClientRectRestorable() && !m_minimalMode) {
         saveNativeClientRect(QStringLiteral("main"));
     }
 #endif
@@ -4226,9 +4234,9 @@ void MainWindow::closeEvent(QCloseEvent* event)
     // toggleMinimalMode(false). (#2483)
     if (m_minimalMode &&
         !(windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen))) {
-        s.setValue("MinimalModeGeometry", saveGeometry().toBase64());
+        s.setValue("MinimalModeGeometryV2", saveGeometry().toBase64());   // build 464
 #ifdef Q_OS_WIN
-        saveNativeClientRect(QStringLiteral("minimalMode"));
+        saveNativeClientRect(QStringLiteral("minimalModeV2"));
 #endif
     }
 
@@ -10416,187 +10424,129 @@ void MainWindow::toggleMinimalMode(bool on)
     m_minimalMode = on;
     auto& s = AppSettings::instance();
 
+    // ANAN fork build 464 (operator, 16.11, with a screenshot of how it should
+    // look): minimal mode is the panadapters alone in a small window. The
+    // applet panel goes away (docked or floating), the VFO flags collapse to
+    // their badges, the window shrinks to its smallest size; the title bar and
+    // the status bar stay. Upstream's minimal mode (a 260 px window of the
+    // applet panel alone, no menu, no panadapters) is gone. Nothing of this is
+    // persisted as the operator's own choice: the panel's visibility and each
+    // flag's collapsed state come back as they were.
     if (on) {
-        // macOS delivers WindowStateChange asynchronously, so the Maximized /
-        // FullScreen bit can survive setFixedWidth(260) below and trigger the
-        // changeEvent exit path before we've finished entering.  Guard the
-        // enter window against re-entry from a deferred WindowStateChange.
         m_enteringMinimalMode = true;
 
-        // Save full-mode geometry (preserves the Maximized/FullScreen bit so
-        // exit can restore the user's pre-minimal window).
+        // The full-mode window, to come back to (Maximized / FullScreen kept).
         s.setValue("FullModeGeometry", saveGeometry().toBase64());
 #ifdef Q_OS_WIN
         saveNativeClientRect(QStringLiteral("fullMode"));
 #endif
-
-        // Drop maximized/fullscreen state before forcing the applet width.
-        // Without this, macOS keeps the bit set through setFixedWidth(260)
-        // and changeEvent schedules a spurious toggleMinimalMode(false).
         if (windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen))
             showNormal();
 
-        // Save splitter sizes for restore
-        s.setValue("MinimalModeSplitterSizes",
-            QString::fromLatin1(m_splitter->saveState().toBase64()));
+        // The applet panel: hidden, not through setAppletPanelVisible() (that
+        // would persist it as the operator's choice).
+        m_minimalHidAppletPanel = false;
+        m_minimalHidAppletFloat = false;
+        if (m_appletPanelFloatWindow && m_appletPanelFloatWindow->isVisible()) {
+            m_appletPanelFloatWindow->hide();
+            m_minimalHidAppletFloat = true;
+        } else if (m_appletPanel && m_appletPanel->isVisible()) {
+            m_appletPanel->hide();
+            m_minimalHidAppletPanel = true;
+            if (m_panStack)
+                m_panStack->refreshAfterLayoutShift();
+        }
 
-        // Suspend spectrum rendering to save CPU (skip floating pans —
-        // they remain visible in their own top-level window)
-        if (m_panStack) {
-            for (auto* a : m_panStack->allApplets()) {
-                if (!m_panStack->isFloating(a->panId()))
-                    a->spectrumWidget()->setUpdatesEnabled(false);
+        // The VFO flags: collapsed, without touching their saved preference.
+        m_minimalCollapsedSlices.clear();
+        for (SliceModel* sl : m_radioModel.slices()) {
+            if (!sl)
+                continue;
+            SpectrumWidget* sw = spectrumForSlice(sl);
+            VfoWidget* vfo = sw ? sw->vfoWidget(sl->sliceId()) : nullptr;
+            if (vfo && !vfo->isCollapsed()) {
+                vfo->setCollapsed(true, /*persist=*/false);
+                m_minimalCollapsedSlices.insert(sl->sliceId());
             }
         }
 
-        // Hide the splitter (contains spectrum + applet panel) and reparent
-        // the applet panel directly into the central layout
-        m_splitter->hide();
-        m_appletPanel->setParent(centralWidget());
-        centralWidget()->layout()->addWidget(m_appletPanel);
-        m_appletPanel->show();
-
-        // Strip title bar to heartbeat + logo + restore/feature buttons
-        m_titleBar->setMinimalMode(true);
-        statusBar()->hide();
-
-        // Force window to applet width
+        // The window to its smallest size (the layout's minimum), or to the
+        // size the operator gave it in minimal mode last time.
         setMinimumSize(0, 0);
-        setFixedWidth(260);
-
-        QByteArray geom = QByteArray::fromBase64(
-            s.value("MinimalModeGeometry", "").toByteArray());
-        if (!geom.isEmpty()) {
-            restoreGeometry(geom);
+        QTimer::singleShot(0, this, [this]() {
+            if (m_minimalMode) {
+                auto& st = AppSettings::instance();
+                const QByteArray geom = QByteArray::fromBase64(
+                    st.value("MinimalModeGeometryV2", "").toByteArray());
+                if (!geom.isEmpty()) {
+                    restoreGeometry(geom);
 #ifdef Q_OS_WIN
-            restoreNativeClientRect(QStringLiteral("minimalMode"));
+                    restoreNativeClientRect(QStringLiteral("minimalModeV2"));
 #endif
-        }
-        // Defer clearing the guard so any AppKit-deferred WindowStateChange
-        // queued by the showNormal() / setFixedWidth() calls above is drained
-        // through changeEvent's early-return before the guard drops.
-        QTimer::singleShot(0, this, [this]() { m_enteringMinimalMode = false; });
+                } else {
+                    resize(minimumSizeHint());
+                }
+            }
+            m_enteringMinimalMode = false;
+        });
 
     } else {
-        // Sync the View-menu action so non-action entry points (the
-        // title-bar maximize button, WM-driven maximize via changeEvent)
-        // leave the menu checkbox in the right state.  Blocker prevents
-        // toggled→toggleMinimalMode recursion.
         if (m_minimalModeAction) {
             QSignalBlocker b(m_minimalModeAction);
             m_minimalModeAction->setChecked(false);
         }
 
-        // If the WM/double-click maximized or fullscreened us before we
-        // got here, the current geometry is the maximized rect — not a
-        // useful "minimal mode" geometry to persist.  Un-maximize first
-        // and skip the save.  The normal Ctrl+Shift+M / maximize-button paths
-        // arrive at minimal width with no abnormal state and save as usual.
+        // The minimal window, kept for the next time (not a maximized rect).
         const bool abnormalState =
             windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen);
-        if (abnormalState)
+        if (abnormalState) {
             showNormal();
-        else
-            s.setValue("MinimalModeGeometry", saveGeometry().toBase64());
+        } else {
+            s.setValue("MinimalModeGeometryV2", saveGeometry().toBase64());
 #ifdef Q_OS_WIN
-        if (!abnormalState)
-            saveNativeClientRect(QStringLiteral("minimalMode"));
+            saveNativeClientRect(QStringLiteral("minimalModeV2"));
 #endif
-
-        // Reparent applet panel back into the splitter and restore layout
-        m_splitter->addWidget(m_appletPanel);
-        m_appletPanel->show();
-        QByteArray splitterState = QByteArray::fromBase64(
-            s.value("MinimalModeSplitterSizes", "").toByteArray());
-        if (!splitterState.isEmpty())
-            m_splitter->restoreState(splitterState);
-
-        // Keep the spectrum widgets HIDDEN until the window has its final
-        // geometry, and show them one turn later. QRhiWidget renders on every
-        // resize, and a first QRhi set-up inside this resize cascade faults in
-        // UpdateSubresource on Intel D3D11 (Arc 140V, 32.0.101.8626) (#4363,
-        // #4990). Only the spectra are held back; floating pans are untouched.
-        QList<QPointer<SpectrumWidget>> heldSpectra;
-        if (m_panStack) {
-            for (auto* a : m_panStack->allApplets()) {
-                auto* sw = a->spectrumWidget();
-                // Skip only an explicit hide(), never a spectrum that simply
-                // has not been shown yet — the launched-in-minimal case this
-                // hold exists for.
-                const bool explicitlyHidden = sw->isHidden()
-                    && sw->testAttribute(Qt::WA_WState_ExplicitShowHide);
-                if (m_panStack->isFloating(a->panId()) || explicitlyHidden)
-                    continue;
-                QSizePolicy sp = sw->sizePolicy();
-                sp.setRetainSizeWhenHidden(true);  // pan layout keeps its space
-                sw->setSizePolicy(sp);
-                sw->hide();
-                heldSpectra.append(sw);
-            }
         }
-        m_splitter->show();
 
-        // Release fixed width and restore minimum size
-        setFixedWidth(QWIDGETSIZE_MAX);
+        // The flags this mode collapsed, open again.
+        for (SliceModel* sl : m_radioModel.slices()) {
+            if (!sl || !m_minimalCollapsedSlices.contains(sl->sliceId()))
+                continue;
+            SpectrumWidget* sw = spectrumForSlice(sl);
+            if (VfoWidget* vfo = sw ? sw->vfoWidget(sl->sliceId()) : nullptr)
+                vfo->setCollapsed(false, /*persist=*/false);
+        }
+        m_minimalCollapsedSlices.clear();
+
+        // The applet panel back where it was.
+        if (m_minimalHidAppletFloat && m_appletPanelFloatWindow) {
+            m_appletPanelFloatWindow->show();
+        } else if (m_minimalHidAppletPanel && m_appletPanel) {
+            m_appletPanel->show();
+            if (m_panStack)
+                m_panStack->refreshAfterLayoutShift();
+        }
+        m_minimalHidAppletPanel = false;
+        m_minimalHidAppletFloat = false;
+
+        // The full-mode minimum and window.
         setMinimumSize(1024, 400);
-
-        // Restore title bar and status bar
         m_titleBar->setMinimalMode(false);
         statusBar()->show();
         updateStatusBarMinimumWidth();
-
-        // Restore full geometry
-        QByteArray geom = QByteArray::fromBase64(
+        const QByteArray geom = QByteArray::fromBase64(
             s.value("FullModeGeometry", "").toByteArray());
-        if (!geom.isEmpty()) {
-            restoreGeometry(geom);
-        }
-
-        // Belt-and-suspenders: if FullModeGeometry encoded a state, ensure
-        // we land windowed.
-        showNormal();
-#ifdef Q_OS_WIN
         if (!geom.isEmpty())
+            restoreGeometry(geom);
+#ifdef Q_OS_WIN
+        if (!geom.isEmpty() && !(windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen)))
             restoreNativeClientRect(QStringLiteral("fullMode"));
 #endif
 
-        // Now show the spectrum, one turn later (see the note above the
-        // splitter restore).  Queued BEFORE the canvas re-entry below, which
-        // expects the spectrum shown; same-turn timers run in order.
-        QTimer::singleShot(0, this, [this, heldSpectra] {
-            // Re-enable updates BEFORE showing: QRhiWidget draws its first frame
-            // from the pending resize and drops it with updates off, and a
-            // render-to-texture widget does not repaint on a later update().
-            // Skip if minimal mode was re-entered before this turn (that path
-            // suspended rendering again).
-            if (!m_minimalMode && m_panStack) {
-                for (auto* a : m_panStack->allApplets())
-                    a->spectrumWidget()->setUpdatesEnabled(true);
-            }
-            // Always undo the hold, re-entered or not: the enter path has
-            // hidden the splitter by then, so showing these draws nothing,
-            // and a widget left hidden here would be skipped by every later
-            // exit.
-            for (const auto& sw : heldSpectra) {
-                if (!sw)
-                    continue;  // pan closed during the turn
-                QSizePolicy sp = sw->sizePolicy();
-                sp.setRetainSizeWhenHidden(false);
-                sw->setSizePolicy(sp);
-                sw->show();
-            }
-        });
-
-        // The round trip ends where it started: minimal entered from
-        // canvas mode returns to canvas mode.  Deferred one event-loop
-        // turn — the splitter was just re-shown and geometry restored,
-        // and mounting the canvas inside the same turn is the shell-swap
-        // hazard the boot and disable paths already dodge (wl_subsurface).
+        // Minimal entered from canvas mode returns to canvas mode (deferred
+        // one turn, as upstream).
         if (m_canvasWasOnBeforeMinimal) {
             QTimer::singleShot(0, this, [this] {
-                // Keep the intent until the deferred activation actually
-                // succeeds.  A scripted re-entry during this event-loop turn
-                // must not consume it and strand the operator in Classic.
                 if (m_minimalMode || !m_workspaceController)
                     return;
                 if (m_workspaceController->isEnabled()) {

@@ -284,7 +284,9 @@ public:
     QLabel* freqLabel() const { return m_freqLabel; }
 
     bool isCollapsed() const { return m_collapsed; }
-    void setCollapsed(bool collapsed);
+    // persist = false (build 464, minimal mode): the operator's saved
+    // preference (SliceFlagCollapsed_N) is left as it is
+    void setCollapsed(bool collapsed, bool persist = true);
 
     // Spoken summary of this flag for AT tools (slice, frequency, TX state).
     // Consumed by VfoWidgetAccessible — the QAccessibleInterface implemented

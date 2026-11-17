@@ -6458,6 +6458,13 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
     w->setSlice(s);
     w->setAntennaList(m_radioModel.antennaList());
     w->setTransmitModel(&m_radioModel.transmitModel());
+    // Build 464: a flag made while minimal mode is on (the radio connected
+    // after a launch in minimal mode, a new slice) collapses as the others;
+    // its own saved preference is kept for when the mode ends.
+    if (m_minimalMode && s && !w->isCollapsed()) {
+        w->setCollapsed(true, /*persist=*/false);
+        m_minimalCollapsedSlices.insert(s->sliceId());
+    }
 }
 
 // wireActiveVfoSignals removed — NR2/RN2/RADE are now wired permanently

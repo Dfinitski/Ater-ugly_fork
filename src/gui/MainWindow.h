@@ -2113,6 +2113,10 @@ private:
     bool m_canvasWasOnBeforeMinimal{false}; // minimal exit restores canvas mode
     bool m_exitingMinimalMode{false};      // re-entry guard for changeEvent → toggleMinimalMode(false)
     bool m_enteringMinimalMode{false};     // suppress changeEvent during enter (macOS deferred WindowStateChange, #2365)
+    // Build 464: what the fork's minimal mode hid / collapsed, to give back
+    bool m_minimalHidAppletPanel{false};
+    bool m_minimalHidAppletFloat{false};
+    QSet<int> m_minimalCollapsedSlices;
     bool m_startupGeometryReapplied{false};
     QByteArray m_startupGeometryForFirstShow;
     QAction* m_minimalModeAction{nullptr};
