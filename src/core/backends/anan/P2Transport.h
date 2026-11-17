@@ -329,6 +329,15 @@ private:
     // (printed with "no IQ for ..."), and how often the read loop had to
     // yield to the event loop because the socket did not run empty.
     quint64 m_p1DiagSeen = 0, m_p1DiagBadSize = 0, m_p1DiagNoSync = 0, m_p1DiagOneFrame = 0;
+    // ANAN fork build 469: the DDCs the radio really streams over Protocol 1,
+    // from the EP6 packet rate (EP6 does not say how many DDCs a frame holds;
+    // a homebrew Hermes-id board that streams 2 while the plan says 4 was
+    // parsed as 4 -- garbage I/Q, a noise floor off the scale).
+    void p1CheckDdcCount();
+    qint64 m_p1RateCheckFromMs = 0;
+    quint64 m_p1RateCheckPkts = 0;
+    bool m_p1RateChecked = false;
+    int m_p1BoardNddc = 0;   // the plan's count, before a correction
     int m_diagReadYields = 0;   // not in the slots section: moc reads that one
 
 private slots:

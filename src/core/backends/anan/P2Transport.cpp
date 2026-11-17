@@ -206,13 +206,19 @@ void P2Transport::updateHeldMask() noexcept
     std::uint32_t mask = 0;
     if (m_p1) {
         // Build 468: Protocol 1 -- the receivers on the PureSignal pair.
-        if (m_profile.psSupported && m_p1Plan.psFbDdc >= 0 && psHoldsLowDdcs()) {
+        // (Not on two DDCs -- Hermes II: PureSignal borrows RX1 / RX2's own
+        // DDCs there, which then carry it, as before build 468.)
+        if (m_profile.psSupported && m_p1Plan.psFbDdc >= 0 && m_p1Plan.nddc > 2
+            && psHoldsLowDdcs()) {
             for (int i = 0; i < m_numRx; ++i) {
                 const int d = m_p1Plan.rxDdc[static_cast<std::size_t>(i)];
                 if (d == m_p1Plan.psFbDdc || d == m_p1Plan.psFbDdc + 1)
                     mask |= 1u << i;
             }
         }
+        // Build 469: receivers past the DDCs the radio really streams.
+        for (int i = m_p1Plan.maxRx; i < m_numRx; ++i)
+            mask |= 1u << i;
     } else if (ddcWrap() > 0 && psHoldsLowDdcs()) {
         for (int i = 0; i < m_numRx; ++i) {
             if (hwDdcOfRx(i) < 2)
@@ -592,6 +598,10 @@ void P2Transport::configureSession(const BoardProfile& profile, bool fromReply)
         // assigning the 10E / 100B, which gives the HERMES II profile here
         // (AnanForcedModel.h migrates the earlier model choice to that).
         m_p1Plan = p1DdcPlanFor(m_profile.boardId);
+        m_p1BoardNddc = m_p1Plan.nddc;
+        m_p1RateChecked = false;   // build 469: p1CheckDdcCount()
+        m_p1RateCheckFromMs = 0;
+        m_p1RateCheckPkts = 0;
         m_numRx = std::clamp(m_numRx, 1, m_p1Plan.maxRx);   // build 468: up to 4
         m_p1Ddc.assign(static_cast<std::size_t>(m_p1Plan.nddc), {});
         qCInfo(lcAnanP2T).nospace()
@@ -3263,6 +3273,69 @@ void P2Transport::deliverPsPairs()
     }
 }
 
+// Build 469 (a user's homebrew transceiver, board id 1 = HERMES, gateware 29,
+// one receiver): the log showed "DDC0 50669 samples/s (configured 96000)". The
+// plan for HERMES asks for 4 DDCs; the radio sent 2 -- 36 samples per frame,
+// 72 per packet, 1333 packets/s -- and they were read as 4 (19 per frame):
+// 1333 x 38 = 50666 samples/s of mixed-up I/Q. EP6 carries no DDC count, but
+// the packet rate gives it: the radio sends rate / (2 x samples per frame)
+// packets a second, samples per frame = 504 / (6 x nddc + 2). Counted from
+// 0.3 s to 1.3 s after the first packet; a count that fits another nddc
+// within 3 % replaces the plan's for the session (the radio is told the same
+// in C4 from then on). A board that streams what the plan asks is unchanged.
+void P2Transport::p1CheckDdcCount()
+{
+    if (m_p1RateChecked)
+        return;
+    const qint64 now = TxCoordinator::monotonicMs();
+    if (!m_p1RateCheckFromMs) {
+        m_p1RateCheckFromMs = now + 300;   // past the start-up burst
+        return;
+    }
+    if (now < m_p1RateCheckFromMs)
+        return;
+    ++m_p1RateCheckPkts;
+    const qint64 span = now - m_p1RateCheckFromMs;
+    if (span < 1000)
+        return;
+    m_p1RateChecked = true;
+    const double pps = 1000.0 * double(m_p1RateCheckPkts) / double(span);
+    const int rateHz = hl2::sampleRateHz(static_cast<hl2::SampleRate>(p1RateCode()));
+    int best = 0;
+    double bestErr = 1e9;
+    for (int n = 1; n <= 8; ++n) {
+        const int spf = static_cast<int>((hl2::kFrameSize - 8) / static_cast<std::size_t>(6 * n + 2));
+        const double expect = double(rateHz) / (2.0 * spf);
+        const double err = std::abs(pps / expect - 1.0);
+        if (err < bestErr) {
+            bestErr = err;
+            best = n;
+        }
+    }
+    if (best == m_p1Plan.nddc || bestErr > 0.03) {
+        qCInfo(lcAnanP2T).nospace() << "ANAN P1 transport: " << qRound(pps) << " packets/s at "
+                                    << rateHz / 1000 << " ksps -- " << m_p1Plan.nddc
+                                    << " DDC as planned" << (best == m_p1Plan.nddc ? "" : " (no clear fit)");
+        return;
+    }
+    const int n = best;
+    qCWarning(lcAnanP2T).nospace()
+        << "ANAN P1 transport: the radio streams " << n << " DDC, not the " << m_p1Plan.nddc
+        << " of the board's plan (" << qRound(pps) << " packets/s at " << rateHz / 1000
+        << " ksps) -- reading " << n << " DDC from now on";
+    m_p1Plan.nddc = n;
+    for (int i = 0; i < 4; ++i)
+        m_p1Plan.rxDdc[static_cast<std::size_t>(i)] = i < n ? i : 0;
+    m_p1Plan.maxRx = std::min(n, 4);
+    m_p1Plan.psFbDdc = n == 5 ? 3 : n == 4 ? 2 : n == 2 ? 0 : -1;
+    m_p1Ddc.assign(static_cast<std::size_t>(n), {});
+    m_p1MicPhase = 0;
+    m_p1Mic.clear();
+    for (auto& q : m_pending)
+        q.clear();
+    updateHeldMask();
+}
+
 void P2Transport::handleP1Ep6(std::span<const std::uint8_t> bytes)
 {
     ++m_p1DiagSeen;
@@ -3283,6 +3356,7 @@ void P2Transport::handleP1Ep6(std::span<const std::uint8_t> bytes)
     }
     m_expectedSeq[0] = seq + 1;
 
+    p1CheckDdcCount();   // build 469
     for (auto& v : m_p1Ddc)
         v.clear();
     const int rounds = hl2::ep6SamplesMulti(
