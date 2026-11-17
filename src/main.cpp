@@ -289,6 +289,20 @@ int main(int argc, char* argv[])
         qputenv("QT_OPENGL", "software");
     }
 
+#ifdef Q_OS_WIN
+    // ANAN fork build 461 (operator, 16.11): resizing the main window made
+    // its contents shake and lag the frame (the right panel doubled on a
+    // horizontal drag, the bottom panel left a gap on a vertical one). A
+    // window with a QRhiWidget is presented through a D3D11 swap chain; in the
+    // flip model DWM shows the new frame of the contents after the window has
+    // already taken its new size. The blit model (QT_D3D_NO_FLIP=1) presents
+    // in step with the frame: tested by the operator, the shaking is gone.
+    // Set unless the user set the variable himself (=0 brings flip back).
+    if (!qEnvironmentVariableIsSet("QT_D3D_NO_FLIP")) {
+        qputenv("QT_D3D_NO_FLIP", "1");
+    }
+#endif
+
     // NOTE ON ORDER: the QT_QPA_PLATFORM block runs BEFORE
     // GpuSelector::applyAtStartup() below. GpuSelector::willUseWayland() reads
     // the -platform argument (passed in) or else QT_QPA_PLATFORM to decide
