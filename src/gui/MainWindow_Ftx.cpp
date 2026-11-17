@@ -36,8 +36,6 @@
 #include <memory>
 #include <algorithm>
 #include <QEvent>
-#include <QScreen>
-#include <functional>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <QLibrary>
@@ -47,33 +45,6 @@
 namespace AetherSDR {
 
 namespace {
-// Build 454: the main window moved, resized, maximized or restored -- the
-// attached FTX / JS8 window follows (MainWindow::ftxPlaceAttached).
-class FtxFollow : public QObject
-{
-public:
-    FtxFollow(QObject* parent, std::function<void()> f) : QObject(parent), m_f(std::move(f)) {}
-protected:
-    bool eventFilter(QObject* o, QEvent* e) override
-    {
-        if (o == parent()) {
-            switch (e->type()) {
-            case QEvent::Move:
-            case QEvent::Resize:
-            case QEvent::WindowStateChange:
-            case QEvent::Show:
-                m_f();
-                break;
-            default:
-                break;
-            }
-        }
-        return false;
-    }
-private:
-    std::function<void()> m_f;
-};
-
 // Build 408 (operator, 14.11): "we have no light window headers" -- the FTX
 // and JS8 windows keep their native frame (resize, snap, minimize), and the
 // caption gets the colours of the program's own title bars (the middle of
@@ -301,29 +272,6 @@ void MainWindow::activateFtx(int sliceId)
         connect(m_js8Panel, &Js8Panel::closed, this, [this] { deactivateFtx(); }, Qt::QueuedConnection);
         connect(m_js8Panel, &Js8Panel::pttRequest, this, [this](bool on) { ftxPtt(on); });
         m_js8Panel->setTxAllowed(true);
-        // Build 454 (operator, 16.11): the pin of both windows -- attached to
-        // the right of the main window, following it (moved, resized,
-        // maximized, restored), or a window of its own where it is.
-        m_ftxAttached = AppSettings::instance()
-                            .value(QStringLiteral("FtxWindowAttached"), "True").toString() == "True";
-        auto onPin = [this](bool on) {
-            m_ftxAttached = on;
-            m_ftPanel->setPinned(on);
-            m_js8Panel->setPinned(on);
-            auto& as = AppSettings::instance();
-            as.setValue(QStringLiteral("FtxWindowAttached"), on ? "True" : "False");
-            as.save();
-            if (on)
-                ftxPlaceAttached();
-        };
-        connect(m_ftPanel, &FtPanel::pinToggled, this, onPin);
-        connect(m_js8Panel, &Js8Panel::pinToggled, this, onPin);
-        m_ftPanel->setPinned(m_ftxAttached);
-        m_js8Panel->setPinned(m_ftxAttached);
-        installEventFilter(new FtxFollow(this, [this] {
-            if (m_ftxAttached)
-                QTimer::singleShot(0, this, [this] { ftxPlaceAttached(); });
-        }));
         // The dial of the mode -> the receiver (USB dial frequency).
         connect(m_ftPanel, &FtPanel::tuneRequest, this, [this](qint64 dialHz) {
             if (!m_ftxJs8 && dialHz > 0)
@@ -536,7 +484,7 @@ void MainWindow::activateFtx(int sliceId)
         return anan::AnanXvtrStore::instance().forRf(static_cast<double>(hz), caps.tuningMinHz,
                                                      caps.tuningMaxHz) != nullptr;
     });
-    ftxShowWindow(false);   // build 454: attached to the right, or its own place
+    m_ftPanel->showWindow(geometry());
     m_ftPanel->start();   // -> tuneRequest: the receiver to the band's frequency
     // Build 406: the window the mode was left in (MicronSDR: FT/LastWindow).
     if (AppSettings::instance().value(QStringLiteral("FtxLastWindowJs8"), "False").toString() == "True")
@@ -545,57 +493,6 @@ void MainWindow::activateFtx(int sliceId)
     qInfo() << "MainWindow: FTX on, slice" << sliceId << "- was" << m_ftxSavedMode << m_ftxSavedFreqMhz
             << "MHz, filter" << m_ftxSavedFilterLo << ".." << m_ftxSavedFilterHi << "pan"
             << m_ftxSavedPanBandwidthMhz * 1000.0 << "kHz";
-}
-
-// Build 454: the FTX / JS8 window shown, attached to the right of the main
-// window when its pin says so (placed once the window has its frame).
-void MainWindow::ftxShowWindow(bool js8)
-{
-    if (js8) {
-        m_js8Panel->setPinned(m_ftxAttached);
-        m_js8Panel->showWindow(geometry());
-    } else {
-        m_ftPanel->setPinned(m_ftxAttached);
-        m_ftPanel->showWindow(geometry());
-    }
-    if (m_ftxAttached)
-        QTimer::singleShot(0, this, [this] { ftxPlaceAttached(); });
-}
-
-// Build 454: the attached window right of the main window, top to top, as
-// high as the main window. A main window lower than the decoder window's
-// smallest height grows to it (not when maximized / full screen). Off the
-// screen on the right: the window goes back inside it, over the main window.
-void MainWindow::ftxPlaceAttached()
-{
-    if (!m_ftxAttached || m_ftxPlacing || !m_ftPanel || !m_js8Panel)
-        return;
-    QWidget* w = m_ftxJs8 ? static_cast<QWidget*>(m_js8Panel) : static_cast<QWidget*>(m_ftPanel);
-    if (!w->isVisible() || isMinimized())
-        return;
-    m_ftxPlacing = true;
-    // The frames (title bar, borders): frame geometry minus client geometry.
-    const int mainDy = frameGeometry().height() - height();
-    const int panDy = qMax(0, w->frameGeometry().height() - w->height());
-    const int panDx = qMax(0, w->frameGeometry().width() - w->width());
-    const bool fixedSize = isMaximized() || isFullScreen();
-    if (!fixedSize && height() + mainDy < w->minimumHeight() + panDy) {
-        const int need = w->minimumHeight() + panDy - mainDy;
-        resize(width(), qMax(need, minimumHeight()));
-    }
-    const QRect mf = frameGeometry();
-    const int clientH = qMax(w->minimumHeight(), mf.height() - panDy);
-    const int clientW = qMax(w->width(), w->minimumWidth());
-    int x = mf.right() + 1;
-    QScreen* scr = screen();
-    if (scr) {
-        const QRect a = scr->availableGeometry();
-        if (x + clientW + panDx - 1 > a.right())
-            x = qMax(a.left(), a.right() + 1 - clientW - panDx);
-    }
-    w->resize(clientW, clientH);
-    w->move(x, mf.top());
-    m_ftxPlacing = false;
 }
 
 // Build 406: the transmitter's waveform comes from the window that is on.
@@ -686,11 +583,11 @@ void MainWindow::ftxSwitchWindow(bool js8)
     ftxPlaceWaterfall();
     if (js8) {
         ftx::FtxState::instance().setSubMode(ftx::kJs8);
-        ftxShowWindow(true);
+        m_js8Panel->showWindow(geometry());
         m_js8Panel->start();       // -> tuneRequest: the JS8 frequency of its band
     } else {
         ftx::FtxState::instance().setSubMode(m_ftPanel->mode());
-        ftxShowWindow(false);
+        m_ftPanel->showWindow(geometry());
         m_ftPanel->start();
     }
     qInfo() << "MainWindow: FTX window" << (js8 ? "JS8" : "FT8 / FT4 / WSPR");

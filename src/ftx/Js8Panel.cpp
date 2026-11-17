@@ -8,7 +8,6 @@
 #include "core/ForkName.h"
 #include "js8/decodedtext.h"
 #include "js8/varicode.h"
-#include "gui/PinIcon.h"
 #include <QtWidgets>
 #include <QSettings>
 #include <QDir>
@@ -87,18 +86,6 @@ Js8Panel::Js8Panel(FtUnit *u, QWidget *parent)
     fu.setBold(true);
     lbUtc->setFont(fu);
     h1->addWidget(lbUtc);
-    // AetherSDR, build 454 (operator, 16.11): the pin -- attached to the right of the main
-    // window (engaged) or a window of its own
-    h1->addSpacing(6);
-    pbPin = PinIcon::makeButton();
-    pbPin->setToolTip(PinIcon::tip(false));
-    pbPin->setAccessibleName(QStringLiteral("js8Pin"));
-    connect(pbPin, &QPushButton::toggled, this, [this](bool on) {
-        pinned = on;
-        pbPin->setToolTip(PinIcon::tip(on));
-        emit pinToggled(on);
-    });
-    h1->addWidget(pbPin, 0, Qt::AlignTop);
     v->addLayout(h1);
     connect(cbBand, QOverload<int>::of(&QComboBox::activated), this, &Js8Panel::onBand);
     connect(cbFreq->lineEdit(), &QLineEdit::editingFinished, this, &Js8Panel::onFreqEdited);
@@ -471,14 +458,6 @@ void Js8Panel::saveSettings()
 
 void Js8Panel::showWindow(const QRect &mainGeom)
 {
-    if(pinned)
-    {
-        // build 454: attached -- the main window gives it its place right after this
-        show();
-        raise();
-        activateWindow();
-        return;
-    }
     if(!winGeom.isEmpty() && restoreGeometry(winGeom))
     {
         if(!QGuiApplication::screenAt(geometry().center()))
@@ -501,20 +480,9 @@ void Js8Panel::showWindow(const QRect &mainGeom)
     activateWindow();
 }
 
-void Js8Panel::setPinned(bool on)
-{
-    pinned = on;
-    if(pbPin)
-    {
-        QSignalBlocker b(pbPin);
-        pbPin->setChecked(on);
-        pbPin->setToolTip(PinIcon::tip(on));
-    }
-}
-
 void Js8Panel::hideWindow()
 {
-    if(isVisible() && !pinned)      // (attached: its own place is kept for when it is detached)
+    if(isVisible())
         winGeom = saveGeometry();
     hide();
     saveSettings();
@@ -522,8 +490,7 @@ void Js8Panel::hideWindow()
 
 void Js8Panel::closeEvent(QCloseEvent *e)
 {
-    if(!pinned)
-        winGeom = saveGeometry();
+    winGeom = saveGeometry();
     e->accept();
     emit closed();                      // -> JS8 off (hideWindow)
 }

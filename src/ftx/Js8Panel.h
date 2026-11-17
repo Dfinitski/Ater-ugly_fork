@@ -64,8 +64,6 @@ class QMenu;
 class Js8Panel : public QWidget
 {
     Q_OBJECT
-    bool pinned = false;                // build 454: attached (its place is the main window's)
-    QPushButton *pbPin = nullptr;
     QByteArray winGeom;                 // the place of the window (Options.ini JS8/WindowGeometry)
 public:
     Js8Panel(FtUnit *unit, QWidget *parent = 0);
@@ -81,9 +79,6 @@ public:
     void stop();
     void showWindow(const QRect &mainGeom);     // shown (its place kept; the first time: next to the main window)
     void hideWindow();
-    // AetherSDR, build 454: attached to the right of the main window (the main window places it)
-    void setPinned(bool on);
-    bool isPinned() const { return pinned; }
 
     // the transmitter: the main window plays its audio (audio thread) and keys MOX on pttRequest
     FtTx *txUnit() { return &jtx; }
@@ -99,7 +94,6 @@ public:
 signals:
     void tuneRequest(qint64 dialHz);
     void modeChanged(int mode);
-    void pinToggled(bool on);           // AetherSDR, build 454: the pin -- attached to the main window or not
     void closed();                      // the window closed by the user: JS8 off
     void pttRequest(bool on);           // the transmitter: MOX on / off
     void ftxRequested();                // AetherSDR, build 406: the FTX button -- the FT8 / FT4 / WSPR window
