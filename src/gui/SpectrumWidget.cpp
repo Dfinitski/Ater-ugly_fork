@@ -16927,7 +16927,10 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                 const float fa = m_fftFillAlpha;
                 const float ubo[24] = {
                     static_cast<float>(specContentW) * fbDpr,       // plot: wPx
-                    static_cast<float>(specH) * fbDpr,              // hPx
+                    static_cast<float>(specH)
+                        * (resizePreview ? static_cast<float>(renderTarget()->pixelSize().height())
+                                               / static_cast<float>(qMax(1, h))
+                                         : fbDpr),         // hPx (build 457: the preview's own height scale)
                     static_cast<float>(n),                          // columnCount
                     1.0f,                                           // hasData
                     // The slider is a FULL width in device px (the QPainter
@@ -16978,6 +16981,15 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
 
     const QSize outputSize = renderTarget()->pixelSize();
     const float dpr = outputSize.width() / static_cast<float>(qMax(1, w));
+    // ANAN fork build 457 (operator, 16.11: "the panorama and waterfall jump
+    // vertically while the window is resized horizontally"). The resize
+    // preview draws the last committed logical frame (w x h) into a render
+    // target of another size; the scale taken from the width was used for the
+    // heights too, so a wider window drew the trace and waterfall taller and
+    // lower, a narrower one shorter and higher, until the commit. The heights
+    // take the height's own scale in the preview (a normal frame: unchanged).
+    const float dprY = resizePreview
+        ? outputSize.height() / static_cast<float>(qMax(1, h)) : dpr;
 
     // Draw waterfall quad — viewport restricted to waterfall rect. Always drawn:
     // 3DSS replaces only the spectrum trace, the waterfall stays below it.
@@ -16994,9 +17006,9 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
         cb->setShaderResources(waterfallSrb);
         // QRhiViewport: (x, y, width, height) — y is bottom-up in GL convention
         float vpX = static_cast<float>(wfRect.x()) * dpr;
-        float vpY = static_cast<float>(h - wfRect.bottom() - 1) * dpr;
+        float vpY = static_cast<float>(h - wfRect.bottom() - 1) * dprY;
         float vpW = static_cast<float>(wfContentW) * dpr;
-        float vpH = static_cast<float>(wfRect.height()) * dpr;
+        float vpH = static_cast<float>(wfRect.height()) * dprY;
 
         cb->setViewport({vpX, vpY, vpW, vpH});
         const QRhiCommandBuffer::VertexInput vbuf(m_wfVbo, 0);
@@ -17026,9 +17038,9 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
     if (is3D && m_dssMeshReady && m_dssMeshFillPipeline && m_dssMeshVbo) {
         // GPU height-map mesh: static grid, height from the ring texture.
         const QRhiViewport vp(static_cast<float>(specRect.x()) * dpr,
-                              static_cast<float>(h - specRect.bottom() - 1) * dpr,
+                              static_cast<float>(h - specRect.bottom() - 1) * dprY,
                               static_cast<float>(specContentW) * dpr,
-                              static_cast<float>(specRect.height()) * dpr);
+                              static_cast<float>(specRect.height()) * dprY);
         const int drawnRows = m_dss.visibleRowCount();
 
         if (drawnRows > 0) {
@@ -17057,9 +17069,9 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
         cb->setGraphicsPipeline(m_ovPipeline);
         cb->setShaderResources(m_dssSrb);
         cb->setViewport({static_cast<float>(specRect.x()) * dpr,
-                         static_cast<float>(h - specRect.bottom() - 1) * dpr,
+                         static_cast<float>(h - specRect.bottom() - 1) * dprY,
                          static_cast<float>(specContentW) * dpr,
-                         static_cast<float>(specRect.height()) * dpr});
+                         static_cast<float>(specRect.height()) * dprY});
         const QRhiCommandBuffer::VertexInput vbuf(m_ovVbo, 0);
         cb->setVertexInput(0, 1, &vbuf);
         cb->draw(4);
@@ -17070,9 +17082,9 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
     if (dssMeshOutlineRows > 0 && outlinePipeline && m_dssMeshSrb && m_dssMeshLineVbo) {
         const QRhiViewport vp(
             static_cast<float>(specRect.x()) * dpr,
-            static_cast<float>(h - specRect.bottom() - 1) * dpr,
+            static_cast<float>(h - specRect.bottom() - 1) * dprY,
             static_cast<float>(specContentW) * dpr,
-            static_cast<float>(specRect.height()) * dpr);
+            static_cast<float>(specRect.height()) * dprY);
         // Reuse the working OpenGL fill program for ribbon outlines. Its blend
         // state matches the dedicated outline pipeline; live probes isolated
         // the flat/stale rows to the separate-program path.
@@ -17112,9 +17124,9 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
     // stroke per pixel from the column texture.
     if (!is3D && m_fftScopePipeline && m_ovVbo && fftTracePointCount > 0) {
         float specVpX = static_cast<float>(specRect.x()) * dpr;
-        float specVpY = static_cast<float>(h - specRect.bottom() - 1) * dpr;
+        float specVpY = static_cast<float>(h - specRect.bottom() - 1) * dprY;
         float specVpW = static_cast<float>(specContentW) * dpr;
-        float specVpH = static_cast<float>(specRect.height()) * dpr;
+        float specVpH = static_cast<float>(specRect.height()) * dprY;
         cb->setGraphicsPipeline(m_fftScopePipeline);
         cb->setShaderResources(m_fftScopeSrb);
         cb->setViewport({specVpX, specVpY, specVpW, specVpH});
