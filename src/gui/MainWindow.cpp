@@ -3836,6 +3836,24 @@ static LRESULT frameHitCode(WindowChrome::FrameHit hit)
 bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr* result)
 {
     auto* msg = static_cast<MSG*>(message);
+    // ANAN fork build 458 (operator, 16.11): "a fast vertical resize lifts the
+    // bottom panel and bares a white field". The area a larger window uncovers
+    // is shown before Qt has painted it, and nothing erased it (Qt answers no
+    // background), so it showed white. Erase it with the theme's background
+    // colour: the same dark field as the window, until Qt's frame covers it.
+    if (msg && result && msg->message == WM_ERASEBKGND) {
+        const QColor bg = ThemeManager::instance().color("color.background.app");
+        if (bg.isValid()) {
+            RECT rc{};
+            GetClientRect(msg->hwnd, &rc);
+            if (HBRUSH brush = CreateSolidBrush(RGB(bg.red(), bg.green(), bg.blue()))) {
+                FillRect(reinterpret_cast<HDC>(msg->wParam), &rc, brush);
+                DeleteObject(brush);
+            }
+            *result = 1;
+            return true;
+        }
+    }
     // Under the expanded client area Qt 6.12 answers WM_NCHITTEST by turning
     // the live mouse-button state into synthetic presses, which doubles real
     // clicks and closes menus as they open (#6272). Answer it here instead:
