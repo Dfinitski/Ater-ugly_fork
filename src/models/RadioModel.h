@@ -949,6 +949,8 @@ public:
     void setCodecMicContext(const TxCoordinator::Context& context);
     // ANAN-100D port: volume of the radio's codec (speaker / headphones), 0..100.
     void setCodecVolume(int pct);
+    // Build 498: "Codec Level Compensation" of the radio settings, dB.
+    void setCodecLevelCompDb(int db);
     // ANAN-100D port: true when connected to an ANAN (openHPSDR Protocol 2).
     bool isAnanRadio() const;
     TxCoordinator::Context captureTxMedia(const TxCoordinator::Request& request) const;

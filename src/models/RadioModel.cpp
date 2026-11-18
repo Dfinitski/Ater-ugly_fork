@@ -6752,6 +6752,12 @@ void RadioModel::setCodecVolume(int pct)
         hl2b->setCodecVolumePercent(pct);
 }
 
+void RadioModel::setCodecLevelCompDb(int db)
+{
+    if (auto* hl2b = dynamic_cast<hl2::Hl2Backend*>(m_backend.get()))
+        hl2b->setCodecLevelCompDb(db);
+}
+
 bool RadioModel::isAnanRadio() const
 {
     // Hl2Backend drives only the ANAN now (HL2 support was removed).

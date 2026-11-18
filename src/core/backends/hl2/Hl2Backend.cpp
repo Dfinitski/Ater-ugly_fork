@@ -2683,6 +2683,10 @@ void Hl2Backend::ananApplyCodecSettings()
                             == QLatin1String("True");
     m_hw.speakerLevelPercent = codecMuted
         ? 0 : std::clamp(st.value(QStringLiteral("CodecVolume"), 1).toInt(), 0, 100);
+    // Build 498: "Codec Level Compensation" (radio settings), a global trim
+    // of everything sent to the codec.
+    m_codecCompDb = std::clamp(st.value(QStringLiteral("AnanCodecLevelCompDb"), 0).toInt(),
+                               kCodecCompMinDb, kCodecCompMaxDb);
     // 06.11: PC (0) and CDC (1) both go through the TX voice chain
     // (AudioEngine). The TEST source is gone from the list (the PureSignal
     // widget has its own 2-tone); an old stored 2 reads as PC.
@@ -7718,7 +7722,8 @@ void Hl2Backend::ananPushCodecMix()
         // Same law as forwardSpeakerAudioToCodec().
         p.law = true;
         p.gain = m_hw.speakerLevelPercent > 0
-            ? std::pow(10.0f, (-10.0f + 0.4f * static_cast<float>(m_hw.speakerLevelPercent)) / 20.0f)
+            ? std::pow(10.0f, (-10.0f + 0.4f * static_cast<float>(m_hw.speakerLevelPercent)
+                               + static_cast<float>(m_codecCompDb)) / 20.0f)
             : 0.0f;
         for (std::size_t i = 0; i < m_rx.size() && i < static_cast<std::size_t>(kCodecMixMax); ++i) {
             const Receiver& r = m_rx[i];
@@ -8167,7 +8172,9 @@ float Hl2Backend::codecSpeakerGain() const
     // the former 80 = +30 dB is the new 100). A soft knee below
     // full scale keeps loud signals from clipping hard.
     if (m_hw.speakerLevelPercent > 0) {
-        const float db = -10.0f + 0.4f * static_cast<float>(m_hw.speakerLevelPercent);
+        // Build 498: plus the operator's Codec Level Compensation.
+        const float db = -10.0f + 0.4f * static_cast<float>(m_hw.speakerLevelPercent)
+                         + static_cast<float>(m_codecCompDb);
         speakerGain = std::pow(10.0f, db / 20.0f);
     }
     return speakerGain;

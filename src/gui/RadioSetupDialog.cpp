@@ -4308,6 +4308,44 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     vbox->addWidget(modelGroup);
     vbox->addWidget(connGroup);
 
+    // Build 498 (operator, 18.11): "Codec Level Compensation" -- one more
+    // global level for the audio sent to the radio's codec, under the title
+    // bar's Codec volume. An application setting ("AnanCodecLevelCompDb"),
+    // applied at once.
+    {
+        auto* codecGroup = new QGroupBox("Codec");
+        auto* row = new QHBoxLayout(codecGroup);
+        auto* lbl = new QLabel("Codec Level Compensation");
+        auto* slider = new GuardedSlider(Qt::Horizontal);
+        slider->setObjectName(QStringLiteral("ananCodecLevelComp"));
+        slider->setAccessibleName(QStringLiteral("Codec Level Compensation"));
+        slider->setRange(hl2::Hl2Backend::kCodecCompMinDb, hl2::Hl2Backend::kCodecCompMaxDb);
+        slider->setToolTip(QStringLiteral(
+            "Level of everything sent to the radio's codec (speaker / headphones),\n"
+            "in addition to the Codec volume of the title bar. 0 dB = no change."));
+        auto* val = new QLabel;
+        val->setMinimumWidth(48);
+        val->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        const int db = std::clamp(
+            AppSettings::instance().value(QStringLiteral("AnanCodecLevelCompDb"), 0).toInt(),
+            hl2::Hl2Backend::kCodecCompMinDb, hl2::Hl2Backend::kCodecCompMaxDb);
+        slider->setValue(db);
+        auto show = [val](int v) {
+            val->setText(QStringLiteral("%1%2 dB").arg(v > 0 ? QStringLiteral("+") : QString()).arg(v));
+        };
+        show(db);
+        connect(slider, &QSlider::valueChanged, this, [this, show](int v) {
+            show(v);
+            AppSettings::instance().setValue(QStringLiteral("AnanCodecLevelCompDb"), v);
+            AppSettings::instance().save();
+            m_model->setCodecLevelCompDb(v);
+        });
+        row->addWidget(lbl);
+        row->addWidget(slider, 1);
+        row->addWidget(val);
+        vbox->addWidget(codecGroup);
+    }
+
     const QPointer<QComboBox> pageGuard(modelCombo);   // build 439 (was the Dither box)
     m_hl2HardwareReseed = [this, pageGuard, noRadioLbl, controls,
                            modelCombo, psNote, micPttChk, micTipChk, micBiasChk, micXlrChk,

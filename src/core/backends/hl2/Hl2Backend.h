@@ -822,6 +822,18 @@ public:
     // ANAN-100D port: the title bar's Codec volume, applied at once (it is
     // also re-read from AppSettings by the ANAN timer).
     void setCodecVolumePercent(int pct) { m_hw.speakerLevelPercent = std::clamp(pct, 0, 100); }
+    // Build 498 (operator, 18.11: "the codec is too loud, and the PC audio
+    // goes through a mixer that takes it down at least 4x"): "Codec Level
+    // Compensation" of the radio settings -- one more global level, in dB,
+    // for everything sent to the radio's codec (receive mix and monitor).
+    // Stored as "AnanCodecLevelCompDb"; 0 = the level of the builds before.
+    static constexpr int kCodecCompMinDb = -40;
+    static constexpr int kCodecCompMaxDb = 10;
+    void setCodecLevelCompDb(int db)
+    {
+        m_codecCompDb = std::clamp(db, kCodecCompMinDb, kCodecCompMaxDb);
+        ananPushCodecMix();
+    }
 private:
     void fdvTick();
     int m_ananAdcPushed[2] = {-1, -1};
@@ -997,6 +1009,7 @@ private:
     void codecForward(const std::vector<float>& mixed, float speakerGain, float& lastL, float& lastR,
                       bool& havePrev);
     [[nodiscard]] float codecSpeakerGain() const;
+    int m_codecCompDb{0};   // build 498: Codec Level Compensation, dB
     void codecForwardAudioThread(const std::vector<float>& mixed);
     std::atomic<bool> m_codecFwdActiveIo{false};
     std::atomic<float> m_codecFwdGainIo{0.0f};
