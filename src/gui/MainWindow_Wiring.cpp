@@ -1028,7 +1028,9 @@ void MainWindow::engageSliceLink(int aId, int bId)
                                     m_radioModel.sliceMayBelongToUs(aId),
                                     m_radioModel.sliceMayBelongToUs(bId),
                                     a->diversity(), b->diversity());
-    if (!eligible) {
+    // Build 485: a SPLIT VFO of the ANAN (slice 6 / 7) is never linked.
+    const bool ananSub = !m_radioModel.usesFlexCommandPlane() && (aId >= 6 || bId >= 6);
+    if (!eligible || ananSub) {
         qDebug() << "MainWindow: slice link refused" << aId << bId;
         return;
     }
@@ -1303,6 +1305,11 @@ void MainWindow::refreshSliceLinkUi()
     for (SliceModel* s : slices) {
         if (!s || !m_radioModel.sliceMayBelongToUs(s->sliceId())
             || s->diversity()) {
+            continue;
+        }
+        // ANAN fork build 485 (operator, 17.11): only the receivers are
+        // offered for a link, not their SPLIT VFOs (slices 6 / 7).
+        if (!m_radioModel.usesFlexCommandPlane() && s->sliceId() >= 6) {
             continue;
         }
         candidates.append({s->sliceId(),
