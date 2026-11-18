@@ -8145,6 +8145,14 @@ errcheck VfoWidget, SpectrumWidget, MainWindow, MainWindow_Wiring — новых
 
 errcheck Hl2RxDsp, Hl2Backend, VfoWidget — новых ошибок нет; фиктивный символ — 1. На радио не проверено.
 
+## 448. Сборка 474 — флаг основного приёмника не трогать (ошибка 472)
+
+Оператор (17.11, после 473): на флаге основного приёмника SPLIT стал кнопкой, а в меню звука пропали второй баланс и подписи «Main RX» / «Sub RX»; флаг основного менять не просили.
+
+Ошибка 472: в `MainWindow::updateSplitState` для пары (владелец, срез 7) стоял `continue` после принудительного `updateSplitBadge(false, true)` — он пропускал `setSubSlice` (балансы 471) и подменял состояние значка SPLIT владельца. Исправлено: для пары задаётся только имя VFO; значок SPLIT и `setSubSlice` — как в 471 (`updateSplitBadge(isTxSlice, isRxSplit)`). Принудительная пара осталась только для расстановки флагов (`setSplitPair`).
+
+errcheck MainWindow — новых ошибок нет. На радио не проверено.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

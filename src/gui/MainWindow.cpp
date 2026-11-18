@@ -9579,8 +9579,8 @@ void MainWindow::updateSplitState()
         if (!sw) return;
         int pairRxId = -1, pairTxId = -1;
         // ANAN fork build 472: the SPLIT VFO (slice 7) and its owner are a
-        // pair whichever of the two transmits: the owner's flag keeps the red
-        // SPLIT (a click ends it), the SPLIT VFO's flag is the reduced one
+        // pair for the flags' placement whichever of the two transmits: the
+        // owner's flag is unchanged, the SPLIT VFO's flag is the reduced one
         // (VfoWidget::setSplitVfoMode) and its VFO name is SWAP. The pair is
         // named after the owner's letter: "A" and "A'", exchanged by SWAP.
         constexpr int kAnanSplitUi = 7;   // Hl2Backend::kSplitUi
@@ -9616,10 +9616,12 @@ void MainWindow::updateSplitState()
                 const bool main = (s == ananOwner);
                 w->setVfoName(main != m_ananSplitSwapped ? letter : prime,
                               SliceLabel::displayColorIndex(ananOwner->sliceId(), letter));
-                w->updateSplitBadge(false, main);
-                continue;
+            } else {
+                w->setVfoName(QString());
             }
-            w->setVfoName(QString());
+            // Build 474: the owner's flag is as it was in 471 -- its SPLIT
+            // badge and its two balances (setSubSlice below) are not touched
+            // by the pair's naming (472 skipped both for the pair).
             w->updateSplitBadge(isTxSlice, isRxSplit);
             if (paired) { pairTxId = tx->sliceId(); pairRxId = rx->sliceId(); }
             // ANAN fork build 471: the SPLIT VFO's balance on its owner's flag.
