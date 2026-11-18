@@ -60,6 +60,14 @@ inline QJsonObject capture(const RadioModel& model, const SliceModel* s)
     // No tuning step (build 453): it belongs to the mode group (build 445).
     o.insert(QStringLiteral("agc"), s->agcMode());
     o.insert(QStringLiteral("agcT"), s->agcThreshold());
+    // Build 488 (operator, 17.11: "NF+ is not saved anywhere"): Auto AGC and
+    // its NF+ (receivers 1 / 2; they were kept per receiver in the settings
+    // only, so a band button or a memory never brought them back).
+    if (s->sliceId() == 0 || s->sliceId() == 1) {
+        const auto& ui = anan::AnanUiState::instance();
+        o.insert(QStringLiteral("agcAuto"), ui.agcAuto[s->sliceId()]);
+        o.insert(QStringLiteral("agcNf"), ui.agcNfOffsetDb[s->sliceId()]);
+    }
     o.insert(QStringLiteral("vol"), static_cast<int>(s->audioGain()));
     o.insert(QStringLiteral("nb"), s->nbOn());
     o.insert(QStringLiteral("nbL"), s->nbLevel());

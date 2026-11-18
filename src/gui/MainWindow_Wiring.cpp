@@ -3932,6 +3932,15 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
     const QString agc = mem.value(QStringLiteral("agc")).toString();
     if (!agc.isEmpty() && agc != s->agcMode())
         s->setAgcMode(agc);
+    // Build 488: Auto AGC and NF+ of receivers 1 / 2 (the flag and RX
+    // Controls pick the change up from AnanUiState within 250 ms).
+    if ((sid == 0 || sid == 1) && mem.contains(QStringLiteral("agcNf"))) {
+        auto& ui = anan::AnanUiState::instance();
+        const bool autoOn = mem.value(QStringLiteral("agcAuto")).toBool(ui.agcAuto[sid]);
+        const int nf = mem.value(QStringLiteral("agcNf")).toInt(ui.agcNfOffsetDb[sid]);
+        if (autoOn != ui.agcAuto[sid] || nf != ui.agcNfOffsetDb[sid])
+            ui.setAgcAuto(sid, autoOn, nf);
+    }
     if (mem.contains(QStringLiteral("agcT")) && !s->automaticAgcThresholdActiveOrPending())
         s->setAgcThreshold(mem.value(QStringLiteral("agcT")).toInt());
     if (mem.contains(QStringLiteral("vol")))
