@@ -45,13 +45,37 @@ case "${os}-${arch}" in
 esac
 
 pkg="onnxruntime-${asset}-${ORT_VERSION}"
-url="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/${pkg}.tgz"
 tgz="${REPO_ROOT}/third_party/${pkg}.tgz"
 
+# ANAN fork (18.11.2026): microsoft/onnxruntime vanished from GitHub (its
+# release downloads answer 404), so the same archive is also looked for on
+# mirrors, in this order. A mirror is not trusted: whatever it serves has to
+# match the SHA-256 pinned above, exactly as Microsoft's own file did, or it
+# is thrown away and the next source is tried.
+urls=(
+    "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/${pkg}.tgz"
+    "https://downloads.sourceforge.net/project/onnx-runtime.mirror/v${ORT_VERSION}/${pkg}.tgz"
+    "https://github.com/DenisovAV/flutter_edge_ai/releases/download/mirror-onnxruntime-v${ORT_VERSION}/${pkg}.tgz"
+)
+
 mkdir -p "${REPO_ROOT}/third_party"
+if [ -f "${tgz}" ] && ! verify_sha256 "${tgz}" "${sha}"; then
+    rm -f "${tgz}"
+fi
 if [ ! -f "${tgz}" ]; then
-    echo "Downloading ${pkg}.tgz ..."
-    curl -fSL --retry 3 -o "${tgz}" "${url}"
+    for url in "${urls[@]}"; do
+        echo "Downloading ${pkg}.tgz from ${url} ..."
+        if curl -fSL --retry 2 -o "${tgz}.part" "${url}" && verify_sha256 "${tgz}.part" "${sha}"; then
+            mv "${tgz}.part" "${tgz}"
+            break
+        fi
+        echo "  not usable from this source" >&2
+        rm -f "${tgz}.part"
+    done
+fi
+if [ ! -f "${tgz}" ]; then
+    echo "ERROR: ${pkg}.tgz with the pinned SHA-256 was not found on any source." >&2
+    exit 1
 fi
 verify_sha256 "${tgz}" "${sha}"
 
