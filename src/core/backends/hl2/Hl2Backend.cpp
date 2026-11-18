@@ -1989,6 +1989,31 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         }
     });
 
+    // Build 472: the SPLIT VFO's S-meter -- the same reference and Setup
+    // corrections as this receiver's (it hears the same ADC through the same
+    // DDC), its own ballistics, published as slice kSplitUi's level.
+    connect(dsp, &Hl2RxDsp::subMeterUpdate, this,
+            [this, ui, producer = QPointer<Hl2RxDsp>(dsp)](float dbfs) {
+        const auto* ids = m_ids.byUi(ui);
+        Receiver* r = ids ? rx(ids->ddcIndex) : nullptr;
+        if (!producer || !r || r->dsp != producer.data() || !m_split.on
+            || m_split.ownerUi != ui)
+            return;
+        if (m_keyed || m_radioPtt) {
+            m_splitSMeter.reset();
+            return;
+        }
+        const int smRx = std::clamp(ids->ddcIndex, 0, 1);
+        const int smAtt = std::max(0, m_ananAdcAttPushed[std::clamp(m_ananAdc[smRx], 0, 1)]);
+        const double modelDb = ananTraits().rxMeterOffsetDb
+                             - anan::modelTraits(anan::AnanModel::Anan100D).rxMeterOffsetDb;
+        const double dbm = m_dbRef.toDbm(dbfs) + modelDb
+                         + anan::AnanUiState::instance().sMeterOffsetDb(smAtt, m_ananLnaPushed == 1)
+                         - ananXvtrRxGainDb(ids->ddcIndex);
+        if (const auto out = m_splitSMeter.feed(dbm))
+            emit meterUpdate(sliceMeterName(kSplitUi), *out);
+    });
+
     // The name the lambda above publishes under has to EXIST as a definition or
     // MeterModel has nowhere to put the value. Declared here rather than in
     // defineMeters() because this runs once per receiver, at both connect and
@@ -2293,6 +2318,7 @@ void Hl2Backend::finishReceiverDspBuild(int uiNumber, quint64 generation, bool o
         if (m_split.on && removedUi == m_split.ownerUi) {   // build 470
             m_split = {};
             emit sliceRemoved(kSplitUi);
+            withdrawSliceLevelMeter(kSplitUi);   // build 472
         }
         emit sliceRemoved(removedUi);
         emit panRemoved(removedPanId);
@@ -2457,6 +2483,7 @@ bool Hl2Backend::removePanadapter(const QString& panId)
     if (m_split.on && removedUi == m_split.ownerUi) {   // build 470: its SPLIT VFO with it
         m_split = {};
         emit sliceRemoved(kSplitUi);
+        withdrawSliceLevelMeter(kSplitUi);   // build 472
     }
     emit sliceRemoved(removedUi);
     emit panRemoved(removedPanId);
@@ -12928,6 +12955,10 @@ void Hl2Backend::splitOn(int ownerUi, double hz)
     m_split.on = true;
     m_split.ownerUi = ownerUi;
     m_split.freqHz = hz;
+    if (!was) {
+        m_splitSMeter.reset();
+        defineSliceLevelMeter(kSplitUi);   // build 472: its S-meter
+    }
     qCInfo(lcHl2) << "ANAN: SPLIT on receiver" << ddc + 1 << "at" << hz << "Hz";
     const double shift = dspShiftHz(hz, r->ncoHz) - cwBfoHz(r->mode);
     QMetaObject::invokeMethod(r->dsp, "setSubReceiver", Qt::QueuedConnection,
@@ -12957,6 +12988,7 @@ void Hl2Backend::splitOff(const char* why)
         QMetaObject::invokeMethod(r->dsp, "setSubReceiver", Qt::QueuedConnection,
                                   Q_ARG(bool, false), Q_ARG(double, 0.0));
     emit sliceRemoved(kSplitUi);
+    withdrawSliceLevelMeter(kSplitUi);   // build 472
     pushAudioMix();   // build 471: the receiver's own pan back in the mixers
     if (r) {
         if (wasTx && ddc == m_txDdc)

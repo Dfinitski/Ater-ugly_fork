@@ -5918,9 +5918,13 @@ void VfoWidget::applySplitVfoLayout()
 {
     if (!m_splitVfo || m_collapsed)
         return;
+    // The S-meter stays (operator, 17.11): the SPLIT receiver's own level.
+    // Its selector row does not open here (mousePressEvent).
     QWidget* const removed[] = {m_rxAntBtn, m_txAntBtn, m_filterWidthLbl, m_splitBadge,
-                                m_meterStack, m_meterUnderlineRoom, m_tabBar, m_meterMenuRow,
+                                m_meterUnderlineRoom, m_tabBar, m_meterMenuRow,
                                 m_tabStack};
+    if (m_meterStack)
+        m_meterStack->show();
     for (QWidget* x : removed)
         if (x) x->hide();
     QPushButton* const sideBtns[] = {m_closeSliceBtn.data(), m_lockVfoBtn.data(),

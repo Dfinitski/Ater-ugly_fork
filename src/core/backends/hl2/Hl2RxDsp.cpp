@@ -935,6 +935,14 @@ void Hl2RxDsp::startSubBuild()
             m_subPcm.erase(m_subPcm.begin(),
                            m_subPcm.begin() + static_cast<std::ptrdiff_t>(m_subPcm.size() - cap));
     }, Qt::DirectConnection);
+    // Build 472 (operator, 17.11: "the sub receiver needs its level"): its
+    // meter, on the detector this receiver uses (Setup > Receive).
+    connect(sub.get(), &Hl2RxDsp::meterUpdate, this, [this](float dbfs) {
+        if (m_sub && m_sub->sMeterPeak() != sMeterPeak())
+            m_sub->setSMeterPeak(sMeterPeak());
+        emit subMeterUpdate(dbfs);
+    }, Qt::DirectConnection);
+    sub->setSMeterPeak(sMeterPeak());
     sub->setNoiseBlanker(m_nbKind, m_nbLevel, m_nbFill);
     sub->setSquelch(m_squelchOn, m_squelchLevel, m_squelchOffsetDb);
     sub->setAgcOffLevel(m_agcOffLevel);

@@ -655,6 +655,8 @@ signals:
     void spectrumReady(const std::vector<float>& binsDbfs,
                        const std::vector<float>& rawBinsDbfs);
     void meterUpdate(float dbfs);                           // audio-RMS S-meter
+    // Build 472: the SPLIT receiver's S-meter (its own channel, same detector).
+    void subMeterUpdate(float dbfs);
 
 private:
     // Build 470: the SPLIT receiver (setSubReceiver).

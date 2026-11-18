@@ -1401,6 +1401,7 @@ private:
         int panPercent = 50;   // build 471: the SPLIT receiver's balance
     } m_split;
     void pushSplitBalance();   // build 471
+    SMeterSmoother m_splitSMeter;   // build 472: the SPLIT VFO's S-meter ballistics
     // Build 471: the pan the mixers apply to receiver ddc -- the centre for
     // a receiver with a SPLIT VFO (its chain makes the stereo pair itself).
     [[nodiscard]] int mixPanPercent(int ddc) const;
