@@ -2247,8 +2247,17 @@ bool P2Transport::psBypassesBank(int adc) const
     // whichever ADC the feedback is read from; the internal coupler comes in
     // through that bank. ADC2's bank is bypassed as well when the feedback is
     // read on ADC2 (ours, as before).
-    return m_mox && m_psEnabled && m_profile.alexScheme == AlexScheme::Orion2BandPass
-        && (adc == 0 || m_psAdc == adc);
+    // Build 482 (operator, 17.11, a 7000DLE on Protocol 1: "it must switch
+    // on transmit even with PureSignal off"). The input relays were already
+    // sent on every transmission (build 438), but this bypass was not: with
+    // PureSignal off BPF1 stayed on the receive filter, and on these boards
+    // the chosen feedback input (coupler, EXT1, RX bypass) comes in through
+    // the bypassed BPF1 -- so nothing appeared to switch. BPF1 is bypassed on
+    // every transmission now; ADC2's bank still only for PureSignal's
+    // feedback on ADC2.
+    if (!m_mox || m_profile.alexScheme != AlexScheme::Orion2BandPass)
+        return false;
+    return adc == 0 || (m_psEnabled && m_psAdc == adc);
 }
 
 void P2Transport::setAdc1GroundOnTx(bool on)
