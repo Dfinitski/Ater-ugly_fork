@@ -9619,20 +9619,22 @@ void MainWindow::updateSplitState()
             } else {
                 w->setVfoName(QString());
             }
-            // Build 474: the owner's flag is as it was in 471 -- its SPLIT
-            // badge and its two balances (setSubSlice below) are not touched
-            // by the pair's naming (472 skipped both for the pair).
+            // Build 475 (operator, 17.11: "the flag as it was; SPLIT is plain
+            // text that lights up; one balance as before; TX must switch every
+            // time"): on the ANAN the owner's flag keeps its SPLIT text (lit
+            // while the split is on, never the red button or SWAP), one
+            // balance, and TX toggles between the two VFOs of the pair.
+            if (anan) {
+                const bool inPair = ananOwner && (s == ananOwner || s->sliceId() == kAnanSplitUi);
+                w->setSplitTextLit(inPair);
+                w->setTxPartner(!inPair ? nullptr
+                                : s == ananOwner ? m_radioModel.slice(kAnanSplitUi) : ananOwner);
+                w->setSubSlice(nullptr);
+                continue;
+            }
+            w->setTxPartner(nullptr);
             w->updateSplitBadge(isTxSlice, isRxSplit);
             if (paired) { pairTxId = tx->sliceId(); pairRxId = rx->sliceId(); }
-            // ANAN fork build 471: the SPLIT VFO's balance on its owner's flag.
-            {
-                SliceModel* sub = nullptr;
-                if (!m_radioModel.usesFlexCommandPlane() && s->sliceId() != 7) {
-                    if (SliceModel* split = m_radioModel.slice(7); split && split->panId() == s->panId())
-                        sub = split;
-                }
-                w->setSubSlice(sub);
-            }
         }
         if (ananOwner) {
             pairRxId = ananOwner->sliceId();

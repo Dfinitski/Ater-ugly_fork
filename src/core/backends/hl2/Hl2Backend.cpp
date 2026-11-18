@@ -13002,8 +13002,10 @@ void Hl2Backend::pushSplitBalance()
     const Receiver* r = rx(ddcForSlice(m_split.ownerUi));
     if (!m_split.on || !r || !r->dsp)
         return;
+    // Build 475 (operator, 17.11: "one balance as before"): the receiver's
+    // balance moves both VFOs.
     QMetaObject::invokeMethod(r->dsp, "setSplitBalance", Qt::QueuedConnection,
-                              Q_ARG(int, r->audioPanPercent), Q_ARG(int, m_split.panPercent));
+                              Q_ARG(int, r->audioPanPercent), Q_ARG(int, r->audioPanPercent));
 }
 
 int Hl2Backend::mixPanPercent(int ddc) const

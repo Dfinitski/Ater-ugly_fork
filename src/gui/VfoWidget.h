@@ -107,6 +107,12 @@ public:
     // slice's colour). A split pair is named "A" and "A'" (owner's letter);
     // SWAP exchanges the names with the frequencies.
     void setVfoName(const QString& name, int colourIdx = -1);
+    // Build 475: the other VFO of an ANAN split pair (null = none). A click
+    // on TX of the VFO that already transmits hands transmit to it, so the TX
+    // button switches every time. And the SPLIT label of the pair's owner:
+    // plain text as without a split, lit while the split is on.
+    void setTxPartner(SliceModel* partner);
+    void setSplitTextLit(bool lit);
 
     // Flag direction hint. Auto/Force* flip to the other side when the panel would
     // overrun the spectrum edge (20 px). Lock* hold the side regardless; used by
@@ -524,6 +530,8 @@ private:
     int          m_vfoNameColour{-1};
     void applySplitVfoLayout();
     void applySliceBadgeLook();
+    QPointer<SliceModel> m_txPartner;   // build 475
+    void txBadgeClicked();
     QPointer<QPushButton> m_lockVfoBtn;
     QPointer<QPushButton> m_closeSliceBtn;
     QPointer<QPushButton> m_recordBtn;

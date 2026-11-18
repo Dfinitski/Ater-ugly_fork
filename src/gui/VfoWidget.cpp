@@ -799,9 +799,7 @@ void VfoWidget::mousePressEvent(QMouseEvent* ev)
 
         // Click on painted TX badge → toggle TX assignment
         if (ev->button() == Qt::LeftButton && txRect.contains(ev->pos())) {
-            if (m_slice) {
-                m_slice->setTxSlice(!m_slice->isTxSlice());
-            }
+            txBadgeClicked();
             update();  // repaint TX badge color
             return;
         }
@@ -1033,10 +1031,7 @@ void VfoWidget::buildUI()
     m_txBadge = new QPushButton("TX");
     m_txBadge->setFixedSize(28, 20);
     updateTxBadgeStyle(false);
-    connect(m_txBadge, &QPushButton::clicked, this, [this] {
-        if (m_slice)
-            m_slice->setTxSlice(!m_slice->isTxSlice());
-    });
+    connect(m_txBadge, &QPushButton::clicked, this, [this] { txBadgeClicked(); });
     hdr->addWidget(m_txBadge);
 
     m_sliceBadge = new QLabel("A");
@@ -5828,8 +5823,45 @@ void VfoWidget::updateSplitBadge(bool isTxSlice, bool isRxSplit)
             "padding: 0px 3px; }"
             "QPushButton:hover { color: rgba(255,255,255,180); }");
     }
-    if (m_splitVfo || m_collapsed)
+    if (m_splitVfo)
         m_splitBadge->hide();   // build 472: no SPLIT on the SPLIT VFO's flag
+}
+
+void VfoWidget::txBadgeClicked()
+{
+    if (!m_slice)
+        return;
+    // Build 475: in an ANAN split pair TX switches on every click.
+    if (m_slice->isTxSlice() && m_txPartner) {
+        m_txPartner->setTxSlice(true);
+        return;
+    }
+    m_slice->setTxSlice(!m_slice->isTxSlice());
+}
+
+void VfoWidget::setTxPartner(SliceModel* partner)
+{
+    m_txPartner = partner;
+}
+
+void VfoWidget::setSplitTextLit(bool lit)
+{
+    // The label as without a split (text, brighter under the mouse); lit
+    // while the split is on. A click toggles the split either way.
+    m_splitBadge->setText("SPLIT");
+    m_splitBadge->setStyleSheet(lit
+        ? QStringLiteral("QPushButton { background: transparent; border: none; "
+                         "color: #ff5050; font-size: 11px; font-weight: bold; "
+                         "padding: 0px 3px; }"
+                         "QPushButton:hover { color: #ff8080; }")
+        : QStringLiteral("QPushButton { background: transparent; border: none; "
+                         "color: rgba(255,255,255,120); font-size: 11px; font-weight: bold; "
+                         "padding: 0px 3px; }"
+                         "QPushButton:hover { color: rgba(255,255,255,180); }"));
+    if (m_splitVfo)
+        m_splitBadge->hide();
+    else
+        m_splitBadge->show();   // as updateSplitBadge() does
 }
 
 void VfoWidget::applySliceBadgeLook()
