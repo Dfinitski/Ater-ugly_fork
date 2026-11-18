@@ -106,6 +106,7 @@ public:
     // Slice tab toggle — create N buttons (A..H) capped at hardware max.
     // If maxSlices <= 1, the row is hidden.
     void setMaxSlices(int maxSlices);
+    bool ananRow() const;   // build 476: the A, A', B, B', C, D row
     void clearSliceButtons();
 
     // Enable/disable buttons based on which slices are open, and check the

@@ -51,7 +51,10 @@ bool MidiControlManager::isVfoTuneKnob(const QString& paramId)
 {
     // ANAN fork build 316: rx.tuneKnob is VFO A's knob, rx.tuneKnobB VFO B's;
     // both are endless tuning dials.
-    return paramId == QLatin1String("rx.tuneKnob") || paramId == QLatin1String("rx.tuneKnobB");
+    // Build 476: and the knobs of VFO A', B', C, D.
+    return paramId == QLatin1String("rx.tuneKnob") || paramId == QLatin1String("rx.tuneKnobB")
+        || paramId == QLatin1String("rx.tuneKnobA2") || paramId == QLatin1String("rx.tuneKnobB2")
+        || paramId == QLatin1String("rx.tuneKnobC") || paramId == QLatin1String("rx.tuneKnobD");
 }
 
 // ── MidiBinding helpers ─────────────────────────────────────────────────────

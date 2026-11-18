@@ -2180,6 +2180,34 @@ void MainWindow::registerMidiParams()
             applyTuneRequest(s, newMhz, TuneIntent::IncrementalTune, "midi-absolute");
         });
 
+    // ANAN fork build 476 (operator, 17.11): a knob for each further VFO --
+    // A' and B' (the SPLIT VFOs of receivers 1 and 2), C and D. Each tunes
+    // its own VFO whatever is active; a VFO that is not open is not tuned.
+    {
+        struct X { const char* id; const char* name; int slice; };
+        static const X xs[] = {{"rx.tuneKnobA2", "VFO A\xE2\x80\xB2 Tune Knob", 6},
+                               {"rx.tuneKnobB2", "VFO B\xE2\x80\xB2 Tune Knob", 7},
+                               {"rx.tuneKnobC", "VFO C Tune Knob", 2},
+                               {"rx.tuneKnobD", "VFO D Tune Knob", 3}};
+        for (const X& x : xs) {
+            const int sliceId = x.slice;
+            reg(x.id, x.name, "RX", P::Slider, 0, 127,
+                [this, sliceId](float v) {
+                    auto* s = m_radioModel.slice(sliceId);
+                    if (!s) return;
+                    int steps = static_cast<int>(v) - 64;
+                    if (steps == 0) return;
+                    if (s->isLocked()) {
+                        s->notifyTuneBlockedByLock();
+                        return;
+                    }
+                    int stepHz = spectrum() ? spectrum()->stepSize() : 100;
+                    double newMhz = s->frequency() + steps * stepHz / 1e6;
+                    applyTuneRequest(s, newMhz, TuneIntent::IncrementalTune, "midi-absolute");
+                });
+        }
+    }
+
     // ── TX ──────────────────────────────────────────────────────────────
     reg("tx.rfPower", "RF Power", "TX", P::Slider, 0, 100,
         [this](float v) { m_radioModel.transmitModel().setRfPower(static_cast<int>(v)); },
@@ -2872,6 +2900,14 @@ void MainWindow::wireExternalControllers()
         m_midiTuneTargetMhzB = -1.0;
     });
 
+    for (int i = 0; i < 4; ++i) {   // build 476: VFO A', B', C, D knobs
+        m_midiTuneIdleTimerX[i].setSingleShot(true);
+        m_midiTuneIdleTimerX[i].setInterval(250);
+        connect(&m_midiTuneIdleTimerX[i], &QTimer::timeout, this, [this, i] {
+            m_midiTuneTargetMhzX[i] = -1.0;
+        });
+    }
+
     // Register MIDI params — setters/getters stored on MainWindow for
     // main-thread dispatch. Param metadata still registered on the manager.
     registerMidiParams();
@@ -2912,13 +2948,22 @@ void MainWindow::wireExternalControllers()
     // steps are exact detents; controller-side jog speed is not multiplied here.
     connect(m_midiControl, &MidiControlManager::relativeAction,
             this, [this](const QString& paramId, int steps) {
-        if (paramId == "rx.tuneKnob" || paramId == "rx.tuneKnobB") {
+        // Build 476: the knobs of VFO A', B', C, D -- fixed slices.
+        int knobX = -1;
+        int knobXSlice = -1;
+        if (paramId == "rx.tuneKnobA2") { knobX = 0; knobXSlice = 6; }
+        else if (paramId == "rx.tuneKnobB2") { knobX = 1; knobXSlice = 7; }
+        else if (paramId == "rx.tuneKnobC") { knobX = 2; knobXSlice = 2; }
+        else if (paramId == "rx.tuneKnobD") { knobX = 3; knobXSlice = 3; }
+        if (paramId == "rx.tuneKnob" || paramId == "rx.tuneKnobB" || knobX >= 0) {
             // Build 316: each knob its slice (midiTuneKnobSlice) and its own
             // in-flight target.
             const bool knobB = paramId == "rx.tuneKnobB";
-            double& tuneTargetMhz = knobB ? m_midiTuneTargetMhzB : m_midiTuneTargetMhz;
-            QTimer& tuneIdleTimer = knobB ? m_midiTuneIdleTimerB : m_midiTuneIdleTimer;
-            auto* s = midiTuneKnobSlice(knobB);
+            double& tuneTargetMhz = knobX >= 0 ? m_midiTuneTargetMhzX[knobX]
+                                  : knobB ? m_midiTuneTargetMhzB : m_midiTuneTargetMhz;
+            QTimer& tuneIdleTimer = knobX >= 0 ? m_midiTuneIdleTimerX[knobX]
+                                  : knobB ? m_midiTuneIdleTimerB : m_midiTuneIdleTimer;
+            auto* s = knobX >= 0 ? m_radioModel.slice(knobXSlice) : midiTuneKnobSlice(knobB);
             if (!s) {
                 tuneTargetMhz = -1.0;
                 tuneIdleTimer.stop();

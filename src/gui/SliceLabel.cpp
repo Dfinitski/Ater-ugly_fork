@@ -24,6 +24,14 @@ QChar resolveLetter(int globalSliceId, const QString& radioLetter,
     return radioLetter.at(0);
 }
 
+// ANAN fork build 476: a letter of more than one character is a full name
+// (the SPLIT VFO of a receiver, "A'" / "B'" with U+2032): shown as it is in
+// either mode, on the colour of its first letter (its receiver's).
+bool isName(const QString& radioLetter)
+{
+    return radioLetter.size() > 1;
+}
+
 } // namespace
 
 Mode currentMode()
@@ -37,6 +45,11 @@ Mode currentMode()
 
 int displayColorIndex(int globalSliceId, const QString& radioLetter)
 {
+    if (isName(radioLetter)) {
+        const QChar c = radioLetter.at(0).toUpper();
+        if (c >= QChar('A') && c <= QChar('H'))
+            return c.unicode() - 'A';
+    }
     if (currentMode() == Mode::Global || radioLetter.isEmpty()) {
         return globalSliceId;
     }
@@ -49,11 +62,13 @@ int displayColorIndex(int globalSliceId, const QString& radioLetter)
 
 QString plainText(int globalSliceId, const QString& radioLetter)
 {
+    if (isName(radioLetter)) return radioLetter;
     return QString(resolveLetter(globalSliceId, radioLetter, currentMode()));
 }
 
 QString richText(int globalSliceId, const QString& radioLetter)
 {
+    if (isName(radioLetter)) return radioLetter.toHtmlEscaped();
     const Mode mode = currentMode();
     const QChar letter = resolveLetter(globalSliceId, radioLetter, mode);
     if (mode == Mode::Global || globalSliceId < 0) return QString(letter);
@@ -64,6 +79,7 @@ QString richText(int globalSliceId, const QString& radioLetter)
 
 QString unicodeForm(int globalSliceId, const QString& radioLetter)
 {
+    if (isName(radioLetter)) return radioLetter;
     const Mode mode = currentMode();
     const QChar letter = resolveLetter(globalSliceId, radioLetter, mode);
     if (mode == Mode::Global) return QString(letter);
@@ -76,6 +92,10 @@ QString unicodeForm(int globalSliceId, const QString& radioLetter)
 void drawSliceBadge(QPainter& p, const QRect& rect,
                     int globalSliceId, const QString& radioLetter)
 {
+    if (isName(radioLetter)) {
+        p.drawText(rect, Qt::AlignCenter, radioLetter);
+        return;
+    }
     const Mode mode = currentMode();
     const QChar letter = resolveLetter(globalSliceId, radioLetter, mode);
     const QFont mainFont = p.font();

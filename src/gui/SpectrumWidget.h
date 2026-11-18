@@ -1101,6 +1101,9 @@ signals:
     void sliceCloseRequested(int sliceId);
     void propForecastClicked();  // click on K/A/SFI overlay text
     void sliceTuneRequested(int sliceId, double freqMhz);
+    // ANAN fork build 476: a wheel step for one VFO of a split pair -- the
+    // one the cursor is nearer to.
+    void sliceWheelTuneRequested(int sliceId, double freqMhz);
     void popOutRequested(bool popOut);  // true=float, false=dock
     void sliceTxRequested(int sliceId);
     void centerLockRequested(int sliceId, bool locked);

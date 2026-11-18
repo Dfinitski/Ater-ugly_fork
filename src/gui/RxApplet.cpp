@@ -1895,8 +1895,34 @@ void RxApplet::setAfGain(int pct)
 
 // ─── Slice wiring ─────────────────────────────────────────────────────────────
 
+// ANAN fork build 476 (operator, 17.11): the receiver row on the ANAN is
+// A, A', B, B', C, D -- four receivers, the first two with a SPLIT VFO each
+// (slices 6 and 7, Hl2Backend::kSplitUiBase).
+namespace {
+constexpr int kAnanRowSlots[] = {0, 6, 1, 7, 2, 3};
+constexpr int kAnanRowCount = 6;
+QString ananRowName(int pos)
+{
+    static const QString names[] = {QStringLiteral("A"), QStringLiteral("A\u2032"), QStringLiteral("B"),
+                                    QStringLiteral("B\u2032"), QStringLiteral("C"), QStringLiteral("D")};
+    return pos >= 0 && pos < kAnanRowCount ? names[pos] : QString();
+}
+int ananRowColour(int pos)
+{
+    static const int colour[] = {0, 0, 1, 1, 2, 3};
+    return pos >= 0 && pos < kAnanRowCount ? colour[pos] : 0;
+}
+}  // namespace
+
+bool RxApplet::ananRow() const
+{
+    return m_radioModel && m_radioModel->isConnected() && !m_radioModel->usesFlexCommandPlane();
+}
+
 void RxApplet::setMaxSlices(int maxSlices)
 {
+    if (ananRow() && maxSlices > 1)
+        maxSlices = kAnanRowCount;
     if (!m_sliceBtns.isEmpty()) {
         if (m_sliceBtns.size() == maxSlices) {
             return;
@@ -1932,14 +1958,15 @@ void RxApplet::setMaxSlices(int maxSlices)
         m_sliceTabRow->setVisible(true);
     }
 
+    const bool anan = ananRow() && maxSlices == kAnanRowCount;
     for (int i = 0; i < maxSlices; ++i) {
         auto* btn = new QToolButton;
-        btn->setText(QString(QChar('A' + i)));
+        btn->setText(anan ? ananRowName(i) : QString(QChar('A' + i)));
         btn->setCheckable(true);
         btn->setEnabled(false);  // disabled until a slice occupies this slot
         btn->setFixedSize(22, 20);
 
-        QString color = SliceColorManager::instance().hexActive(i);
+        QString color = SliceColorManager::instance().hexActive(anan ? ananRowColour(i) : i);
         // Three slot states drive QSS via the `slotState` dynamic property:
         //   - "empty"   : no slice in this global slot (current default look)
         //   - "foreign" : another Multi-Flex client owns this slot (#2606,
@@ -2002,6 +2029,10 @@ void RxApplet::clearSliceButtons()
 void RxApplet::updateSliceButtons(const QList<SliceModel*>& slices, int activeSliceId)
 {
     if (m_sliceBtns.isEmpty()) return;
+    // Build 476: a row built before the connection knew it was an ANAN.
+    if (ananRow() && m_sliceBtns.size() != kAnanRowCount)
+        setMaxSlices(kAnanRowCount);
+    if (m_sliceBtns.isEmpty()) return;
 
     // Slot states drive both the QSS dynamic property and the per-button
     // configuration branch below.  Scoped to the function so the dispatch
@@ -2015,7 +2046,8 @@ void RxApplet::updateSliceButtons(const QList<SliceModel*>& slices, int activeSl
 
     QSignalBlocker blocker(m_sliceGroup);
     const auto mode = SliceLabel::currentMode();
-    const bool radioIdx = (mode == SliceLabel::Mode::RadioIndexed);
+    const bool anan = ananRow() && m_sliceBtns.size() == kAnanRowCount;   // build 476
+    const bool radioIdx = !anan && (mode == SliceLabel::Mode::RadioIndexed);
 
     // RadioIndexed layout, left to right: (1) owned slices in global-sliceId
     // order, per-client letter + 1-based slot subscript ("A₂"); (2) empty slots,
@@ -2099,11 +2131,12 @@ void RxApplet::updateSliceButtons(const QList<SliceModel*>& slices, int activeSl
             }
         } else {
             // Global mode: button position == global slot id (original).
-            slotId = btnPos;
-            if (slotToSlice.contains(btnPos)) {
-                ourSlice = slotToSlice[btnPos];
+            // Build 476: on the ANAN the row is A, A', B, B', C, D.
+            slotId = anan ? kAnanRowSlots[btnPos] : btnPos;
+            if (slotToSlice.contains(slotId)) {
+                ourSlice = slotToSlice[slotId];
                 state = SlotState::Ours;
-            } else if (m_radioModel && m_radioModel->isSlotForeign(btnPos)) {
+            } else if (m_radioModel && m_radioModel->isSlotForeign(slotId)) {
                 state = SlotState::Foreign;
             }
         }
@@ -2159,12 +2192,17 @@ void RxApplet::updateSliceButtons(const QList<SliceModel*>& slices, int activeSl
             } else {
                 glyph = QString(QChar('A' + colourPos));
             }
+            if (anan) {   // build 476
+                glyph = ananRowName(btnPos);
+                colourIdx = ananRowColour(btnPos);
+            }
             btn->setText(glyph);
             btn->setEnabled(false);
             btn->setChecked(false);
             btn->setProperty("sliceId", QVariant());
             btn->setProperty("slotState", "empty");
-            btn->setToolTip(QString("Slot %1 — empty").arg(QChar('A' + colourPos)));
+            btn->setToolTip(anan ? QString("Slot %1 — empty").arg(ananRowName(btnPos))
+                                 : QString("Slot %1 — empty").arg(QChar('A' + colourPos)));
             applyStyleIfChanged(btn, colourIdx, buildButtonStyle(colourIdx));
         }
         // Force a stylesheet re-evaluation so the slotState property change

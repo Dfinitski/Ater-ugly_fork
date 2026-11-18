@@ -1583,6 +1583,9 @@ private:
     // ANAN fork build 316: VFO B's knob keeps its own in-flight target.
     QTimer               m_midiTuneIdleTimerB;
     double               m_midiTuneTargetMhzB{-1.0};
+    // Build 476: the knobs of VFO A', B', C, D (slices 6, 7, 2, 3).
+    QTimer               m_midiTuneIdleTimerX[4];
+    double               m_midiTuneTargetMhzX[4]{-1.0, -1.0, -1.0, -1.0};
     SliceModel* midiTuneKnobSlice(bool knobB) const;
     void registerMidiParams();
     bool dispatchScopedMidiTx(const QString& id, float value,
@@ -1883,7 +1886,7 @@ private:
     int m_activeSliceId{-1};
     bool m_splitActive{false};
     // ANAN fork build 472: SWAP exchanged the split pair's VFO names (A <-> A').
-    bool m_ananSplitSwapped{false};
+    bool m_ananSplitSwapped[2]{false, false};   // per receiver 1 / 2 (build 476)
     quint64 m_splitCreateTicket{0};
     quint64 m_splitCreateRevision{0};
     CreatedSliceReceipt m_splitCreatedSlice;

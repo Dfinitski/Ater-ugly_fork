@@ -13539,6 +13539,31 @@ void SpectrumWidget::wheelEvent(QWheelEvent* ev)
     if (reverseMouseWheel()) steps = -steps;
 
     const auto* ao = activeOverlay();
+    // ANAN fork build 476 (operator, 17.11): with a sub receiver the wheel
+    // tunes the VFO of the pair the cursor is nearer to.
+    {
+        const SliceOverlay* pairA = nullptr;
+        const SliceOverlay* pairB = nullptr;
+        for (const SliceOverlay& so : m_sliceOverlays) {
+            VfoWidget* fw = m_vfoWidgets.value(so.sliceId, nullptr);
+            if (so.splitPartnerId < 0 || !fw)
+                continue;
+            if (fw->isSplitVfo())
+                pairB = &so;
+            else
+                pairA = &so;
+        }
+        if (pairA && pairB) {
+            const int mx = qRound(ev->position().x());
+            const SliceOverlay* nearest =
+                std::abs(mx - mhzToX(pairB->freqMhz)) < std::abs(mx - mhzToX(pairA->freqMhz))
+                    ? pairB : pairA;
+            const double base = snapToStep(nearest->freqMhz, m_stepHz);
+            emit sliceWheelTuneRequested(nearest->sliceId, base + steps * m_stepHz / 1e6);
+            ev->accept();
+            return;
+        }
+    }
     const double vfoMhz = ao ? ao->freqMhz : m_centerMhz;
     // Snap the base frequency to the step grid first, then add the delta.
     // This ensures every scroll moves by exactly m_stepHz rather than snapping

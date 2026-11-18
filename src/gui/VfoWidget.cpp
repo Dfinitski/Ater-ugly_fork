@@ -5846,14 +5846,15 @@ void VfoWidget::setTxPartner(SliceModel* partner)
 
 void VfoWidget::setSplitTextLit(bool lit)
 {
-    // The label as without a split (text, brighter under the mouse); lit
-    // while the split is on. A click toggles the split either way.
+    // The label as without a split (text, brighter under the mouse): dim
+    // while the split is off, bright while it is on -- inactive / active,
+    // no colour (build 476). A click toggles the split either way.
     m_splitBadge->setText("SPLIT");
     m_splitBadge->setStyleSheet(lit
         ? QStringLiteral("QPushButton { background: transparent; border: none; "
-                         "color: #ff5050; font-size: 11px; font-weight: bold; "
+                         "color: rgba(255,255,255,235); font-size: 11px; font-weight: bold; "
                          "padding: 0px 3px; }"
-                         "QPushButton:hover { color: #ff8080; }")
+                         "QPushButton:hover { color: rgba(255,255,255,255); }")
         : QStringLiteral("QPushButton { background: transparent; border: none; "
                          "color: rgba(255,255,255,120); font-size: 11px; font-weight: bold; "
                          "padding: 0px 3px; }"

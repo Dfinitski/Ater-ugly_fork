@@ -1389,26 +1389,44 @@ private:
     // ANAN fork build 470 (operator, 17.11): SPLIT -- a second VFO on one
     // receiver's panadapter. No DDC of its own: a second demodulator on that
     // receiver's I/Q (Hl2RxDsp::setSubReceiver), a clone of it but for the
-    // frequency, published as its own slice (kSplitUi) on the owner's pan.
-    // Transmit can sit on it (m_split.tx: the TX NCO on its frequency while
+    // frequency, published as its own slice (splitUiOf) on the owner's pan.
+    // Transmit can sit on it (SplitVfo::tx: the TX NCO on its frequency while
     // the owner holds the transmitter).
-    static constexpr int kSplitUi = 7;
+    // Build 476 (operator, 17.11: "only the first two slices can have sub
+    // receivers; the row is A, A', B, B', C, D"): one SPLIT VFO per receiver
+    // for receivers 1 and 2 (slice 0 / 1), both at once if wanted. A' is
+    // slice kSplitUiBase (6), B' is slice 7; published with the letters
+    // "A'" / "B'" (U+2032).
+    static constexpr int kSplitUiBase = 6;
+    static constexpr int kSplitOwners = 2;
     struct SplitVfo {
         bool on = false;
-        int ownerUi = -1;
         double freqHz = 0.0;
         bool tx = false;
         int panPercent = 50;   // build 471: the SPLIT receiver's balance
-    } m_split;
-    void pushSplitBalance();   // build 471
-    SMeterSmoother m_splitSMeter;   // build 472: the SPLIT VFO's S-meter ballistics
+        SMeterSmoother sMeter;   // build 472: its S-meter ballistics
+    };
+    std::array<SplitVfo, kSplitOwners> m_splits;
+    [[nodiscard]] static int splitUiOf(int ownerUi) { return kSplitUiBase + ownerUi; }
+    [[nodiscard]] static bool isSplitUi(int sliceId)
+    { return sliceId >= kSplitUiBase && sliceId < kSplitUiBase + kSplitOwners; }
+    // The running SPLIT VFO of receiver ownerUi / published as sliceId, or null.
+    [[nodiscard]] SplitVfo* splitOfOwner(int ownerUi)
+    { return ownerUi >= 0 && ownerUi < kSplitOwners && m_splits[static_cast<std::size_t>(ownerUi)].on
+          ? &m_splits[static_cast<std::size_t>(ownerUi)] : nullptr; }
+    [[nodiscard]] const SplitVfo* splitOfOwner(int ownerUi) const
+    { return ownerUi >= 0 && ownerUi < kSplitOwners && m_splits[static_cast<std::size_t>(ownerUi)].on
+          ? &m_splits[static_cast<std::size_t>(ownerUi)] : nullptr; }
+    [[nodiscard]] SplitVfo* splitByUi(int sliceId)
+    { return isSplitUi(sliceId) ? splitOfOwner(sliceId - kSplitUiBase) : nullptr; }
+    void pushSplitBalance(int ownerUi);   // build 471
     // Build 471: the pan the mixers apply to receiver ddc -- the centre for
     // a receiver with a SPLIT VFO (its chain makes the stereo pair itself).
     [[nodiscard]] int mixPanPercent(int ddc) const;
     void splitOn(int ownerUi, double hz);
-    void splitOff(const char* why);
-    void pushSplitShift();
-    void emitSplitSliceState();
+    void splitOff(int ownerUi, const char* why);   // ownerUi < 0: all
+    void pushSplitShift(int ownerUi);
+    void emitSplitSliceState(int ownerUi);
 
     // The AGC pair the operator last set, on any receiver: what
     // currentOperatingState() persists, since the restore writes every receiver.

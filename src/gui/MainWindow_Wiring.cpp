@@ -5322,6 +5322,20 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(sw, &SpectrumWidget::frequencyClicked,
             this, [this, resolveSpectrumTuneTarget, resolveClickedPanId](double mhz) {
         if (auto* target = resolveSpectrumTuneTarget()) {
+            // ANAN fork build 476 (operator, 17.11): with a sub receiver the
+            // click tunes the VFO of the pair it is nearer to.
+            if (m_radioModel.isConnected() && !m_radioModel.usesFlexCommandPlane()) {
+                const int owner = target->sliceId() >= 6 ? target->sliceId() - 6 : target->sliceId();
+                SliceModel* main = owner >= 0 && owner <= 1 ? m_radioModel.slice(owner) : nullptr;
+                SliceModel* sub = main ? m_radioModel.slice(6 + owner) : nullptr;
+                if (main && sub) {
+                    if (std::abs(mhz - sub->frequency()) < std::abs(mhz - main->frequency())) {
+                        applyTuneRequest(sub, mhz, TuneIntent::AbsoluteJump, "spectrum-click-sub");
+                        return;
+                    }
+                    target = main;
+                }
+            }
             queueActiveSliceForSpectrumTarget(target->sliceId());
             applyTuneRequest(target, mhz, TuneIntent::AbsoluteJump, "spectrum-click");
             return;
@@ -5765,6 +5779,12 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             this, [this](int sliceId, double freqMhz) {
         if (auto* s = m_radioModel.slice(sliceId))
             applyTuneRequest(s, freqMhz, TuneIntent::AbsoluteJump, "slice-move-here");
+    });
+    // Build 476: the wheel over the nearer VFO of a split pair.
+    connect(sw, &SpectrumWidget::sliceWheelTuneRequested,
+            this, [this](int sliceId, double freqMhz) {
+        if (auto* s = m_radioModel.slice(sliceId))
+            applyTuneRequest(s, freqMhz, TuneIntent::IncrementalTune, "spectrum-incremental-pair");
     });
 
     // ── Band selection ───────────────────────────────────────────────────
@@ -6308,7 +6328,25 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
     });
 
     // SWAP — swap RX and TX frequencies (keep TX/RX assignments)
-    connect(w, &VfoWidget::swapRequested, this, [this]() {
+    connect(w, &VfoWidget::swapRequested, this, [this, sliceId]() {
+        // ANAN fork build 476: the pair of this flag (receiver + its SPLIT
+        // VFO): frequencies and VFO names change places.
+        if (m_radioModel.isConnected() && !m_radioModel.usesFlexCommandPlane()) {
+            const int owner = sliceId >= 6 ? sliceId - 6 : sliceId;
+            if (owner < 0 || owner > 1)
+                return;
+            auto* a = m_radioModel.slice(owner);
+            auto* b = m_radioModel.slice(6 + owner);
+            if (!a || !b)
+                return;
+            const double fa = a->frequency();
+            const double fb = b->frequency();
+            applyTuneRequest(a, fb, TuneIntent::IncrementalTune, "split-swap-rx");
+            applyTuneRequest(b, fa, TuneIntent::IncrementalTune, "split-swap-tx");
+            m_ananSplitSwapped[owner] = !m_ananSplitSwapped[owner];
+            updateSplitState();
+            return;
+        }
         if (!m_splitActive || m_splitRxSliceId < 0 || m_splitTxSliceId < 0) return;
         auto* rx = m_radioModel.slice(m_splitRxSliceId);
         auto* tx = m_radioModel.slice(m_splitTxSliceId);
@@ -6320,11 +6358,6 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
         // Only radio observations advance the QSY reference; a queued status
         // can still report the pre-SWAP frequency while these tunes are pending.
         applyTuneRequest(tx, rxFreq, TuneIntent::IncrementalTune, "split-swap-tx");
-        // ANAN fork build 472: the VFO names go with the frequencies.
-        if (!m_radioModel.usesFlexCommandPlane()) {
-            m_ananSplitSwapped = !m_ananSplitSwapped;
-            updateSplitState();
-        }
     });
 
     // Right-click the SPLIT/SWAP badge — offsets, Monitor TX mode, and the
@@ -6342,14 +6375,18 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
         // a tenth of the wider half of the panadapter on screen away from
         // this VFO, on that side; transmit goes onto it.
         if (m_radioModel.isConnected() && !m_radioModel.usesFlexCommandPlane()) {
-            constexpr int kAnanSplitUi = 7;   // Hl2Backend::kSplitUi
+            // Build 476: receivers 1 and 2 each have their own SPLIT VFO
+            // (slice 6 = A', 7 = B'); receivers 3 and 4 have none.
+            constexpr int kAnanSplitUiBase = 6;   // Hl2Backend::kSplitUiBase
+            if (sliceId < 0 || sliceId > 1)
+                return;
+            const int kAnanSplitUi = kAnanSplitUiBase + sliceId;
             if (m_radioModel.slice(kAnanSplitUi)) {
                 m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.split"), 0,
-                                                    QVariantMap{{QStringLiteral("on"), false}});
+                                                    QVariantMap{{QStringLiteral("on"), false},
+                                                                {QStringLiteral("slice"), sliceId}});
                 return;
             }
-            if (sliceId == kAnanSplitUi)
-                return;
             SliceModel* s = m_radioModel.slice(sliceId);
             if (!s)
                 return;
@@ -6368,7 +6405,7 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
             m_splitRxSliceId = sliceId;
             m_splitRxIdentity = s;
             m_splitTxSliceId = kAnanSplitUi;
-            m_ananSplitSwapped = false;   // build 472
+            m_ananSplitSwapped[sliceId] = false;   // build 472
             m_splitRxFrequencyMhz = f;
             m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.split"), 0,
                                                 QVariantMap{{QStringLiteral("on"), true},
