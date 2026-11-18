@@ -366,6 +366,9 @@ Q_SIGNALS:
     void aetherVoiceRequested();   // user clicked the AetherVoice button on the DSP tab
     void splitToggled();
     void swapRequested();
+    // ANAN fork build 484: the operator collapsed / expanded this flag by a
+    // click (its letter; the collapsed flag). Not sent for setCollapsed().
+    void collapseToggledByUser(bool collapsed);
     // Right-click on the SPLIT/SWAP badge. The menu itself is built by
     // MainWindow, which owns the split pair and the remembered arrangement;
     // this widget only reports where the operator clicked. (#2242, #311)

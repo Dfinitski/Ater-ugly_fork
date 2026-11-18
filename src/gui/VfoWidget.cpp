@@ -804,7 +804,10 @@ void VfoWidget::mousePressEvent(QMouseEvent* ev)
             return;
         }
         // Click anywhere else on collapsed widget → expand (deferred)
-        QTimer::singleShot(0, this, [this] { setCollapsed(false); });
+        QTimer::singleShot(0, this, [this] {
+            setCollapsed(false);
+            emit collapseToggledByUser(false);   // build 484
+        });
         return;
     }
     // Build 472: on the SPLIT VFO's flag the VFO name is SWAP (the badge sits
@@ -822,7 +825,10 @@ void VfoWidget::mousePressEvent(QMouseEvent* ev)
     // Click on the slice badge → collapse the flag (deferred)
     if (ev->button() == Qt::LeftButton && m_sliceBadge && m_sliceBadge->isVisible()
         && m_sliceBadge->geometry().contains(ev->pos())) {
-        QTimer::singleShot(0, this, [this] { setCollapsed(true); });
+        QTimer::singleShot(0, this, [this] {
+            setCollapsed(true);
+            emit collapseToggledByUser(true);   // build 484
+        });
         return;
     }
     // Click on the meter strip → toggle the inline S-Meter / SmartMTR selector.

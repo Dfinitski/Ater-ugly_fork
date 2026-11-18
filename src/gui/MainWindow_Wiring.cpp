@@ -6545,6 +6545,27 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
         w->setCollapsed(true, /*persist=*/false);
         m_minimalCollapsedSlices.insert(s->sliceId());
     }
+    // ANAN fork build 484 (operator, 17.11: "a click on the main receiver's
+    // letter must collapse both flags"): the SPLIT VFO's flag (slice 6 / 7)
+    // follows its receiver's -- collapsed and expanded with it, and made in
+    // its receiver's state.
+    if (m_radioModel.isConnected() && !m_radioModel.usesFlexCommandPlane() && s) {
+        if (sliceId == 0 || sliceId == 1) {
+            connect(w, &VfoWidget::collapseToggledByUser, this, [this, sliceId](bool collapsed) {
+                SliceModel* sub = m_radioModel.slice(6 + sliceId);
+                SpectrumWidget* sw = sub ? spectrumForSlice(sub) : nullptr;
+                if (VfoWidget* sv = sw ? sw->vfoWidget(6 + sliceId) : nullptr)
+                    sv->setCollapsed(collapsed, /*persist=*/false);
+            });
+        } else if (sliceId == 6 || sliceId == 7) {
+            SliceModel* owner = m_radioModel.slice(sliceId - 6);
+            SpectrumWidget* sw = owner ? spectrumForSlice(owner) : nullptr;
+            if (VfoWidget* ov = sw ? sw->vfoWidget(sliceId - 6) : nullptr) {
+                if (ov->isCollapsed() != w->isCollapsed())
+                    w->setCollapsed(ov->isCollapsed(), /*persist=*/false);
+            }
+        }
+    }
 }
 
 // wireActiveVfoSignals removed — NR2/RN2/RADE are now wired permanently
