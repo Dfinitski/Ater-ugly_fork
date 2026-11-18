@@ -5325,6 +5325,21 @@ ReceiveDispatch Hl2Backend::requestTransverter(const TransverterRequest& request
 ReceiveDispatch Hl2Backend::requestSliceControl(int sliceId, const SliceControlRequest& request)
 {
     using Field = SliceControlRequest::Field;
+    // Build 477: a SPLIT VFO (slice 6 / 7) has no receiver of its own, and
+    // this gate refused everything asked of it since 470 -- "Backend refused
+    // operation tx slice" in the log: TX could not come back to it. Transmit
+    // and selection are its own; the rest is its owner's (a clone).
+    if (request.valid() && splitByUi(sliceId)) {
+        if (request.field == Field::TxSlice) {
+            if (std::get<bool>(request.value)) { setTxSlice(sliceId); }
+            return ReceiveDispatch::Dispatched;
+        }
+        if (request.field == Field::ActiveSlice) {
+            if (std::get<bool>(request.value)) { setActiveSlice(sliceId); }
+            return ReceiveDispatch::Dispatched;
+        }
+        sliceId -= kSplitUiBase;
+    }
     if (!request.valid() || !rx(ddcForSlice(sliceId))) { return ReceiveDispatch::Unsupported; }
     switch (request.field) {
     case Field::Rit: case Field::Xit: {
@@ -5446,6 +5461,8 @@ ReceiveDispatch Hl2Backend::requestTransmitControl(const TransmitControlRequest&
 
 ReceiveDispatch Hl2Backend::requestSliceDsp(int sliceId, const SliceDspRequest& request)
 {
+    if (splitByUi(sliceId))
+        sliceId -= kSplitUiBase;   // build 477: the SPLIT VFO is a clone of its owner
     if (!request.valid() || !rx(ddcForSlice(sliceId))) {
         return ReceiveDispatch::Unsupported;
     }
@@ -5471,6 +5488,8 @@ ReceiveDispatch Hl2Backend::requestSliceSquelch(int sliceId, const SliceSquelchR
     if (request.kind != SliceSquelchRequest::Kind::Manual) {
         return ReceiveDispatch::Unsupported;
     }
+    if (splitByUi(sliceId))
+        sliceId -= kSplitUiBase;   // build 477: the SPLIT VFO is a clone of its owner
     if (!request.valid() || !rx(ddcForSlice(sliceId))) {
         return ReceiveDispatch::Unsupported;
     }
@@ -5480,6 +5499,16 @@ ReceiveDispatch Hl2Backend::requestSliceSquelch(int sliceId, const SliceSquelchR
 
 ReceiveDispatch Hl2Backend::requestSliceAudio(int sliceId, const SliceAudioRequest& request)
 {
+    // Build 477: the SPLIT VFO's balance is its own (this gate refused it:
+    // "Backend refused operation receive audio", so both VFOs stayed in the
+    // centre); its volume and mute are its owner's.
+    if (request.valid() && request.origin == SliceAudioRequest::Origin::Operator && splitByUi(sliceId)) {
+        if (request.field == SliceAudioRequest::Field::Pan) {
+            setSliceAudioPan(sliceId, request.value);
+            return ReceiveDispatch::Dispatched;
+        }
+        sliceId -= kSplitUiBase;
+    }
     if (!request.valid() || request.origin != SliceAudioRequest::Origin::Operator
         || !rx(ddcForSlice(sliceId))) {
         return ReceiveDispatch::Unsupported;

@@ -2623,6 +2623,32 @@ bool SpectrumWidget::sliceHasSplitPartner(int sliceId) const
     return false;
 }
 
+// ANAN fork build 477 (operator, 17.11: "the click still works for the main
+// receiver only"): on the ANAN a left click on the panadapter and a double
+// click on the waterfall go out as edgePanTuneRequested (tune, the pan stays),
+// not frequencyClicked, so 476's choice never ran. With a split pair here the
+// VFO nearer to the click is tuned, by its slice id.
+bool SpectrumWidget::pairClickTune(double mhz)
+{
+    const SliceOverlay* pairA = nullptr;
+    const SliceOverlay* pairB = nullptr;
+    for (const SliceOverlay& so : m_sliceOverlays) {
+        VfoWidget* fw = m_vfoWidgets.value(so.sliceId, nullptr);
+        if (so.splitPartnerId < 0 || !fw)
+            continue;
+        if (fw->isSplitVfo())
+            pairB = &so;
+        else
+            pairA = &so;
+    }
+    if (!pairA || !pairB)
+        return false;
+    const SliceOverlay* nearest =
+        std::abs(mhz - pairB->freqMhz) < std::abs(mhz - pairA->freqMhz) ? pairB : pairA;
+    emit sliceWheelTuneRequested(nearest->sliceId, mhz);
+    return true;
+}
+
 bool SpectrumWidget::vfoFlagOnLeftForSlice(
     int sliceId, double freqMhz, int panelWidth, bool previousOnLeft) const
 {
@@ -12968,8 +12994,9 @@ void SpectrumWidget::mouseReleaseEvent(QMouseEvent* ev)
         if (!m_spotClickConsumed && delta.manhattanLength() <= 4
             && !m_indicatorStripRect.contains(ev->position().toPoint())
             && mx < width() - DBM_STRIP_W) {
-            emit edgePanTuneRequested(m_centerMhz,
-                snapToStep(clickDialMhz(xToMhz(mx)), m_stepHz));   // build 337
+            const double clickMhz = snapToStep(clickDialMhz(xToMhz(mx)), m_stepHz);   // build 337
+            if (!pairClickTune(clickMhz))   // build 477
+                emit edgePanTuneRequested(m_centerMhz, clickMhz);
         }
         m_spotClickConsumed = false;
         ev->accept();
@@ -13137,7 +13164,8 @@ void SpectrumWidget::mouseDoubleClickEvent(QMouseEvent* ev)
 
         // ANAN-100D port: like the single click -- tune, the pan stays put.
         rawMhz = clickDialMhz(rawMhz);   // build 337
-        emit edgePanTuneRequested(m_centerMhz, snapToStep(rawMhz, m_stepHz));
+        if (!pairClickTune(snapToStep(rawMhz, m_stepHz)))   // build 477
+            emit edgePanTuneRequested(m_centerMhz, snapToStep(rawMhz, m_stepHz));
         ev->accept();
         return;
     }

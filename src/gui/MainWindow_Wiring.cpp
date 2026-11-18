@@ -6330,7 +6330,7 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
     // SWAP — swap RX and TX frequencies (keep TX/RX assignments)
     connect(w, &VfoWidget::swapRequested, this, [this, sliceId]() {
         // ANAN fork build 476: the pair of this flag (receiver + its SPLIT
-        // VFO): frequencies and VFO names change places.
+        // VFO): the frequencies change places.
         if (m_radioModel.isConnected() && !m_radioModel.usesFlexCommandPlane()) {
             const int owner = sliceId >= 6 ? sliceId - 6 : sliceId;
             if (owner < 0 || owner > 1)
@@ -6343,9 +6343,7 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
             const double fb = b->frequency();
             applyTuneRequest(a, fb, TuneIntent::IncrementalTune, "split-swap-rx");
             applyTuneRequest(b, fa, TuneIntent::IncrementalTune, "split-swap-tx");
-            m_ananSplitSwapped[owner] = !m_ananSplitSwapped[owner];
-            updateSplitState();
-            return;
+            return;   // build 477: the names stay
         }
         if (!m_splitActive || m_splitRxSliceId < 0 || m_splitTxSliceId < 0) return;
         auto* rx = m_radioModel.slice(m_splitRxSliceId);

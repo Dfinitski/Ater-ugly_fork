@@ -5911,7 +5911,7 @@ void VfoWidget::setSplitVfoMode(bool on)
         m_txBadge->setFixedSize(26, 14);
         m_sliceBadge->setFixedSize(26, 14);
         m_sliceBadge->setCursor(Qt::PointingHandCursor);
-        m_sliceBadge->setToolTip(tr("SWAP: exchange frequency and VFO name with the main VFO"));
+        m_sliceBadge->setToolTip(tr("SWAP: exchange frequencies with the main VFO"));
     } else {
         side->removeWidget(m_txBadge);
         side->removeWidget(m_sliceBadge);

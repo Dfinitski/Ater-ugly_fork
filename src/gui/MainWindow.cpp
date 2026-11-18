@@ -9583,8 +9583,8 @@ void MainWindow::updateSplitState()
         // whichever of the two transmits. The owner's flag is as it always
         // was but for its SPLIT text (bright while its split is on) and TX,
         // which switches between the two on every click; the SPLIT VFO's
-        // flag is the reduced one, its VFO name is SWAP (names change places
-        // with the frequencies).
+        // flag is the reduced one, its VFO name is SWAP (the frequencies
+        // change places, the names stay).
         constexpr int kAnanSplitUiBase = 6;   // Hl2Backend::kSplitUiBase
         const bool anan = !m_radioModel.usesFlexCommandPlane();
         for (auto* s : m_radioModel.slices()) {
@@ -9599,11 +9599,9 @@ void MainWindow::updateSplitState()
                 const bool inPair = owner && sub && sw->vfoWidget(owner->sliceId())
                                     && sw->vfoWidget(sub->sliceId());
                 w->setSplitVfoMode(isSub);
-                if (inPair && m_ananSplitSwapped[ownerId])
-                    w->setVfoName(isSub ? owner->letter() : sub->letter(),
-                                  SliceLabel::displayColorIndex(owner->sliceId(), owner->letter()));
-                else
-                    w->setVfoName(QString());
+                // Build 477 (operator): SWAP moves the frequencies only; each
+                // VFO keeps its name.
+                w->setVfoName(QString());
                 w->setSplitTextLit(inPair);
                 w->setTxPartner(!inPair ? nullptr : isSub ? owner : sub);
                 w->setSubSlice(nullptr);

@@ -1104,6 +1104,9 @@ signals:
     // ANAN fork build 476: a wheel step for one VFO of a split pair -- the
     // one the cursor is nearer to.
     void sliceWheelTuneRequested(int sliceId, double freqMhz);
+    // Build 477: a click at mhz with a split pair on this panadapter -- tunes
+    // the VFO of the pair nearer to it and returns true; false without a pair.
+    bool pairClickTune(double mhz);
     void popOutRequested(bool popOut);  // true=float, false=dock
     void sliceTxRequested(int sliceId);
     void centerLockRequested(int sliceId, bool locked);
