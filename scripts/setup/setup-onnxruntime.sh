@@ -74,6 +74,50 @@ if [ ! -f "${tgz}" ]; then
     done
 fi
 if [ ! -f "${tgz}" ]; then
+    # Linux: Microsoft's own tgz is on no mirror with its pinned bytes. The
+    # same runtime ships in the official NuGet package on nuget.org
+    # (Microsoft.ML.OnnxRuntime, a zip): headers under build/native/include,
+    # the library under runtimes/<rid>/native. Staged in the tgz's layout
+    # (include/, lib/libonnxruntime.so -> .so.1 -> .so.<version>). The
+    # package is pinned by its SHA-256 as well.
+    case "${asset}" in
+        linux-x64)     rid="linux-x64" ;;
+        linux-aarch64) rid="linux-arm64" ;;
+        *)             rid="" ;;
+    esac
+    if [ -n "${rid}" ]; then
+        nupkg_sha="c725e8cefdfe4de08befb9f79b3f218c162439cdcdb97cbbb5192888d58ea669"
+        nupkg="${REPO_ROOT}/third_party/microsoft.ml.onnxruntime.${ORT_VERSION}.nupkg"
+        nurl="https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/${ORT_VERSION}/microsoft.ml.onnxruntime.${ORT_VERSION}.nupkg"
+        echo "Downloading the NuGet package from ${nurl} ..."
+        curl -fSL --retry 3 -o "${nupkg}" "${nurl}"
+        verify_sha256 "${nupkg}" "${nupkg_sha}"
+        tmp="${REPO_ROOT}/third_party/onnxruntime-tmp"
+        rm -rf "${tmp}" "${OUT_DIR}"
+        mkdir -p "${tmp}"
+        if command -v unzip >/dev/null 2>&1; then
+            unzip -q "${nupkg}" -d "${tmp}"
+        else
+            python3 -m zipfile -e "${nupkg}" "${tmp}"
+        fi
+        so="${tmp}/runtimes/${rid}/native/libonnxruntime.so"
+        if [ ! -f "${tmp}/build/native/include/onnxruntime_cxx_api.h" ] || [ ! -f "${so}" ]; then
+            echo "ERROR: unexpected NuGet package layout under ${tmp}" >&2
+            find "${tmp}" -maxdepth 4 | head -60 >&2
+            exit 1
+        fi
+        mkdir -p "${OUT_DIR}/lib"
+        cp -a "${tmp}/build/native/include" "${OUT_DIR}/include"
+        cp "${so}" "${OUT_DIR}/lib/libonnxruntime.so.${ORT_VERSION}"
+        ln -s "libonnxruntime.so.${ORT_VERSION}" "${OUT_DIR}/lib/libonnxruntime.so.1"
+        ln -s "libonnxruntime.so.1" "${OUT_DIR}/lib/libonnxruntime.so"
+        for f in "${tmp}"/runtimes/"${rid}"/native/libonnxruntime_providers_shared.so; do
+            [ -f "$f" ] && cp "$f" "${OUT_DIR}/lib/"
+        done
+        rm -rf "${tmp}"
+        echo "ONNX Runtime ${ORT_VERSION} (${asset}, from the NuGet package) staged in ${OUT_DIR}"
+        exit 0
+    fi
     echo "ERROR: ${pkg}.tgz with the pinned SHA-256 was not found on any source." >&2
     exit 1
 fi
