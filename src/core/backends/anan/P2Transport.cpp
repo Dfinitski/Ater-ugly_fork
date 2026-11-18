@@ -3038,7 +3038,9 @@ P1CcState P2Transport::p1State() const
     // the chosen feedback input is switched on every transmission, PureSignal
     // on or off -- as Thetis' "Ext 1 on Tx" / "Rx BYPASS on Tx", which are
     // independent of PS.
-    if (m_mox && m_psSource != 0) {
+    // Build 480 (operator, 17.11: "set them at once, on receive and on
+    // transmit alike"): the bits follow the choice, not MOX.
+    if (m_psSource != 0) {
         s.rxInputBits = 0x80;
         if (m_psSource == 1)
             s.rxInputBits |= 0x40;

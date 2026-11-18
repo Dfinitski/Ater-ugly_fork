@@ -173,7 +173,8 @@ PsApplet::PsApplet(QWidget* parent)
         m_source = new QComboBox;
         m_source->addItems({tr("Internal coupler"), tr("EXT1"), tr("RX Bypass")});
         applyComboStyle(m_source);
-        m_source->setToolTip(tr("Where the feedback reaches the receiver while transmitting"));
+        m_source->setToolTip(tr("Where the feedback reaches the receiver. EXT1 and RX Bypass switch the\n"
+                                "receiver's input to that connector at once, on receive and on transmit."));
         row->addWidget(m_source, 1);
         vbox->addLayout(row);
     }

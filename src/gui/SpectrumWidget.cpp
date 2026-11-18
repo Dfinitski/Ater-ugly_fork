@@ -11972,6 +11972,22 @@ void SpectrumWidget::edgePanVelocityStep()
         << " depth=" << depth << " ramp=" << rampFactor
         << " dMhz=" << deltaMhz << " center=" << m_centerMhz
         << " sliceX=" << sliceX << " sliceMhz=" << sliceFreq;
+    // Build 480 (operator, 17.11: "let it scroll"): a SPLIT VFO's passband at
+    // the edge -- the view pans (its owner is "tuned" to where it already
+    // is, which only carries the new centre), the SPLIT VFO is tuned itself.
+    if (m_vfoDragSliceId >= 0) {
+        double ownerMhz = -1.0;
+        const int si = overlayIndex(m_vfoDragSliceId);
+        if (si >= 0) {
+            const int oi = overlayIndex(m_sliceOverlays[si].splitPartnerId);
+            if (oi >= 0)
+                ownerMhz = m_sliceOverlays[oi].freqMhz;
+        }
+        if (ownerMhz > 0.0)
+            emit edgePanTuneRequested(newCenter, ownerMhz);
+        emit sliceWheelTuneRequested(m_vfoDragSliceId, sliceFreq);
+        return;
+    }
     emit edgePanTuneRequested(newCenter, sliceFreq);
 }
 
@@ -12531,8 +12547,7 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
         // In the edge zone the velocity timer owns panning (keeps the slice
         // pinned under the cursor); only tune directly when in-window so a
         // normal drag still tunes live.
-        // Build 479: a SPLIT VFO's drag does not pan the view at the edge.
-        if (m_vfoDragSliceId >= 0 || !updateVfoDragEdgePan(mx)) {
+        if (!updateVfoDragEdgePan(mx)) {
             driveVfoDragTune(mx, "move");
         }
         ev->accept();

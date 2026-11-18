@@ -660,15 +660,19 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
             alex0 |= txAnt | txLpf | relay;
             if (opts.psEnabled)
                 alex0 |= kAlexPsBit;
-            // Build 438: the feedback input on every transmission, PS on or
-            // off (duplex monitoring; Thetis' Ext1/Ext2 Out on Tx).
+        } else
+            alex0 |= legacyAlexAntennaBit(opts.rxAntenna) | lpf
+                     | (opts.alexPreamp ? std::uint32_t{1} << 3 : 0u);
+        // Build 438: the feedback input, PS on or off (duplex monitoring;
+        // Thetis' Ext1/Ext2 Out on Tx). Build 480 (operator, 17.11: "set
+        // them at once, on receive and on transmit alike"): not only while
+        // transmitting -- the chosen input is the receiver's input always.
+        if (run) {
             if (opts.psFeedbackSource == 1)
                 alex0 |= kAlexRxExt1 | kAlexRxBypass;   // EXT1 (old PA board)
             else if (opts.psFeedbackSource == 2)
                 alex0 |= kAlexRxBypass;                 // RX bypass input
-        } else
-            alex0 |= legacyAlexAntennaBit(opts.rxAntenna) | lpf
-                     | (opts.alexPreamp ? std::uint32_t{1} << 3 : 0u);
+        }
         writeU32be(&pkt[1432], alex0);
         // Alex1 = the TX state ("Jan 2023 protocol update", new_protocol.c):
         // TX antenna, the LPF for the transmit frequency, the T/R relay.
@@ -735,7 +739,8 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
         // _Rx_1_Out. Build 427: OUR ERROR -- both sent only _Rx_1_Out, so the
         // input relay never switched to the chosen feedback port.
         // Build 438: PS on or off (duplex monitoring of the own signal).
-        if (tx && opts.psFeedbackSource != 0)
+        // Build 480 (operator, 17.11): on receive and on transmit alike.
+        if (opts.psFeedbackSource != 0)
             alex0 |= kAlexRxBypass | (opts.psFeedbackSource == 1 ? kAlexRxExt1 : kAlexRxExt2);
         // Antennas: Alex0 the receive antenna (the TX one while transmitting),
         // Alex1 always the TX antenna.
