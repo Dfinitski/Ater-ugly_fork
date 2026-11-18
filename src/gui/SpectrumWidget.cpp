@@ -277,8 +277,64 @@ int diversityOrderKeyForVfo(const VfoPos& vfo)
         vfo.sliceId);
 }
 
+// ANAN fork build 472 (operator, 17.11): "the two flags must never overlap and
+// go to opposite sides at once; when there is no room, first the sub flag
+// turns over, then the main one". The pair (markers xL < xH) tries, in this
+// order: outward (L left, H right -- the upstream lock); the sub flag turned
+// over; the main flag turned over; both turned over (inward). The first that
+// keeps both flags inside the spectrum without overlapping wins; when none
+// does, the one with the fewest pixels off screen or overlapped.
+// spectrumWidth <= 0: the upstream lock (outward) only.
+static void splitPairSides(const VfoPos& lo, const VfoPos& hi, int spectrumWidth,
+                           bool& loOnLeft, bool& hiOnLeft)
+{
+    loOnLeft = true;
+    hiOnLeft = false;
+    if (spectrumWidth <= 0 || !lo.w || !hi.w)
+        return;
+    // The sub flag: the SPLIT VFO's (ANAN), else the higher slice id.
+    bool subIsHi = hi.sliceId > lo.sliceId;
+    if (lo.w->isSplitVfo() != hi.w->isSplitVfo())
+        subIsHi = hi.w->isSplitVfo();
+    const int wL = lo.w->width();
+    const int wH = hi.w->width();
+    auto cost = [&](bool lLeft, bool hLeft) {
+        const int l0 = lLeft ? lo.x - wL : lo.x, l1 = l0 + wL;
+        const int h0 = hLeft ? hi.x - wH : hi.x, h1 = h0 + wH;
+        int c = 0;
+        c += std::max(0, -l0) + std::max(0, l1 - spectrumWidth);
+        c += std::max(0, -h0) + std::max(0, h1 - spectrumWidth);
+        c += std::max(0, std::min(l1, h1) - std::max(l0, h0));
+        return c;
+    };
+    // (lo on left, hi on left) per candidate, in the operator's order.
+    bool order[4][2];
+    order[0][0] = true;  order[0][1] = false;           // outward
+    if (subIsHi) {
+        order[1][0] = true;  order[1][1] = true;         // sub (hi) over: both left
+        order[2][0] = false; order[2][1] = false;        // main (lo) over alone: both right
+    } else {
+        order[1][0] = false; order[1][1] = false;        // sub (lo) over: both right
+        order[2][0] = true;  order[2][1] = true;         // main (hi) over alone: both left
+    }
+    order[3][0] = false; order[3][1] = true;            // both over: inward
+    int best = -1, bestCost = 0;
+    for (int k = 0; k < 4; ++k) {
+        const int c = cost(order[k][0], order[k][1]);
+        if (best < 0 || c < bestCost) {
+            best = k;
+            bestCost = c;
+            if (c == 0)
+                break;
+        }
+    }
+    loOnLeft = order[best][0];
+    hiOnLeft = order[best][1];
+}
+
 void assignSplitPairDirections(const QVector<VfoPos>& vfos,
-                               QMap<int, VfoWidget::FlagDir>& dirMap)
+                               QMap<int, VfoWidget::FlagDir>& dirMap,
+                               int spectrumWidth = 0)
 {
     for (int i = 0; i < vfos.size(); ++i) {
         if (vfos[i].splitPartner < 0) {
@@ -307,8 +363,10 @@ void assignSplitPairDirections(const QVector<VfoPos>& vfos,
         // panels onto the same side and makes the RX/TX pair overlap.
         const int leftIndex = (vfos[i].x <= vfos[partnerIndex].x) ? i : partnerIndex;
         const int rightIndex = (leftIndex == i) ? partnerIndex : i;
-        dirMap[vfos[leftIndex].sliceId] = VfoWidget::LockLeft;
-        dirMap[vfos[rightIndex].sliceId] = VfoWidget::LockRight;
+        bool loOnLeft = true, hiOnLeft = false;
+        splitPairSides(vfos[leftIndex], vfos[rightIndex], spectrumWidth, loOnLeft, hiOnLeft);
+        dirMap[vfos[leftIndex].sliceId] = loOnLeft ? VfoWidget::LockLeft : VfoWidget::LockRight;
+        dirMap[vfos[rightIndex].sliceId] = hiOnLeft ? VfoWidget::LockLeft : VfoWidget::LockRight;
     }
 }
 
@@ -2600,7 +2658,7 @@ bool SpectrumWidget::vfoFlagOnLeftForSlice(
 
     QMap<int, VfoWidget::FlagDir> dirMap;
     assignDiversityPairDirections(vfos, dirMap);
-    assignSplitPairDirections(vfos, dirMap);
+    assignSplitPairDirections(vfos, dirMap, contentWidth());
     assignModeForcedDirections(m_sliceOverlays, dirMap);
 
     const SliceOverlay& overlay = *vfos[targetIndex].overlay;
@@ -17629,7 +17687,7 @@ void SpectrumWidget::repositionVfoFlags(const QRect& specRect)
     };
     QMap<int, VfoWidget::FlagDir> directionBySlice;
     assignDiversityPairDirections(vfos, directionBySlice);
-    assignSplitPairDirections(vfos, directionBySlice);
+    assignSplitPairDirections(vfos, directionBySlice, specW);
     assignModeForcedDirections(m_sliceOverlays, directionBySlice);
 
     if (vfos.size() == 1) {

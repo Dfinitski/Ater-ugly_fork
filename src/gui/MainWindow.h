@@ -1882,6 +1882,8 @@ private:
     // Active slice tracking for multi-slice support
     int m_activeSliceId{-1};
     bool m_splitActive{false};
+    // ANAN fork build 472: SWAP exchanged the split pair's VFO names (A <-> A').
+    bool m_ananSplitSwapped{false};
     quint64 m_splitCreateTicket{0};
     quint64 m_splitCreateRevision{0};
     CreatedSliceReceipt m_splitCreatedSlice;

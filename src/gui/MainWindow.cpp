@@ -10,6 +10,7 @@
 
 #include "MainWindow.h"
 #include "gui/RecallSnapshot.h"
+#include "gui/SliceLabel.h"
 #include "core/ForkDataDir.h"
 #include <utility>
 #include "core/AppActivity.h"
@@ -9577,6 +9578,29 @@ void MainWindow::updateSplitState()
     auto applyToSpectrum = [&](SpectrumWidget* sw) {
         if (!sw) return;
         int pairRxId = -1, pairTxId = -1;
+        // ANAN fork build 472: the SPLIT VFO (slice 7) and its owner are a
+        // pair whichever of the two transmits: the owner's flag keeps the red
+        // SPLIT (a click ends it), the SPLIT VFO's flag is the reduced one
+        // (VfoWidget::setSplitVfoMode) and its VFO name is SWAP. The pair is
+        // named after the owner's letter: "A" and "A'", exchanged by SWAP.
+        constexpr int kAnanSplitUi = 7;   // Hl2Backend::kSplitUi
+        const bool anan = !m_radioModel.usesFlexCommandPlane();
+        SliceModel* ananOwner = nullptr;
+        if (anan && sw->vfoWidget(kAnanSplitUi)) {
+            if (SliceModel* split = m_radioModel.slice(kAnanSplitUi)) {
+                SliceModel* o = m_radioModel.slice(m_splitRxSliceId);
+                if (o && o->sliceId() != kAnanSplitUi && o->panId() == split->panId()
+                    && sw->vfoWidget(o->sliceId()))
+                    ananOwner = o;
+                for (auto* c : m_radioModel.slices()) {
+                    if (ananOwner)
+                        break;
+                    if (c && c->sliceId() != kAnanSplitUi && c->panId() == split->panId()
+                        && sw->vfoWidget(c->sliceId()))
+                        ananOwner = c;
+                }
+            }
+        }
         for (auto* s : m_radioModel.slices()) {
             auto* w = sw->vfoWidget(s->sliceId());
             if (!w) continue;
@@ -9585,6 +9609,17 @@ void MainWindow::updateSplitState()
             const bool paired   = (tx && rx);
             const bool isTxSlice = paired && (s == tx);
             const bool isRxSplit = paired && (s == rx);
+            w->setSplitVfoMode(anan && s->sliceId() == kAnanSplitUi);
+            if (ananOwner && (s == ananOwner || s->sliceId() == kAnanSplitUi)) {
+                const QString letter = ananOwner->letter();
+                const QString prime = letter + QChar(0x2032);
+                const bool main = (s == ananOwner);
+                w->setVfoName(main != m_ananSplitSwapped ? letter : prime,
+                              SliceLabel::displayColorIndex(ananOwner->sliceId(), letter));
+                w->updateSplitBadge(false, main);
+                continue;
+            }
+            w->setVfoName(QString());
             w->updateSplitBadge(isTxSlice, isRxSplit);
             if (paired) { pairTxId = tx->sliceId(); pairRxId = rx->sliceId(); }
             // ANAN fork build 471: the SPLIT VFO's balance on its owner's flag.
@@ -9596,6 +9631,10 @@ void MainWindow::updateSplitState()
                 }
                 w->setSubSlice(sub);
             }
+        }
+        if (ananOwner) {
+            pairRxId = ananOwner->sliceId();
+            pairTxId = kAnanSplitUi;
         }
         sw->setSplitPair(pairRxId, pairTxId);
     };

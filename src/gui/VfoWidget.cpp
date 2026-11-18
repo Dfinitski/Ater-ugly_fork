@@ -809,6 +809,18 @@ void VfoWidget::mousePressEvent(QMouseEvent* ev)
         QTimer::singleShot(0, this, [this] { setCollapsed(false); });
         return;
     }
+    // Build 472: on the SPLIT VFO's flag the VFO name is SWAP (the badge sits
+    // in m_splitSideBox there, so its geometry is not in this flag's frame).
+    if (m_splitVfo) {
+        if (ev->button() == Qt::LeftButton && m_sliceBadge && m_sliceBadge->isVisible()
+            && m_sliceBadge->rect().contains(m_sliceBadge->mapFrom(this, ev->pos()))) {
+            emit swapRequested();
+            return;
+        }
+        if (m_slice)
+            emit sliceActivationRequested(m_slice->sliceId());
+        return;
+    }
     // Click on the slice badge → collapse the flag (deferred)
     if (ev->button() == Qt::LeftButton && m_sliceBadge && m_sliceBadge->isVisible()
         && m_sliceBadge->geometry().contains(ev->pos())) {
@@ -888,6 +900,7 @@ void VfoWidget::buildUI()
     // up under SF (macOS) and visibly split under Segoe UI (Windows) (#4036).
     // AlignVCenter makes the alignment metric-proof regardless of font.
     auto* hdr = new QHBoxLayout;
+    m_hdrLayout = hdr;   // build 472: the SPLIT VFO's flag takes TX / name out of it
     hdr->setSpacing(2);
     hdr->setAlignment(Qt::AlignVCenter);
 
@@ -1234,6 +1247,17 @@ void VfoWidget::buildUI()
 #endif
         freqRow->addStretch(1);
         freqRow->addWidget(m_freqStack);
+        // Build 472: the TX button over the VFO name, right of the frequency,
+        // on the SPLIT VFO's flag only (setSplitVfoMode).
+        m_splitSideBox = new QWidget(this);
+        m_splitSideBox->setAttribute(Qt::WA_TranslucentBackground);
+        {
+            auto* side = new QVBoxLayout(m_splitSideBox);
+            side->setContentsMargins(0, 0, 0, 0);
+            side->setSpacing(2);
+        }
+        m_splitSideBox->hide();
+        freqRow->addWidget(m_splitSideBox);
         root->addLayout(freqRow);
     }
 
@@ -4360,7 +4384,8 @@ void VfoWidget::paintEvent(QPaintEvent* event)
         int sliceId = m_slice ? m_slice->sliceId() : 0;
         QRect badgeRect(margin, yPos, badgeSize, badgeSize);
         const QString rl = m_slice ? m_slice->letter() : QString();
-        const int colourIdx = SliceLabel::displayColorIndex(sliceId, rl);
+        const int colourIdx = m_vfoNameColour >= 0
+            ? m_vfoNameColour : SliceLabel::displayColorIndex(sliceId, rl);
         p.setBrush(SliceColorManager::instance().activeColor(colourIdx));
         p.setPen(Qt::NoPen);
         p.drawRoundedRect(badgeRect, 3, 3);
@@ -4374,7 +4399,10 @@ void VfoWidget::paintEvent(QPaintEvent* event)
         // (#2606): "Global" → plain global letter; "RadioIndexed" → the
         // per-client letter with a global-slice-id subscript.
         const QString radioLetter = m_slice ? m_slice->letter() : QString();
-        SliceLabel::drawSliceBadge(p, badgeRect, sliceId, radioLetter);
+        if (!m_vfoName.isEmpty())   // build 472: a split pair's VFO name
+            p.drawText(badgeRect, Qt::AlignCenter, m_vfoName);
+        else
+            SliceLabel::drawSliceBadge(p, badgeRect, sliceId, radioLetter);
 
         yPos += badgeSize + 2;
 
@@ -5800,6 +5828,117 @@ void VfoWidget::updateSplitBadge(bool isTxSlice, bool isRxSplit)
             "padding: 0px 3px; }"
             "QPushButton:hover { color: rgba(255,255,255,180); }");
     }
+    if (m_splitVfo || m_collapsed)
+        m_splitBadge->hide();   // build 472: no SPLIT on the SPLIT VFO's flag
+}
+
+void VfoWidget::applySliceBadgeLook()
+{
+    if (!m_slice || !m_sliceBadge)
+        return;
+    // Slice badge — display follows SliceLetterDisplay AppSettings (#2606).
+    const int id = m_slice->sliceId();
+    if (m_vfoName.isEmpty())
+        m_sliceBadge->setText(SliceLabel::richText(id, m_slice->letter()));
+    else
+        m_sliceBadge->setText(m_vfoName.toHtmlEscaped());   // build 472
+    // Colour pairs with the visible letter: in Global mode that's the
+    // global sliceId; in RadioIndexed mode it's the letter index so the
+    // user's "A" slice is always the A colour regardless of slot.
+    const int colourIdx = m_vfoNameColour >= 0
+        ? m_vfoNameColour : SliceLabel::displayColorIndex(id, m_slice->letter());
+    m_sliceBadge->setStyleSheet(
+        QString("QLabel { background: %1; color: #000000; "
+                "border-radius: 3px; font-weight: bold; font-size: 11px; }")
+            .arg(SliceColorManager::instance().hexActive(colourIdx)));
+}
+
+void VfoWidget::setVfoName(const QString& name, int colourIdx)
+{
+    if (name == m_vfoName && colourIdx == m_vfoNameColour)
+        return;
+    m_vfoName = name;
+    m_vfoNameColour = colourIdx;
+    applySliceBadgeLook();
+    update();
+}
+
+void VfoWidget::setSplitVfoMode(bool on)
+{
+    if (on == m_splitVfo || !m_hdrLayout || !m_splitSideBox)
+        return;
+    m_splitVfo = on;
+    auto* side = m_splitSideBox->layout();
+    if (on) {
+        m_hdrLayout->removeWidget(m_txBadge);
+        m_hdrLayout->removeWidget(m_sliceBadge);
+        side->addWidget(m_txBadge);
+        side->addWidget(m_sliceBadge);
+        // Two rows in the 30 px of the frequency row.
+        m_txBadge->setFixedSize(26, 14);
+        m_sliceBadge->setFixedSize(26, 14);
+        m_sliceBadge->setCursor(Qt::PointingHandCursor);
+        m_sliceBadge->setToolTip(tr("SWAP: exchange frequency and VFO name with the main VFO"));
+    } else {
+        side->removeWidget(m_txBadge);
+        side->removeWidget(m_sliceBadge);
+        m_hdrLayout->addWidget(m_txBadge);
+        m_hdrLayout->addWidget(m_sliceBadge);
+        m_txBadge->setFixedSize(28, 20);
+        m_sliceBadge->setFixedSize(20, 20);
+        m_sliceBadge->setCursor(Qt::ArrowCursor);
+        m_sliceBadge->setToolTip(QString());
+    }
+    if (!m_collapsed) {
+        m_txBadge->show();
+        m_sliceBadge->show();
+        // Back to normal: the side buttons and rows come back; the tab stack,
+        // meter menu and underline room stay closed (as after a collapse).
+        if (!on) {
+            QWidget* const rows[] = {m_rxAntBtn, m_txAntBtn, m_filterWidthLbl, m_splitBadge,
+                                     m_meterStack, m_tabBar};
+            for (QWidget* x : rows)
+                if (x) x->show();
+            QPushButton* const side[] = {m_closeSliceBtn.data(), m_lockVfoBtn.data(),
+                                         m_recordBtn.data(), m_playBtn.data()};
+            for (QPushButton* b : side)
+                if (b) b->show();
+            m_splitSideBox->hide();
+            setMinimumWidth(WIDGET_W);
+            setMaximumWidth(WIDGET_W);
+        }
+    }
+    applySplitVfoLayout();
+    relayoutToCurrentContent();
+    if (parentWidget())
+        parentWidget()->update();   // the spectrum re-places the flags
+}
+
+void VfoWidget::applySplitVfoLayout()
+{
+    if (!m_splitVfo || m_collapsed)
+        return;
+    QWidget* const removed[] = {m_rxAntBtn, m_txAntBtn, m_filterWidthLbl, m_splitBadge,
+                                m_meterStack, m_meterUnderlineRoom, m_tabBar, m_meterMenuRow,
+                                m_tabStack};
+    for (QWidget* x : removed)
+        if (x) x->hide();
+    QPushButton* const sideBtns[] = {m_closeSliceBtn.data(), m_lockVfoBtn.data(),
+                                     m_recordBtn.data(), m_playBtn.data()};
+    for (QPushButton* b : sideBtns)
+        if (b) b->hide();
+    m_splitSideBox->show();
+    m_txBadge->show();      // reparented into the side box: shown explicitly
+    m_sliceBadge->show();
+    // As narrow as its content: margins, the frequency, the TX / name column
+    // (+ 4 px of slack for the row's leading stretch).
+    const QMargins m = layout() ? layout()->contentsMargins() : QMargins(6, 2, 6, 4);
+    const int w = m.left() + m.right() + m_freqStack->maximumWidth() + 4 + 26 + 4;
+    if (minimumWidth() != w || maximumWidth() != w) {
+        setMinimumWidth(w);
+        setMaximumWidth(w);
+    }
+    relayoutToCurrentContent();
 }
 
 void VfoWidget::setRecordOn(bool on)
@@ -5884,17 +6023,7 @@ void VfoWidget::syncFromSlice()
         m_lockVfoBtn->setChecked(m_slice->isLocked());
         m_lockVfoBtn->setText(m_slice->isLocked() ? "\xF0\x9F\x94\x92" : "\xF0\x9F\x94\x93");
     }
-    // Slice badge — display follows SliceLetterDisplay AppSettings (#2606).
-    const int id = m_slice->sliceId();
-    m_sliceBadge->setText(SliceLabel::richText(id, m_slice->letter()));
-    // Colour pairs with the visible letter: in Global mode that's the
-    // global sliceId; in RadioIndexed mode it's the letter index so the
-    // user's "A" slice is always the A colour regardless of slot.
-    const int colourIdx = SliceLabel::displayColorIndex(id, m_slice->letter());
-    m_sliceBadge->setStyleSheet(
-        QString("QLabel { background: %1; color: #000000; "
-                "border-radius: 3px; font-weight: bold; font-size: 11px; }")
-            .arg(SliceColorManager::instance().hexActive(colourIdx)));
+    applySliceBadgeLook();
     updateFreqLabel();
     updateCaptureStatus();
     updateFilterLabel();
@@ -6074,6 +6203,8 @@ void VfoWidget::syncFromSlice()
 
     m_updatingFromModel = false;
     if (m_filterAvailability) { m_filterAvailability->refreshEngaged(); }
+    if (m_splitVfo)
+        applySplitVfoLayout();   // build 472: nothing above may bring a removed part back
 }
 
 void VfoWidget::updateFreqLabel()

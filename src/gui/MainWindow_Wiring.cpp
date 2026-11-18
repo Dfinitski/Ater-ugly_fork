@@ -6320,6 +6320,11 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
         // Only radio observations advance the QSY reference; a queued status
         // can still report the pre-SWAP frequency while these tunes are pending.
         applyTuneRequest(tx, rxFreq, TuneIntent::IncrementalTune, "split-swap-tx");
+        // ANAN fork build 472: the VFO names go with the frequencies.
+        if (!m_radioModel.usesFlexCommandPlane()) {
+            m_ananSplitSwapped = !m_ananSplitSwapped;
+            updateSplitState();
+        }
     });
 
     // Right-click the SPLIT/SWAP badge — offsets, Monitor TX mode, and the
@@ -6363,6 +6368,7 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
             m_splitRxSliceId = sliceId;
             m_splitRxIdentity = s;
             m_splitTxSliceId = kAnanSplitUi;
+            m_ananSplitSwapped = false;   // build 472
             m_splitRxFrequencyMhz = f;
             m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.split"), 0,
                                                 QVariantMap{{QStringLiteral("on"), true},

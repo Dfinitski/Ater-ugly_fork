@@ -29,6 +29,7 @@ class QCheckBox;
 class QGraphicsOpacityEffect;
 class QDoubleSpinBox;
 class QGridLayout;
+class QHBoxLayout;
 class QVBoxLayout;
 class QPainter;
 class QHideEvent;
@@ -94,6 +95,18 @@ public:
     // (this slice's) and "Sub RX" (the SPLIT VFO's): the two make one stereo
     // pair (Hl2RxDsp::setSplitBalance).
     void setSubSlice(SliceModel* sub);
+    // ANAN fork build 472 (operator, 17.11): the flag of a SPLIT VFO (the
+    // second VFO of a receiver, Hl2Backend::kSplitUi). It is a clone of its
+    // owner's VFO, so the flag keeps only the frequency, and to its right the
+    // TX button over the VFO name: no header row (antennas, filter, SPLIT),
+    // no meter, no tabs, no side buttons. A click on the VFO name is SWAP.
+    void setSplitVfoMode(bool on);
+    bool isSplitVfo() const { return m_splitVfo; }
+    // Build 472: the VFO name shown in place of the slice letter (empty = the
+    // slice letter), on the colour of slice-colour index colourIdx (-1 = this
+    // slice's colour). A split pair is named "A" and "A'" (owner's letter);
+    // SWAP exchanges the names with the frequencies.
+    void setVfoName(const QString& name, int colourIdx = -1);
 
     // Flag direction hint. Auto/Force* flip to the other side when the panel would
     // overrun the spectrum edge (20 px). Lock* hold the side regardless; used by
@@ -503,6 +516,14 @@ private:
     QPushButton* m_splitBadge{nullptr};
     QPushButton* m_txBadge{nullptr};
     QLabel*      m_sliceBadge{nullptr};
+    // Build 472: see setSplitVfoMode() / setVfoName().
+    bool         m_splitVfo{false};
+    QHBoxLayout* m_hdrLayout{nullptr};
+    QWidget*     m_splitSideBox{nullptr};
+    QString      m_vfoName;
+    int          m_vfoNameColour{-1};
+    void applySplitVfoLayout();
+    void applySliceBadgeLook();
     QPointer<QPushButton> m_lockVfoBtn;
     QPointer<QPushButton> m_closeSliceBtn;
     QPointer<QPushButton> m_recordBtn;
