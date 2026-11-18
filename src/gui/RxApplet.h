@@ -110,6 +110,8 @@ public:
     // If maxSlices <= 1, the row is hidden.
     void setMaxSlices(int maxSlices);
     bool ananRow() const;   // build 476: the A, A', B, B', C, D row
+    // Build 497: the slice this applet shows and edits.
+    SliceModel* shownSlice() const { return m_slice; }
     // ANAN fork build 486 (operator, 17.11): with a SPLIT VFO (A' / B')
     // selected, every control is blocked but what it has of its own -- the
     // volume and the balance (and the receiver row, to leave it). The rest

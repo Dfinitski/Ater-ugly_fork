@@ -1701,7 +1701,18 @@ MainWindow::MainWindow(QWidget* parent)
     // ── AF gain from applet panel → radio per-slice audio_level ─────────
     connect(m_appletPanel->rxApplet(), &RxApplet::afGainChanged, this, [this](int v) {
         AetherSDR::SplitAudioOperatorEdit op;  // #2242: operator-origin
-        if (auto* s = activeSlice()) s->setAudioGain(v);
+        // ANAN fork build 497 (a user, 18.11: "the volume seems to be taken
+        // from the main receiver and overwritten"): the applet's AF slider
+        // set the ACTIVE slice's volume, and with a sub receiver shown in the
+        // applet the active slice was its receiver -- the slider changed the
+        // main receiver's volume and then jumped back to the sub receiver's.
+        // The balance next to it always went to the slice shown. Now the
+        // volume does too.
+        SliceModel* s = m_appletPanel && m_appletPanel->rxApplet()
+            ? m_appletPanel->rxApplet()->shownSlice() : nullptr;
+        if (!s)
+            s = activeSlice();
+        if (s) s->setAudioGain(v);
     });
 
     connect(m_appletPanel->rxApplet(), &RxApplet::directEntryCommitted,
