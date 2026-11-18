@@ -2027,11 +2027,14 @@ void MainWindow::buildMenuBar()
         // The git SHA identifies the build — useful when bug-reporting against
         // a dev/test build that doesn't correspond to a tagged release. It is
         // captured at build time; see cmake/AetherBuildIdentity.cmake.
-        auto* version = new QLabel(QStringLiteral("v%1  <span style='font-family:monospace; font-size:11px;'>%2</span>")
-                                       .arg(QCoreApplication::applicationVersion(),
-                                            QStringLiteral(AETHER_BUILD_SHA)));
+        // ANAN fork build 483 (operator, 17.11): the upstream version (v26.10.4)
+        // is not shown; in its place, in its font, who made this fork. The
+        // base version and the commit stay in the tooltip for bug reports.
+        auto* version = new QLabel(QStringLiteral("by N7DDC with RZ3QS contribution"));
         version->setAlignment(Qt::AlignCenter);
-        version->setToolTip(QStringLiteral("Version and the commit this binary was built from."));
+        version->setToolTip(QStringLiteral("Based on AetherSDR v%1, commit %2.")
+                                .arg(QCoreApplication::applicationVersion(),
+                                     QStringLiteral(AETHER_BUILD_SHA)));
         tm.applyStyleSheet(version, "QLabel { color: {{color.canon.muted}}; font-size: 13px; background: transparent; }");
         vbox->addWidget(version);
 
