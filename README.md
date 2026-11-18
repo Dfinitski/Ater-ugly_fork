@@ -75,20 +75,20 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 468
+## Build 494
 
-Full notes: [docs/release-notes-build-468.md](docs/release-notes-build-468.md).
+Full notes: [docs/release-notes-build-494.md](docs/release-notes-build-494.md).
 
-- **Four receivers:** RX3 / RX4 on the DDCs PureSignal uses (Protocol 2 and 1); PureSignal takes
-  them back while it transmits, their panadapters stand still meanwhile. No network budget
-  limit any more.
-- **Runs next to the original AetherSDR:** own settings and logs (`AetherSDR_ugly_fork`).
-- **Memories:** tuning step, drive and TUNE per mode group; band buttons, quick memories and
-  station memories recall the same settings.
-- **Window:** new minimal mode (panadapters only) with a title-bar button; no shaking while
-  resizing on Windows.
+- **Sub receivers:** SPLIT on the VFO flag starts a second VFO on the same panadapter for
+  receiver A and for receiver B (A′, B′) with its own frequency, volume, balance, AGC threshold
+  and S-meter; a small flag with TX and SWAP; transmit on either VFO of the pair.
+- **Tuning the pair:** click, wheel and passband drag tune the nearer VFO.
+- **Memories:** the sub receiver, Auto AGC and NF+ are stored by the band buttons, quick
+  memories and station memories.
+- **RX3 / RX4:** their own Auto AGC and NF+.
+- **Protocol 1:** the DDC count is found from the packet rate (home-made transceivers).
 
-Earlier notes: [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 468](docs/release-notes-build-468.md), [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Downloads
 

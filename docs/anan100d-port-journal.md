@@ -8322,6 +8322,13 @@ errcheck Hl2Backend, RxApplet, VfoWidget, SpectrumWidget, MainWindow_Wiring, Rad
 
 errcheck RxApplet, VfoWidget, TxApplet — новых ошибок нет; фиктивный символ — 1. На радио не проверено.
 
+## 468. Релиз сборки 494 (17.11.2026)
+
+- `docs/release-notes-build-494.md`: сборки 469–494 по темам — субприёмники (SPLIT: A′ / B′, малый флаг, SWAP, TX, настройка ближайшего VFO, RX Controls, память, MIDI), приёмники (свой Auto AGC / NF+ у RX3 / RX4, Auto AGC и NF+ в памяти, число DDC Protocol 1 по темпу пакетов, вход обратной связи PureSignal на 7000DLE / 8000DLE), окно (About, захват ползунков). README: раздел «Build 494», 468 — в «Earlier notes».
+- Архив `AetherSDR-ANAN-build494-win64-portable.zip`: архив build 468 с exe оператора (Desktop\AetherSDR-Release\AetherSDR.exe, 17.11 22:12 местного, 90780672 байт — после записи исходников 494 в 22:10; в exe есть строки `collapsedStateChanged` (493) и «devices supporting» (490)), README-build494.md вместо README-build468.md, верхняя папка AetherSDR-ANAN-build494; 93 записи, 163099375 байт, SHA-256 2d3d4011721faa33d0954c4c14d6aba874495cd7425f7c69af3835d873a6bc99. Сохранён в Desktop\AetherSDR-Release, контрольная сумма сверена после записи.
+- Обновление с 468: достаточно заменить AetherSDR.exe (новых библиотек нет).
+- Релиз (тег build-494 на main) создаёт оператор в веб-интерфейсе GitHub и прикрепляет Windows-архив (из этой сессии пуш тегов и создание релизов — 403). AppImage и DMG CI собирает по тегу.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
