@@ -2051,12 +2051,15 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
         // still at once.
         QString lineSig;
         QString stateSig;
-        if (rx >= 0 && rx < 2) {
+        // Build 495 (operator, 18.11): the noise and AGC lines on the
+        // panadapters of RX3 / RX4 too; the ADC overload warning stays with
+        // RX1 / RX2 (rxAdc knows those two).
+        if (rx >= 0 && rx < 4) {
             const qint64 now = QDateTime::currentMSecsSinceEpoch();
             const bool lineShown = ui.showNoiseLine && std::isfinite(ui.shownFloorDbm[rx])
                                    && now - ui.shownFloorAtMs[rx] <= 3000;
-            const int adc = std::clamp(ui.rxAdc[rx], 0, 1);
-            const bool ovl = ui.adcOverloadTest || now - ui.adcOverloadAtMs[adc] <= 1000;
+            const int adc = rx < 2 ? std::clamp(ui.rxAdc[rx], 0, 1) : 0;
+            const bool ovl = rx < 2 && (ui.adcOverloadTest || now - ui.adcOverloadAtMs[adc] <= 1000);
             const int specH = spectrumPixelHeight();
             const auto yOf = [&](double dbm) {
                 if (m_dynamicRange <= 0.0f)
@@ -5088,7 +5091,7 @@ int SpectrumWidget::ananAgcLineY(int specH, int* rxOut) const
         return -1;
     const auto& ui = AetherSDR::anan::AnanUiState::instance();
     const int rx = ui.rxForPan(m_overlayMenu->panId());
-    if (rx < 0 || rx > 1 || !ui.showAgcLine || !std::isfinite(ui.agcGateDbm[rx])
+    if (rx < 0 || rx > 3 || !ui.showAgcLine || !std::isfinite(ui.agcGateDbm[rx])   // build 495: RX3 / RX4 too
         || QDateTime::currentMSecsSinceEpoch() - ui.agcGateAtMs[rx] > 3000)
         return -1;
     if (rxOut)
@@ -5162,7 +5165,7 @@ void SpectrumWidget::drawAnanNoiseFloor(QPainter& p, const QRect& specRect)
     if (!ui.showNoiseLine)
         return;   // Setup > Receive
     const int rx = ui.rxForPan(m_overlayMenu->panId());
-    if (rx < 0 || rx > 1 || !std::isfinite(ui.shownFloorDbm[rx])
+    if (rx < 0 || rx > 3 || !std::isfinite(ui.shownFloorDbm[rx])   // build 495: RX3 / RX4 too
         || QDateTime::currentMSecsSinceEpoch() - ui.shownFloorAtMs[rx] > 3000)
         return;
     const auto yFor = [&](double dbm) {
@@ -12322,7 +12325,7 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
     if (m_draggingAgcLine) {
         const auto& ui = AetherSDR::anan::AnanUiState::instance();
         const int rx = m_agcLineDragRx;
-        if (rx >= 0 && rx < 2 && !ui.agcAuto[rx] && specH > 0 && m_dynamicRange > 0.0f) {
+        if (rx >= 0 && rx < 4 && !ui.agcAuto[rx] && specH > 0 && m_dynamicRange > 0.0f) {
             const double dbm = m_refLevel
                 - std::clamp(static_cast<double>(y) / specH, 0.0, 1.0) * m_dynamicRange;
             const double gain = ui.agcGatePlusGainDb[rx] - dbm;
