@@ -11786,6 +11786,10 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
             if (mx >= left && mx <= right) {
                 emit sliceClicked(so.sliceId);
                 m_draggingVfo = true;
+                {   // build 479
+                    VfoWidget* fw = m_vfoWidgets.value(so.sliceId, nullptr);
+                    m_vfoDragSliceId = (fw && fw->isSplitVfo()) ? so.sliceId : -1;
+                }
                 m_vfoDragPanEchoHoldUntilMs = 0;
                 emit sliceDragActiveChanged(true);
                 m_vfoDragLastX = mx;
@@ -11828,6 +11832,10 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
                 ? (mx >= std::min(loX, hiX) && mx <= std::max(loX, hiX))
                 : filterPassbandBodyHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx)) {
             m_draggingVfo = true;
+            {   // build 479
+                VfoWidget* fw = m_vfoWidgets.value(ao->sliceId, nullptr);
+                m_vfoDragSliceId = (fw && fw->isSplitVfo()) ? ao->sliceId : -1;
+            }
             m_vfoDragPanEchoHoldUntilMs = 0;
             emit sliceDragActiveChanged(true);
             m_vfoDragLastX = mx;
@@ -11865,6 +11873,10 @@ void SpectrumWidget::driveVfoDragTune(int mx, const char* phase)
         << " mx=" << mx << " w=" << width()
         << " center=" << m_centerMhz << " bw=" << m_bandwidthMhz
         << " tuneMhz=" << mhz;
+    if (m_vfoDragSliceId >= 0) {   // build 479: a SPLIT VFO's passband, by its slice
+        emit sliceWheelTuneRequested(m_vfoDragSliceId, mhz);
+        return;
+    }
     emit edgePanTuneRequested(m_centerMhz, mhz);
 }
 
@@ -12519,7 +12531,8 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
         // In the edge zone the velocity timer owns panning (keeps the slice
         // pinned under the cursor); only tune directly when in-window so a
         // normal drag still tunes live.
-        if (!updateVfoDragEdgePan(mx)) {
+        // Build 479: a SPLIT VFO's drag does not pan the view at the edge.
+        if (m_vfoDragSliceId >= 0 || !updateVfoDragEdgePan(mx)) {
             driveVfoDragTune(mx, "move");
         }
         ev->accept();

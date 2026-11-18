@@ -2100,6 +2100,10 @@ private:
     // VFO passband drag state (#404)
     bool m_draggingVfo{false};
     int  m_vfoDragOffsetHz{0};  // Hz offset from VFO at grab point (#1120)
+    // ANAN fork build 479: the slice a passband drag tunes when the grabbed
+    // passband is a SPLIT VFO's (-1: the active slice, as always). The SPLIT
+    // VFO never becomes the active slice, so the drag used to tune its owner.
+    int  m_vfoDragSliceId{-1};
     // Edge auto-pan during VFO drag: while the cursor sits in the edge zone this
     // timer drives a pan *velocity* (scaled by edge depth, ramping with hold time)
     // and keeps the slice under the cursor via edgePanTuneRequested, a
