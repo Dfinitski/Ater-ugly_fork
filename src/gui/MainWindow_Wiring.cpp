@@ -3889,6 +3889,11 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
 {
     if (!s || mem.isEmpty())
         return;
+    // Build 496: with a sub receiver active the memory is its receiver's.
+    if (!m_radioModel.usesFlexCommandPlane() && s->sliceId() >= 6) {
+        if (SliceModel* owner = m_radioModel.slice(s->sliceId() - 6))
+            s = owner;
+    }
     const int sid = s->sliceId();
     // The receiver rate first: it resets the zoom, so the rest waits for it.
     const int rate = mem.value(QStringLiteral("rate")).toInt(0);
@@ -4081,6 +4086,11 @@ void MainWindow::selectBand(const QString& panId, const QString& bandName, doubl
         if (!s) {
             statusBar()->showMessage(tr("No receiver on this panadapter to tune"), 4000);
             return;
+        }
+        // Build 496: with a sub receiver active the band is its receiver's.
+        if (s->sliceId() >= 6) {
+            if (SliceModel* owner = m_radioModel.slice(s->sliceId() - 6))
+                s = owner;
         }
         qCInfo(lcProtocol).noquote().nospace()
             << "MainWindow: band button on pan " << panId << " -> slice " << s->sliceId();
@@ -5466,20 +5476,6 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(sw, &SpectrumWidget::frequencyClicked,
             this, [this, resolveSpectrumTuneTarget, resolveClickedPanId](double mhz) {
         if (auto* target = resolveSpectrumTuneTarget()) {
-            // ANAN fork build 476 (operator, 17.11): with a sub receiver the
-            // click tunes the VFO of the pair it is nearer to.
-            if (m_radioModel.isConnected() && !m_radioModel.usesFlexCommandPlane()) {
-                const int owner = target->sliceId() >= 6 ? target->sliceId() - 6 : target->sliceId();
-                SliceModel* main = owner >= 0 && owner <= 1 ? m_radioModel.slice(owner) : nullptr;
-                SliceModel* sub = main ? m_radioModel.slice(6 + owner) : nullptr;
-                if (main && sub) {
-                    if (std::abs(mhz - sub->frequency()) < std::abs(mhz - main->frequency())) {
-                        applyTuneRequest(sub, mhz, TuneIntent::AbsoluteJump, "spectrum-click-sub");
-                        return;
-                    }
-                    target = main;
-                }
-            }
             queueActiveSliceForSpectrumTarget(target->sliceId());
             applyTuneRequest(target, mhz, TuneIntent::AbsoluteJump, "spectrum-click");
             return;

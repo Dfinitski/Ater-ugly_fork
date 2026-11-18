@@ -2626,32 +2626,6 @@ bool SpectrumWidget::sliceHasSplitPartner(int sliceId) const
     return false;
 }
 
-// ANAN fork build 477 (operator, 17.11: "the click still works for the main
-// receiver only"): on the ANAN a left click on the panadapter and a double
-// click on the waterfall go out as edgePanTuneRequested (tune, the pan stays),
-// not frequencyClicked, so 476's choice never ran. With a split pair here the
-// VFO nearer to the click is tuned, by its slice id.
-bool SpectrumWidget::pairClickTune(double mhz)
-{
-    const SliceOverlay* pairA = nullptr;
-    const SliceOverlay* pairB = nullptr;
-    for (const SliceOverlay& so : m_sliceOverlays) {
-        VfoWidget* fw = m_vfoWidgets.value(so.sliceId, nullptr);
-        if (so.splitPartnerId < 0 || !fw)
-            continue;
-        if (fw->isSplitVfo())
-            pairB = &so;
-        else
-            pairA = &so;
-    }
-    if (!pairA || !pairB)
-        return false;
-    const SliceOverlay* nearest =
-        std::abs(mhz - pairB->freqMhz) < std::abs(mhz - pairA->freqMhz) ? pairB : pairA;
-    emit sliceWheelTuneRequested(nearest->sliceId, mhz);
-    return true;
-}
-
 bool SpectrumWidget::vfoFlagOnLeftForSlice(
     int sliceId, double freqMhz, int panelWidth, bool previousOnLeft) const
 {
@@ -11789,10 +11763,6 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
             if (mx >= left && mx <= right) {
                 emit sliceClicked(so.sliceId);
                 m_draggingVfo = true;
-                {   // build 479
-                    VfoWidget* fw = m_vfoWidgets.value(so.sliceId, nullptr);
-                    m_vfoDragSliceId = (fw && fw->isSplitVfo()) ? so.sliceId : -1;
-                }
                 m_vfoDragPanEchoHoldUntilMs = 0;
                 emit sliceDragActiveChanged(true);
                 m_vfoDragLastX = mx;
@@ -11835,10 +11805,6 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
                 ? (mx >= std::min(loX, hiX) && mx <= std::max(loX, hiX))
                 : filterPassbandBodyHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx)) {
             m_draggingVfo = true;
-            {   // build 479
-                VfoWidget* fw = m_vfoWidgets.value(ao->sliceId, nullptr);
-                m_vfoDragSliceId = (fw && fw->isSplitVfo()) ? ao->sliceId : -1;
-            }
             m_vfoDragPanEchoHoldUntilMs = 0;
             emit sliceDragActiveChanged(true);
             m_vfoDragLastX = mx;
@@ -11876,10 +11842,6 @@ void SpectrumWidget::driveVfoDragTune(int mx, const char* phase)
         << " mx=" << mx << " w=" << width()
         << " center=" << m_centerMhz << " bw=" << m_bandwidthMhz
         << " tuneMhz=" << mhz;
-    if (m_vfoDragSliceId >= 0) {   // build 479: a SPLIT VFO's passband, by its slice
-        emit sliceWheelTuneRequested(m_vfoDragSliceId, mhz);
-        return;
-    }
     emit edgePanTuneRequested(m_centerMhz, mhz);
 }
 
@@ -11975,22 +11937,6 @@ void SpectrumWidget::edgePanVelocityStep()
         << " depth=" << depth << " ramp=" << rampFactor
         << " dMhz=" << deltaMhz << " center=" << m_centerMhz
         << " sliceX=" << sliceX << " sliceMhz=" << sliceFreq;
-    // Build 480 (operator, 17.11: "let it scroll"): a SPLIT VFO's passband at
-    // the edge -- the view pans (its owner is "tuned" to where it already
-    // is, which only carries the new centre), the SPLIT VFO is tuned itself.
-    if (m_vfoDragSliceId >= 0) {
-        double ownerMhz = -1.0;
-        const int si = overlayIndex(m_vfoDragSliceId);
-        if (si >= 0) {
-            const int oi = overlayIndex(m_sliceOverlays[si].splitPartnerId);
-            if (oi >= 0)
-                ownerMhz = m_sliceOverlays[oi].freqMhz;
-        }
-        if (ownerMhz > 0.0)
-            emit edgePanTuneRequested(newCenter, ownerMhz);
-        emit sliceWheelTuneRequested(m_vfoDragSliceId, sliceFreq);
-        return;
-    }
     emit edgePanTuneRequested(newCenter, sliceFreq);
 }
 
@@ -13025,9 +12971,8 @@ void SpectrumWidget::mouseReleaseEvent(QMouseEvent* ev)
         if (!m_spotClickConsumed && delta.manhattanLength() <= 4
             && !m_indicatorStripRect.contains(ev->position().toPoint())
             && mx < width() - DBM_STRIP_W) {
-            const double clickMhz = snapToStep(clickDialMhz(xToMhz(mx)), m_stepHz);   // build 337
-            if (!pairClickTune(clickMhz))   // build 477
-                emit edgePanTuneRequested(m_centerMhz, clickMhz);
+            emit edgePanTuneRequested(m_centerMhz,
+                snapToStep(clickDialMhz(xToMhz(mx)), m_stepHz));   // build 337
         }
         m_spotClickConsumed = false;
         ev->accept();
@@ -13195,8 +13140,7 @@ void SpectrumWidget::mouseDoubleClickEvent(QMouseEvent* ev)
 
         // ANAN-100D port: like the single click -- tune, the pan stays put.
         rawMhz = clickDialMhz(rawMhz);   // build 337
-        if (!pairClickTune(snapToStep(rawMhz, m_stepHz)))   // build 477
-            emit edgePanTuneRequested(m_centerMhz, snapToStep(rawMhz, m_stepHz));
+        emit edgePanTuneRequested(m_centerMhz, snapToStep(rawMhz, m_stepHz));
         ev->accept();
         return;
     }
@@ -13598,31 +13542,9 @@ void SpectrumWidget::wheelEvent(QWheelEvent* ev)
     if (reverseMouseWheel()) steps = -steps;
 
     const auto* ao = activeOverlay();
-    // ANAN fork build 476 (operator, 17.11): with a sub receiver the wheel
-    // tunes the VFO of the pair the cursor is nearer to.
-    {
-        const SliceOverlay* pairA = nullptr;
-        const SliceOverlay* pairB = nullptr;
-        for (const SliceOverlay& so : m_sliceOverlays) {
-            VfoWidget* fw = m_vfoWidgets.value(so.sliceId, nullptr);
-            if (so.splitPartnerId < 0 || !fw)
-                continue;
-            if (fw->isSplitVfo())
-                pairB = &so;
-            else
-                pairA = &so;
-        }
-        if (pairA && pairB) {
-            const int mx = qRound(ev->position().x());
-            const SliceOverlay* nearest =
-                std::abs(mx - mhzToX(pairB->freqMhz)) < std::abs(mx - mhzToX(pairA->freqMhz))
-                    ? pairB : pairA;
-            const double base = snapToStep(nearest->freqMhz, m_stepHz);
-            emit sliceWheelTuneRequested(nearest->sliceId, base + steps * m_stepHz / 1e6);
-            ev->accept();
-            return;
-        }
-    }
+    // Build 496 (operator, 18.11): the wheel tunes the ACTIVE VFO, the sub
+    // receiver included when it is the active one; the "nearer to the
+    // cursor" choice of 476-480 is gone.
     const double vfoMhz = ao ? ao->freqMhz : m_centerMhz;
     // Snap the base frequency to the step grid first, then add the delta.
     // This ensures every scroll moves by exactly m_stepHz rather than snapping

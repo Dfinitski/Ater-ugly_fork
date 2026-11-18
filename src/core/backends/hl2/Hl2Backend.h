@@ -1404,6 +1404,7 @@ private:
         bool on = false;
         double freqHz = 0.0;
         bool tx = false;
+        bool active = false;   // build 496: it is the active VFO of its pair
         int panPercent = 50;   // build 471: the SPLIT receiver's balance
         float gain = 1.0f;     // build 486: its own volume
         int agcThresholdDb = 65;   // build 489: its own AGC-T (by hand)

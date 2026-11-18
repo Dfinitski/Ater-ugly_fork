@@ -5694,10 +5694,25 @@ void Hl2Backend::setSliceAudioPan(int sliceId, int panPercent)
 
 void Hl2Backend::setActiveSlice(int sliceId)
 {
-    if (splitByUi(sliceId)) {
-        emitSplitSliceState(sliceId - kSplitUiBase);   // build 470: the owner stays the active receiver
+    // Build 496 (operator, 18.11: "whichever receiver is active is the one
+    // controlled, the usual way"): a SPLIT VFO can be the active VFO. Inside
+    // the backend its receiver stays the active receiver; towards the client
+    // the pair shows exactly one active slice (SplitVfo::active).
+    if (SplitVfo* sp = splitByUi(sliceId)) {
+        const int ownerUi = sliceId - kSplitUiBase;
+        const int ownerDdc = ddcForSlice(ownerUi);
+        if (!rx(ownerDdc))
+            return;
+        if (ownerDdc != m_activeDdc)
+            setActiveSlice(ownerUi);
+        for (SplitVfo& o : m_splits)
+            o.active = false;
+        sp->active = true;
+        emitSliceState(ownerDdc);   // the receiver (now not active) and its SPLIT VFO
         return;
     }
+    for (SplitVfo& o : m_splits)
+        o.active = false;
     const int ddc = ddcForSlice(sliceId);
     if (!rx(ddc)) {
         qCWarning(lcHl2) << "HL2: cannot activate slice" << sliceId << "— no such receiver";
@@ -13035,7 +13050,8 @@ void Hl2Backend::emitSliceState(int ddc)
                 && !(splitOfOwner(ids->uiNumber) && splitOfOwner(ids->uiNumber)->tx);   // build 470
     // Exactly one slice is active, so consumers (e.g. the RX Controls applet)
     // resolve the receiver the operator is working on.
-    d.active = (ddc == m_activeDdc);
+    d.active = (ddc == m_activeDdc)
+               && !(splitOfOwner(ids->uiNumber) && splitOfOwner(ids->uiNumber)->active);   // build 496
     // Build 248 (operator, 10.11: the flag's antenna buttons did not follow
     // the ANT panel): the antennas as the ANT panel holds them. ANT1-3 feed
     // ADC1 only; a receiver on ADC2 listens to the RX2 input.
@@ -13188,7 +13204,7 @@ void Hl2Backend::emitSplitSliceState(int ownerUi)
     d.agcMode = r->agcMode;
     d.agcThreshold = sp->agcThresholdDb;   // build 489: its own
     d.txSlice = sp->tx && ddc == m_txDdc;
-    d.active = false;
+    d.active = sp->active && ddc == m_activeDdc;   // build 496
     emit sliceChanged(splitUiOf(ownerUi), d);
 }
 
