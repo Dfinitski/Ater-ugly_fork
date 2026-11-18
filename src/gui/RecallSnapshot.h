@@ -28,6 +28,23 @@
 
 namespace AetherSDR::RecallSnapshot {
 
+// ANAN fork build 487 (operator, 17.11): the sub receiver (SPLIT VFO, slice
+// 6 / 7) of receivers 1 and 2 is part of the snapshot -- whether it runs, its
+// frequency, volume and balance. While it does not run, its last parameters
+// wait here (per receiver): they stay in the snapshot, and SPLIT brings the
+// sub receiver back with them. A band button recalls them but leaves the sub
+// receiver off until the operator presses SPLIT.
+struct SubMem {
+    double freqMhz = 0.0;
+    int vol = -1;
+    int pan = -1;
+};
+inline SubMem& pendingSub(int owner)
+{
+    static SubMem mem[2];
+    return mem[owner & 1];
+}
+
 inline QJsonObject capture(const RadioModel& model, const SliceModel* s)
 {
     QJsonObject o;
@@ -58,6 +75,22 @@ inline QJsonObject capture(const RadioModel& model, const SliceModel* s)
     o.insert(QStringLiteral("rptOff"), s->fmRepeaterOffsetFreq());
     o.insert(QStringLiteral("toneMode"), s->fmToneMode());
     o.insert(QStringLiteral("toneVal"), s->fmToneValue());
+    if (s->sliceId() == 0 || s->sliceId() == 1) {   // build 487: its sub receiver
+        if (const SliceModel* sub = rm.slice(6 + s->sliceId())) {
+            o.insert(QStringLiteral("sub"), true);
+            o.insert(QStringLiteral("subFreq"), sub->frequency());
+            o.insert(QStringLiteral("subVol"), static_cast<int>(sub->audioGain()));
+            o.insert(QStringLiteral("subPan"), sub->audioPan());
+        } else {
+            const SubMem& p = pendingSub(s->sliceId());
+            o.insert(QStringLiteral("sub"), false);
+            if (p.freqMhz > 0.0) {
+                o.insert(QStringLiteral("subFreq"), p.freqMhz);
+                o.insert(QStringLiteral("subVol"), p.vol);
+                o.insert(QStringLiteral("subPan"), p.pan);
+            }
+        }
+    }
     // Panadapter: the view (centre, width), the receiver rate, WNB and the
     // receiver's attenuator / gain.
     o.insert(QStringLiteral("rate"), anan::AnanUiState::instance().sampleRateHz);

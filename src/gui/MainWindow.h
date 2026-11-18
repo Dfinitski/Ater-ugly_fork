@@ -1150,6 +1150,11 @@ private:
     // after a receiver-rate change.
     void applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool tuneAndMode,
                              int attempt = 0);
+    // Build 487: the sub receiver (SPLIT VFO) of receiver owner (0 / 1) on or
+    // off. On: at freqMhz (0: its remembered frequency if that is within this
+    // receiver's capture, else a tenth of the view away), with volume / pan
+    // (-1: the remembered ones, if any).
+    void ananSetSplit(int owner, bool on, double freqMhz = 0.0, int vol = -1, int pan = -1);
     static constexpr int kLinkLostGraceMs = 1000;   // build 377: was 3000, see m_linkLostClock
     // A busy ANAN is taken over only when the busy session is plausibly ours:
     // the previous run of this program right after start-up (closed or stopped

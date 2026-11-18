@@ -3757,7 +3757,9 @@ void MainWindow::ananBandMemTick()
     if (!m_radioModel.isConnected() || m_radioModel.usesFlexCommandPlane())
         return;
     for (SliceModel* s : m_radioModel.slices()) {
-        const QJsonObject snap = ananBandMemSnapshot(s);
+        if (s && s->sliceId() >= 6)
+            continue;   // build 487: a sub receiver is part of its receiver's memory
+        QJsonObject snap = ananBandMemSnapshot(s);
         if (snap.isEmpty())
             continue;
         const QString band = BandSettings::bandForFrequency(s->frequency());
@@ -3772,6 +3774,28 @@ void MainWindow::ananBandMemTick()
         const bool firstSample = slot.band.isEmpty();
         if (!firstSample && !slot.live.isEmpty())
             ananBandMemStore(s->sliceId(), slot.band, slot.live);
+        // Build 487: the receiver left the band by itself (typed frequency,
+        // spot, memory) -- its sub receiver stays behind: off, and the new
+        // band's remembered sub-receiver parameters wait for SPLIT.
+        if (!firstSample && (s->sliceId() == 0 || s->sliceId() == 1)
+            && m_radioModel.slice(6 + s->sliceId())) {
+            ananSetSplit(s->sliceId(), false);
+            const QJsonObject there = ananBandMemLoad(s->sliceId(), band);
+            RecallSnapshot::SubMem& p = RecallSnapshot::pendingSub(s->sliceId());
+            p = {};
+            snap.insert(QStringLiteral("sub"), false);
+            snap.remove(QStringLiteral("subFreq"));
+            snap.remove(QStringLiteral("subVol"));
+            snap.remove(QStringLiteral("subPan"));
+            if (there.value(QStringLiteral("subFreq")).toDouble() > 0.0) {
+                p.freqMhz = there.value(QStringLiteral("subFreq")).toDouble();
+                p.vol = there.value(QStringLiteral("subVol")).toInt(-1);
+                p.pan = there.value(QStringLiteral("subPan")).toInt(-1);
+                snap.insert(QStringLiteral("subFreq"), p.freqMhz);
+                snap.insert(QStringLiteral("subVol"), p.vol);
+                snap.insert(QStringLiteral("subPan"), p.pan);
+            }
+        }
         slot.band = band;
         slot.live = snap;
         if (!firstSample)
@@ -3785,6 +3809,73 @@ void MainWindow::ananBandMemFlush()
     for (auto it = m_ananBandMem.cbegin(); it != m_ananBandMem.cend(); ++it)
         if (!it.value().band.isEmpty() && !it.value().live.isEmpty())
             ananBandMemStore(it.key(), it.value().band, it.value().live);
+}
+
+void MainWindow::ananSetSplit(int owner, bool on, double freqMhz, int vol, int pan)
+{
+    constexpr int kAnanSplitUiBase = 6;   // Hl2Backend::kSplitUiBase
+    if (owner < 0 || owner > 1 || !m_radioModel.isConnected() || m_radioModel.usesFlexCommandPlane())
+        return;
+    const int subId = kAnanSplitUiBase + owner;
+    SliceModel* sub = m_radioModel.slice(subId);
+    if (!on) {
+        if (sub)
+            m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.split"), 0,
+                                                QVariantMap{{QStringLiteral("on"), false},
+                                                            {QStringLiteral("slice"), owner}});
+        return;
+    }
+    SliceModel* s = m_radioModel.slice(owner);
+    if (!s)
+        return;
+    const RecallSnapshot::SubMem& p = RecallSnapshot::pendingSub(owner);
+    if (vol < 0)
+        vol = p.vol;
+    if (pan < 0)
+        pan = p.pan;
+    const double f = s->frequency();
+    if (!(freqMhz > 0.0)) {
+        // The remembered frequency, while this receiver still hears it.
+        const double halfMhz = anan::AnanUiState::instance().sampleRateHz / 2.0e6;
+        if (p.freqMhz > 0.0 && halfMhz > 0.0 && std::abs(p.freqMhz - f) < halfMhz)
+            freqMhz = p.freqMhz;
+    }
+    if (!(freqMhz > 0.0)) {
+        const double c = m_radioModel.effectivePanCenterMhz(s->panId());
+        const double bw = m_radioModel.effectivePanBandwidthMhz(s->panId());
+        freqMhz = f + 0.005;
+        if (c > 0.0 && bw > 0.0) {
+            const double below = f - (c - bw / 2.0);
+            const double above = (c + bw / 2.0) - f;
+            freqMhz = above >= below ? f + std::max(above, 0.0) / 10.0
+                                     : f - std::max(below, 0.0) / 10.0;
+        }
+    }
+    const double hz = std::round(freqMhz * 1.0e5) * 10.0;   // to 10 Hz
+    if (!sub) {
+        m_splitActive = true;
+        m_splitRxSliceId = owner;
+        m_splitRxIdentity = s;
+        m_splitTxSliceId = subId;
+        m_splitRxFrequencyMhz = f;
+        m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.split"), 0,
+                                            QVariantMap{{QStringLiteral("on"), true},
+                                                        {QStringLiteral("slice"), owner},
+                                                        {QStringLiteral("freqHz"), hz}});
+    } else {
+        sub->setFrequency(hz / 1.0e6);
+    }
+    // Its volume and balance once its slice is there.
+    if (vol >= 0 || pan >= 0) {
+        QTimer::singleShot(sub ? 0 : 400, this, [this, subId, vol, pan] {
+            if (SliceModel* x = m_radioModel.slice(subId)) {
+                if (vol >= 0)
+                    x->setAudioGain(static_cast<float>(vol));
+                if (pan >= 0)
+                    x->setAudioPan(pan);
+            }
+        });
+    }
 }
 
 void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool tuneAndMode,
@@ -3822,6 +3913,20 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
         const int lo = mem.value(QStringLiteral("lo")).toInt(), hi = mem.value(QStringLiteral("hi")).toInt();
         if (hi > lo)
             s->setFilterWidth(lo, hi);
+    }
+    // Build 487: the sub receiver of receivers 1 / 2 -- whether it runs, its
+    // frequency, volume and balance (a band button passes "sub" = false: its
+    // parameters are remembered, the sub receiver waits for SPLIT).
+    if ((sid == 0 || sid == 1) && !m_radioModel.usesFlexCommandPlane()) {
+        RecallSnapshot::SubMem& p = RecallSnapshot::pendingSub(sid);
+        p = {};
+        if (mem.value(QStringLiteral("subFreq")).toDouble() > 0.0) {
+            p.freqMhz = mem.value(QStringLiteral("subFreq")).toDouble();
+            p.vol = mem.value(QStringLiteral("subVol")).toInt(-1);
+            p.pan = mem.value(QStringLiteral("subPan")).toInt(-1);
+        }
+        const bool on = mem.value(QStringLiteral("sub")).toBool(false) && p.freqMhz > 0.0;
+        ananSetSplit(sid, on, p.freqMhz, p.vol, p.pan);
     }
     // AGC, volume, NB / NR, squelch.
     const QString agc = mem.value(QStringLiteral("agc")).toString();
@@ -3974,6 +4079,9 @@ void MainWindow::selectBand(const QString& panId, const QString& bandName, doubl
                 recall.insert(QStringLiteral("freq"), freqMhz);
             freqMhz = recall.value(QStringLiteral("freq")).toDouble();
             const QString useMode = recall.value(QStringLiteral("mode")).toString();
+            // Build 487: a band button remembers the sub receiver's
+            // parameters but leaves it off until SPLIT is pressed.
+            recall.insert(QStringLiteral("sub"), false);
             applyRecallSnapshot(s, recall, true);
             m_ananBandMem[sid] = AnanBandMemSlot{bandName, mem};
             qCInfo(lcProtocol).noquote().nospace()
@@ -3986,6 +4094,11 @@ void MainWindow::selectBand(const QString& panId, const QString& bandName, doubl
         // frequency move is what re-selects the companion filter board — so
         // this order leaves both the passband and the band filter settled
         // for the band being arrived at, not the one being left.
+        // Build 487: a band never visited has no sub receiver to remember.
+        if (sid == 0 || sid == 1) {
+            ananSetSplit(sid, false);
+            RecallSnapshot::pendingSub(sid) = {};
+        }
         if (!mode.isEmpty())
             s->setMode(mode);
         s->setFrequency(freqMhz);
@@ -6382,40 +6495,19 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
         if (m_radioModel.isConnected() && !m_radioModel.usesFlexCommandPlane()) {
             // Build 476: receivers 1 and 2 each have their own SPLIT VFO
             // (slice 6 = A', 7 = B'); receivers 3 and 4 have none.
-            constexpr int kAnanSplitUiBase = 6;   // Hl2Backend::kSplitUiBase
             if (sliceId < 0 || sliceId > 1)
                 return;
-            const int kAnanSplitUi = kAnanSplitUiBase + sliceId;
-            if (m_radioModel.slice(kAnanSplitUi)) {
-                m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.split"), 0,
-                                                    QVariantMap{{QStringLiteral("on"), false},
-                                                                {QStringLiteral("slice"), sliceId}});
-                return;
+            if (SliceModel* sub = m_radioModel.slice(6 + sliceId)) {
+                // Build 487: what it had waits for the next SPLIT (and stays
+                // in the band / quick / station memories).
+                auto& p = RecallSnapshot::pendingSub(sliceId);
+                p.freqMhz = sub->frequency();
+                p.vol = static_cast<int>(sub->audioGain());
+                p.pan = sub->audioPan();
+                ananSetSplit(sliceId, false);
+            } else {
+                ananSetSplit(sliceId, true);
             }
-            SliceModel* s = m_radioModel.slice(sliceId);
-            if (!s)
-                return;
-            const double f = s->frequency();
-            const double c = m_radioModel.effectivePanCenterMhz(s->panId());
-            const double bw = m_radioModel.effectivePanBandwidthMhz(s->panId());
-            double target = f + 0.005;
-            if (c > 0.0 && bw > 0.0) {
-                const double below = f - (c - bw / 2.0);
-                const double above = (c + bw / 2.0) - f;
-                target = above >= below ? f + std::max(above, 0.0) / 10.0
-                                        : f - std::max(below, 0.0) / 10.0;
-            }
-            const double hz = std::round(target * 1.0e5) * 10.0;   // to 10 Hz
-            m_splitActive = true;
-            m_splitRxSliceId = sliceId;
-            m_splitRxIdentity = s;
-            m_splitTxSliceId = kAnanSplitUi;
-            m_ananSplitSwapped[sliceId] = false;   // build 472
-            m_splitRxFrequencyMhz = f;
-            m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.split"), 0,
-                                                QVariantMap{{QStringLiteral("on"), true},
-                                                            {QStringLiteral("slice"), sliceId},
-                                                            {QStringLiteral("freqHz"), hz}});
             return;
         }
         if (!m_splitActive) {
