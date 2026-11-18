@@ -6674,14 +6674,34 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
     // follows its receiver's -- collapsed and expanded with it, and made in
     // its receiver's state.
     if (m_radioModel.isConnected() && !m_radioModel.usesFlexCommandPlane() && s) {
+        // Build 493 (operator, 17.11: "in any combination both flags are
+        // collapsed or both are open"): on every change of the receiver's
+        // flag, whoever made it (a click, minimal mode, a menu), and a
+        // SPLIT VFO's flag changed on its own goes back to its receiver's.
         if (sliceId == 0 || sliceId == 1) {
-            connect(w, &VfoWidget::collapseToggledByUser, this, [this, sliceId](bool collapsed) {
+            connect(w, &VfoWidget::collapsedStateChanged, this, [this, sliceId](bool collapsed) {
                 SliceModel* sub = m_radioModel.slice(6 + sliceId);
                 SpectrumWidget* sw = sub ? spectrumForSlice(sub) : nullptr;
-                if (VfoWidget* sv = sw ? sw->vfoWidget(6 + sliceId) : nullptr)
-                    sv->setCollapsed(collapsed, /*persist=*/false);
+                if (VfoWidget* sv = sw ? sw->vfoWidget(6 + sliceId) : nullptr) {
+                    if (sv->isCollapsed() != collapsed)
+                        sv->setCollapsed(collapsed, /*persist=*/false);
+                }
             });
         } else if (sliceId == 6 || sliceId == 7) {
+            connect(w, &VfoWidget::collapsedStateChanged, this, [this, sliceId](bool collapsed) {
+                SliceModel* owner = m_radioModel.slice(sliceId - 6);
+                SliceModel* sub = m_radioModel.slice(sliceId);
+                SpectrumWidget* sw = owner ? spectrumForSlice(owner) : nullptr;
+                VfoWidget* ov = sw ? sw->vfoWidget(sliceId - 6) : nullptr;
+                VfoWidget* sv = (sw && sub) ? sw->vfoWidget(sliceId) : nullptr;
+                if (ov && sv && ov->isCollapsed() != collapsed) {
+                    const bool want = ov->isCollapsed();
+                    QTimer::singleShot(0, sv, [sv, want] {
+                        if (sv->isCollapsed() != want)
+                            sv->setCollapsed(want, /*persist=*/false);
+                    });
+                }
+            }, Qt::QueuedConnection);
             SliceModel* owner = m_radioModel.slice(sliceId - 6);
             SpectrumWidget* sw = owner ? spectrumForSlice(owner) : nullptr;
             if (VfoWidget* ov = sw ? sw->vfoWidget(sliceId - 6) : nullptr) {

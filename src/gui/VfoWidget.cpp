@@ -3726,6 +3726,7 @@ void VfoWidget::setCollapsed(bool collapsed, bool persist)
 
     relayoutToCurrentContent();
     update();
+    emit collapsedStateChanged(m_collapsed);   // build 493
 
     // Trigger parent repaint so SpectrumWidget repositions us and the freq label
     if (parentWidget()) {
