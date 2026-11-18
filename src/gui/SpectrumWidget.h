@@ -1104,9 +1104,6 @@ signals:
     // ANAN fork build 476: a wheel step for one VFO of a split pair -- the
     // one the cursor is nearer to.
     void sliceWheelTuneRequested(int sliceId, double freqMhz);
-    // Build 477: a click at mhz with a split pair on this panadapter -- tunes
-    // the VFO of the pair nearer to it and returns true; false without a pair.
-    bool pairClickTune(double mhz);
     void popOutRequested(bool popOut);  // true=float, false=dock
     void sliceTxRequested(int sliceId);
     void centerLockRequested(int sliceId, bool locked);
@@ -1139,6 +1136,10 @@ protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
+    // Build 477: a click at mhz with a split pair on this panadapter -- tunes
+    // the VFO of the pair nearer to it and returns true; false without a pair.
+    // (Build 478: declared here, not among the signals -- moc made it one.)
+    bool pairClickTune(double mhz);
     bool event(QEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
     void leaveEvent(QEvent* event) override;
