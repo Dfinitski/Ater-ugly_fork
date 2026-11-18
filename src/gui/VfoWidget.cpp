@@ -803,6 +803,16 @@ void VfoWidget::mousePressEvent(QMouseEvent* ev)
             update();  // repaint TX badge color
             return;
         }
+        // Build 492 (operator, 17.11: "with both flags collapsed a click on
+        // the sub receiver's letter just expanded its flag; it must SWAP,
+        // the flags staying collapsed"). The SPLIT VFO's collapsed flag is
+        // its letter and TX only: the letter is SWAP as on the open flag;
+        // the flag opens and closes with its receiver's (build 484).
+        if (m_splitVfo) {
+            if (ev->button() == Qt::LeftButton)
+                emit swapRequested();
+            return;
+        }
         // Click anywhere else on collapsed widget → expand (deferred)
         QTimer::singleShot(0, this, [this] {
             setCollapsed(false);
