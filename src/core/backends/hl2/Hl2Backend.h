@@ -577,6 +577,7 @@ private:
     // AGC follows the noise floor (AnanUiState::agcAuto, 04.11): every 500 ms
     // on receive the ceiling is set from the floor + offset and the filter.
     void ananAutoAgcStep(int rx);
+    void ananSubAgcStep(int rx);   // build 489: the SPLIT VFO of receiver rx
     void ananPublishAgcGate(int rx);   // build 301
     QElapsedTimer m_ananAgcClock[2];
     // Build 410: the Auto AGC of the receiver the FTX mode has is frozen, and
@@ -1405,6 +1406,8 @@ private:
         bool tx = false;
         int panPercent = 50;   // build 471: the SPLIT receiver's balance
         float gain = 1.0f;     // build 486: its own volume
+        int agcThresholdDb = 65;   // build 489: its own AGC-T (by hand)
+        double agcTopSent = std::numeric_limits<double>::quiet_NaN();   // the gain its DSP holds
         SMeterSmoother sMeter;   // build 472: its S-meter ballistics
     };
     std::array<SplitVfo, kSplitOwners> m_splits;

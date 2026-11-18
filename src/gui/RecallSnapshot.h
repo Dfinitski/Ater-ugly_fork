@@ -38,6 +38,7 @@ struct SubMem {
     double freqMhz = 0.0;
     int vol = -1;
     int pan = -1;
+    int agcT = -1;   // build 489: its own AGC-T
 };
 inline SubMem& pendingSub(int owner)
 {
@@ -89,6 +90,7 @@ inline QJsonObject capture(const RadioModel& model, const SliceModel* s)
             o.insert(QStringLiteral("subFreq"), sub->frequency());
             o.insert(QStringLiteral("subVol"), static_cast<int>(sub->audioGain()));
             o.insert(QStringLiteral("subPan"), sub->audioPan());
+            o.insert(QStringLiteral("subAgcT"), sub->agcThreshold());
         } else {
             const SubMem& p = pendingSub(s->sliceId());
             o.insert(QStringLiteral("sub"), false);
@@ -96,8 +98,14 @@ inline QJsonObject capture(const RadioModel& model, const SliceModel* s)
                 o.insert(QStringLiteral("subFreq"), p.freqMhz);
                 o.insert(QStringLiteral("subVol"), p.vol);
                 o.insert(QStringLiteral("subPan"), p.pan);
+                o.insert(QStringLiteral("subAgcT"), p.agcT);
             }
         }
+        // Build 489: the sub receiver's Auto AGC and NF+ (kept whether it runs or not).
+        const auto& sui = anan::AnanUiState::instance();
+        const int unit = anan::AnanUiState::kAgcSubUnit + s->sliceId();
+        o.insert(QStringLiteral("subAgcAuto"), sui.agcAuto[unit]);
+        o.insert(QStringLiteral("subAgcNf"), sui.agcNfOffsetDb[unit]);
     }
     // Panadapter: the view (centre, width), the receiver rate, WNB and the
     // receiver's attenuator / gain.

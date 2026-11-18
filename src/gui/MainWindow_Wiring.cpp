@@ -3787,10 +3787,13 @@ void MainWindow::ananBandMemTick()
             snap.remove(QStringLiteral("subFreq"));
             snap.remove(QStringLiteral("subVol"));
             snap.remove(QStringLiteral("subPan"));
+            snap.remove(QStringLiteral("subAgcT"));
             if (there.value(QStringLiteral("subFreq")).toDouble() > 0.0) {
                 p.freqMhz = there.value(QStringLiteral("subFreq")).toDouble();
                 p.vol = there.value(QStringLiteral("subVol")).toInt(-1);
                 p.pan = there.value(QStringLiteral("subPan")).toInt(-1);
+                p.agcT = there.value(QStringLiteral("subAgcT")).toInt(-1);
+                snap.insert(QStringLiteral("subAgcT"), p.agcT);
                 snap.insert(QStringLiteral("subFreq"), p.freqMhz);
                 snap.insert(QStringLiteral("subVol"), p.vol);
                 snap.insert(QStringLiteral("subPan"), p.pan);
@@ -3865,10 +3868,13 @@ void MainWindow::ananSetSplit(int owner, bool on, double freqMhz, int vol, int p
     } else {
         sub->setFrequency(hz / 1.0e6);
     }
-    // Its volume and balance once its slice is there.
-    if (vol >= 0 || pan >= 0) {
-        QTimer::singleShot(sub ? 0 : 400, this, [this, subId, vol, pan] {
+    // Its volume, balance and AGC-T once its slice is there.
+    const int agcT = p.agcT;   // build 489
+    if (vol >= 0 || pan >= 0 || agcT >= 0) {
+        QTimer::singleShot(sub ? 0 : 400, this, [this, subId, vol, pan, agcT] {
             if (SliceModel* x = m_radioModel.slice(subId)) {
+                if (agcT >= 0)
+                    x->setAgcThreshold(agcT);
                 if (vol >= 0)
                     x->setAudioGain(static_cast<float>(vol));
                 if (pan >= 0)
@@ -3924,6 +3930,15 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
             p.freqMhz = mem.value(QStringLiteral("subFreq")).toDouble();
             p.vol = mem.value(QStringLiteral("subVol")).toInt(-1);
             p.pan = mem.value(QStringLiteral("subPan")).toInt(-1);
+            p.agcT = mem.value(QStringLiteral("subAgcT")).toInt(-1);   // build 489
+        }
+        if (mem.contains(QStringLiteral("subAgcNf"))) {   // build 489: its Auto AGC and NF+
+            auto& ui = anan::AnanUiState::instance();
+            const int unit = anan::AnanUiState::kAgcSubUnit + sid;
+            const bool a = mem.value(QStringLiteral("subAgcAuto")).toBool(ui.agcAuto[unit]);
+            const int nf = mem.value(QStringLiteral("subAgcNf")).toInt(ui.agcNfOffsetDb[unit]);
+            if (a != ui.agcAuto[unit] || nf != ui.agcNfOffsetDb[unit])
+                ui.setAgcAuto(unit, a, nf);
         }
         const bool on = mem.value(QStringLiteral("sub")).toBool(false) && p.freqMhz > 0.0;
         ananSetSplit(sid, on, p.freqMhz, p.vol, p.pan);
@@ -6513,6 +6528,7 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
                 p.freqMhz = sub->frequency();
                 p.vol = static_cast<int>(sub->audioGain());
                 p.pan = sub->audioPan();
+                p.agcT = sub->agcThreshold();   // build 489
                 ananSetSplit(sliceId, false);
             } else {
                 ananSetSplit(sliceId, true);

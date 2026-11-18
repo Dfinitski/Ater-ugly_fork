@@ -2261,6 +2261,9 @@ void RxApplet::applySubReceiverLock()
             || qobject_cast<QLineEdit*>(w);
         if (!control || w == m_afSlider || w == m_panSlider)
             continue;
+        // Build 489: and its own AGC threshold -- AGC-T, Auto, NF+.
+        if (w == m_agcTSlider || w == m_autoAgcTButton || w == m_agcNfSlider)
+            continue;
         if (auto* tb = qobject_cast<QToolButton*>(w); tb && m_sliceBtns.contains(tb))
             continue;
         // Disabled for the look; filtered as well, because the applet's own
@@ -3921,6 +3924,9 @@ int RxApplet::ananAgcRx() const
     if (!m_slice || (m_radioModel && m_radioModel->isConnected()
                      && m_radioModel->backendCapabilities().autoAgcThresholdControl))
         return -1;
+    // Build 489: a sub receiver (slice 6 / 7) has its own Auto AGC unit.
+    if (m_slice->sliceId() == 6 || m_slice->sliceId() == 7)
+        return AetherSDR::anan::AnanUiState::kAgcSubUnit + (m_slice->sliceId() - 6);
     int rx = AetherSDR::anan::AnanUiState::instance().rxForPan(m_slice->panId());
     if (rx != 0 && rx != 1)
         rx = m_slice->sliceId() == 1 ? 1 : 0;

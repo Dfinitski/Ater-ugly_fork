@@ -690,8 +690,8 @@ void Hl2RxDsp::filterWorkerLoop()
 
 void Hl2RxDsp::setAgc(int agcMode, double maximumGainDb)
 {
-    if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
-        m_sub->setAgc(agcMode, maximumGainDb);
+    if (m_sub)   // build 470: a clone of this one; build 489: its own gain if it has one
+        m_sub->setAgc(agcMode, std::isfinite(m_subAgcTop) ? m_subAgcTop : maximumGainDb);
     m_config.agcMode = agcMode;
     m_config.maximumAgcGainDb = maximumGainDb;
     if (canPushToChannel())
@@ -895,6 +895,7 @@ void Hl2RxDsp::setSubReceiver(bool on, double shiftHz)
         if (m_sub)
             qCInfo(lcHl2RxDsp) << "split receiver off";
         m_sub.reset();
+        m_subAgcTop = std::numeric_limits<double>::quiet_NaN();   // build 489
         return;
     }
     m_subShiftHz = shiftHz;
@@ -909,6 +910,14 @@ void Hl2RxDsp::setSplitBalance(int mainPercent, int subPercent)
 {
     m_mainBalance = std::clamp(mainPercent, 0, 100);
     m_subBalance = std::clamp(subPercent, 0, 100);
+}
+
+void Hl2RxDsp::setSubAgcGain(double maximumGainDb)
+{
+    m_subAgcTop = maximumGainDb;
+    if (m_sub)
+        m_sub->setAgc(m_config.agcMode,
+                      std::isfinite(m_subAgcTop) ? m_subAgcTop : m_config.maximumAgcGainDb);
 }
 
 void Hl2RxDsp::setSplitGain(float mainGain, float subGain)
@@ -962,6 +971,8 @@ void Hl2RxDsp::startSubBuild()
     sub->setShift(m_subShiftHz);
     Config cfg = m_config;
     cfg.blockForOutput = false;
+    if (std::isfinite(m_subAgcTop))   // build 489: its own AGC gain survives a rebuild
+        cfg.maximumAgcGainDb = m_subAgcTop;
     sub->beginRebuild(cfg);
     const auto nbKind = m_nbKind;
     const int nbLevel = m_nbLevel;

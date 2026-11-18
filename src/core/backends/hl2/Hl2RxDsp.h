@@ -247,6 +247,9 @@ public:
     // SPLIT receiver runs; the backend sets this receiver's mixer pan to the
     // centre meanwhile.
     Q_INVOKABLE void setSplitBalance(int mainPercent, int subPercent);
+    // Build 489: the SPLIT receiver's own AGC gain (its own threshold, by
+    // hand or from the noise floor + its NF+); NaN: this receiver's.
+    Q_INVOKABLE void setSubAgcGain(double maximumGainDb);
     // Build 486: the volumes of the pair (0..1). The mixer goes on applying
     // this receiver's volume to the summed pair (no hand-over between threads,
     // so no burst at full level); the SPLIT receiver is scaled here by
@@ -672,6 +675,7 @@ private:
     double m_subShiftHz = 0.0;
     int m_mainBalance = 50, m_subBalance = 50;   // build 471
     float m_subRelGain = 1.0f;   // build 486: subGain / mainGain
+    double m_subAgcTop = std::numeric_limits<double>::quiet_NaN();   // build 489
     std::uint64_t m_subGeneration = 0;
     // Pushes rxMinimumPhaseFor(m_config.mode) to the live channel. Only
     // called where the control verbs may reach it (setMode, installChannel).

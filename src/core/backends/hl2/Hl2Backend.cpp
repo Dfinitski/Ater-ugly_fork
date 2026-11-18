@@ -5184,8 +5184,19 @@ void Hl2Backend::ctunCenter(int ddc)
 
 void Hl2Backend::setSliceAgc(int sliceId, const QString& mode, int thresholdDb)
 {
-    if (splitByUi(sliceId))
-        sliceId -= kSplitUiBase;   // build 470: the SPLIT VFO is a clone of its owner
+    if (SplitVfo* sp = splitByUi(sliceId)) {
+        // Build 489: the threshold is the SPLIT VFO's own; the AGC mode
+        // stays its receiver's (a clone), so a new mode goes to the receiver
+        // with the receiver's threshold.
+        const int owner = sliceId - kSplitUiBase;
+        sp->agcThresholdDb = qBound(0, thresholdDb, 100);
+        const Receiver* orx = rx(ddcForSlice(owner));
+        if (orx && !mode.isEmpty() && mode.compare(orx->agcMode, Qt::CaseInsensitive) != 0)
+            setSliceAgc(owner, mode, orx->agcThresholdDb);
+        ananSubAgcStep(ddcForSlice(owner));
+        emitSplitSliceState(owner);
+        return;
+    }
     ananUnkeyEvent(QStringLiteral("setSliceAgc %1 %2").arg(mode).arg(thresholdDb));
     const int ddc = ddcForSlice(sliceId);
     Receiver* r = rx(ddc);
@@ -11630,6 +11641,7 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
     // The Auto AGC follows the same floor.
     ananAutoAgcStep(rx);
     ananPublishAgcGate(rx);
+    ananSubAgcStep(rx);   // build 489
     // Build 307: the BIN button, to this receiver's DSP (again whenever the
     // DSP object is new: a reconnect or a rebuild of the receivers).
     if (Receiver* br = this->rx(rx); br && br->dsp) {
@@ -12017,6 +12029,54 @@ void Hl2Backend::ananAutoAgcStep(int rx)
     if (r->dsp)
         QMetaObject::invokeMethod(r->dsp, "setAgc", Qt::QueuedConnection,
             Q_ARG(int, wdspAgcMode(r->agcMode)), Q_ARG(double, top));
+}
+
+// ANAN fork build 489 (operator, 17.11: "NF+ for the sub receivers: their
+// own threshold with the automatic"). The SPLIT VFO of receiver rx hears the
+// same band through the same filter, so its Auto AGC uses this receiver's
+// noise floor with its own NF+ (AnanUiState unit kAgcSubUnit + receiver);
+// with Auto off its own AGC-T sets the gain by the manual law. The gain goes
+// to its demodulator only (Hl2RxDsp::setSubAgcGain).
+void Hl2Backend::ananSubAgcStep(int rx)
+{
+    const auto* ids = m_ids.byDdc(rx);
+    Receiver* r = this->rx(rx);
+    SplitVfo* sp = ids ? splitOfOwner(ids->uiNumber) : nullptr;
+    if (!sp || !r || !r->dsp)
+        return;
+    auto& ui = anan::AnanUiState::instance();
+    const int unit = anan::AnanUiState::kAgcSubUnit + ids->uiNumber;
+    const bool agcOff = r->agcMode.compare(QStringLiteral("off"), Qt::CaseInsensitive) == 0;
+    double top = m_dbRef.agcCeilingDb(sp->agcThresholdDb);
+    bool autoNow = false;
+    if (ui.agcAuto[unit] && !agcOff && rx >= 0 && rx < 2 && m_ananShownFloorOk[rx] && m_sampleRateHz > 0) {
+        const double bwHz = std::max(50.0, double(std::abs(r->filterHighHz - r->filterLowHz)));
+        const double noiseOffsetDb = 10.0 * std::log10(bwHz * 1024.0 / double(m_sampleRateHz));
+        const double floorBinDbm = m_ananShownFloor[rx] - ananRbwTo500HzDb(double(m_sampleRateHz), 1024);
+        const double floorDbfsBin = floorBinDbm - m_dbRef.offsetDb() - Hl2Spectrum::kToneGainDb;
+        const double threshDbfs = floorDbfsBin + double(ui.agcNfOffsetDb[unit]);
+        top = std::clamp(kAnanAgcOutTargetDb - kAnanAgcVarGainDb - (threshDbfs + noiseOffsetDb), 0.0,
+                         hl2::Hl2DbReference::kAgcCeilingDbMax);
+        autoNow = true;
+    }
+    if (autoNow) {
+        ui.agcAutoTopDb[unit] = top;
+        ui.agcAutoT[unit] = static_cast<int>(std::clamp(
+            std::lround((top - m_dbRef.agcCeilingDb(0)) / hl2::Hl2DbReference::kAgcCeilingDbPerUnit),
+            0L, 100L));
+        ui.agcAutoFloorDbm[unit] = ui.shownFloorDbm[rx];
+    } else {
+        ui.agcAutoTopDb[unit] = std::numeric_limits<double>::quiet_NaN();
+        ui.agcAutoT[unit] = -1;
+    }
+    if (std::isfinite(sp->agcTopSent) && std::abs(top - sp->agcTopSent) < 0.5)
+        return;
+    qCInfo(lcHl2).nospace() << "ANAN sub receiver of RX" << rx + 1 << ": AGC gain "
+                            << QString::number(top, 'f', 1) << " dB ("
+                            << (autoNow ? "Auto, NF+ " : "AGC-T ")
+                            << (autoNow ? ui.agcNfOffsetDb[unit] : sp->agcThresholdDb) << ")";
+    sp->agcTopSent = top;
+    QMetaObject::invokeMethod(r->dsp, "setSubAgcGain", Qt::QueuedConnection, Q_ARG(double, top));
 }
 
 void Hl2Backend::pushEffectiveLnaGain()
@@ -13014,6 +13074,8 @@ void Hl2Backend::splitOn(int ownerUi, double hz)
         sp.sMeter.reset();
         sp.panPercent = kAudioPanCentre;
         sp.gain = r->audioGain;   // build 486: starts at its receiver's volume
+        sp.agcThresholdDb = r->agcThresholdDb;   // build 489: and at its AGC-T
+        sp.agcTopSent = std::numeric_limits<double>::quiet_NaN();
         defineSliceLevelMeter(splitUiOf(ownerUi));   // build 472: its S-meter
     }
     qCInfo(lcHl2) << "ANAN: SPLIT on receiver" << ddc + 1 << "at" << hz << "Hz";
@@ -13119,7 +13181,7 @@ void Hl2Backend::emitSplitSliceState(int ownerUi)
     d.audioMute = r->audioMuted;
     d.audioPan = sp->panPercent;   // build 471: its own balance
     d.agcMode = r->agcMode;
-    d.agcThreshold = r->agcThresholdDb;
+    d.agcThreshold = sp->agcThresholdDb;   // build 489: its own
     d.txSlice = sp->tx && ddc == m_txDdc;
     d.active = false;
     emit sliceChanged(splitUiOf(ownerUi), d);

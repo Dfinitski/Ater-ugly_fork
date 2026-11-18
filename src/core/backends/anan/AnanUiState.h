@@ -74,6 +74,11 @@ public:
             agcNfOffsetDb[rx] = std::clamp(st.value(agcOffsetKey(rx), kAgcNfOffsetDefaultDb).toInt(),
                                            kAgcNfOffsetMinDb, kAgcNfOffsetMaxDb);
         }
+        for (int rx = kAgcSubUnit; rx < kAgcUnits; ++rx) {   // build 489: the sub receivers
+            agcAuto[rx] = st.value(agcAutoKey(rx), QStringLiteral("False")).toString() == QLatin1String("True");
+            agcNfOffsetDb[rx] = std::clamp(st.value(agcOffsetKey(rx), kAgcNfOffsetDefaultDb).toInt(),
+                                           kAgcNfOffsetMinDb, kAgcNfOffsetMaxDb);
+        }
     }
 
     // AGC follows the noise floor (operator, 04.11; Thetis "Auto AGC",
@@ -88,15 +93,23 @@ public:
     static constexpr int kAgcNfOffsetDefaultDb = 40;
     static constexpr int kAgcNfOffsetMinDb = -20;
     static constexpr int kAgcNfOffsetMaxDb = 60;
-    bool agcAuto[2] = {false, false};
-    int agcNfOffsetDb[2] = {kAgcNfOffsetDefaultDb, kAgcNfOffsetDefaultDb};
+    // Build 489 (operator, 17.11: "NF+ for the sub receivers too, their own
+    // threshold with the automatic"): the Auto AGC arrays hold kAgcUnits
+    // units -- 0 / 1 the receivers RX1 / RX2 as before, 4 / 5 the sub
+    // receivers A' / B' (kAgcSubUnit + their receiver); 2 / 3 are kept for
+    // RX3 / RX4 (not driven yet).
+    static constexpr int kAgcUnits = 6;
+    static constexpr int kAgcSubUnit = 4;
+    bool agcAuto[kAgcUnits] = {false, false, false, false, false, false};
+    int agcNfOffsetDb[kAgcUnits] = {kAgcNfOffsetDefaultDb, kAgcNfOffsetDefaultDb, kAgcNfOffsetDefaultDb,
+                                    kAgcNfOffsetDefaultDb, kAgcNfOffsetDefaultDb, kAgcNfOffsetDefaultDb};
     // Written by the backend: the AGC gain the floor law gives now (NaN = none).
-    double agcAutoTopDb[2] = {std::numeric_limits<double>::quiet_NaN(),
-                              std::numeric_limits<double>::quiet_NaN()};
+    double agcAutoTopDb[kAgcUnits] = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(),
+                                      std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     // The same gain in AGC-T units (0..100, the manual slider's scale), so the
     // AGC-T slider can show where Auto has put it (as Thetis moves AGC-T);
     // -1 = none. Also the measured floor it came from (NaN = none).
-    int agcAutoT[2] = {-1, -1};
+    int agcAutoT[kAgcUnits] = {-1, -1, -1, -1, -1, -1};
     // Written by the backend (06.11): the noise floor in dBm / 500 Hz at the
     // ADC on the meter's calibrated scale (drawn as a line; not corrected for
     // the attenuator), and the receiver's own noise the same way (captured in
@@ -130,8 +143,8 @@ public:
     double unsettledViewLo[2] = {0.0, 0.0};
     double unsettledViewHi[2] = {0.0, 0.0};
     qint64 unsettledViewAtMs[2] = {0, 0};
-    double agcAutoFloorDbm[2] = {std::numeric_limits<double>::quiet_NaN(),
-                                 std::numeric_limits<double>::quiet_NaN()};
+    double agcAutoFloorDbm[kAgcUnits] = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(),
+                                         std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     // Build 301, written by the backend: the AGC gate as WDSP holds it, in
     // dBm / 500 Hz on the panadapter's ruler (NaN = AGC off / unknown), when
     // it was written, gate + gain (constant for the filter and rate: a gate
@@ -143,7 +156,7 @@ public:
     double agcGainAtT0Db[2] = {0.0, 0.0};
     // Build 307: binaural receive audio per receiver (RX applet BIN), read
     // by the backend (Hl2Backend::ananBinauralStep).
-    bool binaural[2] = {false, false};
+    bool binaural[6] = {false, false, false, false, false, false};   // 2..5 unused (build 489)
     [[nodiscard]] static QString binauralKey(int rx)
     {
         return rx == 1 ? QStringLiteral("AnanRx2Binaural") : QStringLiteral("AnanRx1Binaural");
@@ -159,15 +172,20 @@ public:
     }
     [[nodiscard]] static QString agcAutoKey(int rx)
     {
+        if (rx >= kAgcSubUnit)   // build 489
+            return rx == kAgcSubUnit + 1 ? QStringLiteral("AnanSub2AgcAuto") : QStringLiteral("AnanSub1AgcAuto");
         return rx == 1 ? QStringLiteral("AnanRx2AgcAuto") : QStringLiteral("AnanRx1AgcAuto");
     }
     [[nodiscard]] static QString agcOffsetKey(int rx)
     {
+        if (rx >= kAgcSubUnit)   // build 489
+            return rx == kAgcSubUnit + 1 ? QStringLiteral("AnanSub2AgcNfOffsetDb")
+                                         : QStringLiteral("AnanSub1AgcNfOffsetDb");
         return rx == 1 ? QStringLiteral("AnanRx2AgcNfOffsetDb") : QStringLiteral("AnanRx1AgcNfOffsetDb");
     }
     void setAgcAuto(int rx, bool on, int offsetDb)
     {
-        if (rx < 0 || rx > 1)
+        if (rx < 0 || rx >= kAgcUnits || rx == 2 || rx == 3)
             return;
         agcAuto[rx] = on;
         agcNfOffsetDb[rx] = std::clamp(offsetDb, kAgcNfOffsetMinDb, kAgcNfOffsetMaxDb);
