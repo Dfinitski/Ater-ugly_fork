@@ -16,6 +16,8 @@
 #include <QLocale>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <algorithm>
+#include <cmath>
 #include <QStyle>
 #include <QStyleOptionSlider>
 #include <QWheelEvent>
@@ -82,6 +84,33 @@ public:
             ev->ignore();
             return;
         }
+        // ANAN fork build 494 (operator, 17.11: "on every slider the zone that
+        // grabs the knob is shifted off the ball's centre; make it symmetric
+        // both ways"). The grab is ours: a press within kGrabHalfPx of the
+        // CENTRE of the knob as drawn (either side alike, a little wider
+        // than the ball) takes it, and the knob keeps its distance to the
+        // cursor while dragged. A press farther away is the style's (a page
+        // step), as before.
+        if (ev->button() == Qt::LeftButton) {
+            QStyleOptionSlider opt;
+            initStyleOption(&opt);
+            const QRect h = style()->subControlRect(QStyle::CC_Slider, &opt, QStyle::SC_SliderHandle, this);
+            if (h.isValid()) {
+                const bool hor = orientation() == Qt::Horizontal;
+                const double p = hor ? ev->position().x() : ev->position().y();
+                const double c = hor ? h.x() + h.width() / 2.0 : h.y() + h.height() / 2.0;
+                const double half = std::max<double>(kGrabHalfPx, (hor ? h.width() : h.height()) / 2.0 + 3.0);
+                if (std::abs(p - c) <= half) {
+                    m_ownDrag = true;
+                    m_ownDragOffset = p - c;
+                    setSliderDown(true);
+                    m_dragValueActive = true;
+                    showDragValuePopup(ev->globalPosition().toPoint());
+                    ev->accept();
+                    return;
+                }
+            }
+        }
         QSlider::mousePressEvent(ev);
         if (ev->button() == Qt::LeftButton) {
             m_dragValueActive = true;
@@ -93,12 +122,40 @@ public:
             ev->ignore();
             return;
         }
+        if (m_ownDrag) {   // build 494
+            QStyleOptionSlider opt;
+            initStyleOption(&opt);
+            const QRect h = style()->subControlRect(QStyle::CC_Slider, &opt, QStyle::SC_SliderHandle, this);
+            const QRect g = style()->subControlRect(QStyle::CC_Slider, &opt, QStyle::SC_SliderGroove, this);
+            const bool hor = orientation() == Qt::Horizontal;
+            const int len = hor ? h.width() : h.height();
+            const int span = (hor ? g.width() : g.height()) - len;
+            const double p = hor ? ev->position().x() : ev->position().y();
+            const int pos = qRound(p - m_ownDragOffset - len / 2.0 - (hor ? g.x() : g.y()));
+            if (span > 0)
+                setSliderPosition(QStyle::sliderValueFromPosition(
+                    minimum(), maximum(), std::clamp(pos, 0, span), span, opt.upsideDown));
+            showDragValuePopup(ev->globalPosition().toPoint());
+            ev->accept();
+            return;
+        }
         QSlider::mouseMoveEvent(ev);
         if (m_dragValueActive || isSliderDown())
             showDragValuePopup(ev->globalPosition().toPoint());
     }
     void mouseReleaseEvent(QMouseEvent* ev) override {
         const bool wasActive = m_dragValueActive;
+        if (m_ownDrag && ev->button() == Qt::LeftButton) {   // build 494
+            m_ownDrag = false;
+            setSliderDown(false);
+            update();
+            ev->accept();
+            showDragValuePopup(ev->globalPosition().toPoint());
+            m_dragValueActive = false;
+            if (m_dragValuePopup)
+                m_dragValuePopup->linger();
+            return;
+        }
         QSlider::mouseReleaseEvent(ev);
         if (wasActive && ev->button() == Qt::LeftButton) {
             showDragValuePopup(ev->globalPosition().toPoint());
@@ -154,6 +211,10 @@ protected:
     AetherSDR::DragValuePopup* m_dragValuePopup{nullptr};
     bool m_dragValuePopupEnabled{true};
     bool m_dragValueActive{false};
+    // Build 494: the symmetric grab of the knob (mousePressEvent).
+    static constexpr int kGrabHalfPx = 10;
+    bool m_ownDrag{false};
+    double m_ownDragOffset{0.0};
 
 private:
     // #4869: every QSlider gets Qt::WA_Hover forced on by the Fusion style

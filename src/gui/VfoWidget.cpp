@@ -5876,7 +5876,10 @@ void VfoWidget::setSplitTextLit(bool lit)
                          "color: rgba(255,255,255,120); font-size: 11px; font-weight: bold; "
                          "padding: 0px 3px; }"
                          "QPushButton:hover { color: rgba(255,255,255,180); }"));
-    if (m_splitVfo)
+    // Build 494 (operator, 17.11: "on the collapsed flag of the main
+    // receiver a press on TX shows a white PLI"): never shown on a
+    // collapsed flag -- the label was put back there, clipped to its middle.
+    if (m_splitVfo || m_collapsed)
         m_splitBadge->hide();
     else
         m_splitBadge->show();   // as updateSplitBadge() does
