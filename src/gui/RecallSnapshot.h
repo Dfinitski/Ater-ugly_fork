@@ -64,7 +64,7 @@ inline QJsonObject capture(const RadioModel& model, const SliceModel* s)
     // Build 488 (operator, 17.11: "NF+ is not saved anywhere"): Auto AGC and
     // its NF+ (receivers 1 / 2; they were kept per receiver in the settings
     // only, so a band button or a memory never brought them back).
-    if (s->sliceId() == 0 || s->sliceId() == 1) {
+    if (s->sliceId() >= 0 && s->sliceId() <= 3) {   // build 491: RX3 / RX4 too
         const auto& ui = anan::AnanUiState::instance();
         o.insert(QStringLiteral("agcAuto"), ui.agcAuto[s->sliceId()]);
         o.insert(QStringLiteral("agcNf"), ui.agcNfOffsetDb[s->sliceId()]);

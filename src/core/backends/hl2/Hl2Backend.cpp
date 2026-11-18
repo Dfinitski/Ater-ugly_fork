@@ -11511,7 +11511,11 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
                                    int unsettledLo, int unsettledHi,
                                    const std::vector<float>* frameDbfs)
 {
-    if (rx < 0 || rx > 1 || rawDbfs.size() < 64 || rateHz <= 0.0 || m_keyed || m_radioPtt)
+    // Build 491 (operator, 17.11: "NF+ for C and D too, their own threshold
+    // with the automatic"): the floor is measured for RX3 / RX4 as well and
+    // feeds their Auto AGC. The AUTO attenuator and the own-noise capture
+    // stay with RX1 / RX2 (the two ADCs' attenuators).
+    if (rx < 0 || rx > 3 || rawDbfs.size() < 64 || rateHz <= 0.0 || m_keyed || m_radioPtt)
         return;
     const std::size_t n = rawDbfs.size();
     // ANAN fork build 297 (operator, 11.11: "the median cannot be the noise
@@ -11557,7 +11561,7 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
     // 20th percentile is -ln(0.8) of the mean: the mean noise per bin,
     // referred to 500 Hz. No average, so no unsettled bins, no lag, and
     // nothing a pan move or an FFT AVG setting can shift.
-    if (frameDbfs && frameDbfs->size() == n && hi > lo + 16 && m_ananAutoOn[rx]
+    if (frameDbfs && frameDbfs->size() == n && hi > lo + 16 && rx < 2 && m_ananAutoOn[rx]
         && !m_ananCapture.running) {
         std::vector<float> f(frameDbfs->begin() + static_cast<std::ptrdiff_t>(lo),
                              frameDbfs->begin() + static_cast<std::ptrdiff_t>(hi));
@@ -11652,7 +11656,8 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
             QMetaObject::invokeMethod(br->dsp, "setBinaural", Qt::QueuedConnection, Q_ARG(bool, want));
         }
     }
-    ananOwnNoiseCaptureStep(rx, t);
+    if (rx < 2)
+        ananOwnNoiseCaptureStep(rx, t);
 
     // A check against the S-meter (Average, no options): in a 500 Hz filter
     // with no signal in it, the two should agree within about 1 dB.

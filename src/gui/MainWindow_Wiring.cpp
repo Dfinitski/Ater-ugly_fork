@@ -3949,7 +3949,7 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
         s->setAgcMode(agc);
     // Build 488: Auto AGC and NF+ of receivers 1 / 2 (the flag and RX
     // Controls pick the change up from AnanUiState within 250 ms).
-    if ((sid == 0 || sid == 1) && mem.contains(QStringLiteral("agcNf"))) {
+    if (sid >= 0 && sid <= 3 && mem.contains(QStringLiteral("agcNf"))) {   // build 491: RX3 / RX4 too
         auto& ui = anan::AnanUiState::instance();
         const bool autoOn = mem.value(QStringLiteral("agcAuto")).toBool(ui.agcAuto[sid]);
         const int nf = mem.value(QStringLiteral("agcNf")).toInt(ui.agcNfOffsetDb[sid]);

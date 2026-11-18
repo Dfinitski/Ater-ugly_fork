@@ -3928,8 +3928,10 @@ int RxApplet::ananAgcRx() const
     if (m_slice->sliceId() == 6 || m_slice->sliceId() == 7)
         return AetherSDR::anan::AnanUiState::kAgcSubUnit + (m_slice->sliceId() - 6);
     int rx = AetherSDR::anan::AnanUiState::instance().rxForPan(m_slice->panId());
-    if (rx != 0 && rx != 1)
-        rx = m_slice->sliceId() == 1 ? 1 : 0;
+    // Build 491: RX3 / RX4 have their own Auto AGC (units 2 / 3); before,
+    // their Auto and NF+ changed receiver 1's.
+    if (rx < 0 || rx > 3)
+        rx = std::clamp(m_slice->sliceId(), 0, 3);   // before the backend's pan -> receiver map
     return rx;
 }
 

@@ -8293,6 +8293,18 @@ errcheck — новых ошибок нет; фиктивный символ —
 
 errcheck — новых ошибок нет; фиктивный символ — 1. На радио не проверено.
 
+## 464. Сборка 491 — About; свой Auto AGC и NF+ у приёмников C и D (этап 2)
+
+Оператор (17.11): в окне About — «Software-defined radio client for openHPSDR protocols supported devices» (или supporting); на этап 2 по C и D — «да».
+
+- **About**: «Software-defined radio client for devices supporting the openHPSDR protocols.» (грамматически верный вариант; номер 490 — эта правка, собрана вместе с 491).
+- **C и D.** `Hl2Backend::ananNoiseLineStep` принимает приёмники 0..3: шумовая полка измеряется и для RX3 / RX4 и кормит их Auto AGC (`ananAutoAgcStep`, блоки 2 / 3). AUTO-аттенюатор и захват собственного шума остаются у RX1 / RX2 (аттенюаторы двух АЦП). Расширены до 4: `m_ananShownFloor`, `m_ananShownFloorOk`, `m_ananAgcClock`, `m_ananNoiseRestartUntilMs`, `m_ananNoiseLogMs`, `m_ananSMeterRaw`; в `AnanUiState` — `shownFloorDbm`, `ownFloorDbm`, `shownFloorAtMs`, `agcGate*`; ключи `AnanRx3/4AgcAuto`, `AnanRx3/4AgcNfOffsetDb`.
+- `RxApplet::ananAgcRx` / `VfoWidget::ananAgcRx`: приёмник по карте панорам 0..3 (раньше C / D получали RX1 — их Auto и NF+ правили приёмник A); флаг суба — свой блок.
+- Память: `agcAuto` / `agcNf` для срезов 0..3.
+- Линии шума и порога АРУ на панорамах C / D не рисуются (в `SpectrumWidget` условие `rx > 1` оставлено).
+
+errcheck Hl2Backend, RxApplet, VfoWidget, SpectrumWidget, MainWindow_Wiring, RadioSetupDialog, MemoryCommands — новых ошибок нет; фиктивный символ — 1. На радио не проверено.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

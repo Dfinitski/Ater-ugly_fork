@@ -2039,8 +2039,8 @@ void MainWindow::buildMenuBar()
         vbox->addWidget(version);
 
         auto* blurb = new QLabel(QStringLiteral(
-            "Software-defined radio client for the Apache Labs ANAN-100D\n"
-            "(openHPSDR Protocol 2)."));
+            "Software-defined radio client for devices supporting\n"
+            "the openHPSDR protocols."));   // build 490 (operator, 17.11)
         blurb->setAlignment(Qt::AlignCenter);
         blurb->setWordWrap(true);
         tm.applyStyleSheet(blurb, "QLabel { color: {{color.canon.inkSoft}}; font-size: 13px; padding: 2px 0 4px 0; background: transparent; }");

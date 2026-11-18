@@ -579,7 +579,7 @@ private:
     void ananAutoAgcStep(int rx);
     void ananSubAgcStep(int rx);   // build 489: the SPLIT VFO of receiver rx
     void ananPublishAgcGate(int rx);   // build 301
-    QElapsedTimer m_ananAgcClock[2];
+    QElapsedTimer m_ananAgcClock[4];   // build 491: RX3 / RX4 too
     // Build 410: the Auto AGC of the receiver the FTX mode has is frozen, and
     // after the mode it waits for the noise floor to settle (ananAutoAgcStep).
     QElapsedTimer m_ananAgcHold[2];
@@ -603,8 +603,8 @@ private:
     // on request with the antenna disconnected (ananOwnNoiseCaptureStep). The
     // target is own + the margin (AnanUiState). The Auto AGC follows the
     // same floor.
-    double m_ananShownFloor[2] = {0.0, 0.0};
-    bool m_ananShownFloorOk[2] = {false, false};
+    double m_ananShownFloor[4] = {0.0, 0.0, 0.0, 0.0};   // build 491: RX3 / RX4 too
+    bool m_ananShownFloorOk[4] = {false, false, false, false};
     // Own-noise capture (Setup > Receive): all receivers that own their
     // attenuator at ATT 31 dB for a moment (ananOwnNoiseCaptureStep).
     struct OwnNoiseCapture {
@@ -679,10 +679,10 @@ private:
                                 std::numeric_limits<double>::quiet_NaN()};
     static constexpr int kAnanOwnNoiseMeasureMs = 800;   // averaging, after the settle
     static constexpr int kAnanAttSettleMs = 300;          // frames still at the old ATT
-    qint64 m_ananNoiseRestartUntilMs[2] = {0, 0};
-    qint64 m_ananNoiseLogMs[2] = {-100000, -100000};
-    double m_ananSMeterRaw[2] = {std::numeric_limits<double>::quiet_NaN(),
-                                 std::numeric_limits<double>::quiet_NaN()};
+    qint64 m_ananNoiseRestartUntilMs[4] = {0, 0, 0, 0};
+    qint64 m_ananNoiseLogMs[4] = {-100000, -100000, -100000, -100000};
+    double m_ananSMeterRaw[4] = {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN(),
+                                 std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     QElapsedTimer m_ananAutoClock[2];
     int m_ananAdcAttPushed[2] = {-1, -1};
     QHash<QString, int> m_ananPanEcho;
