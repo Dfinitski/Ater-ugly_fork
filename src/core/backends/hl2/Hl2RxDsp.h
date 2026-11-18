@@ -247,6 +247,12 @@ public:
     // SPLIT receiver runs; the backend sets this receiver's mixer pan to the
     // centre meanwhile.
     Q_INVOKABLE void setSplitBalance(int mainPercent, int subPercent);
+    // Build 486: the volumes of the pair (0..1). The mixer goes on applying
+    // this receiver's volume to the summed pair (no hand-over between threads,
+    // so no burst at full level); the SPLIT receiver is scaled here by
+    // subGain / mainGain, which leaves it at its own volume after the mixer.
+    // With this receiver's volume at zero the pair is silent.
+    Q_INVOKABLE void setSplitGain(float mainGain, float subGain);
     [[nodiscard]] bool hasSubReceiver() const noexcept { return m_sub != nullptr; }
     // Cap panadapter frames per second; fps <= 0 removes the cap. The FFT is
     // skipped when a frame is not due: the natural rate is IQ rate / FFT size
@@ -665,6 +671,7 @@ private:
     std::vector<float> m_subPcm;   // its stereo audio not yet added to ours
     double m_subShiftHz = 0.0;
     int m_mainBalance = 50, m_subBalance = 50;   // build 471
+    float m_subRelGain = 1.0f;   // build 486: subGain / mainGain
     std::uint64_t m_subGeneration = 0;
     // Pushes rxMinimumPhaseFor(m_config.mode) to the live channel. Only
     // called where the control verbs may reach it (setMode, installChannel).

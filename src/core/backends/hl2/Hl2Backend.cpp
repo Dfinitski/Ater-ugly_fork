@@ -5507,6 +5507,13 @@ ReceiveDispatch Hl2Backend::requestSliceAudio(int sliceId, const SliceAudioReque
             setSliceAudioPan(sliceId, request.value);
             return ReceiveDispatch::Dispatched;
         }
+        if (request.field == SliceAudioRequest::Field::Gain) {   // build 486: its own volume
+            SplitVfo* sp = splitByUi(sliceId);
+            sp->gain = std::clamp(request.value, 0, 100) / 100.0f;
+            pushSplitBalance(sliceId - kSplitUiBase);
+            emitSplitSliceState(sliceId - kSplitUiBase);
+            return ReceiveDispatch::Dispatched;
+        }
         sliceId -= kSplitUiBase;
     }
     if (!request.valid() || request.origin != SliceAudioRequest::Origin::Operator
@@ -5644,6 +5651,8 @@ void Hl2Backend::setSliceAudioGain(int sliceId, int gainPercent)
         return;
     }
     r->audioGain = scaled;
+    if (splitOfOwner(sliceId))
+        pushSplitBalance(sliceId);   // build 486: the SPLIT VFO's volume is kept against this one
     pushAudioMix();   // build 373
     emitSliceState(ddcForSlice(sliceId));
     notifyOperatingStateChanged();
@@ -13004,6 +13013,7 @@ void Hl2Backend::splitOn(int ownerUi, double hz)
     if (!was) {
         sp.sMeter.reset();
         sp.panPercent = kAudioPanCentre;
+        sp.gain = r->audioGain;   // build 486: starts at its receiver's volume
         defineSliceLevelMeter(splitUiOf(ownerUi));   // build 472: its S-meter
     }
     qCInfo(lcHl2) << "ANAN: SPLIT on receiver" << ddc + 1 << "at" << hz << "Hz";
@@ -13062,6 +13072,8 @@ void Hl2Backend::pushSplitBalance(int ownerUi)
     // sets the sub receiver's from RX Controls with A' / B' selected).
     QMetaObject::invokeMethod(r->dsp, "setSplitBalance", Qt::QueuedConnection,
                               Q_ARG(int, r->audioPanPercent), Q_ARG(int, sp->panPercent));
+    QMetaObject::invokeMethod(r->dsp, "setSplitGain", Qt::QueuedConnection,   // build 486
+                              Q_ARG(float, r->audioGain), Q_ARG(float, sp->gain));
 }
 
 int Hl2Backend::mixPanPercent(int ddc) const
@@ -13103,7 +13115,7 @@ void Hl2Backend::emitSplitSliceState(int ownerUi)
     d.mode = r->mode;
     d.filterLow = r->filterLowHz;
     d.filterHigh = r->filterHighHz;
-    d.audioGain = qRound(r->audioGain * 100.0f);
+    d.audioGain = qRound(sp->gain * 100.0f);   // build 486: its own volume
     d.audioMute = r->audioMuted;
     d.audioPan = sp->panPercent;   // build 471: its own balance
     d.agcMode = r->agcMode;

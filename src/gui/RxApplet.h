@@ -1,5 +1,8 @@
 #pragma once
 
+#include <QSet>
+#include <QPointer>
+#include <QList>
 #include <QWidget>
 #include "DeferredSettingsWrites.h"
 #include <QVector>
@@ -107,6 +110,11 @@ public:
     // If maxSlices <= 1, the row is hidden.
     void setMaxSlices(int maxSlices);
     bool ananRow() const;   // build 476: the A, A', B, B', C, D row
+    // ANAN fork build 486 (operator, 17.11): with a SPLIT VFO (A' / B')
+    // selected, every control is blocked but what it has of its own -- the
+    // volume and the balance (and the receiver row, to leave it). The rest
+    // is its receiver's and is set there.
+    void applySubReceiverLock();
     void clearSliceButtons();
 
     // Enable/disable buttons based on which slices are open, and check the
@@ -246,6 +254,9 @@ private:
     QWidget*                m_sliceTabRow{nullptr};
     QButtonGroup*           m_sliceGroup{nullptr};
     QVector<QToolButton*>   m_sliceBtns;
+    bool                    m_subLock{false};          // build 486
+    QSet<QObject*>          m_subLocked;               // filtered while m_subLock
+    QList<QPointer<QWidget>> m_subDisabled;            // disabled by the lock
     bool                    m_sliceButtonClicksConnected{false};
 
     // Mute button click handling — single click toggles this slice (timer-

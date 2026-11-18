@@ -911,6 +911,13 @@ void Hl2RxDsp::setSplitBalance(int mainPercent, int subPercent)
     m_subBalance = std::clamp(subPercent, 0, 100);
 }
 
+void Hl2RxDsp::setSplitGain(float mainGain, float subGain)
+{
+    mainGain = std::clamp(mainGain, 0.0f, 1.0f);
+    subGain = std::clamp(subGain, 0.0f, 1.0f);
+    m_subRelGain = mainGain > 0.001f ? subGain / mainGain : 0.0f;
+}
+
 void Hl2RxDsp::setSubShift(double shiftHz)
 {
     m_subShiftHz = shiftHz;
@@ -1324,6 +1331,8 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
             float ml = 1.0f, mr = 1.0f, sl = 1.0f, sr = 1.0f;
             bal(m_mainBalance, ml, mr);
             bal(m_subBalance, sl, sr);
+            sl *= m_subRelGain;   // build 486: the SPLIT receiver's own volume
+            sr *= m_subRelGain;
             const std::size_t take = std::min(m_stereo.size(), m_subPcm.size()) & ~std::size_t{1};
             for (std::size_t k = 0; k + 1 < m_stereo.size(); k += 2) {
                 m_stereo[k] *= ml;

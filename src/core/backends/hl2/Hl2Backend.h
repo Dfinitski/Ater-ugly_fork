@@ -1404,6 +1404,7 @@ private:
         double freqHz = 0.0;
         bool tx = false;
         int panPercent = 50;   // build 471: the SPLIT receiver's balance
+        float gain = 1.0f;     // build 486: its own volume
         SMeterSmoother sMeter;   // build 472: its S-meter ballistics
     };
     std::array<SplitVfo, kSplitOwners> m_splits;

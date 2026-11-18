@@ -2238,6 +2238,41 @@ void RxApplet::setSlice(SliceModel* slice)
     if (m_slice) connectSlice(m_slice);
     syncAutoAgcThreshold();
     updateFreqLabel();
+    applySubReceiverLock();   // build 486
+}
+
+void RxApplet::applySubReceiverLock()
+{
+    const bool lock = m_slice && ananRow() && m_slice->sliceId() >= 6;
+    // Give back what the previous lock took.
+    for (const QPointer<QWidget>& w : std::as_const(m_subDisabled))
+        if (w) w->setEnabled(true);
+    m_subDisabled.clear();
+    for (QObject* o : std::as_const(m_subLocked))
+        o->removeEventFilter(this);
+    m_subLocked.clear();
+    m_subLock = lock;
+    if (!lock)
+        return;
+    const QList<QWidget*> all = findChildren<QWidget*>();
+    for (QWidget* w : all) {
+        const bool control = qobject_cast<QAbstractButton*>(w) || qobject_cast<QAbstractSlider*>(w)
+            || qobject_cast<QComboBox*>(w) || qobject_cast<QAbstractSpinBox*>(w)
+            || qobject_cast<QLineEdit*>(w);
+        if (!control || w == m_afSlider || w == m_panSlider)
+            continue;
+        if (auto* tb = qobject_cast<QToolButton*>(w); tb && m_sliceBtns.contains(tb))
+            continue;
+        // Disabled for the look; filtered as well, because the applet's own
+        // syncs enable controls again as the slice reports its state.
+        if (w->isEnabled()) {
+            w->setEnabled(false);
+            m_subDisabled.append(w);
+        }
+        w->installEventFilter(this);
+        m_subLocked.insert(w);
+        connect(w, &QObject::destroyed, this, [this](QObject* o) { m_subLocked.remove(o); });
+    }
 }
 
 void RxApplet::setAntennaList(const QStringList& ants)
@@ -4002,6 +4037,17 @@ void RxApplet::applyOffsetDir(const QString& dir)
 
 bool RxApplet::eventFilter(QObject* obj, QEvent* ev)
 {
+    // Build 486: a SPLIT VFO is selected -- its receiver's controls take no input.
+    if (m_subLock && m_subLocked.contains(obj)) {
+        switch (ev->type()) {
+        case QEvent::MouseButtonPress: case QEvent::MouseButtonRelease:
+        case QEvent::MouseButtonDblClick: case QEvent::Wheel:
+        case QEvent::KeyPress: case QEvent::KeyRelease: case QEvent::ContextMenu:
+            return true;
+        default:
+            break;
+        }
+    }
     if (obj == m_revBtn
         && (ev->type() == QEvent::Hide
             || ev->type() == QEvent::HideToParent
