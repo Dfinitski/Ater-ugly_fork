@@ -828,7 +828,7 @@ public:
     // for everything sent to the radio's codec (receive mix and monitor).
     // Stored as "AnanCodecLevelCompDb"; 0 = the level of the builds before.
     static constexpr int kCodecCompMinDb = -40;
-    static constexpr int kCodecCompMaxDb = 10;
+    static constexpr int kCodecCompMaxDb = 0;    // build 499 (operator: "no plus, it is loud as it is")
     void setCodecLevelCompDb(int db)
     {
         m_codecCompDb = std::clamp(db, kCodecCompMinDb, kCodecCompMaxDb);
