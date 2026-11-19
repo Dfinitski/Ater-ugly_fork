@@ -4309,7 +4309,8 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     auto* psCouplerChk = mkChk("PS Coupler Always when TX", "ananHwPsCouplerOnTx",
         "Switch the PureSignal feedback path (the coupler, or the input chosen\n"
         "in the PureSignal applet) on every transmission -- to watch the own\n"
-        "signal with PureSignal off. Off: only while PureSignal is on.");
+        "signal with PureSignal off. On the 7000DLE / 8000DLE / G2 the receive\n"
+        "band-pass filter is bypassed with it. Off: only while PureSignal is on.");
     auto* connNone = new QLabel("This radio has no microphone or input options.");
     setTone(connNone, Tone::Hint);
     connNone->setVisible(false);

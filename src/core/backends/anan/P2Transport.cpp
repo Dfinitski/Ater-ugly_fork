@@ -2266,7 +2266,13 @@ bool P2Transport::psBypassesBank(int adc) const
         return false;
     if (m_profile.alexScheme != AlexScheme::Orion2BandPass)
         return adc == 0 && m_txBypassBpf;
-    return adc == 0 ? (m_psEnabled || m_txBypassBpf) : (m_psEnabled && m_psAdc == adc);
+    // Build 505 (operator: "what was done yesterday with the relay was right,
+    // it only has to be switchable"): yesterday's function -- BPF1 bypassed
+    // on every transmission (482) together with the feedback input (438) --
+    // is "PS Coupler Always when TX"; "Bypass BPF When TX" is the bypass
+    // alone.
+    return adc == 0 ? (m_psEnabled || m_txBypassBpf || m_psCouplerOnTx)
+                    : (m_psEnabled && m_psAdc == adc);
 }
 
 void P2Transport::setTxBypassBpf(bool on)
@@ -3028,7 +3034,8 @@ P1CcState P2Transport::p1State() const
     // filter-board word (Protocol 2: Alex bit 18) -- the coupler's relay.
     // "PS Coupler Always when TX" raises only the relay's bit on transmit.
     s.pureSignal = m_psEnabled;
-    s.psCouplerRelay = m_psEnabled || (m_mox && m_psCouplerOnTx);
+    // Build 505: back to both bits following PureSignal only, as before 503.
+    s.psCouplerRelay = m_psEnabled;
     s.txHz = tx;
     // The ADC for each receiver's DDC (2 bits per DDC); ANGELIA's DDC1 goes
     // with RX1. Single-ADC boards: all zero.
