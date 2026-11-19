@@ -951,6 +951,9 @@ public:
     void setCodecVolume(int pct);
     // Build 498: "Codec Level Compensation" of the radio settings, dB.
     void setCodecLevelCompDb(int db);
+    // Build 500: the tuning step of a recalled memory (quick-memory button or
+    // station memory) -- set without rewriting the mode group's step.
+    void applyMemoryStep(int sliceId, int hz);
     // ANAN-100D port: true when connected to an ANAN (openHPSDR Protocol 2).
     bool isAnanRadio() const;
     TxCoordinator::Context captureTxMedia(const TxCoordinator::Request& request) const;
@@ -2176,6 +2179,10 @@ private:
     // never set gives its usual step (else 0).
     int         clientStepForMode(const QString& mode, bool withDefault = true) const;
     void        storeClientStepForMode(const QString& mode, int hz);
+    // Build 500: the step of a recalled memory (applyMemoryStep).
+    static constexpr qint64 kMemStepHoldMs = 1500;
+    bool        m_memStepApplying{false};
+    QHash<int, QPair<int, qint64>> m_memStepPending;
     bool        m_lineoutMute{false};
     int         m_headphoneGain{50};
     bool        m_headphoneMute{false};

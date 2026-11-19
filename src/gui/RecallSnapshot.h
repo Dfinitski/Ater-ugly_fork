@@ -10,6 +10,8 @@
 // Build 453 (operator, 16.11): no tuning step in the snapshot -- the step is
 // the mode group's only (RadioModel, build 445); a recall that set it would
 // rewrite the group's step.
+// Build 500 (operator, 18.11): the step is back in the snapshot for the quick
+// memories and the station memories, without rewriting the group's.
 //
 // Only for radios without a command plane (ANAN / HL2: the program is the
 // band stack); a Flex keeps its radio-side band stack and memories.
@@ -58,7 +60,11 @@ inline QJsonObject capture(const RadioModel& model, const SliceModel* s)
     o.insert(QStringLiteral("mode"), s->mode());
     o.insert(QStringLiteral("lo"), s->filterLow());
     o.insert(QStringLiteral("hi"), s->filterHigh());
-    // No tuning step (build 453): it belongs to the mode group (build 445).
+    // Build 500 (operator, 18.11): the tuning step again, for the quick-memory
+    // buttons and the station memories (a band button does not recall it:
+    // MainWindow::selectBand drops it). Applied as the memory's own step,
+    // RadioModel::applyMemoryStep -- the mode group's is not rewritten.
+    o.insert(QStringLiteral("step"), s->stepHz());
     o.insert(QStringLiteral("agc"), s->agcMode());
     o.insert(QStringLiteral("agcT"), s->agcThreshold());
     // Build 488 (operator, 17.11: "NF+ is not saved anywhere"): Auto AGC and

@@ -3924,6 +3924,11 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
         const int lo = mem.value(QStringLiteral("lo")).toInt(), hi = mem.value(QStringLiteral("hi")).toInt();
         if (hi > lo)
             s->setFilterWidth(lo, hi);
+        // Build 500: the memory's tuning step (a band button has dropped it;
+        // a station memory sets its own in RadioModel::recallCachedMemory).
+        const int step = mem.value(QStringLiteral("step")).toInt();
+        if (step > 0)
+            m_radioModel.applyMemoryStep(sid, step);
     }
     // Build 487: the sub receiver of receivers 1 / 2 -- whether it runs, its
     // frequency, volume and balance (a band button passes "sub" = false: its
@@ -4116,6 +4121,7 @@ void MainWindow::selectBand(const QString& panId, const QString& bandName, doubl
             // Build 487: a band button remembers the sub receiver's
             // parameters but leaves it off until SPLIT is pressed.
             recall.insert(QStringLiteral("sub"), false);
+            recall.remove(QStringLiteral("step"));   // build 500: not a band button's
             applyRecallSnapshot(s, recall, true);
             m_ananBandMem[sid] = AnanBandMemSlot{bandName, mem};
             qCInfo(lcProtocol).noquote().nospace()

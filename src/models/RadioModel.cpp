@@ -612,6 +612,26 @@ void RadioModel::storeClientStepForMode(const QString& mode, int hz)
     st.save();
 }
 
+// ANAN fork, build 500 (operator, 18.11: "the quick-memory buttons and the
+// memories store and restore the tuning step too"): the step of a recalled
+// memory. It is set on the receiver without being stored as its mode group's
+// step (build 453: a recall must not rewrite the group's), so it holds until
+// the operator changes the step or the mode. A recall sets the mode first and
+// the mode may arrive after this call, so the step is also held for
+// kMemStepHoldMs against the mode change's own.
+void RadioModel::applyMemoryStep(int sliceId, int hz)
+{
+    if (!clientOwnsSliceStep() || hz < 1 || hz > 1'000'000)
+        return;
+    SliceModel* s = slice(sliceId);
+    if (!s)
+        return;
+    m_memStepPending.insert(sliceId, qMakePair(hz, QDateTime::currentMSecsSinceEpoch()));
+    m_memStepApplying = true;
+    s->applyRecalledStepHz(hz);
+    m_memStepApplying = false;
+}
+
 void RadioModel::restoreClientOwnedStep(const RestoredRadioState& state)
 {
     // Refused, not clamped, outside 1 Hz..1 MHz. Seeded into each slice as it
@@ -1702,6 +1722,8 @@ void RadioModel::wireBackendReceiverState()
 
             // Tuning capture of the client-owned step, whatever moved it.
             connect(s, &SliceModel::stepChanged, this, [this, s](int hz) {
+                if (m_memStepApplying)
+                    return;   // build 500: a memory's step is not the mode group's
                 if (hz > 0 && clientOwnsSliceStep())
                     storeClientStepForMode(s->mode(), hz);   // ANAN fork, build 445
                 if (hz > 0 && hz != m_clientStepHz && clientOwnsSliceStep()) {
@@ -1728,6 +1750,16 @@ void RadioModel::wireBackendReceiverState()
             connect(s, &SliceModel::modeChanged, this, [this, s](const QString& mode) {
                 if (!clientOwnsSliceStep())
                     return;
+                // Build 500: the mode change of a memory recall that has just
+                // set its own step keeps that step.
+                const auto pend = m_memStepPending.constFind(s->sliceId());
+                if (pend != m_memStepPending.constEnd()
+                    && QDateTime::currentMSecsSinceEpoch() - pend->second < kMemStepHoldMs) {
+                    m_memStepApplying = true;
+                    s->applyRecalledStepHz(pend->first);
+                    m_memStepApplying = false;
+                    return;
+                }
                 const int hz = clientStepForMode(mode);
                 if (hz > 0 && hz != s->stepHz())
                     s->applyRecalledStepHz(hz);
@@ -9385,8 +9417,12 @@ bool RadioModel::recallCachedMemory(int index)
     // ANAN fork, build 453 (operator, 16.11): where the step is the client's,
     // it is the mode group's (build 445) and the mode set above has applied
     // it; the memory's step would rewrite the group's. A Flex keeps its own.
+    // Build 500 (operator, 18.11): a memory brings its step back again, but
+    // as the memory's own -- the mode group's stored step is not rewritten.
     if (memory.step > 0 && !clientOwnsSliceStep())
         target->applyRecalledStepHz(memory.step);
+    else if (memory.step > 0)
+        applyMemoryStep(target->sliceId(), memory.step);
 
     // Tune BEFORE applying the repeater configuration.  The IC-705 has a
     // documented frequency-change quirk that can clear repeater tone, so a
