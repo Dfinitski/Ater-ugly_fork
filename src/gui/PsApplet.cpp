@@ -174,7 +174,8 @@ PsApplet::PsApplet(QWidget* parent)
         m_source->addItems({tr("Internal coupler"), tr("EXT1"), tr("RX Bypass")});
         applyComboStyle(m_source);
         m_source->setToolTip(tr("Where the feedback reaches the receiver while transmitting\n"
-                                "(switched on every transmission, PureSignal on or off)"));
+                                "(with PureSignal on; with it off as well when the radio\n"
+                                "settings have \"PS Coupler Always when TX\")"));
         row->addWidget(m_source, 1);
         vbox->addLayout(row);
     }

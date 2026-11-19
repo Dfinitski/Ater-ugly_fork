@@ -576,6 +576,10 @@ struct HighPriorityOptions {
     // 1 = EXT1, 2 = RX bypass) and DDC0/DDC1 on the transmit frequency.
     bool psEnabled = false;
     int psFeedbackSource = 0;
+    // Build 502 (operator, 18.11; "PS Coupler Always when TX"): the coupler
+    // path -- the Alex PS bit and the feedback input -- is switched on every
+    // transmission, PureSignal on or off. Off: only with psEnabled (Thetis).
+    bool psCouplerOnTx = false;
     // Orion2BandPass only: Alex1 bit 8, ADC1's input grounded while
     // transmitting (Thetis "BPF2 Gnd on TX"); not while ADC1 carries the
     // PureSignal feedback (psFeedbackOnAdc1).

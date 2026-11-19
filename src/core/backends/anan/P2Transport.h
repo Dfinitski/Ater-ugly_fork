@@ -187,6 +187,13 @@ public:
     Q_INVOKABLE void setMicControl(int bits);
     // Orion2BandPass boards: ADC1's input grounded while transmitting.
     Q_INVOKABLE void setAdc1GroundOnTx(bool on);
+    // Build 502 (operator, 18.11; radio settings): "Bypass BPF When TX" --
+    // the receive filter bank of ADC1 bypassed on every transmission (else
+    // only with PureSignal on, ORION MkII boards); "PS Coupler Always when
+    // TX" -- the coupler path (Alex PS bit, feedback input) on every
+    // transmission (else only with PureSignal on).
+    Q_INVOKABLE void setTxBypassBpf(bool on);
+    Q_INVOKABLE void setPsCouplerOnTx(bool on);
     // Build 396: Thetis' "BPF ByPass on PS" (Setup, ORION MkII / Saturn
     // boards, on by default): while transmitting with PureSignal on, the
     // band-pass bank ahead of the feedback ADC is bypassed -- the filters'
@@ -749,6 +756,8 @@ private:
     bool m_micBoost = false;
     std::uint8_t m_micControl = 0;
     bool m_adc1GndOnTx = true;
+    bool m_txBypassBpf = false;     // build 502: "Bypass BPF When TX"
+    bool m_psCouplerOnTx = false;   // build 502: "PS Coupler Always when TX"
     [[nodiscard]] bool psBypassesBank(int adc) const;
     std::array<std::atomic<int>, 32> m_forcedBoardFor{};   // reported id -> forced id
     std::atomic<int> m_reportedBoardId{0};

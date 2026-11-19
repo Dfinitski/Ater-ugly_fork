@@ -485,6 +485,9 @@ QVariantMap Hl2Backend::ananHwFields() const
         {QStringLiteral("ananMicBias"), on("AnanMicBias", false)},
         {QStringLiteral("ananMicXlr"), on("AnanMicXlr", false)},
         {QStringLiteral("ananAdc2GndOnTx"), on("AnanAdc2GndOnTx", true)},
+        // Build 502: "Bypass BPF When TX", "PS Coupler Always when TX".
+        {QStringLiteral("ananTxBypassBpf"), on("AnanTxBypassBpf", false)},
+        {QStringLiteral("ananPsCouplerOnTx"), on("AnanPsCouplerOnTx", false)},
         // Build 267 (replaces build 245's 7000-style filter option).
         {QStringLiteral("ananForceModel"), forced},
         {QStringLiteral("ananReportedModel"),
@@ -496,7 +499,8 @@ void Hl2Backend::applyAnanHwFields(const QVariantMap& in)
 {
     auto& st = AppSettings::instance();
     bool any = false;
-    for (const char* k : {"AnanMicPttOff", "AnanMicTipPtt", "AnanMicBias", "AnanMicXlr", "AnanAdc2GndOnTx"}) {
+    for (const char* k : {"AnanMicPttOff", "AnanMicTipPtt", "AnanMicBias", "AnanMicXlr", "AnanAdc2GndOnTx",
+                          "AnanTxBypassBpf", "AnanPsCouplerOnTx"}) {
         // "AnanMicPttOff" <-> field "ananMicPttOff"
         QString field = QString::fromLatin1(k);
         field[0] = field[0].toLower();
@@ -567,6 +571,11 @@ void Hl2Backend::pushAnanModelOptions()
     QMetaObject::invokeMethod(m_metis, "setMicControl", Qt::QueuedConnection, Q_ARG(int, bits));
     QMetaObject::invokeMethod(m_metis, "setAdc1GroundOnTx", Qt::QueuedConnection,
                               Q_ARG(bool, on("AnanAdc2GndOnTx", true)));
+    // Build 502.
+    QMetaObject::invokeMethod(m_metis, "setTxBypassBpf", Qt::QueuedConnection,
+                              Q_ARG(bool, on("AnanTxBypassBpf", false)));
+    QMetaObject::invokeMethod(m_metis, "setPsCouplerOnTx", Qt::QueuedConnection,
+                              Q_ARG(bool, on("AnanPsCouplerOnTx", false)));
 }
 
 double Hl2Backend::ananFwdDisplayWatts(double watts) const

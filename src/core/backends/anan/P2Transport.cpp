@@ -815,6 +815,7 @@ void P2Transport::sendHighPriority(bool run)
     o.txAntenna = m_txAnt;
     o.psEnabled = m_psEnabled;
     o.psFeedbackSource = m_psSource;
+    o.psCouplerOnTx = m_psCouplerOnTx;   // build 502
     // The ADC0 (Ant1/2/3 path) filters follow the first receiver listening
     // to ADC0 -- receiver 0 unless it was moved to ADC2; a stopping radio is
     // handed back bypassed.
@@ -862,7 +863,7 @@ void P2Transport::sendHighPriority(bool run)
             if (psBypassesBank(1))
                 o.adc1Filter = AlexRxFilter::Bypass;
         } else {
-            o.adc0Filter = bank0.filter;
+            o.adc0Filter = psBypassesBank(0) ? AlexRxFilter::Bypass : bank0.filter;   // build 502
             o.adc1Filter = o.adc0Filter;
         }
     }
@@ -2255,9 +2256,37 @@ bool P2Transport::psBypassesBank(int adc) const
     // the bypassed BPF1 -- so nothing appeared to switch. BPF1 is bypassed on
     // every transmission now; ADC2's bank still only for PureSignal's
     // feedback on ADC2.
-    if (!m_mox || m_profile.alexScheme != AlexScheme::Orion2BandPass)
+    // Build 502 (operator, 18.11: "always on transmit does not suit
+    // everybody"): BPF1 is bypassed with PureSignal on (Thetis) or when
+    // "Bypass BPF When TX" is set. A board without the ORION MkII banks has
+    // no PureSignal bypass (Thetis), but the option still sends its bank's
+    // bypass on transmit -- the protocol's bit, whatever the board does
+    // with it.
+    if (!m_mox)
         return false;
-    return adc == 0 || (m_psEnabled && m_psAdc == adc);
+    if (m_profile.alexScheme != AlexScheme::Orion2BandPass)
+        return adc == 0 && m_txBypassBpf;
+    return adc == 0 ? (m_psEnabled || m_txBypassBpf) : (m_psEnabled && m_psAdc == adc);
+}
+
+void P2Transport::setTxBypassBpf(bool on)
+{
+    if (on == m_txBypassBpf)
+        return;
+    m_txBypassBpf = on;
+    qCInfo(lcAnanP2T) << "ANAN P2 transport: Bypass BPF When TX" << (on ? "on" : "off");
+    if (m_run && m_configured)
+        sendHighPriority(true);
+}
+
+void P2Transport::setPsCouplerOnTx(bool on)
+{
+    if (on == m_psCouplerOnTx)
+        return;
+    m_psCouplerOnTx = on;
+    qCInfo(lcAnanP2T) << "ANAN P2 transport: PS Coupler Always when TX" << (on ? "on" : "off");
+    if (m_run && m_configured)
+        sendHighPriority(true);
 }
 
 void P2Transport::setAdc1GroundOnTx(bool on)
@@ -3047,7 +3076,10 @@ P1CcState P2Transport::p1State() const
     // the chosen feedback input is switched on every transmission, PureSignal
     // on or off -- as Thetis' "Ext 1 on Tx" / "Rx BYPASS on Tx", which are
     // independent of PS.
-    if (m_mox && m_psSource != 0) {
+    // Build 502: with PureSignal on, or on every transmission with "PS Coupler
+    // Always when TX" (Protocol 1 has no Alex PS bit; C0 0x14's PureSignal
+    // bit also moves the DDCs, so it stays PureSignal's own).
+    if (m_mox && m_psSource != 0 && (m_psEnabled || m_psCouplerOnTx)) {
         s.rxInputBits = 0x80;
         if (m_psSource == 1)
             s.rxInputBits |= 0x40;
@@ -3079,7 +3111,8 @@ P1CcState P2Transport::p1State() const
         // ANAN-10/100/100D/200D: high-pass ahead of ADC0, and the receive
         // path through the TX low-pass bank, which therefore follows the
         // receive frequency while receiving (as on Protocol 2).
-        s.alexHpf = p1AlexHpfBits(bank0.used ? bank0.filter : legacyAlexHpfFor(filterHz));
+        s.alexHpf = p1AlexHpfBits(psBypassesBank(0) ? AlexRxFilter::Bypass   // build 502
+                                  : bank0.used ? bank0.filter : legacyAlexHpfFor(filterHz));
         // The PA's harmonic filter on the TX frequency while transmitting;
         // receiving, ADC1's receiver's band, or (build 280) the widest when
         // the bank is bypassed -- as Protocol 2 sends it (deskHPSDR).

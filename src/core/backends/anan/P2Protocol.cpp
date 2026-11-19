@@ -632,6 +632,7 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
         writeU32be(&pkt[13], opts.ducPhaseWord);
     }
 
+    const bool coupler = opts.psEnabled || opts.psCouplerOnTx;   // build 502
     if (opts.alexScheme == AlexScheme::LegacyHighPassLowPass) {
         // ANAN-100/100D/200D (deskHPSDR new_protocol.c, default case; alex.h).
         // Alex0 = the receive state: ANT1 (bit 24), the ADC0 high-pass
@@ -658,13 +659,15 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
         const std::uint32_t txAnt = legacyAlexAntennaBit(opts.txAntenna);
         if (run && opts.transmitting) {
             alex0 |= txAnt | txLpf | relay;
-            if (opts.psEnabled)
+            // Build 502: the coupler path (PS bit and the feedback input)
+            // with PureSignal on, or on every transmission when the operator
+            // asked for it ("PS Coupler Always when TX"; build 438 did the
+            // input unconditionally).
+            if (coupler)
                 alex0 |= kAlexPsBit;
-            // Build 438: the feedback input on every transmission, PS on or
-            // off (duplex monitoring; Thetis' Ext1/Ext2 Out on Tx).
-            if (opts.psFeedbackSource == 1)
+            if (coupler && opts.psFeedbackSource == 1)
                 alex0 |= kAlexRxExt1 | kAlexRxBypass;   // EXT1 (old PA board)
-            else if (opts.psFeedbackSource == 2)
+            else if (coupler && opts.psFeedbackSource == 2)
                 alex0 |= kAlexRxBypass;                 // RX bypass input
         } else
             alex0 |= legacyAlexAntennaBit(opts.rxAntenna) | lpf
@@ -672,7 +675,7 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
         writeU32be(&pkt[1432], alex0);
         // Alex1 = the TX state ("Jan 2023 protocol update", new_protocol.c):
         // TX antenna, the LPF for the transmit frequency, the T/R relay.
-        writeU32be(&pkt[1428], txAnt | txLpf | relay | (opts.psEnabled ? kAlexPsBit : 0u));
+        writeU32be(&pkt[1428], txAnt | txLpf | relay | (coupler ? kAlexPsBit : 0u));
         // No ADC1 filter bank, so bypassAdc1Filters/adc1Filter have nothing
         // to drive; no speaker amplifier mute bit on these boards.
         if (opts.muteSpeakerAmp && opts.boardHasSpeakerAmpMute) {
@@ -700,7 +703,7 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
                 alex0 |= kAlexTxRelay;
             alex1 |= kAlexTxRelay;
         }
-        if (opts.psEnabled) {
+        if (coupler) {   // build 502: PureSignal, or "PS Coupler Always when TX"
             if (tx)
                 alex0 |= kAlexPsBit;
             alex1 |= kAlexPsBit;
@@ -735,7 +738,8 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
         // _Rx_1_Out. Build 427: OUR ERROR -- both sent only _Rx_1_Out, so the
         // input relay never switched to the chosen feedback port.
         // Build 438: PS on or off (duplex monitoring of the own signal).
-        if (tx && opts.psFeedbackSource != 0)
+        // Build 502: with PS off only when "PS Coupler Always when TX" is on.
+        if (tx && coupler && opts.psFeedbackSource != 0)
             alex0 |= kAlexRxBypass | (opts.psFeedbackSource == 1 ? kAlexRxExt1 : kAlexRxExt2);
         // Antennas: Alex0 the receive antenna (the TX one while transmitting),
         // Alex1 always the TX antenna.

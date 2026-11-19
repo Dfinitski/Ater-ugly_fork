@@ -8402,6 +8402,26 @@ errcheck — новых ошибок нет; фиктивный символ —
 
 Не проверено на радио.
 
+## 477. Сборка 502: «Bypass BPF When TX» и «PS Coupler Always when TX»
+
+Оператор (18.11): вчерашнее «ответвитель PS включается на каждой передаче» (сборки 438, 482) подходит не всем. В настройке устройства — две галки; актуально для 7000 / 8000 / G2, у остальных нет ни обхода, ни отключаемого отвода, но протокол соблюдать.
+
+Обе галки по умолчанию **выключены** (как в Thetis): без PureSignal на передаче ничего не переключается. При включённом PureSignal обход и ответвитель работают всегда, как и раньше.
+
+| Галка | Ключ | Что делает при выключенном PureSignal |
+|---|---|---|
+| Bypass BPF When TX | `AnanTxBypassBpf` | На передаче банк приёмных фильтров ADC1 в обходе. ORION MkII (7000 / 8000 / G2): BPF1, оба протокола (`psBypassesBank(0)`). Остальные платы: бит обхода ФВЧ Alex на передаче (P2 — `adc0Filter = Bypass`, P1 — `alexHpf`); банк ADC2 по-прежнему только при PureSignal с обратной связью на ADC2. |
+| PS Coupler Always when TX | `AnanPsCouplerOnTx` | На передаче включается путь ответвителя: P2 — бит PS Alex (бит 18; Alex0 на передаче, Alex1 постоянно, как при PureSignal) и вход обратной связи, выбранный в апплете PureSignal (EXT1 / RX Bypass); P1 — только биты входа (`rxInputBits`): отдельного бита PS Alex в P1 нет, а бит PureSignal в C0 0x14 переставляет DDC и остаётся за PureSignal. |
+
+- `P2Protocol`: `HighPriorityOptions::psCouplerOnTx`; `coupler = psEnabled || psCouplerOnTx` для бита PS и входов (обе схемы Alex). DDC на частоте передачи и заземление ADC2 по-прежнему от `psEnabled`.
+- `P2Transport`: `setTxBypassBpf`, `setPsCouplerOnTx`, `psBypassesBank`.
+- `Hl2Backend`: поля `ananTxBypassBpf`, `ananPsCouplerOnTx` в hw.get / hw.set.
+- `RadioSetupDialog`: две галки в группе «Microphone & Connectors» (для всех моделей). Подсказка источника обратной связи в апплете PureSignal исправлена.
+
+Изменение поведения: вход EXT1 / RX Bypass (с 438) и обход BPF1 (с 482) без PureSignal больше не включаются сами — нужны галки.
+
+Не проверено на радио.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
