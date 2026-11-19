@@ -1539,6 +1539,12 @@ QString TciProtocol::cmdSpot(const QStringList& args)
     kvs["lifetime_seconds"] = "1800";
 
     QMetaObject::invokeMethod(m_model, [model = m_model, kvs]() {
+        // ANAN fork build 510: the TCI applet's "Spots" box. Read where the
+        // spot is applied (the model's thread), so a spot queued just before
+        // the box was cleared is dropped too.
+        if (AppSettings::instance().value(QStringLiteral("TciSpotsEnabled"), QStringLiteral("True"))
+                .toString() != QLatin1String("True"))
+            return;
         static int idx = 10000;
         model->spotModel().applySpotStatus(idx++, kvs);
     }, Qt::QueuedConnection);

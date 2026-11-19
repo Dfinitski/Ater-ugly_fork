@@ -65,6 +65,7 @@ private:
     QLabel*      m_tciStatus{nullptr};
     QLabel*      m_clientsInfo{nullptr};   // build 321: per-client streams
     QCheckBox*   m_centerLockIq{nullptr};  // build 324
+    QCheckBox*   m_tciSpots{nullptr};      // build 510: "Spots"
 
     QWidget*     m_rxRow[kChannels]{};  // per-channel row container — hidden to gate to maxSlices()
     MeterSlider* m_rxMeter[kChannels]{};
