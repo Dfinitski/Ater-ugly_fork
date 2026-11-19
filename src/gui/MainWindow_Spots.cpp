@@ -771,8 +771,51 @@ void MainWindow::wireSpotSubsystem()
             this, [queueSpotCmd](const DxSpot& spot) {
         queueSpotCmd(spot, "FreeDV");
     });
+    // Build 507: a station that leaves the FreeDV Reporter takes its spot
+    // with it (it used to stay for the spot lifetime).
+    connect(m_freedvClient, &FreeDvClient::stationUpdated, this,
+            [this](const QString& sid, const AetherSDR::FreeDvClient::StationInfo& info) {
+        if (!info.callsign.isEmpty())
+            m_freedvSidCall.insert(sid, info.callsign);
+    });
+    connect(m_freedvClient, &FreeDvClient::stationRemoved, this, [this](const QString& sid) {
+        const QString call = m_freedvSidCall.take(sid);
+        if (!call.isEmpty())
+            removeClientSpotsOfSource(QStringLiteral("FreeDV"), call, false);
+    });
+    connect(m_freedvClient, &FreeDvClient::stationsCleared, this, [this] { m_freedvSidCall.clear(); });
 #endif
 
+}
+
+void MainWindow::removeClientSpotsOfSource(const QString& source, const QString& callsign, bool sweepAgain)
+{
+    // Only where the spots are this program's (ANAN: no radio-side spot
+    // list); a Flex keeps its own and expires them itself.
+    if (SpotCommandPolicy::shouldSendSpotAddCommands(
+            m_radioModel.backendCapabilities().alwaysUseClientSideSpots))
+        return;
+    QVector<int> ids;
+    const auto& spots = m_radioModel.spotModel().spots();
+    for (auto it = spots.cbegin(); it != spots.cend(); ++it) {
+        if (it->source != source)
+            continue;
+        if (!callsign.isEmpty() && it->callsign.compare(callsign, Qt::CaseInsensitive) != 0)
+            continue;
+        ids.append(it.key());
+        // The same station spotted again (the server switched back on) is
+        // not a duplicate of a spot that is gone.
+        m_spotDedup.remove(it->callsign);
+    }
+    for (int id : ids) {
+        m_passiveSpotExpiryMs.remove(id);
+        m_radioModel.spotModel().removeSpot(id);
+    }
+    if (sweepAgain) {
+        QTimer::singleShot(1500, this, [this, source, callsign] {
+            removeClientSpotsOfSource(source, callsign, false);
+        });
+    }
 }
 
 } // namespace AetherSDR

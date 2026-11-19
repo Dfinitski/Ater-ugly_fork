@@ -1557,6 +1557,8 @@ void MainWindow::showFreeDvReporter()
             auto& as = AppSettings::instance();
             as.setValue("FreeDvAutoStart", on ? "True" : "False");
             as.save();
+            if (!on)   // build 507: switched off by hand -- its spots go
+                removeClientSpotsOfSource(QStringLiteral("FreeDV"));
             QMetaObject::invokeMethod(m_freedvClient, [this, on] {
                 if (on)
                     m_freedvClient->startConnection();

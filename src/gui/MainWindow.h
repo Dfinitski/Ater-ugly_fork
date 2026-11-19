@@ -1455,6 +1455,15 @@ private:
     // Passive spot identity and expiry.
     int m_nextPassiveSpotId{-2000000};
     QHash<int, qint64> m_passiveSpotExpiryMs;
+    // ANAN fork build 507 (operator, 18.11: "when a spot server is switched
+    // off by hand, its spots must go"): the client-side spots of one source
+    // ("DXCluster", "RBN", "WSJT-X", "SpotCollector", "POTA", "FreeDV") leave
+    // the panadapter -- all of them, or the one callsign (a FreeDV station
+    // that left the reporter). sweepAgain: once more shortly after, for a spot
+    // that was on its way from the client's thread.
+    void removeClientSpotsOfSource(const QString& source, const QString& callsign = QString(),
+                                   bool sweepAgain = true);
+    QHash<QString, QString> m_freedvSidCall;   // FreeDV Reporter station id -> callsign
     // N1MM spot identity: N1MMSpotParser::spotKey(dxcall, freq) -> passive
     // spot id, so an "add" for a callsign already on this band updates the
     // existing spot instead of minting a duplicate (#2906).
