@@ -23,7 +23,11 @@ namespace AetherSDR::anan {
 // side is the DDC filter's roll-off. The spectrum is cut to the inner 80 %
 // first thing after the FFT, so those dips are neither shown nor seen by the
 // AUTO attenuator; the widest view (zoom x1.0) is this fraction of the rate.
-inline constexpr double kUsableSpanFraction = 0.8;
+// Build 501 (operator, 18.11: "users complain that too much is cut off; cut
+// less, as long as the dips do not show"): 5 % a side, the inner 90 %. The
+// roll-off itself has not been measured per firmware -- the backend logs the
+// edge profile of receiver 1 ("ANAN pan edge profile") for that.
+inline constexpr double kUsableSpanFraction = 0.9;
 
 class AnanUiState {
 public:

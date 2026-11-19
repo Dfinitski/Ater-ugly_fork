@@ -13748,7 +13748,7 @@ void SpectrumWidget::refreshRateLabel()
         const bool show = rateHz > 0 && m_bandwidthMhz > 0.0;
         if (show) {
             // Magnification against the full rate, to a tenth: "Zoom x1.0".
-            // x1.0 = the whole usable span (80 % of the rate, the DDC
+            // x1.0 = the whole usable span (kUsableSpanFraction of the rate, the DDC
             // filter's edges cut off).
             const double mag = std::max(1.0, rateMhz * AetherSDR::anan::kUsableSpanFraction
                                                  / m_bandwidthMhz);

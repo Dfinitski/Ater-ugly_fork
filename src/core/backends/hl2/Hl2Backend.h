@@ -878,6 +878,14 @@ private:
     // FPGA keyer makes the carrier). Written on the GUI thread, read on I/O.
     std::atomic<bool> m_ananCwTxSilent{false};
     bool m_ananPanGuardPending{false};   // a frame fell inside the unkey guard
+    // Build 501: the measured roll-off at the edges of the captured span
+    // (the spectrumReady handler; logged as "ANAN pan edge profile").
+    static constexpr std::size_t kEdgeProfSteps = 12;
+    std::array<double, 2 * kEdgeProfSteps> m_edgeProfSum{};
+    int m_edgeProfN{0};
+    int m_edgeProfSkip{0};
+    QElapsedTimer m_edgeProfTimer;
+    std::vector<float> m_edgeProfScratch;
     std::array<std::deque<std::pair<qint64, double>>, 4> m_smHist;   // S-meter, before the key
     std::array<double, 4> m_smPreTx{-200.0, -200.0, -200.0, -200.0};
     QElapsedTimer m_smClock;

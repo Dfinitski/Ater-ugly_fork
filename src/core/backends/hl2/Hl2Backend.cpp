@@ -1666,7 +1666,8 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
             return;
         }
         if ((m_ukKeyed || m_ukPost) && ids->ddcIndex == 0 && bins.size() >= 64) {
-            const std::size_t e = bins.size() / 10;   // the usable 80 %
+            const std::size_t e = static_cast<std::size_t>(   // the usable span
+                static_cast<double>(bins.size()) * (1.0 - anan::kUsableSpanFraction) / 2.0);
             std::vector<float> mid(bins.begin() + static_cast<std::ptrdiff_t>(e),
                                    bins.end() - static_cast<std::ptrdiff_t>(e));
             const float mx = *std::max_element(mid.begin(), mid.end());
@@ -1695,6 +1696,46 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
             }
         }
         const bool txOnAir = m_keyed || m_radioPtt;
+        // Build 501: the DDC filter's roll-off as this radio shows it -- the
+        // median level of each outer 1 % of the captured span (12 a side)
+        // against the median of the middle half, receiver 1, receive only,
+        // every 8th frame, logged once a minute. Read it on a band with even
+        // noise across the span (no antenna, or a quiet band).
+        if (ids->ddcIndex == 0 && !txOnAir && !m_ukPost && bins.size() >= 1024
+            && ++m_edgeProfSkip >= 8) {
+            m_edgeProfSkip = 0;
+            const std::size_t nb = bins.size();
+            auto med = [this, &bins](std::size_t from, std::size_t to) {
+                m_edgeProfScratch.assign(bins.begin() + static_cast<std::ptrdiff_t>(from),
+                                         bins.begin() + static_cast<std::ptrdiff_t>(to));
+                auto mid = m_edgeProfScratch.begin()
+                           + static_cast<std::ptrdiff_t>(m_edgeProfScratch.size() / 2);
+                std::nth_element(m_edgeProfScratch.begin(), mid, m_edgeProfScratch.end());
+                return static_cast<double>(*mid);
+            };
+            const double ref = med(nb / 4, nb - nb / 4);
+            for (std::size_t k = 0; k < kEdgeProfSteps; ++k) {
+                const std::size_t a = nb * k / 100, z = nb * (k + 1) / 100;
+                m_edgeProfSum[k] += med(a, z) - ref;                                  // low edge
+                m_edgeProfSum[kEdgeProfSteps + k] += med(nb - z, nb - a) - ref;      // high edge
+            }
+            ++m_edgeProfN;
+            if (!m_edgeProfTimer.isValid())
+                m_edgeProfTimer.start();
+            if (m_edgeProfTimer.elapsed() >= 60000 && m_edgeProfN > 0) {
+                QString lo, hi;
+                for (std::size_t k = 0; k < kEdgeProfSteps; ++k) {
+                    lo += QStringLiteral(" %1").arg(m_edgeProfSum[k] / m_edgeProfN, 0, 'f', 1);
+                    hi += QStringLiteral(" %1").arg(m_edgeProfSum[kEdgeProfSteps + k] / m_edgeProfN, 0, 'f', 1);
+                }
+                qCInfo(lcHl2).noquote() << "ANAN pan edge profile, rate" << m_sampleRateHz
+                    << "Hz, dB against the middle, per 1 % from the edge inwards: low" << lo
+                    << "| high" << hi << "| frames" << m_edgeProfN;
+                m_edgeProfSum.fill(0.0);
+                m_edgeProfN = 0;
+                m_edgeProfTimer.restart();
+            }
+        }
         // ANAN-100D port: the waterfall gets the frame BEFORE FFT averaging,
         // as same-observation coverage over the viewport (RadioModel fills in
         // the band edges), so no panadapter setting reaches it.
