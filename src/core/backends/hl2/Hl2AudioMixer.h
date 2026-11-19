@@ -64,14 +64,24 @@ class Hl2AudioMixer : public QObject {
 
 public:
     static constexpr int kMaxReceivers = 8;
+    // ANAN fork build 513: the sub receivers (A' / B') are contributors of
+    // their own -- slot kMaxReceivers + n, with their own fader and balance.
+    // Their audio comes from the chain of the receiver they belong to
+    // (Hl2RxDsp::subAudioReady -> subAudio()), one block just ahead of each of
+    // that receiver's, so they never hold the mix up: a sub slot is only
+    // queued, and mixed with what it has when its receiver's block is.
+    static constexpr int kSubSlots = 2;
+    static constexpr int kSlots = kMaxReceivers + kSubSlots;
 
     // Written by the owner (any thread), read by the mixer thread.
     struct Params {
         // The receiver chain of each DDC that is in the mix: present and not
         // muted. nullptr = not in the mix (its queue is dropped).
-        std::array<const void*, kMaxReceivers> dsp{};
-        std::array<float, kMaxReceivers> gain{};      // the receiver's fader
-        std::array<int, kMaxReceivers> pan{};         // 0..100, 50 = centre
+        // [kMaxReceivers + n]: the chain of the receiver whose sub receiver n
+        // is in the mix (the key subAudio() is called with).
+        std::array<const void*, kSlots> dsp{};
+        std::array<float, kSlots> gain{};      // the receiver's fader
+        std::array<int, kSlots> pan{};         // 0..100, 50 = centre
         // The receiver whose audio is the FreeDV modem signal (-1 = none): its
         // blocks pass through the decoder (setFdvEngine) before the mix.
         int fdvReceiver = -1;
@@ -106,6 +116,9 @@ public:
 public slots:
     // A block of one receiver's demodulated audio (interleaved stereo, 24 kHz).
     void receiverAudio(const void* dsp, const std::vector<float>& pcm);
+    // Build 513: a block of the sub receiver of the receiver whose chain is
+    // ownerDsp; it arrives just ahead of that receiver's own block.
+    void subAudio(const void* ownerDsp, const std::vector<float>& pcm);
     // The FreeDV receiver's audio after the decoder.
     void decodedAudio(int receiver, const std::vector<float>& pcm);
     // Audio that is not a receiver's (the transmit monitor): out as it is.
@@ -124,6 +137,7 @@ signals:
 
 private:
     void mixIn(int receiver, const std::vector<float>& pcm, const Params& p);
+    void applyFlush();   // build 513: a pending flushAll(), once
     void emitOut(const std::vector<float>& pcm, const Params& p);
     void diag(const std::vector<float>& pcm, bool dropped);
 
@@ -137,7 +151,7 @@ private:
     unsigned m_flushSeen = 0;
 
     // Mixer thread only.
-    std::array<std::deque<float>, kMaxReceivers> m_pending;
+    std::array<std::deque<float>, kSlots> m_pending;
     std::vector<float> m_accum;
     PcmProducer m_producer;
     bool m_streaming = false;

@@ -235,27 +235,25 @@ public:
     // ANAN fork build 470 (operator, 17.11): the SPLIT receiver -- a second
     // demodulator on THIS receiver's I/Q (no DDC of its own), a clone of it in
     // everything but its frequency: every control verb below is applied to it
-    // as well, its WDSP shift is its own (setSubShift). Its audio is added to
-    // this receiver's output; it draws no spectrum. Built off this thread like
-    // a rebuild (the I/O pacer is not held), and rebuilt with this receiver.
+    // as well, its WDSP shift is its own (setSubShift). It draws no spectrum.
+    // Built off this thread like a rebuild (the I/O pacer is not held), and
+    // rebuilt with this receiver.
+    //
+    // Build 513 (operator, 19.11: "I turn the main receiver's volume down to
+    // zero and the sub receiver's goes with it; every receiver, the sub
+    // receivers too, must have its own volume and balance"). OUR ERROR in
+    // 470 / 471 / 486: the sub receiver's audio was ADDED to this receiver's
+    // here, so everything after this point -- every mixer's fader, balance
+    // and mute for this receiver, the per-slice feed to TCI -- treated the
+    // two as one signal; 486's "sub / main" ratio only hid that, and gave
+    // silence with the main volume at zero. The sub receiver's audio now
+    // leaves as a stream of its own (subAudioReady), and the mixers give it
+    // its own fader and balance like any other receiver's.
     Q_INVOKABLE void setSubReceiver(bool on, double shiftHz);
     Q_INVOKABLE void setSubShift(double shiftHz);
-    // Build 471 (operator, 17.11): the stereo pair -- the main and the SPLIT
-    // receiver each with its own balance (0..100, 50 = centre, the mixer's
-    // law), mixed HERE, before the rest of the audio path (mixer, codec,
-    // recording, TCI, client DSP), which the two then share. Only while the
-    // SPLIT receiver runs; the backend sets this receiver's mixer pan to the
-    // centre meanwhile.
-    Q_INVOKABLE void setSplitBalance(int mainPercent, int subPercent);
     // Build 489: the SPLIT receiver's own AGC gain (its own threshold, by
     // hand or from the noise floor + its NF+); NaN: this receiver's.
     Q_INVOKABLE void setSubAgcGain(double maximumGainDb);
-    // Build 486: the volumes of the pair (0..1). The mixer goes on applying
-    // this receiver's volume to the summed pair (no hand-over between threads,
-    // so no burst at full level); the SPLIT receiver is scaled here by
-    // subGain / mainGain, which leaves it at its own volume after the mixer.
-    // With this receiver's volume at zero the pair is silent.
-    Q_INVOKABLE void setSplitGain(float mainGain, float subGain);
     [[nodiscard]] bool hasSubReceiver() const noexcept { return m_sub != nullptr; }
     // Cap panadapter frames per second; fps <= 0 removes the cap. The FFT is
     // skipped when a frame is not due: the natural rate is IQ rate / FFT size
@@ -659,6 +657,11 @@ public slots:
 
 signals:
     void audioReady(const std::vector<float>& stereoPcm);   // interleaved L,R
+    // Build 513: the sub receiver's audio, interleaved L,R -- one block of
+    // exactly audioReady's length, emitted just BEFORE each audioReady block
+    // (what the sub receiver has not produced yet is silence), so a mixer
+    // that queues it finds it there when this receiver's block arrives.
+    void subAudioReady(const std::vector<float>& stereoPcm);
     // DC-centred dBFS: averaged (panadapter) and the same frame unaveraged
     // (waterfall, ANAN-100D port).
     void spectrumReady(const std::vector<float>& binsDbfs,
@@ -671,10 +674,9 @@ private:
     // Build 470: the SPLIT receiver (setSubReceiver).
     void startSubBuild();
     std::unique_ptr<Hl2RxDsp> m_sub;
-    std::vector<float> m_subPcm;   // its stereo audio not yet added to ours
+    std::vector<float> m_subPcm;   // its stereo audio not yet sent on
+    std::vector<float> m_subOut;   // build 513: the block subAudioReady carries
     double m_subShiftHz = 0.0;
-    int m_mainBalance = 50, m_subBalance = 50;   // build 471
-    float m_subRelGain = 1.0f;   // build 486: subGain / mainGain
     double m_subAgcTop = std::numeric_limits<double>::quiet_NaN();   // build 489
     std::uint64_t m_subGeneration = 0;
     // Pushes rxMinimumPhaseFor(m_config.mode) to the live channel. Only

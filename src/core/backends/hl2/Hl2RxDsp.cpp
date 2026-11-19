@@ -906,25 +906,12 @@ void Hl2RxDsp::setSubReceiver(bool on, double shiftHz)
     startSubBuild();
 }
 
-void Hl2RxDsp::setSplitBalance(int mainPercent, int subPercent)
-{
-    m_mainBalance = std::clamp(mainPercent, 0, 100);
-    m_subBalance = std::clamp(subPercent, 0, 100);
-}
-
 void Hl2RxDsp::setSubAgcGain(double maximumGainDb)
 {
     m_subAgcTop = maximumGainDb;
     if (m_sub)
         m_sub->setAgc(m_config.agcMode,
                       std::isfinite(m_subAgcTop) ? m_subAgcTop : m_config.maximumAgcGainDb);
-}
-
-void Hl2RxDsp::setSplitGain(float mainGain, float subGain)
-{
-    mainGain = std::clamp(mainGain, 0.0f, 1.0f);
-    subGain = std::clamp(subGain, 0.0f, 1.0f);
-    m_subRelGain = mainGain > 0.001f ? subGain / mainGain : 0.0f;
 }
 
 void Hl2RxDsp::setSubShift(double shiftHz)
@@ -1148,7 +1135,7 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
     if (!m_channel)
         return;
     // Build 470: the SPLIT receiver hears the same I/Q (its audio is queued
-    // by its audioReady and added to ours below).
+    // by its audioReady and sent on with ours below, as its own stream).
     if (m_sub)
         m_sub->processIqBlock(iq, false);
     // Build 466: display = false -- the audio path only (see the header).
@@ -1331,29 +1318,16 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
             }
         }
         if (m_sub) {
-            // Build 470 / 471: the stereo pair -- ours and the SPLIT receiver's,
-            // each through its own balance (the mixer's law: centre leaves
-            // both channels at full level), summed. What the SPLIT receiver
-            // has not produced yet waits for the next block.
-            auto bal = [](int pct, float& lw, float& rw) {
-                lw = pct <= 50 ? 1.0f : static_cast<float>(100 - pct) / 50.0f;
-                rw = pct >= 50 ? 1.0f : static_cast<float>(pct) / 50.0f;
-            };
-            float ml = 1.0f, mr = 1.0f, sl = 1.0f, sr = 1.0f;
-            bal(m_mainBalance, ml, mr);
-            bal(m_subBalance, sl, sr);
-            sl *= m_subRelGain;   // build 486: the SPLIT receiver's own volume
-            sr *= m_subRelGain;
+            // Build 513: the sub receiver's audio is NOT added to ours any
+            // more -- it goes on as its own stream, block for block with
+            // ours and just ahead of it (see subAudioReady). What it has not
+            // produced yet is silence here and waits for the next block.
             const std::size_t take = std::min(m_stereo.size(), m_subPcm.size()) & ~std::size_t{1};
-            for (std::size_t k = 0; k + 1 < m_stereo.size(); k += 2) {
-                m_stereo[k] *= ml;
-                m_stereo[k + 1] *= mr;
-                if (k + 1 < take) {
-                    m_stereo[k] += sl * m_subPcm[k];
-                    m_stereo[k + 1] += sr * m_subPcm[k + 1];
-                }
-            }
+            m_subOut.assign(m_stereo.size(), 0.0f);
+            std::copy(m_subPcm.begin(), m_subPcm.begin() + static_cast<std::ptrdiff_t>(take),
+                      m_subOut.begin());
             m_subPcm.erase(m_subPcm.begin(), m_subPcm.begin() + static_cast<std::ptrdiff_t>(take));
+            emit subAudioReady(m_subOut);
         }
         emit audioReady(m_stereo);
         // S-meter from WDSP's average signal meter (xmeter `avg`, an EMA of

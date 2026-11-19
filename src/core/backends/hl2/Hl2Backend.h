@@ -1037,6 +1037,7 @@ private:
     // speech is made on the GUI thread) or while the receivers are muted
     // for TX (MON then feeds the codec from the GUI thread).
     static constexpr int kCodecMixMax = 8;
+    static constexpr int kCodecMixSlots = kCodecMixMax + 2;   // build 513: + the sub receivers
     struct CodecMixParams {
         bool active = false;
         float gain = 0.0f;           // linear, the Codec volume law included
@@ -1046,17 +1047,21 @@ private:
         // (01.11: that audio crosses the GUI thread -- rustle and clicks on
         // the radio speaker whenever the window is busy).
         bool aetherRx = false;
-        std::array<const void*, kCodecMixMax> dsp{};   // receiver chain per ddc
-        std::array<float, kCodecMixMax> lw{};
-        std::array<float, kCodecMixMax> rw{};
+        // Build 513: [kCodecMixMax + n] is sub receiver n -- the chain of the
+        // receiver it belongs to (the key), and its own weights.
+        std::array<const void*, kCodecMixSlots> dsp{};   // receiver chain per ddc
+        std::array<float, kCodecMixSlots> lw{};
+        std::array<float, kCodecMixSlots> rw{};
     };
     std::mutex m_codecMixMutex;
     CodecMixParams m_codecMixParams;   // guarded by m_codecMixMutex
     bool m_codecIoMixActive = false;   // GUI thread's copy of .active
     void ananPushCodecMix();
     // I/O thread only:
-    void ananIoCodecAudio(const void* dsp, const std::vector<float>& pcm);
-    std::array<std::vector<float>, kCodecMixMax> m_ioMixQ;
+    // Build 513: sub = a block of the sub receiver of the receiver whose
+    // chain is dsp (queued only; that receiver's block makes the mix).
+    void ananIoCodecAudio(const void* dsp, const std::vector<float>& pcm, bool sub = false);
+    std::array<std::vector<float>, kCodecMixSlots> m_ioMixQ;
     std::vector<float> m_ioMixOut;
     float m_ioLastL = 0.0f, m_ioLastR = 0.0f;
     bool m_ioHavePrev = false;
@@ -1445,10 +1450,12 @@ private:
           ? &m_splits[static_cast<std::size_t>(ownerUi)] : nullptr; }
     [[nodiscard]] SplitVfo* splitByUi(int sliceId)
     { return isSplitUi(sliceId) ? splitOfOwner(sliceId - kSplitUiBase) : nullptr; }
-    void pushSplitBalance(int ownerUi);   // build 471
-    // Build 471: the pan the mixers apply to receiver ddc -- the centre for
-    // a receiver with a SPLIT VFO (its chain makes the stereo pair itself).
-    [[nodiscard]] int mixPanPercent(int ddc) const;
+    // Build 471 / 513: the sub receiver's fader and balance, to the mixers
+    // (the loudspeaker's and the codec's).
+    void pushSplitBalance(int ownerUi);
+    // Build 513: the receiver whose sub receiver ownerUi is in the mix (null:
+    // it is not), and the sub receiver itself.
+    [[nodiscard]] const Receiver* subInMix(int ownerUi, const SplitVfo** spOut = nullptr) const;
     void splitOn(int ownerUi, double hz);
     void splitOff(int ownerUi, const char* why);   // ownerUi < 0: all
     void pushSplitShift(int ownerUi);
@@ -1540,6 +1547,8 @@ private:
     // thread (Hl2AudioMixer, see m_audioMixer). Kept as the reference
     // implementation the unit tests drive (pcm_compatibility_test).
     void mixReceiverAudio(int ddc, const std::vector<float>& pcm);
+    // Build 513: the sub receivers in the mixers (Hl2Backend.cpp).
+    void mixSubAudio(int ownerUi, const std::vector<float>& pcm);
     // Build 373: the mix parameters as the audio thread needs them (which
     // receivers, faders, balance, the FreeDV receiver, live). Called wherever
     // one of them changes and on the 50 ms tick.
@@ -1569,6 +1578,7 @@ private:
     // Mixing scratch: per-receiver samples awaiting peers, and a reused summing
     // buffer (~47 calls/s per receiver).
     std::vector<std::deque<float>> m_mixPending;
+    std::array<std::deque<float>, 2> m_mixPendingSub;   // build 513: per sub receiver (kSplitOwners)
     std::vector<float> m_mixAccum;
     // How far ahead the other receivers may get before a starved one is mixed as
     // silence: 2048 samples of interleaved L,R at 24 kHz = 1024 frames, ~43 ms.

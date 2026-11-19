@@ -136,6 +136,44 @@ void Hl2AudioMixer::receiverAudio(const void* dsp, const std::vector<float>& pcm
     mixIn(receiver, pcm, p);
 }
 
+void Hl2AudioMixer::applyFlush()
+{
+    const unsigned flush = m_flushSeq.load(std::memory_order_acquire);
+    if (flush != m_flushSeen) {
+        m_flushSeen = flush;
+        for (auto& q : m_pending)
+            q.clear();
+    }
+}
+
+void Hl2AudioMixer::subAudio(const void* ownerDsp, const std::vector<float>& pcm)
+{
+    Params p;
+    {
+        std::lock_guard<std::mutex> lock(m_paramsMutex);
+        p = m_params;
+    }
+    int slot = -1;
+    for (int i = kMaxReceivers; i < kSlots; ++i) {
+        if (ownerDsp && p.dsp[static_cast<std::size_t>(i)] == ownerDsp)
+            slot = i;
+    }
+    if (slot < 0)
+        return;   // not in the mix: switched off, or its receiver is muted
+    applyFlush();
+    // The hold is a gap for the sub receiver as for its receiver (mixIn).
+    if (m_muted.load(std::memory_order_acquire))
+        return;
+    auto& q = m_pending[static_cast<std::size_t>(slot)];
+    q.insert(q.end(), pcm.begin(), pcm.end() - static_cast<std::ptrdiff_t>(pcm.size() & 1));
+    // Only queued: mixIn() takes it when the receiver's own block arrives.
+    // It cannot get further ahead than that receiver's queue does; the cap
+    // is for a receiver whose blocks have stopped.
+    constexpr std::size_t kCap = 8 * kStarvationSamples;
+    if (q.size() > kCap)
+        q.erase(q.begin(), q.begin() + static_cast<std::ptrdiff_t>((q.size() - kCap + 1) & ~std::size_t{1}));
+}
+
 void Hl2AudioMixer::decodedAudio(int receiver, const std::vector<float>& pcm)
 {
     Params p;
@@ -180,15 +218,10 @@ void Hl2AudioMixer::passthrough(const std::vector<float>& pcm)
 // cannot silence the others, whole stereo frames only, clamped not scaled.
 void Hl2AudioMixer::mixIn(int receiver, const std::vector<float>& pcm, const Params& p)
 {
-    const unsigned flush = m_flushSeq.load(std::memory_order_acquire);
-    if (flush != m_flushSeen) {
-        m_flushSeen = flush;
-        for (auto& q : m_pending)
-            q.clear();
-    }
+    applyFlush();
     // Queues of receivers no longer in the mix must not grow, and must not
     // play out when the receiver comes back.
-    for (int i = 0; i < kMaxReceivers; ++i) {
+    for (int i = 0; i < kSlots; ++i) {
         if (!p.dsp[static_cast<std::size_t>(i)])
             m_pending[static_cast<std::size_t>(i)].clear();
     }
@@ -198,15 +231,20 @@ void Hl2AudioMixer::mixIn(int receiver, const std::vector<float>& pcm, const Par
     // The hold is a GAP in the output, not zeros (the engine's capture and
     // the unkey timing rely on that), and blocks in flight at key-down are
     // dropped.
-    if (muted)
+    if (muted) {
+        // Build 513: a sub receiver's block queued just ahead of this one
+        // goes with it, or it would stay one block behind from here on.
+        for (int i = kMaxReceivers; i < kSlots; ++i)
+            m_pending[static_cast<std::size_t>(i)].clear();
         return;
+    }
 
     const auto ri = static_cast<std::size_t>(receiver);
     auto& q = m_pending[ri];
     q.insert(q.end(), pcm.begin(), pcm.end());
 
     int contributors = 0;
-    for (int i = 0; i < kMaxReceivers; ++i) {
+    for (int i = 0; i < kSlots; ++i) {   // build 513: a sub receiver is one too
         if (p.dsp[static_cast<std::size_t>(i)])
             ++contributors;
     }
@@ -252,7 +290,10 @@ void Hl2AudioMixer::mixIn(int receiver, const std::vector<float>& pcm, const Par
         return;
 
     m_accum.assign(n, 0.0f);
-    for (int i = 0; i < kMaxReceivers; ++i) {
+    // Build 513: every slot, the sub receivers' too. Those did not take part
+    // in n above (the loop over kMaxReceivers): they are mixed with what they
+    // have, each with its own fader and balance.
+    for (int i = 0; i < kSlots; ++i) {
         const auto ui = static_cast<std::size_t>(i);
         if (!p.dsp[ui])
             continue;

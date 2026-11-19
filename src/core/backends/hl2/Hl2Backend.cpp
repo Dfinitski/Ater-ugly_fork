@@ -1907,6 +1907,23 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
             [this, key = static_cast<const void*>(dsp)](const std::vector<float>& pcm) {
         ananIoCodecAudio(key, pcm);
     }, Qt::DirectConnection);
+    // Build 513: the sub receiver's audio -- its own stream to each of the
+    // three mixers (the codec's here, the old GUI-thread one and the audio
+    // thread's below), where it has its own fader and balance. Its block is
+    // emitted just ahead of the receiver's, so each mixer only queues it.
+    connect(dsp, &Hl2RxDsp::subAudioReady, m_metis,
+            [this, key = static_cast<const void*>(dsp)](const std::vector<float>& pcm) {
+        ananIoCodecAudio(key, pcm, true);
+    }, Qt::DirectConnection);
+    connect(dsp, &Hl2RxDsp::subAudioReady, this,
+            [this, ui, producer = QPointer<Hl2RxDsp>(dsp)](const std::vector<float>& pcm) {
+        const auto* ids = m_ids.byUi(ui);
+        const Receiver* receiver = ids ? rx(ids->ddcIndex) : nullptr;
+        if (!producer || !receiver || receiver->dsp != producer.data())
+            return;
+        if (!m_audioThreadActive)
+            mixSubAudio(ui, pcm);   // the old path, by setting
+    });
     connect(dsp, &Hl2RxDsp::audioReady, this,
             [this, ui, producer = QPointer<Hl2RxDsp>(dsp)](const std::vector<float>& pcm) {
         const auto* ids = m_ids.byUi(ui);
@@ -1938,6 +1955,10 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         connect(dsp, &Hl2RxDsp::audioReady, m_audioMixer,
                 [mixer = m_audioMixer, key = static_cast<const void*>(dsp)](const std::vector<float>& pcm) {
             mixer->receiverAudio(key, pcm);
+        });
+        connect(dsp, &Hl2RxDsp::subAudioReady, m_audioMixer,   // build 513
+                [mixer = m_audioMixer, key = static_cast<const void*>(dsp)](const std::vector<float>& pcm) {
+            mixer->subAudio(key, pcm);
         });
     }
 
@@ -2357,6 +2378,8 @@ void Hl2Backend::finishReceiverDspBuild(int uiNumber, quint64 generation, bool o
         m_rx.erase(m_rx.begin() + ddc);
         m_ids.remove(ddc);        // renumbers DDC indices; UI numbers are untouched
         m_mixPending.clear();     // the per-receiver queues describe the old set
+        for (auto& q : m_mixPendingSub)   // build 513
+            q.clear();
         m_mixAccum.clear();
         if (m_metis) {
             QMetaObject::invokeMethod(m_metis, "setReceiverCount", Qt::QueuedConnection,
@@ -2501,6 +2524,8 @@ bool Hl2Backend::removePanadapter(const QString& panId)
     m_rx.erase(m_rx.begin() + ddc);
     m_ids.remove(ddc);        // renumbers DDC indices; UI numbers are untouched
     m_mixPending.clear();     // the per-receiver queues describe the old set
+    for (auto& q : m_mixPendingSub)   // build 513
+        q.clear();
     m_mixAccum.clear();
 
     if (m_metis) {
@@ -3346,7 +3371,19 @@ void Hl2Backend::pushAudioMix()
         anyInMix = true;
         p.dsp[i] = r.dsp;
         p.gain[i] = r.audioGain;
-        p.pan[i] = mixPanPercent(static_cast<int>(i));   // build 471
+        p.pan[i] = r.audioPanPercent;
+    }
+    // Build 513: the sub receivers, each a contributor of its own with its
+    // own fader and balance (see subInMix).
+    for (int o = 0; o < kSplitOwners && o < Hl2AudioMixer::kSubSlots; ++o) {
+        const SplitVfo* sp = nullptr;
+        const Receiver* owner = subInMix(o, &sp);
+        if (!owner)
+            continue;
+        const auto slot = static_cast<std::size_t>(Hl2AudioMixer::kMaxReceivers + o);
+        p.dsp[slot] = owner->dsp;
+        p.gain[slot] = sp->gain;
+        p.pan[slot] = sp->panPercent;
     }
     // The same test mixReceiverAudio() makes for the FreeDV receiver.
     const int fdvSlice = fdv::FdvState::instance().sliceId;
@@ -3422,6 +3459,8 @@ void Hl2Backend::mixReceiverAudio(int ddc, const std::vector<float>& pcm)
     // the engine's output capture. At most one zero-filled block may pass at
     // the end of the hold (flag clears here, unmute is queued to the DSP).
     if (m_rxAudioMuted) {
+        for (auto& sq : m_mixPendingSub)   // build 513: nor a sub receiver's block queued ahead of this one
+            sq.clear();
         return;
     }
     const Receiver* r = rx(ddc);
@@ -3444,8 +3483,11 @@ void Hl2Backend::mixReceiverAudio(int ddc, const std::vector<float>& pcm)
     for (const Receiver& other : m_rx)
         if (other.dsp && !other.audioMuted)
             ++contributors;
+    for (int o = 0; o < kSplitOwners; ++o)   // build 513: a sub receiver is one too
+        if (subInMix(o))
+            ++contributors;
     if (contributors <= 1 && r->audioGain == 1.0f
-        && mixPanPercent(ddc) == kAudioPanCentre) {   // build 471
+        && r->audioPanPercent == kAudioPanCentre) {
         // The queue was empty before the insert above, so it holds exactly the
         // block we were handed: emit that directly. This is the steady state and
         // the reason the fast path exists — no remix or clamp. The PCM
@@ -3516,7 +3558,7 @@ void Hl2Backend::mixReceiverAudio(int ddc, const std::vector<float>& pcm)
         // That matches what the operator expects of the Flex control this
         // mirrors, and keeps a centred slice bit-identical to no processing.
         const float g = src_rx.audioGain;
-        const int p = mixPanPercent(static_cast<int>(i));   // build 471
+        const int p = src_rx.audioPanPercent;
         const float lw = g * (p <= kAudioPanCentre
                                   ? 1.0f
                                   : static_cast<float>(100 - p) / kAudioPanCentre);
@@ -3524,6 +3566,31 @@ void Hl2Backend::mixReceiverAudio(int ddc, const std::vector<float>& pcm)
                                   ? 1.0f
                                   : static_cast<float>(p) / kAudioPanCentre);
 
+        for (std::size_t k = 0; k + 1 < take; k += 2) {
+            m_mixAccum[k]     += src[k]     * lw;
+            m_mixAccum[k + 1] += src[k + 1] * rw;
+        }
+        src.erase(src.begin(), src.begin() + static_cast<std::ptrdiff_t>(take));
+    }
+    // Build 513: the sub receivers, with what they have (they did not take
+    // part in n: their blocks come just ahead of their receiver's), each with
+    // its own fader and balance.
+    for (int o = 0; o < kSplitOwners; ++o) {
+        auto& src = m_mixPendingSub[static_cast<std::size_t>(o)];
+        const SplitVfo* sp = nullptr;
+        if (!subInMix(o, &sp)) {
+            src.clear();
+            continue;
+        }
+        const std::size_t take = std::min(n, src.size()) & ~std::size_t{1};
+        const float g = sp->gain;
+        const int p = sp->panPercent;
+        const float lw = g * (p <= kAudioPanCentre
+                                  ? 1.0f
+                                  : static_cast<float>(100 - p) / kAudioPanCentre);
+        const float rw = g * (p >= kAudioPanCentre
+                                  ? 1.0f
+                                  : static_cast<float>(p) / kAudioPanCentre);
         for (std::size_t k = 0; k + 1 < take; k += 2) {
             m_mixAccum[k]     += src[k]     * lw;
             m_mixAccum[k + 1] += src[k + 1] * rw;
@@ -3540,6 +3607,41 @@ void Hl2Backend::mixReceiverAudio(int ddc, const std::vector<float>& pcm)
 
     publishLegacyAudio(floatBytes(m_mixAccum));
     forwardSpeakerAudioToCodec(m_mixAccum);
+}
+
+// Build 513: the receiver whose sub receiver ownerUi is in the loudspeaker
+// mix, or null -- the sub receiver runs, and its receiver is there, not muted
+// (the mute is the pair's) and not taken by FTX. *spOut: the sub receiver.
+const Hl2Backend::Receiver* Hl2Backend::subInMix(int ownerUi, const SplitVfo** spOut) const
+{
+    const SplitVfo* sp = splitOfOwner(ownerUi);
+    if (!sp)
+        return nullptr;
+    const int ddc = ddcForSlice(ownerUi);
+    const Receiver* r = rx(ddc);
+    if (!r || !r->dsp || r->audioMuted || ddc == m_ftxDdc)
+        return nullptr;
+    if (spOut)
+        *spOut = sp;
+    return r;
+}
+
+// Build 513: a block of sub receiver ownerUi for the GUI-thread mixer (the
+// old path, mixReceiverAudio): queued only -- its receiver's block, which
+// follows it, makes the mix.
+void Hl2Backend::mixSubAudio(int ownerUi, const std::vector<float>& pcm)
+{
+    if (ownerUi < 0 || ownerUi >= kSplitOwners)
+        return;
+    auto& q = m_mixPendingSub[static_cast<std::size_t>(ownerUi)];
+    if (m_rxAudioMuted || !subInMix(ownerUi)) {
+        q.clear();
+        return;
+    }
+    q.insert(q.end(), pcm.begin(), pcm.end() - static_cast<std::ptrdiff_t>(pcm.size() & 1));
+    constexpr std::size_t kCap = 8 * kMixStarvationSamples;
+    if (q.size() > kCap)
+        q.erase(q.begin(), q.begin() + static_cast<std::ptrdiff_t>((q.size() - kCap + 1) & ~std::size_t{1}));
 }
 
 void Hl2Backend::releaseReceiverDsps()
@@ -3585,6 +3687,8 @@ void Hl2Backend::releaseReceiverDsps()
     // The mix buffers describe the set that just went away.
     m_mixAccum.clear();
     m_mixPending.clear();
+    for (auto& q : m_mixPendingSub)   // build 513
+        q.clear();
     // The DSP-dependent half of the index map is no longer true. The DDC and UI
     // numbers stay, because those are ours and outlive any DSP.
     for (const auto& ids : m_ids.all()) {
@@ -5701,7 +5805,10 @@ void Hl2Backend::setSliceAudioMute(int sliceId, bool mute)
     const int ddc = ddcForSlice(sliceId);
     if (ddc >= 0 && static_cast<std::size_t>(ddc) < m_mixPending.size())
         m_mixPending[static_cast<std::size_t>(ddc)].clear();
+    for (auto& q : m_mixPendingSub)   // build 513: the mute is the pair's
+        q.clear();
     pushAudioMix();   // build 373: a receiver out of the mix has its queue dropped there
+    ananPushCodecMix();   // build 513: and the codec's mixer at once
     qCDebug(lcHl2) << "HL2: slice" << sliceId << (mute ? "muted" : "unmuted");
     emitSliceState(ddc);
 }
@@ -5719,9 +5826,7 @@ void Hl2Backend::setSliceAudioGain(int sliceId, int gainPercent)
         return;
     }
     r->audioGain = scaled;
-    if (splitOfOwner(sliceId))
-        pushSplitBalance(sliceId);   // build 486: the SPLIT VFO's volume is kept against this one
-    pushAudioMix();   // build 373
+    pushAudioMix();   // build 373 (build 513: this receiver's fader only -- its sub receiver has its own)
     emitSliceState(ddcForSlice(sliceId));
     notifyOperatingStateChanged();
 }
@@ -5743,9 +5848,7 @@ void Hl2Backend::setSliceAudioPan(int sliceId, int panPercent)
         return;
     }
     r->audioPanPercent = clamped;
-    if (splitOfOwner(sliceId))
-        pushSplitBalance(sliceId);   // build 471: the main receiver's balance in the pair
-    pushAudioMix();   // build 373
+    pushAudioMix();   // build 373 (build 513: this receiver's balance only)
     notifyOperatingStateChanged();
 }
 
@@ -7215,6 +7318,8 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
     // stalest blocks in the buffer and would play out ahead of live audio.
     for (auto& q : m_mixPending)
         q.clear();
+    for (auto& q : m_mixPendingSub)   // build 513
+        q.clear();
     if (m_audioMixer)   // build 373
         m_audioMixer->flushAll();
 
@@ -7783,12 +7888,27 @@ void Hl2Backend::ananPushCodecMix()
             if (!r.dsp || r.audioMuted || static_cast<int>(i) == m_ftxDdc)   // build 380
                 continue;
             const float g = r.audioGain;
-            const int pan = mixPanPercent(static_cast<int>(i));   // build 471
+            const int pan = r.audioPanPercent;
             p.dsp[i] = r.dsp;
             p.lw[i] = g * (pan <= kAudioPanCentre ? 1.0f
                                                    : static_cast<float>(100 - pan) / kAudioPanCentre);
             p.rw[i] = g * (pan >= kAudioPanCentre ? 1.0f
                                                    : static_cast<float>(pan) / kAudioPanCentre);
+        }
+        // Build 513: the sub receivers, with their own fader and balance.
+        for (int o = 0; o < kSplitOwners && kCodecMixMax + o < kCodecMixSlots; ++o) {
+            const SplitVfo* sp = nullptr;
+            const Receiver* owner = subInMix(o, &sp);
+            if (!owner)
+                continue;
+            const auto slot = static_cast<std::size_t>(kCodecMixMax + o);
+            const float g = sp->gain;
+            const int pan = sp->panPercent;
+            p.dsp[slot] = owner->dsp;
+            p.lw[slot] = g * (pan <= kAudioPanCentre ? 1.0f
+                                                      : static_cast<float>(100 - pan) / kAudioPanCentre);
+            p.rw[slot] = g * (pan >= kAudioPanCentre ? 1.0f
+                                                      : static_cast<float>(pan) / kAudioPanCentre);
         }
     }
     m_codecIoMixActive = p.active;
@@ -7802,7 +7922,7 @@ void Hl2Backend::ananPushCodecMix()
     m_codecMixParams = p;
 }
 
-void Hl2Backend::ananIoCodecAudio(const void* dsp, const std::vector<float>& pcm)
+void Hl2Backend::ananIoCodecAudio(const void* dsp, const std::vector<float>& pcm, bool sub)
 {
     // I/O thread (Hl2RxDsp::audioReady, DirectConnection). Touches only the
     // m_io* members, the parameter snapshot and P2Transport, which lives here.
@@ -7823,13 +7943,22 @@ void Hl2Backend::ananIoCodecAudio(const void* dsp, const std::vector<float>& pcm
     }
     m_ioWasActive = true;
     int idx = -1;
-    for (int i = 0; i < kCodecMixMax; ++i)
-        if (p.dsp[static_cast<std::size_t>(i)] == dsp)
+    // Build 513: a receiver's block is looked up among the receivers, a sub
+    // receiver's among the sub slots (the same chain is the key of both).
+    for (int i = sub ? kCodecMixMax : 0; i < (sub ? kCodecMixSlots : kCodecMixMax); ++i)
+        if (dsp && p.dsp[static_cast<std::size_t>(i)] == dsp)
             idx = i;
     if (idx < 0 || pcm.size() < 2)
         return;
     auto& q = m_ioMixQ[static_cast<std::size_t>(idx)];
     q.insert(q.end(), pcm.begin(), pcm.end() - static_cast<std::ptrdiff_t>(pcm.size() & 1));
+    if (sub) {
+        // Only queued: its receiver's block, which follows it, makes the mix.
+        constexpr std::size_t kSubCap = 19200;   // samples (400 ms)
+        if (q.size() > kSubCap)
+            q.erase(q.begin(), q.begin() + static_cast<std::ptrdiff_t>((q.size() - kSubCap + 1) & ~std::size_t{1}));
+        return;
+    }
 
     // Mix what every contributor can supply (they share the radio's clock);
     // a stalled one is mixed as silence past ~100 ms, as in mixReceiverAudio().
@@ -7853,7 +7982,9 @@ void Hl2Backend::ananIoCodecAudio(const void* dsp, const std::vector<float>& pcm
     if (n == 0)
         return;
     m_ioMixOut.assign(n, 0.0f);
-    for (int i = 0; i < kCodecMixMax; ++i) {
+    // Build 513: every slot -- the sub receivers too, with what they have
+    // (they did not take part in n above).
+    for (int i = 0; i < kCodecMixSlots; ++i) {
         const auto ui = static_cast<std::size_t>(i);
         if (!p.dsp[ui])
             continue;
@@ -7866,7 +7997,7 @@ void Hl2Backend::ananIoCodecAudio(const void* dsp, const std::vector<float>& pcm
         src.erase(src.begin(), src.begin() + static_cast<std::ptrdiff_t>(take));
     }
     // Queues of receivers no longer in the mix must not grow.
-    for (int i = 0; i < kCodecMixMax; ++i)
+    for (int i = 0; i < kCodecMixSlots; ++i)
         if (!p.dsp[static_cast<std::size_t>(i)])
             m_ioMixQ[static_cast<std::size_t>(i)].clear();
     // ANAN-100D port: MON (ananMonitorTx) rides on this stream, both on the
@@ -13163,8 +13294,7 @@ void Hl2Backend::splitOn(int ownerUi, double hz)
     const double shift = dspShiftHz(hz, r->ncoHz) - cwBfoHz(r->mode);
     QMetaObject::invokeMethod(r->dsp, "setSubReceiver", Qt::QueuedConnection,
                               Q_ARG(bool, true), Q_ARG(double, shift));
-    pushSplitBalance(ownerUi);   // build 471: the stereo pair, made in the chain
-    pushAudioMix();       // ... and the mixers' pan for this receiver at the centre
+    pushSplitBalance(ownerUi);   // build 513: the sub receiver into the mixers, with its own fader and balance
     if (!was) {
         // A split transmits on its second VFO.
         if (m_txDdc != ddc)
@@ -13197,7 +13327,8 @@ void Hl2Backend::splitOff(int ownerUi, const char* why)
                                   Q_ARG(bool, false), Q_ARG(double, 0.0));
     emit sliceRemoved(splitUiOf(ownerUi));
     withdrawSliceLevelMeter(splitUiOf(ownerUi));   // build 472
-    pushAudioMix();   // build 471: the receiver's own pan back in the mixers
+    m_mixPendingSub[static_cast<std::size_t>(ownerUi)].clear();
+    pushSplitBalance(ownerUi);   // build 513: the sub receiver out of the mixers
     if (r) {
         if (wasTx && ddc == m_txDdc)
             setTxFrequency(r->sliceFreqHz);
@@ -13207,27 +13338,12 @@ void Hl2Backend::splitOff(int ownerUi, const char* why)
 
 void Hl2Backend::pushSplitBalance(int ownerUi)
 {
-    const SplitVfo* sp = splitOfOwner(ownerUi);
-    const Receiver* r = rx(ddcForSlice(ownerUi));
-    if (!sp || !r || !r->dsp)
-        return;
-    // Build 476: each VFO its own balance again (475 tied them; the operator
-    // sets the sub receiver's from RX Controls with A' / B' selected).
-    QMetaObject::invokeMethod(r->dsp, "setSplitBalance", Qt::QueuedConnection,
-                              Q_ARG(int, r->audioPanPercent), Q_ARG(int, sp->panPercent));
-    QMetaObject::invokeMethod(r->dsp, "setSplitGain", Qt::QueuedConnection,   // build 486
-                              Q_ARG(float, r->audioGain), Q_ARG(float, sp->gain));
-}
-
-int Hl2Backend::mixPanPercent(int ddc) const
-{
-    const Receiver* r = rx(ddc);
-    if (!r)
-        return kAudioPanCentre;
-    for (int o = 0; o < kSplitOwners; ++o)
-        if (splitOfOwner(o) && ddc == ddcForSlice(o))
-            return kAudioPanCentre;
-    return r->audioPanPercent;
+    // Build 513: the sub receiver is a contributor of its own in every mixer
+    // (its fader and balance there, beside its receiver's); nothing of the
+    // pair is mixed in the receiver's chain any more.
+    Q_UNUSED(ownerUi);
+    pushAudioMix();
+    ananPushCodecMix();
 }
 
 void Hl2Backend::pushSplitShift(int ownerUi)
