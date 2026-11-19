@@ -2271,8 +2271,10 @@ bool P2Transport::psBypassesBank(int adc) const
     // on every transmission (482) together with the feedback input (438) --
     // is "PS Coupler Always when TX"; "Bypass BPF When TX" is the bypass
     // alone.
+    // Build 506: "Bypass BPF2 When TX" -- ADC2's bank on every transmission
+    // (else, as before, only for PureSignal's feedback on ADC2).
     return adc == 0 ? (m_psEnabled || m_txBypassBpf || m_psCouplerOnTx)
-                    : (m_psEnabled && m_psAdc == adc);
+                    : ((m_psEnabled && m_psAdc == adc) || (adc == 1 && m_txBypassBpf2));
 }
 
 void P2Transport::setTxBypassBpf(bool on)
@@ -2280,7 +2282,17 @@ void P2Transport::setTxBypassBpf(bool on)
     if (on == m_txBypassBpf)
         return;
     m_txBypassBpf = on;
-    qCInfo(lcAnanP2T) << "ANAN P2 transport: Bypass BPF When TX" << (on ? "on" : "off");
+    qCInfo(lcAnanP2T) << "ANAN P2 transport: Bypass BPF1 When TX" << (on ? "on" : "off");
+    if (m_run && m_configured)
+        sendHighPriority(true);
+}
+
+void P2Transport::setTxBypassBpf2(bool on)
+{
+    if (on == m_txBypassBpf2)
+        return;
+    m_txBypassBpf2 = on;
+    qCInfo(lcAnanP2T) << "ANAN P2 transport: Bypass BPF2 When TX" << (on ? "on" : "off");
     if (m_run && m_configured)
         sendHighPriority(true);
 }

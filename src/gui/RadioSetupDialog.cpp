@@ -4302,10 +4302,15 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
         "Not applied while PureSignal takes its feedback on that ADC.");
     // Build 502 (operator, 18.11): what switches on transmit with PureSignal
     // off (with it on, both always do).
-    auto* txBypassChk = mkChk("Bypass BPF When TX", "ananHwTxBypassBpf",
-        "Bypass the receive band-pass filter on every transmission.\n"
+    auto* txBypassChk = mkChk("Bypass BPF1 When TX", "ananHwTxBypassBpf",
+        "Bypass the first receiver's band-pass filter (BPF1) on every transmission.\n"
         "Off: only while PureSignal is on. For the 7000DLE / 8000DLE / G2;\n"
         "other radios are sent the protocol's bypass bit all the same.");
+    // Build 506.
+    auto* txBypass2Chk = mkChk("Bypass BPF2 When TX", "ananHwTxBypassBpf2",
+        "Bypass the second receiver's band-pass filter (BPF2) on every transmission.\n"
+        "Off: only while PureSignal takes its feedback on ADC2.\n"
+        "For the 7000DLE / 8000DLE / G2 (radios with a second filter bank).");
     auto* psCouplerChk = mkChk("PS Coupler Always when TX", "ananHwPsCouplerOnTx",
         "Switch the PureSignal feedback path (the coupler, or the input chosen\n"
         "in the PureSignal applet) on every transmission -- to watch the own\n"
@@ -4360,7 +4365,7 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     const QPointer<QComboBox> pageGuard(modelCombo);   // build 439 (was the Dither box)
     m_hl2HardwareReseed = [this, pageGuard, noRadioLbl, controls,
                            modelCombo, psNote, micPttChk, micTipChk, micBiasChk, micXlrChk,
-                           gndChk, txBypassChk, psCouplerChk, connNone, connGroup, forceModelChk,
+                           gndChk, txBypassChk, txBypass2Chk, psCouplerChk, connNone, connGroup, forceModelChk,
                            forceNote] {
         if (!pageGuard)
             return;
@@ -4419,7 +4424,8 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
             micXlrChk->setChecked(m.value(QStringLiteral("ananMicXlr")).toBool());
             gndChk->setChecked(m.value(QStringLiteral("ananAdc2GndOnTx"), true).toBool());
             {   // build 502
-                const QSignalBlocker b1(txBypassChk), b2(psCouplerChk);
+                const QSignalBlocker b1(txBypassChk), b2(psCouplerChk), b3(txBypass2Chk);
+                txBypass2Chk->setChecked(m.value(QStringLiteral("ananTxBypassBpf2")).toBool());
                 txBypassChk->setChecked(m.value(QStringLiteral("ananTxBypassBpf")).toBool());
                 psCouplerChk->setChecked(m.value(QStringLiteral("ananPsCouplerOnTx")).toBool());
             }
@@ -4488,6 +4494,9 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     });
     connect(txBypassChk, &QCheckBox::toggled, this, [apply](bool on) {
         apply(QVariantMap{{QStringLiteral("ananTxBypassBpf"), on}});
+    });
+    connect(txBypass2Chk, &QCheckBox::toggled, this, [apply](bool on) {
+        apply(QVariantMap{{QStringLiteral("ananTxBypassBpf2"), on}});
     });
     connect(psCouplerChk, &QCheckBox::toggled, this, [apply](bool on) {
         apply(QVariantMap{{QStringLiteral("ananPsCouplerOnTx"), on}});

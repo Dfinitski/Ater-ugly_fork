@@ -8459,6 +8459,16 @@ errcheck — новых ошибок нет; фиктивный символ —
 
 Не проверено на радио.
 
+## 481. Сборка 506: «Bypass BPF1 When TX» и «Bypass BPF2 When TX»
+
+Оператор (18.11): добавить галку обхода и для второго приёмника; первую назвать BPF1, вторую BPF2.
+
+- «Bypass BPF When TX» переименована в «Bypass BPF1 When TX» (ключ `AnanTxBypassBpf` прежний).
+- Новая «Bypass BPF2 When TX» (`AnanTxBypassBpf2`, поле `ananTxBypassBpf2`, `P2Transport::setTxBypassBpf2`): на передаче банк ADC2 в обходе (`psBypassesBank(1)`; P2 — `adc1Filter`, P1 — C0 0x24 C1). Без галки — как было: только при PureSignal с обратной связью на ADC2. У плат без второго банка слать нечего.
+- Галка «RX2 input grounded on transmit» не тронута: заземление входа ADC2 на передаче работает независимо от обхода.
+
+Не проверено на радио.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

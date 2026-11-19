@@ -193,6 +193,8 @@ public:
     // TX" -- the coupler path (Alex PS bit, feedback input) on every
     // transmission (else only with PureSignal on).
     Q_INVOKABLE void setTxBypassBpf(bool on);
+    // Build 506: "Bypass BPF2 When TX" -- the same for ADC2's bank.
+    Q_INVOKABLE void setTxBypassBpf2(bool on);
     Q_INVOKABLE void setPsCouplerOnTx(bool on);
     // Build 396: Thetis' "BPF ByPass on PS" (Setup, ORION MkII / Saturn
     // boards, on by default): while transmitting with PureSignal on, the
@@ -756,7 +758,8 @@ private:
     bool m_micBoost = false;
     std::uint8_t m_micControl = 0;
     bool m_adc1GndOnTx = true;
-    bool m_txBypassBpf = false;     // build 502: "Bypass BPF When TX"
+    bool m_txBypassBpf = false;     // build 502: "Bypass BPF1 When TX"
+    bool m_txBypassBpf2 = false;    // build 506: "Bypass BPF2 When TX"
     bool m_psCouplerOnTx = false;   // build 502: "PS Coupler Always when TX"
     [[nodiscard]] bool psBypassesBank(int adc) const;
     std::array<std::atomic<int>, 32> m_forcedBoardFor{};   // reported id -> forced id
