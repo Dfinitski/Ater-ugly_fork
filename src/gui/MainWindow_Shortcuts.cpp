@@ -968,17 +968,14 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         QToolTip::showText(helpEvent->globalPos(), tooltip, m_tnfIndicator);
         return true;
     }
-    if (obj == m_stationNickLabel && event->type() == QEvent::MouseButtonDblClick) {
-        // Build 253 (operator, 10.11): the station text is the nickname, so a
-        // double click opens where it is set, with the field ready to edit.
-        if (RadioSetupDialog* dlg = openRadioSetupPage(QStringLiteral("Radio"))) {
-            QTimer::singleShot(0, dlg, [dlg] {
-                if (auto* edit = dlg->findChild<QLineEdit*>(QStringLiteral("radioNicknameEdit"))) {
-                    edit->setFocus(Qt::OtherFocusReason);
-                    edit->selectAll();
-                }
-            });
-        }
+    // ANAN fork build 512 (operator, 19.11): a click on the station name in
+    // the middle of the bottom bar opens the device settings (Radio Setup,
+    // the radio model's page). It replaces build 253's double click to the
+    // nickname field: the two would fight over the same dialog.
+    if (obj == m_stationNickLabel && event->type() == QEvent::MouseButtonRelease) {
+        auto* me = static_cast<QMouseEvent*>(event);
+        if (me->button() == Qt::LeftButton && m_stationNickLabel->rect().contains(me->pos()))
+            openRadioSetupPage(QStringLiteral("ANAN Hardware"));
         return true;
     }
     // The context-menu key and Shift+F10 open the keyer-source chooser on the

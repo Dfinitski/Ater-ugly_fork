@@ -6313,11 +6313,12 @@ void MainWindow::buildUI()
     m_stationNickLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     m_stationNickLabel->setFixedHeight(kStationBoxHeightPx);
     setStatusBarStationText(m_stationNickLabel, m_stationNickLabel->text());
-    // Build 253 (operator, 10.11): an ordinary arrow; a double click opens
-    // the place the text is set (Radio Setup > Radio > Nickname).
+    // Build 253 (operator, 10.11): an ordinary arrow. Build 512 (19.11): a
+    // click opens the device settings (MainWindow::eventFilter).
     m_stationNickLabel->setCursor(Qt::ArrowCursor);
-    m_stationNickLabel->setToolTip(tr("Station name -- the radio's nickname.\n"
-                                      "Double-click to change it (Radio Setup > Radio > Nickname)."));
+    m_stationNickLabel->setToolTip(tr("Station name -- the radio's nickname\n"
+                                      "(set in Radio Setup > Radio > Nickname).\n"
+                                      "Click to open the device settings."));
     m_stationNickLabel->installEventFilter(this);
     hbox->addWidget(m_stationNickLabel, 0, Qt::AlignVCenter);
     m_stationLabel = m_stationNickLabel;  // alias for existing references
