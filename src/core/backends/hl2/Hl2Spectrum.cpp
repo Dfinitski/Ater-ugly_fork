@@ -321,14 +321,31 @@ void Hl2Spectrum::computeFrame(std::vector<float>& binsDbfs)
 {
     // Remove the frame's DC offset (the ADC offset lives on I in direct
     // sampling), then apply the window.
+    //
+    // ANAN fork build 514 (a user, 19.11: "with a very strong clean carrier
+    // tuned slowly across the panadapter a phantom appears -- a one-bin
+    // spike the receiver does not hear"). OUR ERROR: the offset was taken as
+    // the plain mean of the frame. A carrier that does not make a whole
+    // number of turns in the frame has a mean of its own, carrier / (pi *
+    // turns), and subtracting that constant put a spike at the centre of the
+    // span that is not in the I/Q: -80 dBc with a carrier 5 kHz off centre
+    // (64 k points at 192 kHz), coming and going as the carrier moves. The
+    // offset is now the mean under the SAME window the transform uses --
+    // the centre bin's own content. A constant offset is removed exactly as
+    // before; a carrier elsewhere reaches it only through the window's far
+    // sidelobes (below the noise).
     double meanRe = 0.0, meanIm = 0.0;
-    for (std::size_t i = 0; i < m_accCount; ++i) {
-        const auto s = accAt(i);
-        meanRe += s.real();
-        meanIm += s.imag();
+    const double windowSum = 2.0 * m_coherentGain;
+    if (windowSum > 0.0) {
+        for (int n = 0; n < m_fftSize; ++n) {
+            const double w = m_window[static_cast<std::size_t>(n)];
+            const auto s = accAt(static_cast<std::size_t>(n));
+            meanRe += static_cast<double>(s.real()) * w;
+            meanIm += static_cast<double>(s.imag()) * w;
+        }
+        meanRe /= windowSum;
+        meanIm /= windowSum;
     }
-    meanRe /= m_fftSize;
-    meanIm /= m_fftSize;
 
     auto* in = static_cast<fftw_complex*>(m_in);
     for (int n = 0; n < m_fftSize; ++n) {
