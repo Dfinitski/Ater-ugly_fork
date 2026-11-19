@@ -2536,6 +2536,12 @@ void MainWindow::requestSliceClose(int sliceId)
         statusBar()->showMessage(tr("Cannot close the last slice"), 4000);
         return;
     }
+    // Build 511: receiver A is the base receiver of an ANAN (SPLIT counts
+    // transmit from it) and stays whatever else is open.
+    if (sliceId == 0 && !m_radioModel.usesFlexCommandPlane()) {
+        statusBar()->showMessage(tr("Receiver A is the base receiver: it cannot be closed"), 4000);
+        return;
+    }
     // Capture before the request: a backend that confirms synchronously has
     // already retired the SliceModel by the time removeSlice() returns.
     const SliceModel* slice = m_radioModel.slice(sliceId);
@@ -2552,6 +2558,47 @@ void MainWindow::requestSliceClose(int sliceId)
     // that letter (#3854 review).
     if (lockOnSlice)
         clearCenterLockForPan(panId, /*clearPersistedIntent=*/true);
+}
+
+// The former "+RX": another independent receiver. On a radio whose receivers
+// are one per panadapter (HL2 / ANAN: canCreateSlices false) it is added as a
+// new panadapter, through the same layout path as the pan menu.
+void MainWindow::addReceiverFromPan(const QString& panId)
+{
+    const RadioCapabilities caps = m_radioModel.backendCapabilities();
+    if (!caps.canCreateSlices && caps.panLifecycleControl.has_value()) {
+        const int pans = m_panStack ? m_panStack->count() : 1;
+        if (pans < caps.maxPanadapters) {
+            static const QMap<int, QString> kLayouts = {
+                {2, QStringLiteral("2v")}, {3, QStringLiteral("2h1")},
+                {4, QStringLiteral("2x2")}};
+            applyPanLayout(kLayouts.value(pans + 1, QStringLiteral("2v")));
+        } else {
+            statusBar()->showMessage(
+                QString("%1 supports a maximum of %2 receivers")
+                    .arg(m_radioModel.model()).arg(caps.maxPanadapters), 4000);
+        }
+        return;
+    }
+    int limit = m_radioModel.maxSlices();
+    if (m_radioModel.slices().size() < limit) {
+        m_radioModel.addSliceOnPan(panId);
+    } else {
+        statusBar()->showMessage(
+            QString("%1 supports a maximum of %2 slices")
+                .arg(m_radioModel.model()).arg(limit), 4000);
+    }
+}
+
+// ANAN fork build 511 (operator, 19.11: "make receiver A the base one and
+// never remove it, whatever else is open"): true for the panadapter that
+// carries receiver A on an ANAN.
+bool MainWindow::ananBaseReceiverPan(const QString& panId) const
+{
+    if (m_radioModel.usesFlexCommandPlane())
+        return false;
+    const SliceModel* base = m_radioModel.slice(0);
+    return base && !panId.isEmpty() && base->panId() == panId;
 }
 
 void MainWindow::onSliceRemoved(int id)
@@ -4628,6 +4675,11 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             this, [this](const QString& panId) {
         // Don't close the last pan
         if (m_panStack->count() <= 1) return;
+        if (ananBaseReceiverPan(panId)) {   // build 511
+            statusBar()->showMessage(
+                tr("Receiver A is the base receiver: its panadapter cannot be closed"), 4000);
+            return;
+        }
         clearCenterLockForPan(panId, true);
         // Single source of truth for teardown: removePanadapter sends the
         // FlexLib-correct "display pan remove" + "display panafall remove"
@@ -5825,32 +5877,36 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     // ── +RX / +TNF buttons ───────────────────────────────────────────────
     connect(menu, &SpectrumOverlayMenu::addRxClicked,
             this, [this](const QString& panId) {
-        // ANAN-100D port: on a radio whose receivers are one per panadapter
-        // (HL2 / ANAN: canCreateSlices false), +RX adds the next receiver as
-        // a new panadapter, through the same layout path as the pan menu.
-        const RadioCapabilities caps = m_radioModel.backendCapabilities();
-        if (!caps.canCreateSlices && caps.panLifecycleControl.has_value()) {
-            const int pans = m_panStack ? m_panStack->count() : 1;
-            if (pans < caps.maxPanadapters) {
-                static const QMap<int, QString> kLayouts = {
-                    {2, QStringLiteral("2v")}, {3, QStringLiteral("2h1")},
-                    {4, QStringLiteral("2x2")}};
-                applyPanLayout(kLayouts.value(pans + 1, QStringLiteral("2v")));
+        // ANAN fork build 511 (operator, 19.11): the button is "SubRX" --
+        // it switches the sub receiver (A' / B') of this panadapter's
+        // receiver on, and off on the next press. Receivers C and D have
+        // none. Another independent receiver is added from the panadapter
+        // layout menu (and the FTX bar's "+RX", addReceiverFromPan).
+        if (m_radioModel.isConnected() && !m_radioModel.usesFlexCommandPlane()) {
+            int owner = -1;
+            for (SliceModel* s : m_radioModel.slices()) {
+                if (s && s->sliceId() >= 0 && s->sliceId() < 4 && s->panId() == panId)
+                    owner = s->sliceId();
+            }
+            if (owner != 0 && owner != 1) {
+                statusBar()->showMessage(tr("Only receivers A and B have a sub receiver"), 4000);
+                return;
+            }
+            if (SliceModel* sub = m_radioModel.slice(6 + owner)) {
+                // Build 487: what it had waits for the next time (and stays
+                // in the band / quick / station memories).
+                auto& p = RecallSnapshot::pendingSub(owner);
+                p.freqMhz = sub->frequency();
+                p.vol = static_cast<int>(sub->audioGain());
+                p.pan = sub->audioPan();
+                p.agcT = sub->agcThreshold();   // build 489
+                ananSetSplit(owner, false);
             } else {
-                statusBar()->showMessage(
-                    QString("%1 supports a maximum of %2 receivers")
-                        .arg(m_radioModel.model()).arg(caps.maxPanadapters), 4000);
+                ananSetSplit(owner, true);
             }
             return;
         }
-        int limit = m_radioModel.maxSlices();
-        if (m_radioModel.slices().size() < limit) {
-            m_radioModel.addSliceOnPan(panId);
-        } else {
-            statusBar()->showMessage(
-                QString("%1 supports a maximum of %2 slices")
-                    .arg(m_radioModel.model()).arg(limit), 4000);
-        }
+        addReceiverFromPan(panId);
     });
     connect(menu, &SpectrumOverlayMenu::memoryActivated,
             this, [this](int memoryIndex, const QString& panId) {
@@ -6519,22 +6575,13 @@ void MainWindow::wireVfoWidget(VfoWidget* w, SliceModel* s)
         // a tenth of the wider half of the panadapter on screen away from
         // this VFO, on that side; transmit goes onto it.
         if (m_radioModel.isConnected() && !m_radioModel.usesFlexCommandPlane()) {
-            // Build 476: receivers 1 and 2 each have their own SPLIT VFO
-            // (slice 6 = A', 7 = B'); receivers 3 and 4 have none.
-            if (sliceId < 0 || sliceId > 1)
-                return;
-            if (SliceModel* sub = m_radioModel.slice(6 + sliceId)) {
-                // Build 487: what it had waits for the next SPLIT (and stays
-                // in the band / quick / station memories).
-                auto& p = RecallSnapshot::pendingSub(sliceId);
-                p.freqMhz = sub->frequency();
-                p.vol = static_cast<int>(sub->audioGain());
-                p.pan = sub->audioPan();
-                p.agcT = sub->agcThreshold();   // build 489
-                ananSetSplit(sliceId, false);
-            } else {
-                ananSetSplit(sliceId, true);
-            }
+            // Build 511 (operator, 19.11): the label is an indicator; a click
+            // on it while transmit is somewhere else puts transmit back on
+            // receiver A, and otherwise does nothing. The sub receivers stay
+            // as they are ("SubRX" of the side menu switches them).
+            SliceModel* base = m_radioModel.slice(0);
+            if (base && !base->isTxSlice())
+                base->setTxSlice(true);
             return;
         }
         if (!m_splitActive) {

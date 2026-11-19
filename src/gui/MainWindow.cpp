@@ -9598,6 +9598,18 @@ void MainWindow::updateSplitState()
         // change places, the names stay).
         constexpr int kAnanSplitUiBase = 6;   // Hl2Backend::kSplitUiBase
         const bool anan = !m_radioModel.usesFlexCommandPlane();
+        // Build 511 (operator, 19.11): SPLIT on a receiver's flag is an
+        // indicator again -- lit while transmit is assigned to anything but
+        // receiver A (B, C, D or a sub receiver), on every receiver's flag. A
+        // click on the lit label puts transmit back on A (the splitToggled
+        // handler); the sub receivers are switched by "SubRX" of the side menu.
+        bool txOffBase = false;
+        if (anan) {
+            for (auto* t : m_radioModel.slices()) {
+                if (t && t->isTxSlice() && t->sliceId() != 0)
+                    txOffBase = true;
+            }
+        }
         for (auto* s : m_radioModel.slices()) {
             auto* w = sw->vfoWidget(s->sliceId());
             if (!w) continue;
@@ -9613,7 +9625,11 @@ void MainWindow::updateSplitState()
                 // Build 477 (operator): SWAP moves the frequencies only; each
                 // VFO keeps its name.
                 w->setVfoName(QString());
-                w->setSplitTextLit(inPair);
+                w->setSplitTextLit(txOffBase);
+                // Build 511: receiver A is the base receiver and is never closed.
+                w->setCloseToolTip(id == 0
+                    ? tr("Receiver A is the base receiver: it cannot be closed")
+                    : QString());
                 w->setTxPartner(!inPair ? nullptr : isSub ? owner : sub);
                 w->setSubSlice(nullptr);
                 if (inPair) {
@@ -9637,8 +9653,19 @@ void MainWindow::updateSplitState()
     };
 
     if (m_panStack) {
-        for (auto* applet : m_panStack->allApplets())
-            if (applet) applyToSpectrum(applet->spectrumWidget());
+        for (auto* applet : m_panStack->allApplets()) {
+            if (!applet) continue;
+            applyToSpectrum(applet->spectrumWidget());
+            // Build 511: the panadapter of the ANAN's base receiver A is
+            // never closed; its close button says so.
+            if (auto* cb = applet->closeButton()) {
+                const QString tip = ananBaseReceiverPan(applet->panId())
+                    ? tr("Receiver A is the base receiver: its panadapter cannot be closed")
+                    : tr("Close panadapter");
+                if (cb->toolTip() != tip)
+                    cb->setToolTip(tip);
+            }
+        }
     } else if (auto* sw = spectrum()) {
         applyToSpectrum(sw);
     }
@@ -11267,6 +11294,7 @@ void MainWindow::applyPanLayout(const QString& layoutId)
         for (int i = removalCandidates.size() - 1; i >= 0 && toRemove > 0; --i) {
             const QString panId = removalCandidates.at(i);
             if (panId == PanSliceTitle::kPlaceholderPanId) continue;
+            if (ananBaseReceiverPan(panId)) continue;   // build 511: receiver A stays
             qDebug() << "applyPanLayout: closing pan" << panId;
             // Route through removePanadapter so a layout-shrink tears down the
             // waterfall too ("display pan remove" + "display panafall remove"),

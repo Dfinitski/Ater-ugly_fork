@@ -378,11 +378,12 @@ void MainWindow::activateFtx(int sliceId)
     connect(view, &FtxView::exitRequested, this, [this] { deactivateFtx(); }, Qt::QueuedConnection);
     // Build 385: "+RX" of the bar is the "+RX" of this panadapter's side menu
     // (hidden with the panadapter) -- the same signal, so the same handler.
-    connect(view, &FtxView::addRxRequested, this, [applet = QPointer<PanadapterApplet>(applet)] {
+    connect(view, &FtxView::addRxRequested, this, [this, applet = QPointer<PanadapterApplet>(applet)] {
         if (!applet || !applet->spectrumWidget())
             return;
-        if (SpectrumOverlayMenu* menu = applet->spectrumWidget()->overlayMenu())
-            emit menu->addRxClicked(applet->panId());
+        // Build 511: the side menu's button is "SubRX" now; the bar's "+RX"
+        // still adds a receiver.
+        addReceiverFromPan(applet->panId());
     });
     // Build 387 (operator, 14.11: "the mode change -- block it too"): a mode
     // set from elsewhere (CAT, TCI, MIDI, a memory) does not end FTX any

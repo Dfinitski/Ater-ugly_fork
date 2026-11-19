@@ -113,6 +113,8 @@ public:
     // plain text as without a split, lit while the split is on.
     void setTxPartner(SliceModel* partner);
     void setSplitTextLit(bool lit);
+    // Build 511: the tooltip of the flag's close button (empty = none).
+    void setCloseToolTip(const QString& tip);
 
     // Flag direction hint. Auto/Force* flip to the other side when the panel would
     // overrun the spectrum edge (20 px). Lock* hold the side regardless; used by

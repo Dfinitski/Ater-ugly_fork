@@ -5861,11 +5861,18 @@ void VfoWidget::setTxPartner(SliceModel* partner)
     m_txPartner = partner;
 }
 
+void VfoWidget::setCloseToolTip(const QString& tip)
+{
+    if (m_closeSliceBtn && m_closeSliceBtn->toolTip() != tip)
+        m_closeSliceBtn->setToolTip(tip);
+}
+
 void VfoWidget::setSplitTextLit(bool lit)
 {
-    // The label as without a split (text, brighter under the mouse): dim
-    // while the split is off, bright while it is on -- inactive / active,
-    // no colour (build 476). A click toggles the split either way.
+    // The label as without a split (text, brighter under the mouse): dim /
+    // bright -- inactive / active, no colour (build 476). Build 511: lit
+    // means "transmit is not on receiver A"; a click on the lit label puts
+    // it back there, on the dim one does nothing (MainWindow).
     m_splitBadge->setText("SPLIT");
     m_splitBadge->setStyleSheet(lit
         ? QStringLiteral("QPushButton { background: transparent; border: none; "

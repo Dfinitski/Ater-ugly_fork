@@ -470,7 +470,10 @@ SpectrumOverlayMenu::SpectrumOverlayMenu(QWidget* parent)
     // use site below — tr() on a non-literal extracts nothing.
     const BtnDef defs[] = {
         // 0 — handled separately (signal has panId arg)
-        {"+RX",     "panMenuAddRxBtn",    QT_TR_NOOP("Add receive slice"),   -1, nullptr},
+        // ANAN fork build 511 (operator, 19.11): "+RX" is "SubRX" -- the sub
+        // receiver (A' / B') of this panadapter's receiver, on / off. The
+        // signal keeps its name; MainWindow decides by the radio.
+        {"SubRX",   "panMenuAddRxBtn",    QT_TR_NOOP("Sub receiver"),        -1, nullptr},
         // ANAN-100D port (operator, 03.11): the Wideband Monitor moved here
         // from Tools, under +RX.
         {"WB",      "panMenuWidebandBtn", QT_TR_NOOP("Wideband Monitor"),    -1, &SpectrumOverlayMenu::widebandClicked},
@@ -496,7 +499,7 @@ SpectrumOverlayMenu::SpectrumOverlayMenu(QWidget* parent)
             connect(btn, &QPushButton::clicked, this, &SpectrumOverlayMenu::toggleDisplayPanel);
         else if (def.specialIdx == 5)
             connect(btn, &QPushButton::clicked, this, &SpectrumOverlayMenu::toggleMemoryPanel);
-        else if (def.text == "+RX")
+        else if (def.text == "SubRX")
             connect(btn, &QPushButton::clicked, this, [this]() { emit addRxClicked(m_panId); });
         else if (def.sig)
             connect(btn, &QPushButton::clicked, this, def.sig);
@@ -505,7 +508,8 @@ SpectrumOverlayMenu::SpectrumOverlayMenu(QWidget* parent)
 
     // Menu button tooltips
     if (m_menuBtns.size() >= 7) {
-        m_menuBtns[kBtnAddRx]->setToolTip("Add a new receive slice on this panadapter.");
+        m_menuBtns[kBtnAddRx]->setToolTip("Sub receiver of this panadapter's receiver (A' / B'): on / off.\n"
+                                          "Receivers C and D have none.");
         m_menuBtns[kBtnWideband]->setToolTip("Wideband Monitor: the radio's ADC spectrum, 0 - 61.44 MHz.");
         m_menuBtns[kBtnBand]->setToolTip("Open band selector.");
         m_menuBtns[kBtnAnt]->setToolTip("Open antenna and RF gain controls.");
