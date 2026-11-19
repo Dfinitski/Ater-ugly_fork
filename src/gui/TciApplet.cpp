@@ -265,7 +265,9 @@ void TciApplet::buildUI()
     enableRow->addWidget(m_tciStatus, 1);
 
     const bool tciAutoStart = settings.value("AutoStartTCI", "False").toString() == "True";
-    m_tciEnable = new QPushButton(tciAutoStart ? "Enabled" : "Disabled");
+    // ANAN fork build 509 (operator, 18.11): the caption is always "Enable";
+    // the running state is the whole button lit (kGreenToggle, :checked).
+    m_tciEnable = new QPushButton(QStringLiteral("Enable"));
     m_tciEnable->setCheckable(true);
     m_tciEnable->setObjectName(QStringLiteral("tciEnable"));
     m_tciEnable->setAccessibleName(tr("TCI server enable"));
@@ -298,7 +300,6 @@ void TciApplet::buildUI()
     });
 
     connect(m_tciEnable, &QPushButton::toggled, this, [this](bool on) {
-        m_tciEnable->setText(on ? "Enabled" : "Disabled");
         int port = m_tciPort->text().toInt();
         if (port < 1024 || port > 65535) {
             port = 50001;
@@ -315,7 +316,6 @@ void TciApplet::buildUI()
                 if (!m_tciServer->isRunning() && m_tciEnable) {
                     QSignalBlocker b(m_tciEnable);
                     m_tciEnable->setChecked(false);
-                    m_tciEnable->setText("Disabled");
                     m_tciStatus->setText("(port in use)");
                     // Build 449: the likely culprit when the fork and the
                     // original AetherSDR (or another TCI program) both run.
@@ -553,7 +553,6 @@ void TciApplet::setTciEnabled(bool on)
     if (m_tciEnable) {
         QSignalBlocker b(m_tciEnable);
         m_tciEnable->setChecked(on);
-        m_tciEnable->setText(on ? "Enabled" : "Disabled");
     }
     updateTciStatus();
 #else
