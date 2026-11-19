@@ -280,6 +280,21 @@ long long TciProtocol::ddsCenterHz(RadioModel* model, const SliceModel* slice)
 
 // ── Init burst ─────────────────────────────────────────────────────────────
 
+// ANAN fork build 508 (operator's log, 18.11: TciCwSkimmer 0.7.5 set to 192 kHz
+// still sent "iq_samplerate:96000"). The only thing in the init burst that
+// said 96 kHz was "if_limits:-48000,48000", hard-coded from the Flex DAX I/Q
+// maximum -- the half-width of the I/Q band on offer, which a skimmer takes
+// as the widest it may ask for. The ANAN tap serves up to 384 kHz (the
+// receiver rate is raised to the request, TciServer::raiseReceiverRateForIq),
+// so its limits are +-192 kHz. A GET answered +-10 kHz; it gives the same now.
+static QString ifLimitsLine(RadioModel* model)
+{
+    const bool nativeIq = model && !model->backendCapabilities().hasDaxStreams
+                          && model->backendDeclaresExtension(QStringLiteral("hl2"));
+    const int half = nativeIq ? 192000 : 48000;
+    return QStringLiteral("if_limits:%1,%2;").arg(-half).arg(half);
+}
+
 QString TciProtocol::generateInitBurst()
 {
     QString burst;
@@ -289,7 +304,7 @@ QString TciProtocol::generateInitBurst()
     // latch settings on READY, so an early READY gives them defaults (notably a
     // wrong iq_samplerate). eesdr-tci imposes no pre-READY grammar.
     burst += QStringLiteral("vfo_limits:1000,75000000;");
-    burst += QStringLiteral("if_limits:-48000,48000;");
+    burst += ifLimitsLine(m_model);   // build 508
 
     const auto slices = m_model ? m_model->slices() : QList<SliceModel*>{};
     // #4567: with stable bindings, a transient hole (band-change settle
@@ -549,7 +564,7 @@ QString TciProtocol::handleCommand(const QString& cmd)
     if (name == "set_in_focus")     return cmdSetInFocus();
     if (name == "tx_frequency")     return cmdTxFrequency();
     if (name == "vfo_limits")       return QStringLiteral("vfo_limits:30000,54000000;");
-    if (name == "if_limits")        return QStringLiteral("if_limits:-10000,10000;");
+    if (name == "if_limits")        return ifLimitsLine(m_model);   // build 508
     if (name == "vfo_lock")         return cmdLock(args, isSet);  // alias
 
     // Bidirectional commands — isSet was already computed at the top of
