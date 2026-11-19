@@ -94,7 +94,10 @@ struct P1CcState {
     bool paEnabled = false;
     std::uint8_t micControl = 0;           // C0 0x14 C1 bits 4-6: TRS, bias, PTT
     int lineInGain = 0;
-    bool pureSignal = false;
+    bool pureSignal = false;               // C0 0x14 C2 bit 6
+    // Build 504: C0 0x24 C2 bit 6, the internal coupler's relay on the ORION
+    // MkII filter board (Thetis sends puresignal_run there too).
+    bool psCouplerRelay = false;
     std::array<int, 3> rxAttDb{};          // step attenuator ADC0..ADC2, 0..31 dB
     // C0 0x16 C1 while transmitting: 31 dB as Thetis, the PureSignal
     // attenuator when ADC1 carries the feedback (build 430).

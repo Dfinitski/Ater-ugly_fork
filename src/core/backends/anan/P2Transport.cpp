@@ -3021,12 +3021,14 @@ P1CcState P2Transport::p1State() const
         s.ddcHz[0] = tx;
         s.ddcHz[1] = tx;
     }
-    // Build 503 (operator, 18.11: "on Protocol 1 and a 7000 that checkbox must
-    // work; it is switching in the transceiver's circuit, not the receivers'"):
-    // "PS Coupler Always when TX" sends the PureSignal bit (C0 0x14 / 0x24,
-    // C2 bit 6) while transmitting with PureSignal off as well. The DDC
-    // frequencies above stay the receivers' -- that part is PureSignal's.
-    s.pureSignal = m_psEnabled || (m_mox && m_psCouplerOnTx);
+    // Build 504 (operator, 18.11: "it is not the PureSignal bit, it is the
+    // relay of the internal tap"). OUR ERROR in 503: the option raised both
+    // PureSignal bits. Thetis sends puresignal_run in two places: C0 0x14 C2
+    // bit 6, PureSignal itself, and C0 0x24 C2 bit 6 in the ORION MkII
+    // filter-board word (Protocol 2: Alex bit 18) -- the coupler's relay.
+    // "PS Coupler Always when TX" raises only the relay's bit on transmit.
+    s.pureSignal = m_psEnabled;
+    s.psCouplerRelay = m_psEnabled || (m_mox && m_psCouplerOnTx);
     s.txHz = tx;
     // The ADC for each receiver's DDC (2 bits per DDC); ANGELIA's DDC1 goes
     // with RX1. Single-ADC boards: all zero.
@@ -3082,7 +3084,7 @@ P1CcState P2Transport::p1State() const
     // on or off -- as Thetis' "Ext 1 on Tx" / "Rx BYPASS on Tx", which are
     // independent of PS.
     // Build 502: with PureSignal on, or on every transmission with "PS Coupler
-    // Always when TX" (build 503: the PureSignal bit goes with it, above).
+    // Always when TX" (build 504: the coupler relay bit goes with it, above).
     if (m_mox && m_psSource != 0 && (m_psEnabled || m_psCouplerOnTx)) {
         s.rxInputBits = 0x80;
         if (m_psSource == 1)
