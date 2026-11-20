@@ -631,7 +631,8 @@ void MidiControlManager::accumulateRelativeStep(const QString& paramId, int delt
 // source was not at hand). This is the law of a transceiver's dial:
 //  - the turning rate, in detents per second, is measured between the 20 ms
 //    flushes that carry steps, and smoothed over about three of them;
-//  - up to slowRate one detent is one step -- slow turning stays exact
+//  - (build 536: the two following points are one smooth curve now, see
+//    the function) up to slowRate one detent is one step -- slow turning stays exact
 //    (build 530: slowRate is the knob's own setting, MidiBinding::
 //    progressiveRate -- a 24-detent knob and a 400-pulse encoder turn at
 //    very different pulse rates);
@@ -658,9 +659,16 @@ int MidiControlManager::progressiveSteps(RelativeAccum& a, int steps, qint64 now
     const double dtS = std::max<qint64>(sinceMs, 10) / 1000.0;
     const double measured = std::abs(steps) / dtS;
     a.rate += kSmoothing * (measured - a.rate);
-    double multiplier = 1.0;
-    if (a.rate > kSlowRate)
-        multiplier = std::min(kMaxMultiplier, (a.rate / kSlowRate) * (a.rate / kSlowRate));
+    // ANAN fork build 536 (operator, 20.11: "the moment it goes over to the
+    // higher speed is too noticeable -- make the approach to the threshold
+    // bell-shaped"). The law was 1 below the threshold and (rate / slowRate)^2
+    // above it: continuous, but with a corner at the threshold, and a rate
+    // hovering there switched the growth on and off. Now one smooth curve
+    // with no corner, sqrt(1 + x^4) for x = rate / slowRate: 1.00 at a
+    // quarter of the threshold, 1.03 at half, 1.41 at it, then x^2 as before
+    // (2.5 at 1.5x, 4.1 at 2x, 9 at 3x), to kMaxMultiplier.
+    const double x = a.rate / kSlowRate;
+    const double multiplier = std::min(kMaxMultiplier, std::sqrt(1.0 + x * x * x * x));
     const double wanted = steps * multiplier + a.carry;
     const int whole = static_cast<int>(wanted);   // towards zero
     a.carry = wanted - whole;
