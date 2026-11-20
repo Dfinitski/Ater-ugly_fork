@@ -2120,8 +2120,11 @@ void P2Transport::setAdcAttenuation(int adc, int db)
     if (m_adcAtt[static_cast<std::size_t>(adc)] == db)
         return;
     m_adcAtt[static_cast<std::size_t>(adc)] = db;
-    if (m_run && m_configured)
+    if (m_run && m_configured) {
         sendHighPriority(true);
+        if (adc == 1 && !m_adc1FullAttOnTx)
+            sendTransmitSpecific();   // build 542: its transmit value is this one
+    }
 }
 
 void P2Transport::setLocalCodec(bool) {}
@@ -2307,6 +2310,26 @@ void P2Transport::setPsCouplerOnTx(bool on)
         sendHighPriority(true);
 }
 
+// ANAN fork build 542 (operator, 20.11: "Full ATT RX2 when TX -- 31 dB into
+// the protocol, there is a byte for it; on by default"). Protocol 2: byte 58
+// of the Transmitter Specific packet (ADC1's step attenuator while
+// transmitting). Protocol 1: C0 0x16 C1 while MOX (P1State::txAdc1AttDb).
+// Until now that byte followed the general transmit attenuator
+// (AnanTxAttenuationDb, 31 by default); it is this option's now: 31 dB when
+// on, ADC1's receive attenuation when off. PureSignal feedback on ADC1 keeps
+// its own value in both cases.
+void P2Transport::setAdc1FullAttOnTx(bool on)
+{
+    if (on == m_adc1FullAttOnTx)
+        return;
+    m_adc1FullAttOnTx = on;
+    qCInfo(lcAnanP2T) << "ANAN P2 transport: ADC2 (RX2) full attenuation on TX" << (on ? "on" : "off");
+    if (m_run && m_configured) {
+        sendTransmitSpecific();
+        sendHighPriority(true);
+    }
+}
+
 void P2Transport::setAdc1GroundOnTx(bool on)
 {
     if (on == m_adc1GndOnTx)
@@ -2390,8 +2413,11 @@ void P2Transport::sendTransmitSpecific()
 {
     if (!m_sock || m_p1)
         return;
+    // Build 542: ADC1 (RX2) -- 31 dB with "Full ATT RX2 when TX", otherwise
+    // its receive attenuation (nothing is added on transmit).
     const auto pkt = buildTransmitSpecific(m_txSpecSeq++, m_micBoost, effectiveCwKeyer(), m_txAttDb,
-                                           m_psEnabled ? m_psAttDb : -1, m_psAdc, m_micControl);
+                                           m_psEnabled ? m_psAttDb : -1, m_psAdc, m_micControl,
+                                           m_adc1FullAttOnTx ? kMaxStepAttenuationDb : m_adcAtt[1]);
     sendDatagram(*m_sock, pkt, m_txHost, kTransmitSpecificPort, m_counters.txBytes, m_counters.txPackets);
 }
 
@@ -3170,6 +3196,8 @@ P1CcState P2Transport::p1State() const
     // operator set it whichever byte the firmware takes.
     if (m_mox)
         s.rxAttDb[0] = s.txAdc0AttDb;
+    // Build 542: "Full ATT RX2 when TX" (see setAdc1FullAttOnTx).
+    s.txAdc1AttDb = m_adc1FullAttOnTx ? 31 : m_adcAtt[1];
     if (psTx && m_psAdc == 1)
         s.txAdc1AttDb = m_psAttDb;
     s.cwKeyer = effectiveCwKeyer().enabled;   // build 224: off outside the amateur bands

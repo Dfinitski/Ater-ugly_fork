@@ -187,6 +187,9 @@ public:
     Q_INVOKABLE void setMicControl(int bits);
     // Orion2BandPass boards: ADC1's input grounded while transmitting.
     Q_INVOKABLE void setAdc1GroundOnTx(bool on);
+    // Build 542: "Full ATT RX2 when TX" -- ADC1 (the RX2 input) at 31 dB
+    // while transmitting; off: its receive attenuation stays.
+    Q_INVOKABLE void setAdc1FullAttOnTx(bool on);
     // Build 502 (operator, 18.11; radio settings): "Bypass BPF When TX" --
     // the receive filter bank of ADC1 bypassed on every transmission (else
     // only with PureSignal on, ORION MkII boards); "PS Coupler Always when
@@ -769,6 +772,7 @@ private:
     // this session's protocol.
     [[nodiscard]] BoardProfile forcedProfileOr(const BoardProfile& reported) const;
     int m_txAttDb = 31;
+    bool m_adc1FullAttOnTx = true;   // build 542
     // Radio PTT release: the radio sends status only while PTT/TX is active,
     // and its last packet can still say "PTT"; silence means released.
     QElapsedTimer m_sinceStatus;

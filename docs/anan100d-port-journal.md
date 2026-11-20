@@ -9095,6 +9095,32 @@ MSVC: `SerialPortController.cpp(742): error C2027: use of undefined type 'QTimer
 («по первым двум проверено») относятся к более ранней сборке (533 / релиз), а 534–540 на радио не
 запускались.
 
+### 518. Сборка 542 — защита входа RX2 на передаче: «Full ATT RX2 when TX», «Ground RX2 When TX» (20.11)
+
+Задача оператора: в группе «Microphone & Connectors» укоротить подпись «PTT on tip…», сделать
+третью колонку с двумя галками, обе включены по умолчанию, при снятии — окно с предупреждением.
+
+- Подпись «PTT on tip, microphone on ring» → «PTT on tip» (подсказка прежняя).
+- Третья колонка (`connCol3`):
+  - **Full ATT RX2 when TX** (новая; `ananHwAdc2FullAtt`, настройка `AnanAdc2FullAttOnTx`, по
+    умолчанию True; hw.get / hw.set поле `ananAdc2FullAttOnTx`). `P2Transport::setAdc1FullAttOnTx`.
+    Protocol 2: байт 58 пакета Transmitter Specific (аттенюатор ADC1 на передаче) — новый параметр
+    `adc1TxAttenuationDb` у `buildTransmitSpecific`. Protocol 1: C0 0x16 C1 при MOX
+    (`P1State::txAdc1AttDb`). Включено — 31 дБ; выключено — приёмное значение аттенюатора ADC1
+    (на передаче ничего не добавляется; при смене приёмного значения пакет пересылается).
+    Раньше этот байт следовал общей настройке `AnanTxAttenuationDb` (31 по умолчанию) — теперь для
+    ADC1 решает галка; ADC0 и ADC2 — по-прежнему общая настройка. Обратная связь PureSignal на
+    ADC1 в обоих случаях ставит своё значение.
+  - **Ground RX2 When TX** — существовавшая «RX2 input grounded on transmit» (`AnanAdc2GndOnTx`,
+    реле 7000DLE / 8000DLE / G2), переименована и перенесена из первой колонки.
+  - Обе видны, когда у модели есть второй АЦП (как раньше у галки заземления).
+- Снятие любой из двух: `FramelessMessageBox::warning` «…can, in some cases, damage the RX2
+  receiver input…», Yes / Cancel (по умолчанию Cancel); при Cancel галка возвращается, в радио
+  ничего не уходит.
+
+Проверка: errcheck без новых диагностик, bogus-пробы = 1; тесты `anan_angelia_protocol_test`
+вызывают `buildTransmitSpecific` со старыми аргументами — совместимо. На радио не проверено.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

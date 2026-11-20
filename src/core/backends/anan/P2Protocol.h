@@ -361,7 +361,11 @@ std::array<std::uint8_t, 60> buildTransmitSpecific(std::uint32_t seq = 0,
                                                    int txAttenuationDb = 0,
                                                    int psFeedbackAttDb = -1,
                                                    int psFeedbackAdc = 0,
-                                                   std::uint8_t micControlBits = 0) noexcept;
+                                                   std::uint8_t micControlBits = 0,
+                                                   int adc1TxAttenuationDb = -1) noexcept;
+// adc1TxAttenuationDb (build 542): byte 58 on its own -- ADC1 (the RX2 input)
+// while transmitting; -1 = as txAttenuationDb. The PureSignal feedback value
+// still takes the byte of the feedback ADC.
 // micControlBits: byte 50 bits 2-5 as Thetis network.c CmdTx (mic_control):
 // bit 2 mic PTT disabled, bit 3 PTT on tip / mic on ring, bit 4 mic bias on,
 // bit 5 balanced (XLR) input (G2). Only the Orion / Orion II / Saturn boards

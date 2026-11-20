@@ -1,3 +1,4 @@
+#include "FramelessMessageBox.h"
 #include "core/DroopCalibration.h"
 // The ANAN Front End page's ONE ANAN dependency. Tagged ui-support precisely so
 // a setup page may include it; the family's protocol header is vendor(anan) and
@@ -4298,8 +4299,13 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     connCol1->setSpacing(6);
     auto* connCol2 = new QVBoxLayout;
     connCol2->setSpacing(6);
+    // Build 542 (operator, 20.11): a third column -- what protects the RX2
+    // input on transmit.
+    auto* connCol3 = new QVBoxLayout;
+    connCol3->setSpacing(6);
     connCols->addLayout(connCol1);
     connCols->addLayout(connCol2);
+    connCols->addLayout(connCol3);
     connCols->addStretch(1);
     cvb->addLayout(connCols);
     auto mkChk = [&](QVBoxLayout* col, const char* text, const char* name, const char* tip) {
@@ -4335,15 +4341,22 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     }
     auto* micPttChk = mkChk(connCol2, "Mic PTT", "ananHwMicPtt",
         "The PTT line of the front-panel microphone jack keys the radio.");
-    auto* micTipChk = mkChk(connCol2, "PTT on tip, microphone on ring", "ananHwMicTipPtt",
+    auto* micTipChk = mkChk(connCol2, "PTT on tip", "ananHwMicTipPtt",   // build 542: short
         "Off (default): microphone and bias on the tip, PTT on the ring.\n"
         "On: PTT on the tip, microphone and bias on the ring.");
     auto* micBiasChk = mkChk(connCol2, "Mic bias", "ananHwMicBias",
         "Bias voltage for an electret microphone.");
     auto* micXlrChk = mkChk(connCol2, "Balanced XLR microphone input", "ananHwMicXlr",
         "ANAN-G2: the balanced XLR input instead of the 3.5 mm jack.");
-    auto* gndChk = mkChk(connCol1, "RX2 input grounded on transmit", "ananHwAdc2Gnd",
-        "Grounds the second ADC's input (RX2 / BPF2) while transmitting.\n"
+    // Build 542 (operator, 20.11): both on by default; switching either off
+    // asks first -- without them the RX2 input can be damaged on transmit.
+    auto* fullAttChk = mkChk(connCol3, "Full ATT RX2 when TX", "ananHwAdc2FullAtt",
+        "The second ADC's step attenuator (RX2) at 31 dB while transmitting.\n"
+        "Off: it keeps its receive value on transmit.\n"
+        "Not applied while PureSignal takes its feedback on that ADC.");
+    auto* gndChk = mkChk(connCol3, "Ground RX2 When TX", "ananHwAdc2Gnd",
+        "Grounds the second ADC's input (RX2 / BPF2) while transmitting --\n"
+        "the relay of the 7000DLE / 8000DLE / G2 series.\n"
         "Not applied while PureSignal takes its feedback on that ADC.");
     // Build 502 (operator, 18.11): what switches on transmit with PureSignal
     // off (with it on, both always do).
@@ -4363,6 +4376,7 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
         "band-pass filter is bypassed with it. Off: only while PureSignal is on.");
     connCol1->addStretch(1);
     connCol2->addStretch(1);
+    connCol3->addStretch(1);
     auto* connNone = new QLabel("This radio has no microphone or input options.");
     setTone(connNone, Tone::Hint);
     connNone->setVisible(false);
@@ -4415,7 +4429,7 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     const QPointer<QComboBox> pageGuard(modelCombo);   // build 439 (was the Dither box)
     m_hl2HardwareReseed = [this, pageGuard, noRadioLbl, controls,
                            modelCombo, psNote, micPttChk, micTipChk, micBiasChk, micXlrChk,
-                           gndChk, txBypassChk, txBypass2Chk, psCouplerChk, connNone, connGroup, forceModelChk,
+                           gndChk, fullAttChk, txBypassChk, txBypass2Chk, psCouplerChk, connNone, connGroup, forceModelChk,
                            forceNote] {
         if (!pageGuard)
             return;
@@ -4473,6 +4487,10 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
             micBiasChk->setChecked(m.value(QStringLiteral("ananMicBias")).toBool());
             micXlrChk->setChecked(m.value(QStringLiteral("ananMicXlr")).toBool());
             gndChk->setChecked(m.value(QStringLiteral("ananAdc2GndOnTx"), true).toBool());
+            {   // build 542
+                const QSignalBlocker b(fullAttChk);
+                fullAttChk->setChecked(m.value(QStringLiteral("ananAdc2FullAttOnTx"), true).toBool());
+            }
             {   // build 502
                 const QSignalBlocker b1(txBypassChk), b2(psCouplerChk), b3(txBypass2Chk);
                 txBypass2Chk->setChecked(m.value(QStringLiteral("ananTxBypassBpf2")).toBool());
@@ -4486,6 +4504,7 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
             micBiasChk->setVisible(orion);
             micXlrChk->setVisible(xlr);
             gndChk->setVisible(adc2);
+            fullAttChk->setVisible(adc2);   // build 542
             connNone->setVisible(false);   // build 502: the two TX options are always there
             connGroup->setVisible(true);
             for (const QPointer<QWidget>& w : *controls) {
@@ -4541,9 +4560,29 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     connect(micXlrChk, &QCheckBox::toggled, this, [apply](bool on) {
         apply(QVariantMap{{QStringLiteral("ananMicXlr"), on}});
     });
-    connect(gndChk, &QCheckBox::toggled, this, [apply](bool on) {
-        apply(QVariantMap{{QStringLiteral("ananAdc2GndOnTx"), on}});
-    });
+    // Build 542: switching an RX2 protection off is confirmed first; "Cancel"
+    // puts the tick back and nothing is sent.
+    auto rx2Guard = [this, apply](QCheckBox* chk, const QString& field, const QString& name) {
+        connect(chk, &QCheckBox::toggled, this, [this, apply, chk, field, name](bool on) {
+            if (!on) {
+                const auto answer = FramelessMessageBox::warning(
+                    this, QStringLiteral("RX2 input protection"),
+                    QStringLiteral("\"%1\" protects the RX2 receiver input while transmitting.\n\n"
+                                   "Switching this option off can, in some cases, damage the RX2 "
+                                   "receiver input. Do it only if you know why you need it.\n\n"
+                                   "Switch it off?").arg(name),
+                    QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+                if (answer != QMessageBox::Yes) {
+                    const QSignalBlocker b(chk);
+                    chk->setChecked(true);
+                    return;
+                }
+            }
+            apply(QVariantMap{{field, on}});
+        });
+    };
+    rx2Guard(gndChk, QStringLiteral("ananAdc2GndOnTx"), QStringLiteral("Ground RX2 When TX"));
+    rx2Guard(fullAttChk, QStringLiteral("ananAdc2FullAttOnTx"), QStringLiteral("Full ATT RX2 when TX"));
     connect(txBypassChk, &QCheckBox::toggled, this, [apply](bool on) {
         apply(QVariantMap{{QStringLiteral("ananTxBypassBpf"), on}});
     });
