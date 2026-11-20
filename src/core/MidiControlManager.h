@@ -75,6 +75,10 @@ public:
 
     // Device management
     QStringList availablePorts() const;
+    // ANAN fork build 517: the same enumeration, callable from any thread
+    // (it touches no member). On Windows it can take seconds -- the MIDI
+    // dialog runs it off the interface thread.
+    static QStringList enumeratePorts();
     bool openPort(int portIndex);
     bool openPortByName(const QString& portName);
     void closePort();

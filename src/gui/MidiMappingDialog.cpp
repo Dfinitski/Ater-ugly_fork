@@ -10,6 +10,7 @@
 
 #include <QTimer>
 #include <memory>
+#include <thread>
 
 #include <QAbstractItemView>
 #include <QShowEvent>
@@ -587,6 +588,38 @@ void MidiMappingDialog::refreshPortList()
 {
     if (!m_portCombo)
         return;
+    // ANAN fork build 517 (operator's log, 19.11: opening the MIDI settings
+    // stopped the interface for 10.6 s, and the watchdog wrote a hang report).
+    // OUR ERROR: the ports were enumerated here, on the interface thread --
+    // twice on opening (the constructor and the first show) -- and with no
+    // MIDI input present Windows' enumeration took about 5 s each time
+    // ("MidiInWinMM::initialize: no MIDI input devices currently available",
+    // twice). It now runs on a thread of its own; the list is filled when it
+    // answers (applyPortList). A request made while one is running is the
+    // same request.
+    if (m_portScanRunning)
+        return;
+    m_portScanRunning = true;
+    if (m_portCombo->count() == 0) {
+        const QSignalBlocker blocker(m_portCombo);
+        m_portCombo->addItem(QStringLiteral("Looking for MIDI inputs..."), QString());
+    }
+    QPointer<MidiMappingDialog> self(this);
+    std::thread([self] {
+        const QStringList ports = MidiControlManager::enumeratePorts();
+        QMetaObject::invokeMethod(qApp, [self, ports] {
+            if (!self)
+                return;
+            self->m_portScanRunning = false;
+            self->applyPortList(ports);
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
+void MidiMappingDialog::applyPortList(const QStringList& ports)
+{
+    if (!m_portCombo)
+        return;
     // Never rebuild the list while its dropdown is open: the row under the
     // operator's cursor would change identity mid-gesture.
     if (m_portCombo->view() && m_portCombo->view()->isVisible())
@@ -608,7 +641,7 @@ void MidiMappingDialog::refreshPortList()
     // The name is the only identity RtMidi exposes; it goes in item data so
     // every consumer resolves by it instead of by index.  See
     // connectToSelectedPort() for why the index is not usable.
-    for (const auto& port : m_manager->availablePorts())
+    for (const auto& port : ports)
         m_portCombo->addItem(port, port);
 
     int selected = keep.isEmpty() ? -1 : m_portCombo->findData(keep);

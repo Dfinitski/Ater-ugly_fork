@@ -35,6 +35,9 @@ private:
     // NAME in Qt::UserRole item data and reselecting by that name rather than
     // by row.  Safe to call repeatedly.
     void refreshPortList();
+    // Build 517: the list the enumeration thread came back with.
+    void applyPortList(const QStringList& ports);
+    bool m_portScanRunning{false};
     // Opens the port the combo currently NAMES, resolving that name against a
     // fresh enumeration at click time.  Returns false (and reports why) when
     // the named port is no longer there.

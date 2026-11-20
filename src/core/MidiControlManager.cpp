@@ -104,6 +104,11 @@ MidiControlManager::~MidiControlManager()
 
 QStringList MidiControlManager::availablePorts() const
 {
+    return enumeratePorts();
+}
+
+QStringList MidiControlManager::enumeratePorts()
+{
     QStringList result;
     try {
         RtMidiIn probe;
