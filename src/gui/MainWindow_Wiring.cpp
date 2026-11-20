@@ -3811,39 +3811,82 @@ void MainWindow::ananBandMemApplyHardware(SliceModel* s, const QJsonObject& mem)
 // since the newest snapshot stays in m_ananSessionLive.
 void MainWindow::ananSessionSave()
 {
-    if (m_ananSessionLive.isEmpty() && m_ananSessionPending.isEmpty())
+    if (m_ananSessionLive.isEmpty())
         return;
     QJsonObject all;
-    // A receiver the last session's state has not been put on yet keeps it.
-    for (auto it = m_ananSessionPending.cbegin(); it != m_ananSessionPending.cend(); ++it)
+    for (auto it = m_ananSessionLive.cbegin(); it != m_ananSessionLive.cend(); ++it)
         all.insert(QString::number(it.key()), it.value());
-    for (auto it = m_ananSessionLive.cbegin(); it != m_ananSessionLive.cend(); ++it) {
-        if (!m_ananSessionPending.contains(it.key()))
-            all.insert(QString::number(it.key()), it.value());
-    }
     auto& st = AppSettings::instance();
     st.setValue(QStringLiteral("AnanLastSession"),
                 QString::fromUtf8(QJsonDocument(all).toJson(QJsonDocument::Compact)));
     st.save();
 }
 
-// Applied once per receiver, 1.5 s after the radio has started (its own
-// start-up state has been set by then) and as soon as the receiver and its
-// panadapter exist; a receiver of the last session that has not appeared
-// within 15 s is dropped.
+// ANAN fork build 543 (operator, 20.11: "every receiver -- A, B, C, D -- keeps
+// what a quick-memory button stores, on any closing of the receiver: by the
+// operator, by the program rearranging the screen, at exit; and gets it back
+// when it starts. The sub receiver and its settings are not kept").
+// Build 531 did this at the program's start only, for the receivers that came
+// up within 15 s, and dropped the others. Now, by receiver (slice id 0..3):
+//  - m_ananSessionLive[id] is its newest snapshot (without the sub receiver's
+//    fields) and stays when the receiver is closed; written to the settings
+//    when a receiver goes and when the program closes;
+//  - a receiver that appears -- at the radio's start or added later (+RX,
+//    Add Panadapter, a layout) -- gets its snapshot back once, 1.5 s after it
+//    appeared, when its panadapter exists; until then its fresh state does
+//    not overwrite the stored one.
+static QJsonObject ananSessionSnapshot(QJsonObject snap)
+{
+    const QStringList keys = snap.keys();
+    for (const QString& k : keys) {
+        if (k.startsWith(QLatin1String("sub")))
+            snap.remove(k);
+    }
+    return snap;
+}
+
 void MainWindow::ananSessionRestoreStep()
 {
-    if (m_ananSessionPending.isEmpty() || !m_ananSessionClock.isValid())
-        return;
-    const qint64 since = m_ananSessionClock.elapsed();
-    if (since < 1500)
-        return;
+    if (!m_ananSessionClock.isValid())
+        m_ananSessionClock.start();
+    const qint64 now = m_ananSessionClock.elapsed();
+
+    // Receivers that have gone: their state is kept and written; coming back
+    // they are new again.
+    bool gone = false;
+    for (auto it = m_ananSessionSeenAt.begin(); it != m_ananSessionSeenAt.end();) {
+        if (m_radioModel.slice(it.key())) {
+            ++it;
+            continue;
+        }
+        m_ananSessionPending.remove(it.key());
+        it = m_ananSessionSeenAt.erase(it);
+        gone = true;
+    }
+    if (gone)
+        ananSessionSave();
+
+    // Receivers that have appeared: what is stored for them waits to be applied.
+    for (SliceModel* s : m_radioModel.slices()) {
+        if (!s || s->sliceId() >= 6 || m_ananSessionSeenAt.contains(s->sliceId()))
+            continue;
+        m_ananSessionSeenAt.insert(s->sliceId(), now);
+        const auto stored = m_ananSessionLive.constFind(s->sliceId());
+        if (stored != m_ananSessionLive.constEnd() && !stored->isEmpty())
+            m_ananSessionPending.insert(s->sliceId(), *stored);
+    }
+
     const QList<int> ids = m_ananSessionPending.keys();
     for (int sid : ids) {
         SliceModel* s = m_radioModel.slice(sid);
-        if (!s || !(s->frequency() > 0.0) || !m_radioModel.panadapter(s->panId()))
+        if (!s || !(s->frequency() > 0.0) || !m_radioModel.panadapter(s->panId())
+            || now - m_ananSessionSeenAt.value(sid, now) < 1500)
             continue;
-        const QJsonObject snap = m_ananSessionPending.take(sid);
+        QJsonObject snap = ananSessionSnapshot(m_ananSessionPending.take(sid));
+        // The receiver rate is the radio's, not a receiver's: it comes back
+        // with receiver A only, so adding B / C / D never changes it.
+        if (sid != 0)
+            snap.remove(QStringLiteral("rate"));
         qCInfo(lcProtocol).noquote().nospace()
             << "MainWindow: last session restored for slice " << sid << ": "
             << QString::number(snap.value(QStringLiteral("freq")).toDouble(), 'f', 6) << " MHz "
@@ -3852,12 +3895,6 @@ void MainWindow::ananSessionRestoreStep()
         applyRecallSnapshot(s, snap, true);
         // The band memory learns the restored band afresh (no "band left").
         m_ananBandMem.remove(sid);
-    }
-    if (since > 15000) {
-        // Not there any more: neither restored nor kept for the next start.
-        for (int sid : m_ananSessionPending.keys())
-            m_ananSessionLive.remove(sid);
-        m_ananSessionPending.clear();
     }
 }
 
@@ -3875,7 +3912,7 @@ void MainWindow::ananBandMemTick()
         // Build 531: the session's newest state of this receiver -- not while
         // the last session's still waits to be put on it.
         if (!m_ananSessionPending.contains(s->sliceId()))
-            m_ananSessionLive.insert(s->sliceId(), snap);
+            m_ananSessionLive.insert(s->sliceId(), ananSessionSnapshot(snap));   // build 543: no sub
         const QString band = BandSettings::bandForFrequency(s->frequency());
         AnanBandMemSlot& slot = m_ananBandMem[s->sliceId()];
         if (band == slot.band) {

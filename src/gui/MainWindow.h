@@ -1144,6 +1144,9 @@ private:
     // receiver; m_ananSessionPending: what still waits to be applied.
     QHash<int, QJsonObject> m_ananSessionLive;
     QHash<int, QJsonObject> m_ananSessionPending;
+    // Build 543: the receivers there are now, and when each appeared (ms of
+    // m_ananSessionClock) -- one that appears gets its stored state back.
+    QHash<int, qint64> m_ananSessionSeenAt;
     QElapsedTimer m_ananSessionClock;
     void ananSessionSave();
     void ananSessionRestoreStep();

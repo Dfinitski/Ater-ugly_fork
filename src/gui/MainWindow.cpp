@@ -7007,14 +7007,18 @@ void MainWindow::onConnectionStateChanged(bool connected)
             // After a link loss or a stop / start within this run: as the
             // receivers were a moment ago; at the first start: as the
             // program was closed.
-            m_ananSessionPending = m_ananSessionLive;
-            if (m_ananSessionPending.isEmpty()) {
+            // Build 543: every receiver, whenever it appears (see
+            // ananSessionRestoreStep) -- here only: nothing is "seen" yet,
+            // and the stored states are read once per run.
+            m_ananSessionPending.clear();
+            m_ananSessionSeenAt.clear();
+            if (m_ananSessionLive.isEmpty()) {
                 const QJsonObject all = QJsonDocument::fromJson(
                     AppSettings::instance().value(QStringLiteral("AnanLastSession"), QStringLiteral("{}"))
                         .toString().toUtf8()).object();
                 for (auto it = all.constBegin(); it != all.constEnd(); ++it) {
                     if (it.value().isObject() && !it.value().toObject().isEmpty())
-                        m_ananSessionPending.insert(it.key().toInt(), it.value().toObject());
+                        m_ananSessionLive.insert(it.key().toInt(), it.value().toObject());
                 }
             }
             m_ananSessionClock.start();
