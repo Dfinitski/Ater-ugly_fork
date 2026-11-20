@@ -1273,6 +1273,12 @@ void TitleBar::mouseDoubleClickEvent(QMouseEvent* ev)
     QWidget::mouseDoubleClickEvent(ev);
 }
 
+#ifdef Q_OS_WIN
+// Build 520: the one user32 call StickyMenuTree needs, declared here rather
+// than through <windows.h> (its min/max/near/far macros).
+extern "C" __declspec(dllimport) short __stdcall GetAsyncKeyState(int vKey);
+#endif
+
 // ANAN fork build 516 (operator, 19.11: "the settings menu tree is deeply
 // nested, and a click on any option closes it. Keep it open until a click
 // outside the options or a second click on the button that opens it. Windows
@@ -1377,6 +1383,14 @@ protected:
             return false;
         case QEvent::Move:
         case QEvent::Resize:
+            // Build 520 (operator, 19.11): also when the operator drags or
+            // resizes another window of the application -- one opened from
+            // the menu included -- the tree would stay hanging over it. Told
+            // from a window that is only being shown and placed by the mouse
+            // button, which is down during a drag.
+            if (w == m_bar->window() || (userDragsWindow(w) && !inTree(w)))
+                close();
+            return false;
         case QEvent::WindowStateChange:
         case QEvent::Hide:
         case QEvent::Close:
@@ -1389,6 +1403,24 @@ protected:
     }
 
 private:
+    // A top-level window (not a popup or a tooltip) moved or resized while
+    // the left mouse button is physically down: the operator is dragging it.
+    [[nodiscard]] static bool userDragsWindow(const QWidget* w)
+    {
+#ifdef Q_OS_WIN
+        if (!w->isWindow())
+            return false;
+        const Qt::WindowType t = w->windowType();
+        if (t != Qt::Window && t != Qt::Dialog && t != Qt::Tool)
+            return false;
+        // VK_LBUTTON is the physical left button (1), VK_RBUTTON (2) with
+        // the buttons swapped; either held means a drag here.
+        return GetAsyncKeyState(1) < 0 || GetAsyncKeyState(2) < 0;
+#else
+        Q_UNUSED(w);
+        return false;
+#endif
+    }
     [[nodiscard]] bool inTree(const QWidget* w) const
     {
         for (QMenu* m : m_menus) {
