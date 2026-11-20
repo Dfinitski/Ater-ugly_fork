@@ -1137,6 +1137,16 @@ private:
         QJsonObject live;                   // its state, refreshed every 0.5 s
     };
     QHash<int, AnanBandMemSlot> m_ananBandMem;   // by slice id
+    // ANAN fork build 531 (operator, 19.11): the last session. Each receiver's
+    // recall snapshot (what a quick-memory button stores) as it was when the
+    // program closed, AppSettings "AnanLastSession"; applied once after the
+    // radio has started. m_ananSessionLive: the newest snapshot of each
+    // receiver; m_ananSessionPending: what still waits to be applied.
+    QHash<int, QJsonObject> m_ananSessionLive;
+    QHash<int, QJsonObject> m_ananSessionPending;
+    QElapsedTimer m_ananSessionClock;
+    void ananSessionSave();
+    void ananSessionRestoreStep();
     void ananBandMemTick();
     void ananBandMemFlush();                // store every receiver's current band
     QJsonObject ananBandMemSnapshot(SliceModel* s) const;

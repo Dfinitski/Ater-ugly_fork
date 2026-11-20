@@ -3799,16 +3799,83 @@ void MainWindow::ananBandMemApplyHardware(SliceModel* s, const QJsonObject& mem)
                                      << st.value(QStringLiteral("AnanLna")).toBool();
 }
 
+// ANAN fork build 531 (operator, 19.11: "the last session is not saved when
+// the program closes -- the panadapter's zoom for certain; remember all that
+// goes into the quick-memory buttons"). What came back at a start was the
+// frequency and mode of the active receiver only. Now each receiver's recall
+// snapshot (RecallSnapshot: frequency, mode, filter, step, AGC and NF+,
+// volume, NB / NR, squelch, the sub receiver, the receiver rate, the
+// panadapter's centre and width, attenuator, WNB, the TX filter, antennas)
+// is kept as the session runs and written when the program closes
+// (ananBandMemFlush, from closeEvent) -- with the radio already stopped too,
+// since the newest snapshot stays in m_ananSessionLive.
+void MainWindow::ananSessionSave()
+{
+    if (m_ananSessionLive.isEmpty() && m_ananSessionPending.isEmpty())
+        return;
+    QJsonObject all;
+    // A receiver the last session's state has not been put on yet keeps it.
+    for (auto it = m_ananSessionPending.cbegin(); it != m_ananSessionPending.cend(); ++it)
+        all.insert(QString::number(it.key()), it.value());
+    for (auto it = m_ananSessionLive.cbegin(); it != m_ananSessionLive.cend(); ++it) {
+        if (!m_ananSessionPending.contains(it.key()))
+            all.insert(QString::number(it.key()), it.value());
+    }
+    auto& st = AppSettings::instance();
+    st.setValue(QStringLiteral("AnanLastSession"),
+                QString::fromUtf8(QJsonDocument(all).toJson(QJsonDocument::Compact)));
+    st.save();
+}
+
+// Applied once per receiver, 1.5 s after the radio has started (its own
+// start-up state has been set by then) and as soon as the receiver and its
+// panadapter exist; a receiver of the last session that has not appeared
+// within 15 s is dropped.
+void MainWindow::ananSessionRestoreStep()
+{
+    if (m_ananSessionPending.isEmpty() || !m_ananSessionClock.isValid())
+        return;
+    const qint64 since = m_ananSessionClock.elapsed();
+    if (since < 1500)
+        return;
+    const QList<int> ids = m_ananSessionPending.keys();
+    for (int sid : ids) {
+        SliceModel* s = m_radioModel.slice(sid);
+        if (!s || !(s->frequency() > 0.0) || !m_radioModel.panadapter(s->panId()))
+            continue;
+        const QJsonObject snap = m_ananSessionPending.take(sid);
+        qCInfo(lcProtocol).noquote().nospace()
+            << "MainWindow: last session restored for slice " << sid << ": "
+            << QString::number(snap.value(QStringLiteral("freq")).toDouble(), 'f', 6) << " MHz "
+            << snap.value(QStringLiteral("mode")).toString() << ", view "
+            << QString::number(snap.value(QStringLiteral("bw")).toDouble() * 1000.0, 'f', 1) << " kHz";
+        applyRecallSnapshot(s, snap, true);
+        // The band memory learns the restored band afresh (no "band left").
+        m_ananBandMem.remove(sid);
+    }
+    if (since > 15000) {
+        // Not there any more: neither restored nor kept for the next start.
+        for (int sid : m_ananSessionPending.keys())
+            m_ananSessionLive.remove(sid);
+        m_ananSessionPending.clear();
+    }
+}
+
 void MainWindow::ananBandMemTick()
 {
     if (!m_radioModel.isConnected() || m_radioModel.usesFlexCommandPlane())
         return;
+    ananSessionRestoreStep();   // build 531
     for (SliceModel* s : m_radioModel.slices()) {
         if (s && s->sliceId() >= 6)
             continue;   // build 487: a sub receiver is part of its receiver's memory
         QJsonObject snap = ananBandMemSnapshot(s);
         if (snap.isEmpty())
             continue;
+        // Build 531: the session's newest state of this receiver -- not while
+        // the last session's still waits to be put on it.
+        if (!m_ananSessionPending.contains(s->sliceId()))
+            m_ananSessionLive.insert(s->sliceId(), snap);
         const QString band = BandSettings::bandForFrequency(s->frequency());
         AnanBandMemSlot& slot = m_ananBandMem[s->sliceId()];
         if (band == slot.band) {
@@ -3856,6 +3923,7 @@ void MainWindow::ananBandMemTick()
 void MainWindow::ananBandMemFlush()
 {
     ananBandMemTick();
+    ananSessionSave();   // build 531
     for (auto it = m_ananBandMem.cbegin(); it != m_ananBandMem.cend(); ++it)
         if (!it.value().band.isEmpty() && !it.value().live.isEmpty())
             ananBandMemStore(it.key(), it.value().band, it.value().live);

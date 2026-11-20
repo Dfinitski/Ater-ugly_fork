@@ -6966,6 +6966,21 @@ void MainWindow::onConnectionStateChanged(bool connected)
                 connect(m_ananBandMemTimer, &QTimer::timeout, this, &MainWindow::ananBandMemTick);
             }
             m_ananBandMem.clear();
+            // Build 531: the last session's receivers wait to be restored.
+            // After a link loss or a stop / start within this run: as the
+            // receivers were a moment ago; at the first start: as the
+            // program was closed.
+            m_ananSessionPending = m_ananSessionLive;
+            if (m_ananSessionPending.isEmpty()) {
+                const QJsonObject all = QJsonDocument::fromJson(
+                    AppSettings::instance().value(QStringLiteral("AnanLastSession"), QStringLiteral("{}"))
+                        .toString().toUtf8()).object();
+                for (auto it = all.constBegin(); it != all.constEnd(); ++it) {
+                    if (it.value().isObject() && !it.value().toObject().isEmpty())
+                        m_ananSessionPending.insert(it.key().toInt(), it.value().toObject());
+                }
+            }
+            m_ananSessionClock.start();
             m_ananBandMemTimer->start();
         }
         // Build 295: no own-noise capture to remind of (maybeShowOwnNoiseHint).
