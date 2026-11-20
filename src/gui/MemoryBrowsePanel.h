@@ -23,6 +23,8 @@ public:
 signals:
     void memoryActivated(int memoryIndex);
     void quickAddRequested();
+    // ANAN fork build 528: "Remove" of a row's right-click menu.
+    void removeRequested(int memoryIndex);
 
 private:
     void populateTable();
@@ -34,6 +36,7 @@ private:
     QTableWidget* m_table{nullptr};
     QPushButton* m_addBtn{nullptr};
     int m_highlightedMemoryIndex{-1};
+    bool m_writable{true};   // build 528
 };
 
 } // namespace AetherSDR

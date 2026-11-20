@@ -5916,6 +5916,20 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             this, [this](const QString& panId) {
         showQuickAddMemoryDialog(panId);
     });
+    // ANAN fork build 528 (operator, 19.11): "Remove" in the memory list of
+    // the panadapter's side menu -- the request the Memory window's Remove
+    // makes, for one memory, without a question (as a quick-memory button).
+    connect(menu, &SpectrumOverlayMenu::removeMemoryRequested,
+            this, [this](int memoryIndex) {
+        if (!m_radioModel.memoriesWritable() || !m_radioModel.memories().contains(memoryIndex))
+            return;
+        MemoryRequest request{MemoryRequest::Action::Remove, memoryIndex, {}};
+        request.expectedRevision = m_radioModel.memorySlotRevision(memoryIndex);
+        m_radioModel.requestMemory(request, this, [memoryIndex](const RadioControlReply& reply) {
+            if (reply.kind != RadioControlReply::Kind::Accepted)
+                qWarning().noquote() << "Memory" << memoryIndex << "was not removed:" << reply.message;
+        });
+    });
     connect(menu, &SpectrumOverlayMenu::antennaChoiceRefused,
             this, &MainWindow::announceAntennaChoiceRefused);
 

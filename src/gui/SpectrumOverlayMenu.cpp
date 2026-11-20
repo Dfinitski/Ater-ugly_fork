@@ -1777,6 +1777,9 @@ void SpectrumOverlayMenu::buildMemoryPanel()
         hideAllSubPanels();
         emit quickAddMemoryRequested(m_panId);
     });
+    // Build 528: the list stays open -- several can be removed in a row.
+    connect(m_memoryPanel, &MemoryBrowsePanel::removeRequested, this,
+            &SpectrumOverlayMenu::removeMemoryRequested);
 }
 
 void SpectrumOverlayMenu::toggleMemoryPanel()

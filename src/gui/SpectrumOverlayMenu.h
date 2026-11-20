@@ -232,6 +232,7 @@ signals:
     void widebandClicked();
     void memoryActivated(int memoryIndex, const QString& panId);
     void quickAddMemoryRequested(const QString& panId);
+    void removeMemoryRequested(int memoryIndex);   // build 528
     void daxIqChannelChanged(int channel);  // 0=Off, 1-4
     // WFM software-demod toggle in the DAX panel. Acts on this menu's slice;
     // WFM is mode-independent (raw IQ from this pan's DAX stream). (#3853)

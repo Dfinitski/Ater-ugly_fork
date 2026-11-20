@@ -7,6 +7,7 @@
 #include <QAbstractItemView>
 #include <QHeaderView>
 #include <QLabel>
+#include <QMenu>
 #include <QPushButton>
 #include <QTableWidgetItem>
 #include <QTableWidget>
@@ -98,6 +99,29 @@ MemoryBrowsePanel::MemoryBrowsePanel(QWidget* parent)
         emit memoryActivated(indexItem->data(Qt::UserRole).toInt());
     });
 
+    // ANAN fork build 528 (operator, 19.11: "how are station memories
+    // deleted? if they cannot be, by the right button, as on the quick-memory
+    // buttons"). Here they could not (only in the Memory window). A right
+    // click on a row offers "Remove", the same menu as a quick-memory button.
+    m_table->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_table, &QTableWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
+        const int row = m_table->rowAt(pos.y());
+        auto* indexItem = row >= 0 ? m_table->item(row, 0) : nullptr;
+        if (!indexItem)
+            return;
+        const int memoryIndex = indexItem->data(Qt::UserRole).toInt();
+        m_table->selectRow(row);
+        QMenu menu;
+        menu.setStyleSheet(QStringLiteral(
+            "QMenu { background: #1a2a3a; color: #c8d8e8; border: 1px solid #304050; }"
+            "QMenu::item:selected { background: #304050; }"
+            "QMenu::item:disabled { color: #607080; }"));
+        auto* removeAction = menu.addAction(QStringLiteral("Remove"));
+        removeAction->setEnabled(m_writable);
+        if (menu.exec(m_table->viewport()->mapToGlobal(pos)) == removeAction)
+            emit removeRequested(memoryIndex);
+    });
+
     connect(m_table, &QTableWidget::cellActivated, this, [this](int row, int) {
         auto* indexItem = m_table->item(row, 0);
         if (!indexItem)
@@ -114,6 +138,7 @@ void MemoryBrowsePanel::setMemories(const QMap<int, MemoryEntry>& memories)
 
 void MemoryBrowsePanel::setWritable(bool writable)
 {
+    m_writable = writable;
     m_addBtn->setEnabled(writable);
     m_addBtn->setToolTip(writable
         ? QStringLiteral("Save the current slice on this panadapter as a memory.")
