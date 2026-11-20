@@ -4356,9 +4356,12 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
             AppSettings::instance().save();
             m_model->setCodecLevelCompDb(v);
         });
+        // Build 521 (operator, 19.11): the size of the power sliders below.
+        slider->setFixedWidth(110);
         row->addWidget(lbl);
-        row->addWidget(slider, 1);
+        row->addWidget(slider);
         row->addWidget(val);
+        row->addStretch(1);
         vbox->addWidget(codecGroup);
     }
 
@@ -4596,10 +4599,14 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     {
         using B = hl2::Hl2Backend;
         auto& st = AppSettings::instance();
-        auto* lawGroup = new QGroupBox("PA Power Law");
+        // Build 521 (operator, 19.11): named "Power Slider Law", and laid
+        // out in four rows -- one setting per row, the buttons in the last.
+        auto* lawGroup = new QGroupBox("Power Slider Law");
         auto* lv = new QVBoxLayout(lawGroup);
         lv->setSpacing(6);
-        auto* row = new QHBoxLayout;
+        auto* lawGrid = new QGridLayout;
+        lawGrid->setHorizontalSpacing(8);
+        lawGrid->setVerticalSpacing(4);
         auto* midLbl = new QLabel("Drive at slider 50 %:");
         applyLabelStyle(midLbl);
         auto* mid = new QDoubleSpinBox;
@@ -4624,17 +4631,15 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
         connect(reset, &QPushButton::clicked, this, [mid] {
             mid->setValue(hl2::Hl2Backend::kAnanPaMidDriveDefault);
         });
-        row->addWidget(midLbl);
-        row->addWidget(mid);
-        row->addWidget(reset);
-        row->addSpacing(16);
+        lawGrid->addWidget(midLbl, 0, 0);
+        lawGrid->addWidget(mid, 0, 1);
         auto* m100Lbl = new QLabel("Measured at 100 %:");
         applyLabelStyle(m100Lbl);
         auto* w100 = new QDoubleSpinBox;
         w100->setRange(0.0, 2000.0);
         w100->setDecimals(1);
         w100->setSuffix(QStringLiteral(" W"));
-        auto* m50Lbl = new QLabel("at 50 %:");
+        auto* m50Lbl = new QLabel("Measured at 50 %:");
         applyLabelStyle(m50Lbl);
         auto* w50 = new QDoubleSpinBox;
         w50->setRange(0.0, 2000.0);
@@ -4656,13 +4661,17 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
                                      hl2::Hl2Backend::kAnanPaMidDriveMin,
                                      hl2::Hl2Backend::kAnanPaMidDriveMax));
         });
-        row->addWidget(m100Lbl);
-        row->addWidget(w100);
-        row->addWidget(m50Lbl);
-        row->addWidget(w50);
-        row->addWidget(calc);
-        row->addStretch(1);
-        lv->addLayout(row);
+        lawGrid->addWidget(m100Lbl, 1, 0);
+        lawGrid->addWidget(w100, 1, 1);
+        lawGrid->addWidget(m50Lbl, 2, 0);
+        lawGrid->addWidget(w50, 2, 1);
+        auto* btnRow = new QHBoxLayout;
+        btnRow->addWidget(calc);
+        btnRow->addWidget(reset);
+        btnRow->addStretch(1);
+        lawGrid->addLayout(btnRow, 3, 0, 1, 3);
+        lawGrid->setColumnStretch(2, 1);
+        lv->addLayout(lawGrid);
         auto* hint = new QLabel(
             "The same value is used for RF Power and Tune. Set so that slider 50 % gives half "
             "the power of slider 100 %; measure both points with the value in force, Apply "
