@@ -419,7 +419,6 @@ void Hl2RxDsp::setNoiseBlanker(WdspChannel::NoiseBlanker kind, int level,
 
 void Hl2RxDsp::setSquelch(bool on, int level, double levelOffsetDb)
 {
-    const DiagCall diagCall(this, "setSquelch");   // build 526
     if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
         m_sub->setSquelch(on, level, levelOffsetDb);
     m_squelchOn = on;
@@ -455,7 +454,6 @@ void Hl2RxDsp::pushSquelchToChannel()
 
 void Hl2RxDsp::setMode(WdspChannel::Mode mode)
 {
-    const DiagCall diagCall(this, "setMode");   // build 526
     if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
         m_sub->setMode(mode);
     m_config.mode = mode;
@@ -627,7 +625,6 @@ void Hl2RxDsp::applyMinimumPhaseForMode()
 
 void Hl2RxDsp::setFilter(double lowHz, double highHz)
 {
-    const DiagCall diagCall(this, "setFilter");   // build 526
     if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
         m_sub->setFilter(lowHz, highHz);
     m_config.filterLowHz = lowHz;
@@ -662,24 +659,10 @@ void Hl2RxDsp::filterWorkerLoop()
             m_filterPending = false;
         }
         bool done = true;
-        const auto designT0 = DiagClock::now();   // build 526
         {
             std::lock_guard<std::mutex> life(m_channelLifeMutex);
             if (m_channel)
                 done = m_channel->setFilterLive(lo, hi);
-        }
-        {
-            // Build 526 (diagnostics): how long one design takes.
-            const double ms = std::chrono::duration<double, std::milli>(DiagClock::now() - designT0).count();
-            static std::atomic<std::int64_t> lastLogMs{0};
-            const std::int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                DiagClock::now().time_since_epoch()).count();
-            std::int64_t was = lastLogMs.load(std::memory_order_relaxed);
-            if (ms > 20.0 && nowMs - was > 500
-                && lastLogMs.compare_exchange_strong(was, nowMs, std::memory_order_relaxed))
-                qCInfo(lcHl2RxDsp).nospace() << "RX passband design " << lo << ".." << hi << " Hz took "
-                                             << QString::number(ms, 'f', 1) << " ms"
-                                             << (done ? "" : " (refused)");
         }
         if (done) {
             refusals = 0;
@@ -708,7 +691,6 @@ void Hl2RxDsp::filterWorkerLoop()
 
 void Hl2RxDsp::setAgc(int agcMode, double maximumGainDb)
 {
-    const DiagCall diagCall(this, "setAgc");   // build 526
     if (m_sub)   // build 470: a clone of this one; build 489: its own gain if it has one
         m_sub->setAgc(agcMode, std::isfinite(m_subAgcTop) ? m_subAgcTop : maximumGainDb);
     m_config.agcMode = agcMode;
@@ -719,7 +701,6 @@ void Hl2RxDsp::setAgc(int agcMode, double maximumGainDb)
 
 void Hl2RxDsp::setBinaural(bool on)
 {
-    const DiagCall diagCall(this, "setBinaural");   // build 526
     if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
         m_sub->setBinaural(on);
     m_binaural = on;
@@ -729,7 +710,6 @@ void Hl2RxDsp::setBinaural(bool on)
 
 void Hl2RxDsp::setAudioMuted(bool muted)
 {
-    const DiagCall diagCall(this, "setAudioMuted");   // build 526
     if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
         m_sub->setAudioMuted(muted);
     // On the release edge xmeter's average has integrated every zero clocked in
@@ -881,7 +861,6 @@ void Hl2RxDsp::setSpectrumFftSize(int fftSize)
 
 void Hl2RxDsp::shiftSpectrum(double deltaHz)
 {
-    const DiagCall diagCall(this, "shiftSpectrum");   // build 526
     if (!m_spectrum || m_config.inputSampleRateHz <= 0 || m_config.fftSize <= 0)
         return;
     const double binHz = static_cast<double>(m_config.inputSampleRateHz) / m_config.fftSize;
@@ -890,7 +869,6 @@ void Hl2RxDsp::shiftSpectrum(double deltaHz)
 
 void Hl2RxDsp::ncoMoved(double deltaHz)
 {
-    const DiagCall diagCall(this, "ncoMoved");   // build 526
     shiftSpectrum(deltaHz);
     if (m_spectrum)
         m_spectrum->reset();   // the partial window is old-NCO IQ
@@ -902,7 +880,6 @@ void Hl2RxDsp::ncoMoved(double deltaHz)
 
 void Hl2RxDsp::dropSpectrumAverage()
 {
-    const DiagCall diagCall(this, "dropSpectrumAverage");   // build 526
     if (!m_spectrum)
         return;
     // The window accumulate() holds between due frames is old-axis IQ too;
@@ -932,7 +909,6 @@ void Hl2RxDsp::setSubReceiver(bool on, double shiftHz)
 
 void Hl2RxDsp::setSubAgcGain(double maximumGainDb)
 {
-    const DiagCall diagCall(this, "setSubAgcGain");   // build 526
     m_subAgcTop = maximumGainDb;
     if (m_sub)
         m_sub->setAgc(m_config.agcMode,
@@ -941,7 +917,6 @@ void Hl2RxDsp::setSubAgcGain(double maximumGainDb)
 
 void Hl2RxDsp::setSubShift(double shiftHz)
 {
-    const DiagCall diagCall(this, "setSubShift");   // build 526
     m_subShiftHz = shiftHz;
     if (m_sub)
         m_sub->setShift(shiftHz);
@@ -1015,7 +990,6 @@ void Hl2RxDsp::startSubBuild()
 
 void Hl2RxDsp::setShift(double shiftHz)
 {
-    const DiagCall diagCall(this, "setShift");   // build 526
     m_shiftHz = shiftHz;
     // ANAN fork build 527 (operator, 19.11: "the filter does not follow the
     // mouse, it comes with a huge delay"; log of build 526: every stall of
@@ -1139,7 +1113,6 @@ int Hl2RxDsp::wdspNotchCount() const
 
 void Hl2RxDsp::setNotchTuneFrequency(double tuneHz)
 {
-    const DiagCall diagCall(this, "setNotchTuneFrequency");   // build 526
     m_notchTuneHz = tuneHz;
     if (canPushToChannel())
         m_channel->setNotchTuneFrequency(tuneHz);
@@ -1176,61 +1149,14 @@ void Hl2RxDsp::onSequenceGap()
     // per gap on top of the frame already lost.
 }
 
-// Build 526 (diagnostics): one line when this thread was late with a block --
-// the block's own time (WDSP's processIq and the sub receiver's share of it),
-// the pause before it, the slowest control call in that pause, and the longest
-// waits of control calls for the planner lock / a live filter design.
-void Hl2RxDsp::diagBlockDone(DiagClock::time_point start)
-{
-    const auto now = DiagClock::now();
-    const double blockMs = std::chrono::duration<double, std::milli>(now - start).count();
-    const double idleMs = m_diagBlockEnd.time_since_epoch().count() == 0 ? 0.0
-        : std::chrono::duration<double, std::milli>(start - m_diagBlockEnd).count();
-    m_diagBlockEnd = now;
-    const char* slowCall = m_diagSlowCall;
-    const double slowMs = m_diagSlowCallMs;
-    m_diagSlowCall = "";
-    m_diagSlowCallMs = 0.0;
-    if (m_diagIsSub)   // reported by its owner
-        return;
-    if (blockMs < 40.0 && idleMs < 40.0 && slowMs < 20.0)
-        return;
-    if (m_diagLogged.time_since_epoch().count() != 0
-        && now - m_diagLogged < std::chrono::milliseconds(100))
-        return;
-    m_diagLogged = now;
-    qCWarning(lcHl2RxDsp).nospace()
-        << "RX DSP stall: block " << QString::number(blockMs, 'f', 1) << " ms (WDSP "
-        << QString::number(m_diagWdspMs, 'f', 1) << ", sub receiver "
-        << QString::number(m_diagSubMs, 'f', 1) << "), pause before it "
-        << QString::number(idleMs, 'f', 1) << " ms, slowest call in it: "
-        << (slowMs > 0.0 ? slowCall : "none") << " " << QString::number(slowMs, 'f', 1)
-        << " ms; control calls waited: planner lock "
-        << QString::number(WdspChannel::takeMaxSetupLockWaitUs() / 1000.0, 'f', 1)
-        << " ms, live filter design "
-        << QString::number(WdspChannel::takeMaxLiveFilterWaitUs() / 1000.0, 'f', 1) << " ms";
-}
-
 void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool display)
 {
     if (!m_channel)
         return;
     // Build 470: the SPLIT receiver hears the same I/Q (its audio is queued
     // by its audioReady and sent on with ours below, as its own stream).
-    // Build 526 (diagnostics): this block's timing, reported when it is late.
-    struct DiagBlock {
-        Hl2RxDsp* dsp;
-        DiagClock::time_point start;
-        ~DiagBlock() { dsp->diagBlockDone(start); }
-    } diagBlock{this, DiagClock::now()};
-    m_diagWdspMs = 0.0;
-    m_diagSubMs = 0.0;
-    if (m_sub) {
-        const auto subT0 = DiagClock::now();
-        m_sub->m_diagIsSub = true;
+    if (m_sub)
         m_sub->processIqBlock(iq, false);
-        m_diagSubMs = std::chrono::duration<double, std::milli>(DiagClock::now() - subT0).count();
-    }
     // Build 466: display = false -- the audio path only (see the header).
     if (display && m_specRestoreSamples > 0) {
         m_specRestoreSamples -= static_cast<int>(iq.size());
@@ -1314,10 +1240,7 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
         }
         consumed += block;
 
-        const auto diagWdspT0 = DiagClock::now();   // build 526
         const auto res = m_channel->processIq(m_i, m_q, m_left, m_right);
-        m_diagWdspMs = std::max(m_diagWdspMs, std::chrono::duration<double, std::milli>(
-                                                  DiagClock::now() - diagWdspT0).count());
         // COUNT EVERY OUTCOME, including Ok — the Ok count is the denominator,
         // and "4 engine errors" against "4 engine errors in 5 blocks" are
         // different reports. See WdspProcessTally.h for why Underrun is not
