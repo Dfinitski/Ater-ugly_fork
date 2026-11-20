@@ -1725,6 +1725,11 @@ MainWindow::MainWindow(QWidget* parent)
     });
 
     // ── Slice tab toggle: click A/B/C/D → switch active slice (#1278) ──
+    // ANAN fork build 515: "+RX" of the receiver row -- the next receiver.
+    connect(m_appletPanel->rxApplet(), &RxApplet::addReceiverRequested, this, [this] {
+        const SliceModel* base = m_radioModel.slice(0);
+        addReceiverFromPan(base ? base->panId() : QString());
+    });
     connect(m_appletPanel->rxApplet(), &RxApplet::sliceActivationRequested,
             this, &MainWindow::setActiveSlice);
     connect(m_appletPanel->rxApplet(), &RxApplet::calibrateAgcTRequested,

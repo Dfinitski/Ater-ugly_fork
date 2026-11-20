@@ -126,6 +126,9 @@ public:
 signals:
     // Emitted when the user clicks a slice tab button.
     void sliceActivationRequested(int sliceId);
+    // ANAN fork build 515: "+RX" after the receiver buttons -- one more
+    // independent receiver (the next after the highest open one).
+    void addReceiverRequested();
     // Emitted when the user requests the AGC-T noise calibration panel
     // (right-click on the AGC-T slider). Carries the active slice id.
     void calibrateAgcTRequested(int sliceId);
@@ -256,6 +259,7 @@ private:
     QWidget*                m_sliceTabRow{nullptr};
     QButtonGroup*           m_sliceGroup{nullptr};
     QVector<QToolButton*>   m_sliceBtns;
+    QToolButton*            m_addRxBtn{nullptr};       // build 515: "+RX" after them (ANAN)
     bool                    m_subLock{false};          // build 486
     QSet<QObject*>          m_subLocked;               // filtered while m_subLock
     QList<QPointer<QWidget>> m_subDisabled;            // disabled by the lock

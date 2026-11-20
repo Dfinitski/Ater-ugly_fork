@@ -1987,6 +1987,26 @@ void RxApplet::setMaxSlices(int maxSlices)
         m_sliceBtns.append(btn);
     }
 
+    // ANAN fork build 515 (operator, 19.11): after the receiver buttons, a
+    // small "+RX" -- plain text in a frame. It opens the next receiver after
+    // the highest one open (B, C, D; the sub receivers are not counted),
+    // which is what the side menu's "+RX" did before it became "SubRX".
+    if (anan) {
+        m_addRxBtn = new QToolButton;
+        m_addRxBtn->setText(QStringLiteral("+RX"));
+        m_addRxBtn->setObjectName(QStringLiteral("rxAppletAddRx"));
+        m_addRxBtn->setAccessibleName(tr("Add receiver"));
+        m_addRxBtn->setToolTip(tr("Open one more receiver (the next after the highest one open)."));
+        m_addRxBtn->setFixedSize(30, 20);
+        m_addRxBtn->setStyleSheet(QStringLiteral(
+            "QToolButton { background: transparent; color: #c8d8e8; border: 1px solid #6a7a8a; "
+            "border-radius: 3px; font-size: 10px; padding: 0; }"
+            "QToolButton:hover { color: #ffffff; border-color: #c8d8e8; }"
+            "QToolButton:pressed { background: #2a3a4a; }"));
+        connect(m_addRxBtn, &QToolButton::clicked, this, [this] { emit addReceiverRequested(); });
+        targetLayout->insertWidget(insertIdx + maxSlices, m_addRxBtn);
+    }
+
     if (!m_sliceButtonClicksConnected) {
         connect(m_sliceGroup, QOverload<int>::of(&QButtonGroup::idClicked),
                 this, [this](int /*buttonId*/) {
@@ -2015,6 +2035,8 @@ void RxApplet::clearSliceButtons()
         return;
     }
 
+    delete m_addRxBtn;   // build 515
+    m_addRxBtn = nullptr;
     QSignalBlocker blocker(m_sliceGroup);
     while (!m_sliceBtns.isEmpty()) {
         QToolButton* btn = m_sliceBtns.takeLast();
@@ -2264,7 +2286,7 @@ void RxApplet::applySubReceiverLock()
         // Build 489: and its own AGC threshold -- AGC-T, Auto, NF+.
         if (w == m_agcTSlider || w == m_autoAgcTButton || w == m_agcNfSlider)
             continue;
-        if (auto* tb = qobject_cast<QToolButton*>(w); tb && m_sliceBtns.contains(tb))
+        if (auto* tb = qobject_cast<QToolButton*>(w); tb && (m_sliceBtns.contains(tb) || tb == m_addRxBtn))
             continue;
         // Disabled for the look; filtered as well, because the applet's own
         // syncs enable controls again as the slice reports its state.
