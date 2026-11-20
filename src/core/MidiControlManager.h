@@ -153,6 +153,12 @@ private:
 
     std::unique_ptr<RtMidiIn> m_midiIn;
     QString m_portName;
+    // ANAN fork build 534: the port to keep trying to open (the one asked for
+    // at start-up, or the one that was open); empty after closePort(). And
+    // the last failure logged, so a retry every 5 s does not fill the log.
+    QString m_retryName;
+    QString m_lastOpenError;
+    void noteOpenFailure(const QString& what);
 
     QVector<MidiParam>   m_params;
     QHash<QString, int>  m_paramIndex;  // paramId → index into m_params

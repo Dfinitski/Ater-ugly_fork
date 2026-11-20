@@ -85,8 +85,8 @@ MidiControlManager::MidiControlManager(QObject* parent)
     connect(m_hotplugTimer, &QTimer::timeout, this, [this] {
         // Hotplug: if disconnected and we have a saved port name, try to reconnect
         if (m_midiIn && m_midiIn->isPortOpen()) return;
-        if (m_portName.isEmpty()) return;
-        openPortByName(m_portName);
+        if (m_retryName.isEmpty()) return;   // build 534, see openPort()
+        openPortByName(m_retryName);
     });
 
     // Coalesce relative knob events every 20ms. Some generic relative controls
@@ -122,9 +122,40 @@ QStringList MidiControlManager::enumeratePorts()
     return result;
 }
 
+// ANAN fork build 534 (operator, 20.11, a user's log: at start-up
+// "MidiControlManager: open failed: MidiInWinMM::openPort: error creating
+// Windows MM MIDI input port", and the controller stayed dead). The port was
+// busy at that moment (the same Arduino's serial port answered "access
+// denied" in the same millisecond) -- and OUR ERROR made that final: the
+// reconnect timer was started only by a successful open, and every attempt
+// began with closePort(), which stops it. So a port that could not be opened
+// at start-up was never tried again, and a controller unplugged later was
+// tried once. Now the port asked for is remembered (m_retryName) and tried
+// every 5 s until it opens or closePort() is called (Disconnect, shutdown).
+void MidiControlManager::noteOpenFailure(const QString& what)
+{
+    if (!m_retryName.isEmpty())
+        m_hotplugTimer->start();
+    if (what == m_lastOpenError)
+        return;   // the same failure as 5 s ago: said once
+    m_lastOpenError = what;
+    qCWarning(lcDevices).noquote()
+        << "MidiControlManager: open failed:" << what
+        << (m_retryName.isEmpty() ? QString() : QStringLiteral("-- trying again every 5 s"));
+    emit portError(what);
+}
+
 bool MidiControlManager::openPort(int portIndex)
 {
-    closePort();
+    {
+        // What closePort() does, keeping the port to retry.
+        const QString retry = m_retryName;
+        if (m_midiIn)
+            closePort();
+        else
+            m_hotplugTimer->stop();
+        m_retryName = retry;
+    }
     try {
         m_midiIn = std::make_unique<RtMidiIn>();
         if (static_cast<unsigned>(portIndex) >= m_midiIn->getPortCount()) {
@@ -136,20 +167,22 @@ bool MidiControlManager::openPort(int portIndex)
         m_midiIn->openPort(portIndex);
         m_midiIn->setCallback(&rtmidiCallback, this);
         m_midiIn->ignoreTypes(true, true, true); // ignore sysex, timing, active sensing
-        qCDebug(lcDevices) << "MidiControlManager: opened port" << m_portName;
+        qCInfo(lcDevices) << "MidiControlManager: opened port" << m_portName;
+        m_retryName = m_portName;
+        m_lastOpenError.clear();
         m_hotplugTimer->start();
         emit portOpened(m_portName);
         return true;
     } catch (const RtMidiError& e) {
-        qCWarning(lcDevices) << "MidiControlManager: open failed:" << e.what();
         m_midiIn.reset();
-        emit portError(QString::fromStdString(e.getMessage()));
+        noteOpenFailure(QString::fromStdString(e.getMessage()));
         return false;
     }
 }
 
 bool MidiControlManager::openPortByName(const QString& portName)
 {
+    m_retryName = portName;   // build 534: wanted until closePort()
     try {
         RtMidiIn probe;
         unsigned int n = probe.getPortCount();
@@ -158,9 +191,12 @@ bool MidiControlManager::openPortByName(const QString& portName)
                 return openPort(static_cast<int>(i));
         }
     } catch (const RtMidiError& e) {
-        qCWarning(lcDevices) << "MidiControlManager: error finding port:" << e.what();
-        emit portError(QString::fromStdString(e.getMessage()));
+        noteOpenFailure(QString::fromStdString(e.getMessage()));
+        return false;
     }
+    // Not in the list (not plugged in, or not enumerated yet): keep looking.
+    if (!m_retryName.isEmpty())
+        m_hotplugTimer->start();
     return false;
 }
 
@@ -168,6 +204,7 @@ void MidiControlManager::closePort()
 {
     if (m_discardTxInputs) { m_discardTxInputs(); }
     m_hotplugTimer->stop();
+    m_retryName.clear();   // build 534: closed on purpose -- no more attempts
     if (m_midiIn) {
         try {
             if (m_midiIn->isPortOpen())
