@@ -820,9 +820,15 @@ void MidiMappingDialog::refreshBindingTable()
         }
 
         // Edit button — manual correction of this binding's source (#4760)
-        auto* editBtn = new QPushButton("✎");
-        editBtn->setFixedSize(24, 24);
-        AetherSDR::ThemeManager::instance().applyStyleSheet(editBtn, kBtnGlyphStyle);
+        // ANAN fork build 532 (operator, 19.11, screenshot: "the two marks at
+        // the end of the row, edit and delete, are drawn wrong"). The pencil
+        // glyph is not in the interface font and came from a fallback one,
+        // and both took the table's 11 px: an unreadable pencil and a dot
+        // for the cross. Plain text now, in a size of their own.
+        auto* editBtn = new QPushButton("Edit");
+        editBtn->setFixedSize(40, 22);
+        AetherSDR::ThemeManager::instance().applyStyleSheet(
+            editBtn, kBtnGlyphStyle + QStringLiteral("QPushButton { font-size: 11px; font-weight: bold; }"));
         editBtn->setToolTip("Edit this binding's channel, type and number manually");
         editBtn->setAccessibleName(QString("Edit binding for %1").arg(paramName));
         connect(editBtn, &QPushButton::clicked, this, [this, paramId = b.paramId] {
@@ -847,11 +853,14 @@ void MidiMappingDialog::refreshBindingTable()
         m_bindingTable->setCellWidget(i, 7, editBtn);
 
         // Delete button
-        auto* delBtn = new QPushButton("×");
-        delBtn->setFixedSize(24, 24);
+        auto* delBtn = new QPushButton("Del");
+        delBtn->setFixedSize(40, 22);
+        delBtn->setToolTip("Remove this binding");
+        delBtn->setAccessibleName(QString("Remove binding for %1").arg(paramName));
         delBtn->setStyleSheet(
-            "QPushButton { background: #602020; color: #ff6060; font-weight: bold; "
-            "border: 1px solid #803030; border-radius: 3px; }");
+            "QPushButton { background: #602020; color: #ffb0b0; font-size: 11px; font-weight: bold; "
+            "padding: 0; border: 1px solid #803030; border-radius: 3px; }"
+            "QPushButton:hover { background: #803030; color: #ffffff; }");
         connect(delBtn, &QPushButton::clicked, this, [this, paramId = b.paramId] {
             m_manager->removeBinding(paramId);
             refreshBindingTable();
@@ -896,13 +905,20 @@ void MidiMappingDialog::openManualEditor(const QString& paramId, const MidiBindi
     QDialog& dlg = *dialogOwner.get();
     dlg.setWindowTitle(existing ? "Edit MIDI Binding" : "Add MIDI Binding");
     dlg.setModal(true);
+    // ANAN fork build 532 (operator, 19.11: "the window Manual opens has a
+    // title bar that is not of our dark theme; it may not need one at all").
+    // It was the system's own title bar. None now: a frame of the theme, and
+    // the title as the first line of the form.
+    dlg.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
     dlg.setObjectName("midiManualBindingDialog");
     // checkBoxIndicatorStyle() is the #4013 fix for invisible indicators in
     // dark themes; it returns an unresolved template, so it must ride through
     // applyStyleSheet (not setStyleSheet) like the dialogs it came from.
     AetherSDR::ThemeManager::instance().applyStyleSheet(&dlg,
-        QString("QDialog { background: {{color.background.0}}; }"
+        QString("QDialog { background: {{color.background.0}}; "
+        "border: 1px solid {{color.border.strong}}; }"
         "QLabel { color: {{color.text.primary}}; }"
+        "QLabel#midiManualBindingTitle { color: {{color.accent}}; font-size: 13px; font-weight: bold; }"
         "QCheckBox { color: {{color.text.primary}}; }"
         "QComboBox, QSpinBox { background: {{color.background.1}}; "
         "border: 1px solid {{color.border.strong}}; border-radius: 3px; "
@@ -912,6 +928,11 @@ void MidiMappingDialog::openManualEditor(const QString& paramId, const MidiBindi
     auto* form = new QFormLayout(&dlg);
     form->setLabelAlignment(Qt::AlignRight);
     form->setSpacing(8);
+    {
+        auto* title = new QLabel(dlg.windowTitle(), &dlg);   // build 532
+        title->setObjectName("midiManualBindingTitle");
+        form->addRow(title);
+    }
 
     form->addRow(new QLabel(QString("Binding for: %1").arg(paramLabel)));
 
