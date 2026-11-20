@@ -1,3 +1,4 @@
+#include "core/ForkBuild.h"
 #include "gui/MainWindow.h"
 #include "core/ForkDataDir.h"
 #include "gui/ConnectionPanel.h"
@@ -850,6 +851,7 @@ int main(int argc, char* argv[])
     AetherSDR::LogManager::instance().flushLog();
 
     qDebug() << "Starting AetherSDR" << app.applicationVersion();
+    qInfo() << "ANAN fork build" << AETHER_FORK_BUILD;   // build 526: in every log
 
     int exitCode = 0;
     {

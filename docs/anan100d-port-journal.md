@@ -8790,6 +8790,28 @@ bogus-проба = 1. На экране не проверено.
 Проверка: errcheck без новых диагностик, bogus-пробы найдены. На радио не проверено — нужен лог
 оператора с перетаскиванием края при включённых суб-приёмнике и Auto AGC (строка «longest gap»).
 
+### 501. Сборка 526 — диагностика заиканий при перетаскивании фильтра (19.11)
+
+Лог оператора 19.11 20:59 (предположительно сборка 525 — номер сборки в лог не писался): паузы
+звука при перетаскивании края стали 300–330 мс вместо 1080 мс, но не исчезли. «read loop yields
+7..24», «speaker … fades 27» — отстаёт поток DSP, сеть читается. Все вызовы, которые Auto AGC
+делает на изменение фильтра (`setAgc`, `setSubAgcGain`), с 525 замок не берут — значит, ждёт
+что-то другое; по коду и логу это не определяется. Причина НЕ НАЙДЕНА, исправления в этой сборке
+нет — только измерение:
+
+- `Hl2RxDsp`: `DiagCall` меряет управляющие вызовы потока DSP (setFilter, setAgc, setSubAgcGain,
+  setShift, setSubShift, setMode, setSquelch, setNotchTuneFrequency, shiftSpectrum, ncoMoved,
+  dropSpectrumAverage, setBinaural, setAudioMuted); `diagBlockDone()` пишет строку
+  «RX DSP stall: block … ms (WDSP …, sub receiver …), pause before it … ms, slowest call in it: …;
+  control calls waited: planner lock … ms, live filter design … ms», когда блок шёл дольше 40 мс,
+  пауза перед ним дольше 40 мс или вызов дольше 20 мс (не чаще раза в 100 мс).
+- `filterWorkerLoop`: «RX passband design lo..hi Hz took N ms» (дольше 20 мс, не чаще раза в 0,5 с).
+- `WdspChannel::takeMaxSetupLockWaitUs / takeMaxLiveFilterWaitUs` — самые долгие ожидания
+  управляющих вызовов.
+- `main.cpp`: в начале каждого лога «ANAN fork build N».
+
+Диагностику убрать после того, как причина найдена.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

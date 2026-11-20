@@ -678,6 +678,33 @@ private:
     std::vector<float> m_subOut;   // build 513: the block subAudioReady carries
     double m_subShiftHz = 0.0;
     double m_subAgcTop = std::numeric_limits<double>::quiet_NaN();   // build 489
+    // Build 526 (diagnostics, operator 19.11: "smooth filter adjustment still
+    // stutters"): what this thread spent its time on when a block came late.
+    // DiagCall times one control call; the slowest since the last block is
+    // reported with the block's own timing ("RX DSP stall" in the log).
+    using DiagClock = std::chrono::steady_clock;
+    struct DiagCall {
+        DiagCall(Hl2RxDsp* dsp, const char* name) : m_dsp(dsp), m_name(name), m_t0(DiagClock::now()) {}
+        ~DiagCall()
+        {
+            const double ms = std::chrono::duration<double, std::milli>(DiagClock::now() - m_t0).count();
+            if (ms > m_dsp->m_diagSlowCallMs) {
+                m_dsp->m_diagSlowCallMs = ms;
+                m_dsp->m_diagSlowCall = m_name;
+            }
+        }
+        Hl2RxDsp* m_dsp;
+        const char* m_name;
+        DiagClock::time_point m_t0;
+    };
+    const char* m_diagSlowCall = "";
+    double m_diagSlowCallMs = 0.0;
+    double m_diagWdspMs = 0.0;          // longest processIq() of this block
+    double m_diagSubMs = 0.0;           // the sub receiver's share of this block
+    DiagClock::time_point m_diagBlockEnd{};
+    DiagClock::time_point m_diagLogged{};
+    bool m_diagIsSub = false;
+    void diagBlockDone(DiagClock::time_point start);
     std::uint64_t m_subGeneration = 0;
     // Pushes rxMinimumPhaseFor(m_config.mode) to the live channel. Only
     // called where the control verbs may reach it (setMode, installChannel).

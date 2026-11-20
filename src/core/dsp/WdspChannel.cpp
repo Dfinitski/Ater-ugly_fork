@@ -86,14 +86,27 @@ std::mutex& g_setupMutex = AetherSDR::fftwPlannerMutex();
 //    design (beginControlOperation(false)): they plan no FFT and touch no
 //    filter core, and WDSP guards them with the channel's own csDSP.
 std::atomic<int> g_setupWaiters{0};
+// Build 526 (diagnostics): see WdspChannel::takeMaxSetupLockWaitUs().
+std::atomic<std::int64_t> g_diagMaxLockWaitUs{0};
+std::atomic<std::int64_t> g_diagMaxLiveWaitUs{0};
+void diagNoteMax(std::atomic<std::int64_t>& slot, std::chrono::steady_clock::time_point since) noexcept
+{
+    const std::int64_t us = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - since).count();
+    std::int64_t seen = slot.load(std::memory_order_relaxed);
+    while (us > seen && !slot.compare_exchange_weak(seen, us, std::memory_order_relaxed)) {
+    }
+}
 
 class ControlSetupLock {
 public:
     ControlSetupLock() noexcept
     {
+        const auto since = std::chrono::steady_clock::now();
         g_setupWaiters.fetch_add(1, std::memory_order_seq_cst);
         g_setupMutex.lock();
         g_setupWaiters.fetch_sub(1, std::memory_order_seq_cst);
+        diagNoteMax(g_diagMaxLockWaitUs, since);
     }
     ~ControlSetupLock() { g_setupMutex.unlock(); }
     ControlSetupLock(const ControlSetupLock&) = delete;
@@ -1523,6 +1536,16 @@ void WdspChannel::restorePureSignalCorrectionForTest(const char* path) const noe
     PSRestoreCorr(m_channelId, const_cast<char*>(path));
 }
 
+std::int64_t WdspChannel::takeMaxSetupLockWaitUs() noexcept
+{
+    return g_diagMaxLockWaitUs.exchange(0, std::memory_order_relaxed);
+}
+
+std::int64_t WdspChannel::takeMaxLiveFilterWaitUs() noexcept
+{
+    return g_diagMaxLiveWaitUs.exchange(0, std::memory_order_relaxed);
+}
+
 std::unique_lock<std::mutex> WdspChannel::fftwSetupLock()
 {
     // Forwards, and keeps its name so Hl2Spectrum, AnanPanAnalyzer and
@@ -1995,8 +2018,10 @@ bool WdspChannel::beginControlOperation(bool waitForLiveFilter) noexcept
     // re-designs filters a control operation may be replacing. It backs off
     // on seeing our flag, so this waits for at most one design.
     // Build 525: not for a call that touches no filter core (AGC, meters).
+    const auto liveSince = std::chrono::steady_clock::now();
     while (waitForLiveFilter && m_liveSetter.load(std::memory_order_seq_cst))
         std::this_thread::yield();
+    diagNoteMax(g_diagMaxLiveWaitUs, liveSince);
     if (m_callbacksInFlight.load(std::memory_order_seq_cst) != 0) {
         m_controlOperation.store(false, std::memory_order_seq_cst);
         return false;

@@ -617,6 +617,11 @@ public:
     // fftwPlannerLock() directly. Scope width is per call site; allocations belong
     // inside it (#5424).
     [[nodiscard]] static std::unique_lock<std::mutex> fftwSetupLock();
+    // Build 526 (diagnostics): the longest a control call has waited, in
+    // microseconds, since the last call of this -- for the planner lock and
+    // for a live filter design. Process-wide; reading clears.
+    [[nodiscard]] static std::int64_t takeMaxSetupLockWaitUs() noexcept;
+    [[nodiscard]] static std::int64_t takeMaxLiveFilterWaitUs() noexcept;
 
 private:
     explicit WdspChannel(int channelId, const Config& config) noexcept;
