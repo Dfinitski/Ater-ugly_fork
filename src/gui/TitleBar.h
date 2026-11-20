@@ -212,6 +212,9 @@ private:
     QPushButton* m_appMenuBtn{nullptr};
     QElapsedTimer m_appMenuClosed;   // when the menu last hid; see setMenuBar()
     QMenu*       m_appMenu{nullptr};
+    // ANAN fork build 516: the hamburger's tree stays open across clicks on
+    // its items (StickyMenuTree in TitleBar.cpp; Windows only, else null).
+    QObject*     m_stickyAppMenu{nullptr};
     // Alt+<letter> for each top-level menu.  The hidden bar's own mnemonics
     // never match, so these keep the menus reachable from the keyboard.
     QHash<QAction*, QShortcut*> m_appMenuMnemonics;

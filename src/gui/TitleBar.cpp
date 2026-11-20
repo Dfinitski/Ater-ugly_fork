@@ -45,6 +45,8 @@
 #include <QPropertyAnimation>
 #include <QWindow>
 #include <QMenu>
+#include <QSet>
+#include <QWidgetAction>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QJsonDocument>
@@ -1271,6 +1273,160 @@ void TitleBar::mouseDoubleClickEvent(QMouseEvent* ev)
     QWidget::mouseDoubleClickEvent(ev);
 }
 
+// ANAN fork build 516 (operator, 19.11: "the settings menu tree is deeply
+// nested, and a click on any option closes it. Keep it open until a click
+// outside the options or a second click on the button that opens it. Windows
+// opened from the menu do not count, and clicks in them must not close the
+// tree").
+//
+// A QMenu is a popup: it holds the mouse, so nothing else can be clicked
+// while it is up, and Qt closes it on any press outside. While the tree is
+// open from the hamburger, its menus are therefore shown as frameless tool
+// windows instead (same widgets, same look, submenus opening on hover as
+// before), and this object, as an application event filter:
+//  - takes the release on an item: the action is triggered and the tree
+//    stays (QMenu would hide every level);
+//  - closes the tree on a press in the main window (anywhere but the tree);
+//    a press in any other window -- one opened from the menu -- is left alone;
+//  - closes it when the main window moves, resizes, minimises or hides.
+// When the tree closes the menus get their popup flags back, so the menu
+// bar, Alt+letter and context uses of the same menus are as before.
+// Windows only: a tool window cannot place itself on Wayland, and macOS has
+// its native menu bar.
+class StickyMenuTree final : public QObject {
+public:
+    StickyMenuTree(QMenu* root, QWidget* bar)
+        : QObject(bar), m_root(root), m_bar(bar)
+    {
+        connect(m_root, &QMenu::aboutToHide, this, [this] {
+            // Hidden by Qt itself (an item activated from the keyboard, Esc).
+            QTimer::singleShot(0, this, [this] {
+                if (m_open && !m_root->isVisible())
+                    finish();
+            });
+        });
+    }
+    [[nodiscard]] bool isOpen() const { return m_open; }
+    void open(const QPoint& globalPos)
+    {
+        if (m_open)
+            return;
+        m_open = true;
+        prepare(m_root);
+        qApp->installEventFilter(this);
+        m_root->popup(globalPos);
+    }
+    void close()
+    {
+        if (!m_open)
+            return;
+        m_root->hide();   // its hideEvent hides the open submenus
+        finish();
+    }
+
+protected:
+    bool eventFilter(QObject* obj, QEvent* ev) override
+    {
+        if (!m_open)
+            return false;
+        auto* w = qobject_cast<QWidget*>(obj);
+        if (!w)
+            return false;
+        switch (ev->type()) {
+        case QEvent::MouseButtonRelease: {
+            auto* menu = qobject_cast<QMenu*>(w);
+            if (!menu || !m_menus.contains(menu))
+                return false;
+            auto* me = static_cast<QMouseEvent*>(ev);
+            QAction* a = menu->actionAt(me->position().toPoint());
+            if (a && qobject_cast<QWidgetAction*>(a))
+                return false;   // a control embedded in the menu: its own
+            if (a && me->button() == Qt::LeftButton && !a->menu() && !a->isSeparator()
+                && a->isEnabled()) {
+                // Outside this handler: an action may open a modal window.
+                QTimer::singleShot(0, a, [a] { a->trigger(); });
+            }
+            return true;   // never QMenu's own release: it hides the tree
+        }
+        case QEvent::MouseButtonPress:
+        case QEvent::NonClientAreaMouseButtonPress:
+            if (!inTree(w) && w->window() == m_bar->window())
+                close();
+            return false;
+        case QEvent::Move:
+        case QEvent::Resize:
+        case QEvent::WindowStateChange:
+        case QEvent::Hide:
+        case QEvent::Close:
+            if (w == m_bar->window())
+                close();
+            return false;
+        default:
+            return false;
+        }
+    }
+
+private:
+    [[nodiscard]] bool inTree(const QWidget* w) const
+    {
+        for (QMenu* m : m_menus) {
+            if (w == m || m->isAncestorOf(w))
+                return true;
+        }
+        return false;
+    }
+    void prepare(QMenu* menu)
+    {
+        if (!menu || m_menus.contains(menu))
+            return;
+        m_menus.insert(menu);
+        if (!menu->property("aetherStickyHooked").toBool()) {
+            menu->setProperty("aetherStickyHooked", true);
+            connect(menu, &QObject::destroyed, this, [this, menu] {
+                m_menus.remove(menu);
+                m_flags.remove(menu);
+            });
+            // Connected last, so it runs after the menu's own aboutToShow
+            // slots: submenus they have just built are taken in too.
+            connect(menu, &QMenu::aboutToShow, this, [this, menu] {
+                if (!m_open || !m_menus.contains(menu))
+                    return;
+                const auto actions = menu->actions();
+                for (QAction* a : actions)
+                    prepare(a->menu());
+            });
+        }
+        const Qt::WindowFlags was = menu->windowFlags();
+        m_flags.insert(menu, was);
+        Qt::WindowFlags f = was & ~Qt::WindowType_Mask;
+        f |= Qt::Tool | Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus;
+        menu->setWindowFlags(f);
+        menu->setAttribute(Qt::WA_ShowWithoutActivating, true);
+        const auto actions = menu->actions();
+        for (QAction* a : actions)
+            prepare(a->menu());
+    }
+    void finish()
+    {
+        m_open = false;
+        qApp->removeEventFilter(this);
+        const QSet<QMenu*> menus = m_menus;
+        m_menus.clear();
+        for (QMenu* menu : menus) {
+            menu->hide();
+            menu->setAttribute(Qt::WA_ShowWithoutActivating, false);
+            menu->setWindowFlags(m_flags.value(menu, (menu->windowFlags() & ~Qt::WindowType_Mask) | Qt::Popup));
+        }
+        m_flags.clear();
+    }
+
+    QMenu* m_root;
+    QWidget* m_bar;
+    bool m_open = false;
+    QSet<QMenu*> m_menus;
+    QHash<QMenu*, Qt::WindowFlags> m_flags;
+};
+
 void TitleBar::setMenuBar(QMenuBar* mb)
 {
     if (!mb) return;
@@ -1322,10 +1478,23 @@ void TitleBar::setMenuBar(QMenuBar* mb)
     // menu bar; the press that dismissed the menu is replayed to this button
     // straight away, and must not reopen it.
     connect(m_appMenu, &QMenu::aboutToHide, this, [this]() { m_appMenuClosed.start(); });
+#ifdef Q_OS_WIN
+    m_stickyAppMenu = new StickyMenuTree(m_appMenu, this);   // build 516
+#endif
     connect(m_appMenuBtn, &QPushButton::pressed, this, [this]() {
+        // Also the second press on the button while the tree is open: the
+        // press closed it a moment ago (StickyMenuTree), and must not reopen it.
         if (m_appMenuClosed.isValid() && m_appMenuClosed.elapsed() < 100)
             return;
-        m_appMenu->popup(m_appMenuBtn->mapToGlobal(QPoint(0, m_appMenuBtn->height())));
+        const QPoint at = m_appMenuBtn->mapToGlobal(QPoint(0, m_appMenuBtn->height()));
+        if (auto* sticky = static_cast<StickyMenuTree*>(m_stickyAppMenu)) {
+            if (sticky->isOpen())
+                sticky->close();
+            else
+                sticky->open(at);
+            return;
+        }
+        m_appMenu->popup(at);
     });
     // Menu shortcuts keep firing with the bar hidden because this visible
     // button carries the menu's action, which passes Qt's shortcut-context
