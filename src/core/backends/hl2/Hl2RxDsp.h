@@ -697,6 +697,10 @@ private:
         const char* m_name;
         DiagClock::time_point m_t0;
     };
+    // Build 527: the channel and the shift setShift() last gave it, so the
+    // same shift is not sent twice (a new channel always gets its own).
+    const WdspChannel* m_shiftPushedChannel = nullptr;
+    double m_shiftPushedHz = 0.0;
     const char* m_diagSlowCall = "";
     double m_diagSlowCallMs = 0.0;
     double m_diagWdspMs = 0.0;          // longest processIq() of this block

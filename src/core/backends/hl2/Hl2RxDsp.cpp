@@ -264,6 +264,7 @@ void Hl2RxDsp::installChannel(RebuildResult result)
         // The filter worker may be designing on the outgoing channel.
         std::lock_guard<std::mutex> life(m_channelLifeMutex);
         m_channel = std::move(result.channel);
+        m_shiftPushedChannel = nullptr;   // build 527: a new channel, nothing sent to it yet
     }
     m_spectrum = std::move(result.spectrum);
     // The operator's averaging, which the fresh spectrum does not know. A new
@@ -1016,8 +1017,26 @@ void Hl2RxDsp::setShift(double shiftHz)
 {
     const DiagCall diagCall(this, "setShift");   // build 526
     m_shiftHz = shiftHz;
-    if (canPushToChannel())
-        m_channel->setShift(shiftHz);
+    // ANAN fork build 527 (operator, 19.11: "the filter does not follow the
+    // mouse, it comes with a huge delay"; log of build 526: every stall of
+    // this thread while an edge was dragged was "setSubShift", 65..195 ms).
+    // OUR ERROR: the backend sends the sub receiver's shift again with every
+    // slice state it publishes -- with every step of a dragged edge -- and
+    // WdspChannel::setShift() is a control call that waits for a live filter
+    // design (the notch database moves with the shift), 65 ms each on this
+    // radio. Each mouse step so stopped this thread for one or two designs,
+    // and the steps queued up behind each other: that was the delay, and the
+    // audio stopping. A shift this channel already has is not sent again.
+    if (!canPushToChannel())
+        return;
+    if (m_channel.get() == m_shiftPushedChannel && shiftHz == m_shiftPushedHz)
+        return;
+    if (m_channel->setShift(shiftHz)) {
+        m_shiftPushedChannel = m_channel.get();
+        m_shiftPushedHz = shiftHz;
+    } else {
+        m_shiftPushedChannel = nullptr;   // refused: the next call tries again
+    }
 }
 
 void Hl2RxDsp::addNotch(int index, double centerHz, double widthHz, bool active)
