@@ -3,6 +3,7 @@
 #include "MidiSettings.h"
 #include "core/ForkDataDir.h"
 
+#include <algorithm>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -44,6 +45,8 @@ void writeBindingElement(QXmlStreamWriter& xml, const MidiBinding& b)
     xml.writeAttribute("inverted", b.inverted ? "True" : "False");
     if (b.relative) xml.writeAttribute("relative", "True");
     if (b.progressive) xml.writeAttribute("progressive", "True");   // build 529
+    if (b.progressiveRate != MidiBinding::kProgressiveRateDefault)   // build 530
+        xml.writeAttribute("progressiveRate", QString::number(b.progressiveRate));
     xml.writeEndElement();
 }
 
@@ -428,6 +431,10 @@ QVector<MidiBinding> parseProfileXml(const QByteArray& bytes,
         b.inverted = (attrs.value("inverted") == u"True");
         b.relative = (attrs.value("relative") == u"True");
         b.progressive = (attrs.value("progressive") == u"True");   // build 529
+        if (attrs.hasAttribute("progressiveRate"))   // build 530
+            b.progressiveRate = std::clamp(attrs.value("progressiveRate").toInt(),
+                                           MidiBinding::kProgressiveRateMin,
+                                           MidiBinding::kProgressiveRateMax);
         // Same MIDI-source collision as the .map path, and likelier here:
         // addBinding() dedups by param only, so our own export can carry two
         // bindings on one source. The later one would win the index after
@@ -582,6 +589,10 @@ QVector<MidiBinding> MidiSettings::parseBindingsFromXml(const QString& filePath)
             b.inverted = (xml.attributes().value("inverted") == u"True");
             b.relative = (xml.attributes().value("relative") == u"True");
             b.progressive = (xml.attributes().value("progressive") == u"True");   // build 529
+            if (xml.attributes().hasAttribute("progressiveRate"))   // build 530
+                b.progressiveRate = std::clamp(xml.attributes().value("progressiveRate").toInt(),
+                                               MidiBinding::kProgressiveRateMin,
+                                               MidiBinding::kProgressiveRateMax);
             if (!b.paramId.isEmpty())
                 result.append(b);
         }

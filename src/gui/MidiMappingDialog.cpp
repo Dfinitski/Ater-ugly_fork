@@ -179,8 +179,9 @@ MidiMappingDialog::MidiMappingDialog(MidiControlManager* manager, QWidget* paren
 
         m_bindingTable = new QTableWidget;
         // Build 529: column 5 "Progressive" (VFO tune knobs only).
-        m_bindingTable->setColumnCount(8);
-        m_bindingTable->setHorizontalHeaderLabels({"Parameter", "MIDI Source", "Channel", "Invert", "Relative", "Progressive", "", ""});
+        // Build 530: column 6 "From, pulses/s" -- where it starts.
+        m_bindingTable->setColumnCount(9);
+        m_bindingTable->setHorizontalHeaderLabels({"Parameter", "MIDI Source", "Channel", "Invert", "Relative", "Progressive", "From, pulses/s", "", ""});
         m_bindingTable->horizontalHeader()->setStretchLastSection(false);
         m_bindingTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
         m_bindingTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
@@ -190,6 +191,7 @@ MidiMappingDialog::MidiMappingDialog(MidiControlManager* manager, QWidget* paren
         m_bindingTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
         m_bindingTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents);
         m_bindingTable->horizontalHeader()->setSectionResizeMode(7, QHeaderView::ResizeToContents);
+        m_bindingTable->horizontalHeader()->setSectionResizeMode(8, QHeaderView::ResizeToContents);
         m_bindingTable->setSelectionBehavior(QAbstractItemView::SelectRows);
         m_bindingTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
         m_bindingTable->verticalHeader()->setVisible(false);
@@ -791,8 +793,30 @@ void MidiMappingDialog::refreshBindingTable()
                 }
             });
             m_bindingTable->setCellWidget(i, 5, progCheck);
+            // Build 530 (operator, 19.11: "encoders of 100 and even 400
+            // pulses a turn are common -- make the threshold settable"): the
+            // turning rate, in pulses of this knob per second, up to which
+            // one pulse is one step. Above it the step grows.
+            auto* rateSpin = new QSpinBox;
+            rateSpin->setRange(MidiBinding::kProgressiveRateMin, MidiBinding::kProgressiveRateMax);
+            rateSpin->setSingleStep(5);
+            rateSpin->setValue(b.progressiveRate);
+            rateSpin->setToolTip("Progressive tuning starts above this turning rate, in pulses\n"
+                                 "of the knob per second. About one turn a second is a good\n"
+                                 "start: 30 for a 24-detent knob, 100 for a 100-pulse encoder,\n"
+                                 "400 for a 400-pulse one. At twice this rate the step is x4,\n"
+                                 "at three times x9; x20 at most.");
+            rateSpin->setAccessibleName(QString("Progressive tuning threshold for %1").arg(paramName));
+            connect(rateSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this, i](int v) {
+                if (i < m_manager->bindings().size()) {
+                    m_manager->bindings()[i].progressiveRate = v;
+                    MidiSettings::instance().saveBindings(m_manager->bindings());
+                }
+            });
+            m_bindingTable->setCellWidget(i, 6, rateSpin);
         } else {
             m_bindingTable->removeCellWidget(i, 5);
+            m_bindingTable->removeCellWidget(i, 6);
         }
 
         // Edit button — manual correction of this binding's source (#4760)
@@ -820,7 +844,7 @@ void MidiMappingDialog::refreshBindingTable()
                 }
             });
         });
-        m_bindingTable->setCellWidget(i, 6, editBtn);
+        m_bindingTable->setCellWidget(i, 7, editBtn);
 
         // Delete button
         auto* delBtn = new QPushButton("×");
@@ -833,7 +857,7 @@ void MidiMappingDialog::refreshBindingTable()
             refreshBindingTable();
             MidiSettings::instance().saveBindings(m_manager->bindings());
         });
-        m_bindingTable->setCellWidget(i, 7, delBtn);
+        m_bindingTable->setCellWidget(i, 8, delBtn);
     }
 }
 
@@ -985,6 +1009,8 @@ void MidiMappingDialog::openManualEditor(const QString& paramId, const MidiBindi
     b.inverted = invertCheck->isChecked();
     b.relative = relativeCheck->isChecked() && b.msgType == MidiBinding::CC;
     b.progressive = existing && existing->progressive;   // build 529: kept by an edit
+    if (existing)
+        b.progressiveRate = existing->progressiveRate;   // build 530
 
     // Duplicate-source guard. The dispatch index is keyed on (channel, type,
     // number) without the param, so on a collision the last table row silently

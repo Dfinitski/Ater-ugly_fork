@@ -48,6 +48,12 @@ struct MidiBinding {
     // ANAN fork build 529: a VFO tune knob only -- progressive tuning, the
     // faster the knob turns the more steps one detent makes.
     bool    progressive{false};
+    // Build 530: where it starts, in pulses of the knob per second -- encoders
+    // differ (24 detents a turn, 100, 400), so it is set for each knob.
+    static constexpr int kProgressiveRateDefault = 30;
+    static constexpr int kProgressiveRateMin = 5;
+    static constexpr int kProgressiveRateMax = 5000;
+    int     progressiveRate{kProgressiveRateDefault};
 
     // Unique key for hash lookup
     quint32 key() const {
@@ -178,8 +184,10 @@ private:
         double carry{0.0};
     };
     // Build 529: steps to send for `steps` detents of a progressive VFO knob.
-    static int progressiveSteps(RelativeAccum& a, int steps, qint64 nowMs);
+    static int progressiveSteps(RelativeAccum& a, int steps, qint64 nowMs, double slowRate);
     [[nodiscard]] bool isProgressiveKnob(const QString& paramId) const;
+    // Build 530: the knob's threshold, 0 when it is not progressive.
+    [[nodiscard]] int progressiveKnobRate(const QString& paramId) const;
     QHash<QString, RelativeAccum> m_relativeAccum; // paramId → accum
     QTimer* m_relativeTimer{nullptr};
     void accumulateRelativeStep(const QString& paramId, int delta);

@@ -5,6 +5,7 @@
 #include "LogManager.h"
 #include "ThreadName.h"
 
+#include <algorithm>
 #include <RtMidi.h>
 #include <QDateTime>
 #include <QDebug>
@@ -395,6 +396,10 @@ void MidiControlManager::onMidiMessage(int status, int data1, int data2,
                            && msgType == MidiBinding::CC;
         // Build 529: learning a knob again keeps its Progressive choice.
         binding.progressive = isProgressiveKnob(binding.paramId);
+        for (const MidiBinding& was : m_bindings) {   // build 530: and its threshold
+            if (was.paramId == binding.paramId)
+                binding.progressiveRate = was.progressiveRate;
+        }
 
         addBinding(binding);
         m_learning = false;
@@ -575,14 +580,17 @@ void MidiControlManager::accumulateRelativeStep(const QString& paramId, int delt
 // source was not at hand). This is the law of a transceiver's dial:
 //  - the turning rate, in detents per second, is measured between the 20 ms
 //    flushes that carry steps, and smoothed over about three of them;
-//  - up to kSlowRate one detent is one step -- slow turning stays exact;
-//  - above it the multiplier grows as (rate / kSlowRate)^2, to kMaxMultiplier;
+//  - up to slowRate one detent is one step -- slow turning stays exact
+//    (build 530: slowRate is the knob's own setting, MidiBinding::
+//    progressiveRate -- a 24-detent knob and a 400-pulse encoder turn at
+//    very different pulse rates);
+//  - above it the multiplier grows as (rate / slowRate)^2, to kMaxMultiplier;
 //  - a pause (kPauseMs) or a change of direction starts again from one step
 //    per detent, so stopping on a signal and stepping back never overshoots.
 // The fraction of a step the multiplier leaves is carried to the next flush.
-int MidiControlManager::progressiveSteps(RelativeAccum& a, int steps, qint64 nowMs)
+int MidiControlManager::progressiveSteps(RelativeAccum& a, int steps, qint64 nowMs, double slowRate)
 {
-    constexpr double kSlowRate = 30.0;        // detents / s: exact below this
+    const double kSlowRate = std::max(1.0, slowRate);   // pulses / s: exact below this
     constexpr double kMaxMultiplier = 20.0;
     constexpr qint64 kPauseMs = 250;
     constexpr double kSmoothing = 0.35;       // weight of the newest measurement
@@ -606,6 +614,19 @@ int MidiControlManager::progressiveSteps(RelativeAccum& a, int steps, qint64 now
     const int whole = static_cast<int>(wanted);   // towards zero
     a.carry = wanted - whole;
     return whole;
+}
+
+int MidiControlManager::progressiveKnobRate(const QString& paramId) const
+{
+    if (!isVfoTuneKnob(paramId))
+        return 0;
+    for (const MidiBinding& b : m_bindings) {
+        if (b.paramId == paramId)
+            return b.progressive ? std::clamp(b.progressiveRate, MidiBinding::kProgressiveRateMin,
+                                              MidiBinding::kProgressiveRateMax)
+                                 : 0;
+    }
+    return 0;
 }
 
 bool MidiControlManager::isProgressiveKnob(const QString& paramId) const
@@ -643,8 +664,8 @@ void MidiControlManager::flushRelativeAccum()
                     // Fast: 4× acceleration
                     steps *= 4;
                 }
-            } else if (isProgressiveKnob(it.key())) {
-                steps = progressiveSteps(a, steps, now);   // build 529
+            } else if (const int slowRate = progressiveKnobRate(it.key()); slowRate > 0) {
+                steps = progressiveSteps(a, steps, now, slowRate);   // builds 529, 530
             }
             // Medium (3-6 events): 1:1, no change
 
