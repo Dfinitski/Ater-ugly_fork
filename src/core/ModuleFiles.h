@@ -9,6 +9,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QList>
 #include <QString>
@@ -92,6 +93,56 @@ inline QString missingAdvice()
 #endif
 }
 
+// ANAN fork build 537 (operator, 20.11: a Windows 11 user has all the module
+// files, the program "does not see" them, and replacing them with the same
+// files taken from the source archive makes FTX work). The release's files
+// and the repository's are the same bytes, so what differs is how they got
+// onto the disk. A file unpacked by Windows from a downloaded ZIP carries the
+// "downloaded from the Internet" mark (the NTFS stream Zone.Identifier), and
+// Windows 11 can refuse to load an unsigned DLL that has it. Not proved on
+// that user's computer -- so the mark is looked for and reported, in the log
+// and in the message, and nothing is changed on the disk.
+// Returns the mark's zone ("ZoneId=3" is the Internet), empty when there is
+// none or on another system.
+inline QString downloadMark(const QString& path)
+{
+#if defined(Q_OS_WIN)
+    QFile f(path + QStringLiteral(":Zone.Identifier"));
+    if (!f.open(QIODevice::ReadOnly))
+        return QString();
+    const QString text = QString::fromLatin1(f.read(512));
+    for (const QString& line : text.split(QLatin1Char('\n'))) {
+        const QString t = line.trimmed();
+        if (t.startsWith(QStringLiteral("ZoneId="), Qt::CaseInsensitive))
+            return t;
+    }
+    return QStringLiteral("ZoneId=?");
+#else
+    Q_UNUSED(path);
+    return QString();
+#endif
+}
+
+// One line per module for the log: size, and the download mark if any.
+inline QStringList inventory()
+{
+    QStringList out;
+    for (const Entry& e : required()) {
+        const QString path = QDir(e.dir).filePath(e.file);
+        const QFileInfo fi(path);
+        if (!fi.exists()) {
+            out << QStringLiteral("%1: missing").arg(e.file);
+            continue;
+        }
+        const QString mark = downloadMark(path);
+        out << QStringLiteral("%1: %2 bytes%3")
+                   .arg(e.file).arg(fi.size())
+                   .arg(mark.isEmpty() ? QString()
+                                       : QStringLiteral(", marked as downloaded (%1)").arg(mark));
+    }
+    return out;
+}
+
 // The text for a library that did not load: missing, or there but refused.
 // file: the platform file name (e.g. "libftx.dll"); systemError: QLibrary's
 // errorString() of the load next to the program.
@@ -100,6 +151,15 @@ inline QString loadFailureText(const QString& file, const QString& systemError)
     const QString dir = QDir::toNativeSeparators(libDir());
     if (!QFileInfo::exists(QDir(libDir()).filePath(file)))
         return QStringLiteral("%1 is missing in %2. %3").arg(file, dir, missingAdvice());
+    // Build 537: the download mark is the first thing to remove.
+    const QString mark = downloadMark(QDir(libDir()).filePath(file));
+    if (!mark.isEmpty())
+        return QStringLiteral("%1 is in %2 but the system refused to load it (%3). Windows has "
+                              "marked the file as downloaded from the Internet (%4) and may be "
+                              "blocking it. Right-click the file, Properties, tick \"Unblock\", "
+                              "OK -- for every .dll in the folder; or right-click the downloaded "
+                              "ZIP, Properties, \"Unblock\", and unpack it again.")
+            .arg(file, dir, systemError, mark);
     return QStringLiteral("%1 is in %2 but the system refused to load it (%3). An antivirus "
                           "may be blocking it: look in its quarantine and add the folder to its "
                           "exclusions.")

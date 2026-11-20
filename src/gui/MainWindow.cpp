@@ -4001,6 +4001,10 @@ void MainWindow::showEvent(QShowEvent* event)
     // Once after start, list what is missing and where it should be; the user
     // can silence the warning for exactly that set of files.
     QTimer::singleShot(1500, this, [this]() {
+        // Build 537: what is there, in every log (size, download mark).
+        qCInfo(lcGui).noquote() << "Module files in"
+                                << QDir::toNativeSeparators(ModuleFiles::libDir()) << "--"
+                                << ModuleFiles::inventory().join(QStringLiteral("; "));
         const QList<ModuleFiles::Entry> gone = ModuleFiles::missing();
         if (gone.isEmpty())
             return;
