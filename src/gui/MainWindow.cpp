@@ -204,6 +204,8 @@
 #include <QProcess>
 #include <QScreen>
 #include <QTimer>
+#include <thread>
+#include <QLibrary>
 #include <QDateTime>
 #include <QIcon>
 #include <QCursor>
@@ -4005,6 +4007,37 @@ void MainWindow::showEvent(QShowEvent* event)
         qCInfo(lcGui).noquote() << "Module files in"
                                 << QDir::toNativeSeparators(ModuleFiles::libDir()) << "--"
                                 << ModuleFiles::inventory().join(QStringLiteral("; "));
+        // ANAN fork build 539 (operator, 20.11: the Windows 11 user says the
+        // FTX mode "was not there" until he replaced the module files; his
+        // log has no attempt to start it, so it shows nothing). The FTX
+        // modules are loaded once here, off the GUI thread -- only to write
+        // into every log whether the system lets them load, and its own
+        // words if it does not.
+        {
+            const QString dir = ModuleFiles::libDir();
+            const QStringList probes{ModuleFiles::fileName(QStringLiteral("libftx")),
+                                     ModuleFiles::fileName(QStringLiteral("libjs8"))};
+            std::thread([dir, probes] {
+                for (const QString& file : probes) {
+                    const QString path = QDir(dir).filePath(file);
+                    if (!QFileInfo::exists(path))
+                        continue;   // reported as missing below
+                    QLibrary lib(path);
+                    if (lib.load()) {
+                        // Left loaded (the mode loads it anyway; unloading a
+                        // module with its own runtime is the riskier thing).
+                        qCInfo(lcGui).noquote() << "Module load test:" << file << "loads";
+                    } else {
+                        qCWarning(lcGui).noquote()
+                            << "Module load test:" << file << "is there but does NOT load --"
+                            << lib.errorString()
+                            << (ModuleFiles::downloadMark(path).isEmpty()
+                                    ? QString()
+                                    : QStringLiteral("(the file is marked as downloaded)"));
+                    }
+                }
+            }).detach();
+        }
         const QList<ModuleFiles::Entry> gone = ModuleFiles::missing();
         if (gone.isEmpty())
             return;
