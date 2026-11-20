@@ -248,9 +248,11 @@ bool LogManager::startLogging(const QString& path, bool mirrorToStderr)
 
             setActiveLogFilePath(candidate);
 
+#ifndef Q_OS_WIN   // build 538: no aethersdr.log shortcut on Windows (see main.cpp)
             const QString symlink = dir + "/aethersdr.log";
             QFile::remove(symlink);
             QFile::link(candidate, symlink);
+#endif
             return candidate;
         });
 

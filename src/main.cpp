@@ -43,6 +43,7 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QFontDatabase>
 #include <QDateTime>
 #include <QScreen>
@@ -797,11 +798,16 @@ int main(int argc, char* argv[])
             ::unlink(tmpBytes.constData());
         }
 #else
-        // Windows: QFile::link creates a .lnk shortcut; non-atomic is
-        // acceptable here since the symlink is only consumed by the
-        // Support dialog locally.
-        QFile::remove(symlink);
-        QFile::link(logPath, symlink);
+        // ANAN fork build 538 (operator, 20.11: "remove that shortcut with
+        // the .log extension -- every user takes it for the current log").
+        // On Windows QFile::link makes a .lnk shortcut, here under the name
+        // aethersdr.log: a kilobyte of binary that users sent in as "the
+        // log". Nothing reads it (the Support dialog and the support bundle
+        // use the active log's own path), so it is no longer made, and the
+        // one a previous build left is removed -- only if it is that small
+        // shortcut, never a real log.
+        if (QFileInfo(symlink).exists() && QFileInfo(symlink).size() < 16 * 1024)
+            QFile::remove(symlink);
 #endif
     } else {
         fprintf(stderr, "Warning: could not open log file %s\n", logPath.toLocal8Bit().constData());
