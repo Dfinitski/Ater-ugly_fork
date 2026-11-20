@@ -3207,9 +3207,8 @@ QJsonObject captureAnanTxProfile(RadioModel* model)
     p.insert(QStringLiteral("tunePower"), tx.tunePower());
     p.insert(QStringLiteral("micLevel"), tx.micLevel());
     p.insert(QStringLiteral("micSource"), st.value(QStringLiteral("AnanMicSource"), 0).toInt());
-    p.insert(QStringLiteral("micBoost"),
-             st.value(QStringLiteral("AnanMicBoost"), QStringLiteral("True")).toString()
-                 == QLatin1String("True"));
+    // Build 523 (operator, 19.11): no "micBoost" -- the +20 dB is a device
+    // setting ("Mic +20 dB"), not a part of a profile.
     p.insert(QStringLiteral("procOn"), tx.speechProcessorEnable());
     p.insert(QStringLiteral("procLevel"), tx.speechProcessorLevel());
     p.insert(QStringLiteral("txLow"), tx.txFilterLow());
@@ -3237,10 +3236,6 @@ void applyAnanTxProfile(RadioModel* model, const QJsonObject& p)
     if (p.contains(QStringLiteral("micSource")))
         st.setValue(QStringLiteral("AnanMicSource"),
                     std::clamp(p.value(QStringLiteral("micSource")).toInt(), 0, 2));
-    if (p.contains(QStringLiteral("micBoost")))
-        st.setValue(QStringLiteral("AnanMicBoost"),
-                    p.value(QStringLiteral("micBoost")).toBool() ? QStringLiteral("True")
-                                                                  : QStringLiteral("False"));
     // Build 437: a profile stored before has none -- the present delay stays.
     if (p.contains(QStringLiteral("rfDelayMs")))
         st.setValue(QStringLiteral("AnanRfDelayMs"), std::clamp(p.value(QStringLiteral("rfDelayMs")).toInt(), 1, 255));
@@ -3315,7 +3310,7 @@ QWidget* RadioSetupDialog::buildTxTab()
 
         auto* hint = new QLabel(
             "A profile holds: RF power, TUNE power, microphone source (PC / MIC / TEST), "
-            "mic gain, +20 dB, PROC on and level, TX filter low/high, monitor level and "
+            "mic gain, PROC on and level, TX filter low/high, monitor level and "
             "the TX equalizer, the PureSignal settings and the microphone profiles of the Mic "
             "applet (Profile 1-4 of SSB, AM, FM and FDV, with AetherTX and the RX / TX "
             "equalizers). Choosing a profile "

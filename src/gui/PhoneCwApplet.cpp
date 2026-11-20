@@ -732,11 +732,11 @@ QJsonObject PhoneCwApplet::captureMicProfile() const
     p[QStringLiteral("version")] = 1;
     p[QStringLiteral("micSource")] = m_micSourceCombo->currentText();
     p[QStringLiteral("micLevel")] = m_micLevelSlider->value();
-    // Build 522: in radio-mic mode the setting itself (the button is hidden).
-    p[QStringLiteral("boost")] = radioMicMode()
-        ? AppSettings::instance().value(QStringLiteral("AnanMicBoost"), QStringLiteral("True"))
-              .toString() == QLatin1String("True")
-        : m_accBtn->isChecked();
+    // Build 523 (operator, 19.11): the radio's +20 dB mic boost is a device
+    // setting ("Mic +20 dB") and is not part of a profile any more; only the
+    // +ACC input of a radio with selectable inputs is.
+    if (!radioMicMode())
+        p[QStringLiteral("boost")] = m_accBtn->isChecked();
     p[QStringLiteral("proc")] = m_procBtn->isChecked();
     p[QStringLiteral("procLevel")] = m_procSlider->value();
     // Build 422: not in FDV -- the sliders show the sub-mode's band there.
@@ -763,19 +763,10 @@ void PhoneCwApplet::applyMicProfile(const QJsonObject& p)
     }
     if (p.contains(QStringLiteral("micLevel")))
         m_micLevelSlider->setValue(p.value(QStringLiteral("micLevel")).toInt(m_micLevelSlider->value()));
-    if (p.contains(QStringLiteral("boost"))) {
-        const bool on = p.value(QStringLiteral("boost")).toBool();
-        if (radioMicMode()) {   // build 522: straight to the setting
-            auto& st = AppSettings::instance();
-            st.setValue(QStringLiteral("AnanMicBoost"),
-                        on ? QStringLiteral("True") : QStringLiteral("False"));
-            st.save();
-            const QSignalBlocker blocker(m_accBtn);
-            m_accBtn->setChecked(on);
-        } else {
-            m_accBtn->setChecked(on);
-        }
-    }
+    // Build 523: a "boost" stored by an older build is left alone in
+    // radio-mic mode (see captureMicProfile).
+    if (p.contains(QStringLiteral("boost")) && !radioMicMode())
+        m_accBtn->setChecked(p.value(QStringLiteral("boost")).toBool());
     if (p.contains(QStringLiteral("proc")))
         m_procBtn->setChecked(p.value(QStringLiteral("proc")).toBool());
     if (p.contains(QStringLiteral("procLevel")))
