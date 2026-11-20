@@ -393,6 +393,8 @@ void MidiControlManager::onMidiMessage(int status, int data1, int data2,
         binding.inverted = false;
         binding.relative = isVfoTuneKnobParamId(binding.paramId)
                            && msgType == MidiBinding::CC;
+        // Build 529: learning a knob again keeps its Progressive choice.
+        binding.progressive = isProgressiveKnob(binding.paramId);
 
         addBinding(binding);
         m_learning = false;
@@ -566,6 +568,57 @@ void MidiControlManager::accumulateRelativeStep(const QString& paramId, int delt
         m_relativeTimer->start();
 }
 
+// ANAN fork build 529 (operator, 19.11: "a progressive tuning step for the
+// MIDI VFO knobs, switched on for each knob separately"). Thetis has none
+// (its MIDI wheel has a fixed "wheel updates per step" sensitivity, two
+// values and a toggle); piHPSDR made its VFO knob "progressive" in 2025 (its
+// source was not at hand). This is the law of a transceiver's dial:
+//  - the turning rate, in detents per second, is measured between the 20 ms
+//    flushes that carry steps, and smoothed over about three of them;
+//  - up to kSlowRate one detent is one step -- slow turning stays exact;
+//  - above it the multiplier grows as (rate / kSlowRate)^2, to kMaxMultiplier;
+//  - a pause (kPauseMs) or a change of direction starts again from one step
+//    per detent, so stopping on a signal and stepping back never overshoots.
+// The fraction of a step the multiplier leaves is carried to the next flush.
+int MidiControlManager::progressiveSteps(RelativeAccum& a, int steps, qint64 nowMs)
+{
+    constexpr double kSlowRate = 30.0;        // detents / s: exact below this
+    constexpr double kMaxMultiplier = 20.0;
+    constexpr qint64 kPauseMs = 250;
+    constexpr double kSmoothing = 0.35;       // weight of the newest measurement
+
+    const int direction = steps > 0 ? 1 : -1;
+    const qint64 sinceMs = a.lastFlushMs > 0 ? nowMs - a.lastFlushMs : kPauseMs + 1;
+    a.lastFlushMs = nowMs;
+    if (sinceMs > kPauseMs || direction != a.direction) {
+        a.rate = 0.0;
+        a.carry = 0.0;
+        a.direction = direction;
+        return steps;   // the first detents after a pause or a reversal: exact
+    }
+    const double dtS = std::max<qint64>(sinceMs, 10) / 1000.0;
+    const double measured = std::abs(steps) / dtS;
+    a.rate += kSmoothing * (measured - a.rate);
+    double multiplier = 1.0;
+    if (a.rate > kSlowRate)
+        multiplier = std::min(kMaxMultiplier, (a.rate / kSlowRate) * (a.rate / kSlowRate));
+    const double wanted = steps * multiplier + a.carry;
+    const int whole = static_cast<int>(wanted);   // towards zero
+    a.carry = wanted - whole;
+    return whole;
+}
+
+bool MidiControlManager::isProgressiveKnob(const QString& paramId) const
+{
+    if (!isVfoTuneKnob(paramId))
+        return false;
+    for (const MidiBinding& b : m_bindings) {
+        if (b.paramId == paramId)
+            return b.progressive;
+    }
+    return false;
+}
+
 void MidiControlManager::flushRelativeAccum()
 {
     bool anyActive = false;
@@ -590,6 +643,8 @@ void MidiControlManager::flushRelativeAccum()
                     // Fast: 4× acceleration
                     steps *= 4;
                 }
+            } else if (isProgressiveKnob(it.key())) {
+                steps = progressiveSteps(a, steps, now);   // build 529
             }
             // Medium (3-6 events): 1:1, no change
 

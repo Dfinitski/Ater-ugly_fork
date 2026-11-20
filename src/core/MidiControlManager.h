@@ -45,6 +45,9 @@ struct MidiBinding {
     QString paramId;         // target parameter ID
     bool    inverted{false}; // reverse the value range
     bool    relative{false}; // CC sends relative delta (1-63=CW, 65-127=CCW)
+    // ANAN fork build 529: a VFO tune knob only -- progressive tuning, the
+    // faster the knob turns the more steps one detent makes.
+    bool    progressive{false};
 
     // Unique key for hash lookup
     quint32 key() const {
@@ -166,7 +169,17 @@ private:
         int   steps{0};
         int   eventCount{0};     // events in this 20ms window for rate detection
         qint64 lastEventMs{0};   // for inter-event rate measurement
+        // Build 529, progressive VFO knobs: when the last steps went out, the
+        // smoothed turning rate (detents per second), its direction, and the
+        // fraction of a step not sent yet.
+        qint64 lastFlushMs{0};
+        double rate{0.0};
+        int    direction{0};
+        double carry{0.0};
     };
+    // Build 529: steps to send for `steps` detents of a progressive VFO knob.
+    static int progressiveSteps(RelativeAccum& a, int steps, qint64 nowMs);
+    [[nodiscard]] bool isProgressiveKnob(const QString& paramId) const;
     QHash<QString, RelativeAccum> m_relativeAccum; // paramId → accum
     QTimer* m_relativeTimer{nullptr};
     void accumulateRelativeStep(const QString& paramId, int delta);

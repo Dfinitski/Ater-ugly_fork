@@ -178,8 +178,9 @@ MidiMappingDialog::MidiMappingDialog(MidiControlManager* manager, QWidget* paren
         auto* vbox = new QVBoxLayout(group);
 
         m_bindingTable = new QTableWidget;
-        m_bindingTable->setColumnCount(7);
-        m_bindingTable->setHorizontalHeaderLabels({"Parameter", "MIDI Source", "Channel", "Invert", "Relative", "", ""});
+        // Build 529: column 5 "Progressive" (VFO tune knobs only).
+        m_bindingTable->setColumnCount(8);
+        m_bindingTable->setHorizontalHeaderLabels({"Parameter", "MIDI Source", "Channel", "Invert", "Relative", "Progressive", "", ""});
         m_bindingTable->horizontalHeader()->setStretchLastSection(false);
         m_bindingTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
         m_bindingTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
@@ -188,6 +189,7 @@ MidiMappingDialog::MidiMappingDialog(MidiControlManager* manager, QWidget* paren
         m_bindingTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
         m_bindingTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
         m_bindingTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents);
+        m_bindingTable->horizontalHeader()->setSectionResizeMode(7, QHeaderView::ResizeToContents);
         m_bindingTable->setSelectionBehavior(QAbstractItemView::SelectRows);
         m_bindingTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
         m_bindingTable->verticalHeader()->setVisible(false);
@@ -772,6 +774,27 @@ void MidiMappingDialog::refreshBindingTable()
         });
         m_bindingTable->setCellWidget(i, 4, relCheck);
 
+        // ANAN fork build 529 (operator, 19.11): progressive tuning, for each
+        // VFO knob separately -- the faster it turns, the more steps a detent
+        // makes; slow turning stays one step per detent.
+        if (MidiControlManager::isVfoTuneKnob(b.paramId)) {
+            auto* progCheck = new QCheckBox;
+            progCheck->setChecked(b.progressive);
+            progCheck->setStyleSheet("QCheckBox { padding-left: 10px; }");
+            progCheck->setToolTip("Progressive tuning: the faster the knob turns, the bigger\n"
+                                  "the tuning step. Slow turning is one step per detent.");
+            progCheck->setAccessibleName(QString("Progressive tuning for %1").arg(paramName));
+            connect(progCheck, &QCheckBox::toggled, this, [this, i](bool on) {
+                if (i < m_manager->bindings().size()) {
+                    m_manager->bindings()[i].progressive = on;
+                    MidiSettings::instance().saveBindings(m_manager->bindings());
+                }
+            });
+            m_bindingTable->setCellWidget(i, 5, progCheck);
+        } else {
+            m_bindingTable->removeCellWidget(i, 5);
+        }
+
         // Edit button — manual correction of this binding's source (#4760)
         auto* editBtn = new QPushButton("✎");
         editBtn->setFixedSize(24, 24);
@@ -797,7 +820,7 @@ void MidiMappingDialog::refreshBindingTable()
                 }
             });
         });
-        m_bindingTable->setCellWidget(i, 5, editBtn);
+        m_bindingTable->setCellWidget(i, 6, editBtn);
 
         // Delete button
         auto* delBtn = new QPushButton("×");
@@ -810,7 +833,7 @@ void MidiMappingDialog::refreshBindingTable()
             refreshBindingTable();
             MidiSettings::instance().saveBindings(m_manager->bindings());
         });
-        m_bindingTable->setCellWidget(i, 6, delBtn);
+        m_bindingTable->setCellWidget(i, 7, delBtn);
     }
 }
 
@@ -961,6 +984,7 @@ void MidiMappingDialog::openManualEditor(const QString& paramId, const MidiBindi
     b.paramId  = stableParamId;
     b.inverted = invertCheck->isChecked();
     b.relative = relativeCheck->isChecked() && b.msgType == MidiBinding::CC;
+    b.progressive = existing && existing->progressive;   // build 529: kept by an edit
 
     // Duplicate-source guard. The dispatch index is keyed on (channel, type,
     // number) without the param, so on a collision the last table row silently
