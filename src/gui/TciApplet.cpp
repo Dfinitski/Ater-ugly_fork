@@ -214,10 +214,43 @@ void TciApplet::buildUI()
     m_centerLockIq->setStyleSheet(QStringLiteral("QCheckBox { color: #8090a0; font-size: 11px; }"));
     m_centerLockIq->setChecked(settings.value(QStringLiteral("TciCenterLockWhenIq"), QStringLiteral("False"))
                                    .toString() == QLatin1String("True"));
+    // ANAN fork build 510 (operator, 19.11): "Spots" -- ticked, the spots a
+    // TCI client sends are taken and drawn on the panadapter; unticked, the
+    // ones on screen are removed at once and new ones are not drawn
+    // (TciProtocol::cmdSpot reads the same setting, "TciSpotsEnabled").
+    m_tciSpots = new QCheckBox(tr("Spots"));
+    m_tciSpots->setObjectName(QStringLiteral("tciSpots"));
+    m_tciSpots->setAccessibleName(tr("TCI spots"));
+    m_tciSpots->setToolTip(tr("Show the spots sent by TCI clients on the panadapter.\n"
+                              "Off: they are removed at once and not drawn."));
+    m_tciSpots->setStyleSheet(QStringLiteral("QCheckBox { color: #8090a0; font-size: 11px; }"));
+    m_tciSpots->setChecked(settings.value(QStringLiteral("TciSpotsEnabled"), QStringLiteral("True"))
+                               .toString() == QLatin1String("True"));
+    connect(m_tciSpots, &QCheckBox::toggled, this, [this](bool on) {
+        auto& ss = AppSettings::instance();
+        ss.setValue(QStringLiteral("TciSpotsEnabled"), on ? QStringLiteral("True") : QStringLiteral("False"));
+        ss.save();
+        if (on || !m_model)
+            return;
+        QVector<int> ids;
+        const auto& spots = m_model->spotModel().spots();
+        for (auto it = spots.cbegin(); it != spots.cend(); ++it) {
+            if (it->source == QLatin1String("TCI"))
+                ids.append(it.key());
+        }
+        for (int id : ids)
+            m_model->spotModel().removeSpot(id);
+    });
     {
         auto* row = new QHBoxLayout;
         row->setContentsMargins(4, 2, 4, 0);
+        // Build 519 (operator, 19.11): "Spots" on this row, five spaces
+        // after the end of the "Center Lock when I/Q" caption.
+        row->setSpacing(0);
         row->addWidget(m_centerLockIq);
+        m_centerLockIq->ensurePolished();
+        row->addSpacing(m_centerLockIq->fontMetrics().horizontalAdvance(QStringLiteral("     ")));
+        row->addWidget(m_tciSpots);
         row->addStretch(1);
         outer->addLayout(row);
     }
@@ -274,39 +307,11 @@ void TciApplet::buildUI()
     m_tciEnable->setAccessibleDescription(tr("Start or stop the TCI server"));
     m_tciEnable->setStyleSheet(kGreenToggle);
     // Build 510: narrower, to make room for "Spots" on its left.
-    m_tciEnable->setFixedSize(50, 22);
+    m_tciEnable->setFixedSize(76, 22);
     {
         QSignalBlocker b(m_tciEnable);
         m_tciEnable->setChecked(tciAutoStart);
     }
-    // ANAN fork build 510 (operator, 19.11): "Spots" -- ticked, the spots a
-    // TCI client sends are taken and drawn on the panadapter; unticked, the
-    // ones on screen are removed at once and new ones are not drawn
-    // (TciProtocol::cmdSpot reads the same setting, "TciSpotsEnabled").
-    m_tciSpots = new QCheckBox(tr("Spots"));
-    m_tciSpots->setObjectName(QStringLiteral("tciSpots"));
-    m_tciSpots->setAccessibleName(tr("TCI spots"));
-    m_tciSpots->setToolTip(tr("Show the spots sent by TCI clients on the panadapter.\n"
-                              "Off: they are removed at once and not drawn."));
-    m_tciSpots->setStyleSheet(QStringLiteral("QCheckBox { color: #8090a0; font-size: 11px; }"));
-    m_tciSpots->setChecked(settings.value(QStringLiteral("TciSpotsEnabled"), QStringLiteral("True"))
-                               .toString() == QLatin1String("True"));
-    connect(m_tciSpots, &QCheckBox::toggled, this, [this](bool on) {
-        auto& ss = AppSettings::instance();
-        ss.setValue(QStringLiteral("TciSpotsEnabled"), on ? QStringLiteral("True") : QStringLiteral("False"));
-        ss.save();
-        if (on || !m_model)
-            return;
-        QVector<int> ids;
-        const auto& spots = m_model->spotModel().spots();
-        for (auto it = spots.cbegin(); it != spots.cend(); ++it) {
-            if (it->source == QLatin1String("TCI"))
-                ids.append(it.key());
-        }
-        for (int id : ids)
-            m_model->spotModel().removeSpot(id);
-    });
-    enableRow->addWidget(m_tciSpots);
     enableRow->addWidget(m_tciEnable);
 
     outer->addLayout(enableRow);

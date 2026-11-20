@@ -1194,6 +1194,8 @@ void RxApplet::buildUI()
         nfLbl->setStyleSheet(kButtonBase() + kDisabledBtn);
         nfLbl->setFocusPolicy(Qt::NoFocus);
         nfLbl->setAttribute(Qt::WA_TransparentForMouseEvents);
+        // Build 519: a caption, not a control -- the sub receiver lock leaves it.
+        nfLbl->setProperty("aetherSubLockExempt", true);
         nfRow->addWidget(nfLbl);
         m_agcNfSlider = new GuardedSlider(Qt::Horizontal);
         m_agcNfSlider->setMinimumWidth(60);
@@ -2280,8 +2282,14 @@ void RxApplet::applySubReceiverLock()
     for (QWidget* w : all) {
         const bool control = qobject_cast<QAbstractButton*>(w) || qobject_cast<QAbstractSlider*>(w)
             || qobject_cast<QComboBox*>(w) || qobject_cast<QAbstractSpinBox*>(w)
-            || qobject_cast<QLineEdit*>(w);
+            || qobject_cast<QLineEdit*>(w)
+            // Build 519 (operator, 19.11): the passband picture as well -- a
+            // sub receiver takes its filter from the main receiver.
+            || w == m_filterPassband;
         if (!control || w == m_afSlider || w == m_panSlider)
+            continue;
+        // Build 519: the "NF +" caption stays drawn as active, its slider is.
+        if (w->property("aetherSubLockExempt").toBool())
             continue;
         // Build 489: and its own AGC threshold -- AGC-T, Auto, NF+.
         if (w == m_agcTSlider || w == m_autoAgcTButton || w == m_agcNfSlider)

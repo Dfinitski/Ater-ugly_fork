@@ -1312,6 +1312,7 @@ public:
         if (m_open)
             return;
         m_open = true;
+        m_eatRelease = false;
         prepare(m_root);
         qApp->installEventFilter(this);
         m_root->popup(globalPos);
@@ -1327,8 +1328,19 @@ public:
 protected:
     bool eventFilter(QObject* obj, QEvent* ev) override
     {
-        if (!m_open)
+        if (!m_open) {
+            // Build 519: the release of the press that closed the tree.
+            if (m_eatRelease) {
+                const QEvent::Type t = ev->type();
+                if (t == QEvent::MouseButtonRelease || t == QEvent::MouseButtonPress
+                    || t == QEvent::MouseButtonDblClick) {
+                    m_eatRelease = false;
+                    qApp->removeEventFilter(this);
+                    return t == QEvent::MouseButtonRelease;
+                }
+            }
             return false;
+        }
         auto* w = qobject_cast<QWidget*>(obj);
         if (!w)
             return false;
@@ -1349,6 +1361,16 @@ protected:
             return true;   // never QMenu's own release: it hides the tree
         }
         case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonDblClick:
+            // Build 519 (operator, 19.11): the first click outside only closes
+            // the tree -- it does nothing else, as with the panadapter's side
+            // menus. The press is taken here, and its release after it.
+            if (!inTree(w) && w->window() == m_bar->window()) {
+                m_eatRelease = true;
+                close();
+                return true;
+            }
+            return false;
         case QEvent::NonClientAreaMouseButtonPress:
             if (!inTree(w) && w->window() == m_bar->window())
                 close();
@@ -1409,7 +1431,8 @@ private:
     void finish()
     {
         m_open = false;
-        qApp->removeEventFilter(this);
+        if (!m_eatRelease)   // build 519: kept until that release has come
+            qApp->removeEventFilter(this);
         const QSet<QMenu*> menus = m_menus;
         m_menus.clear();
         for (QMenu* menu : menus) {
@@ -1423,6 +1446,7 @@ private:
     QMenu* m_root;
     QWidget* m_bar;
     bool m_open = false;
+    bool m_eatRelease = false;   // build 519
     QSet<QMenu*> m_menus;
     QHash<QMenu*, Qt::WindowFlags> m_flags;
 };
