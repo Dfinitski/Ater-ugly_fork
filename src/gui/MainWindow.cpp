@@ -422,7 +422,10 @@ bool setStatusBarStationText(QLabel* label, const QString& text)
     const int fontPx = kStationFontPx;
     QString rendered = trimmed;
     {
-        QFont font = QApplication::font();
+        // Build 518: measured in the font the label really draws with (its
+        // family and weight come from where it sits in the window).
+        label->ensurePolished();
+        QFont font = label->font();
         font.setPixelSize(fontPx);
         rendered = QFontMetrics(font).elidedText(trimmed, Qt::ElideRight, kStationMaxTextPx);
     }
@@ -440,13 +443,32 @@ bool setStatusBarStationText(QLabel* label, const QString& text)
     }
     label->ensurePolished();
     // Exactly as wide as its text (build 256): fixed to the size hint.
-    const int width = label->sizeHint().width() + 2;
+    // Build 518: and never lower than the text needs.
+    const QSize hint = label->sizeHint();
+    const int width = hint.width() + 2;
     if (label->minimumWidth() != width || label->maximumWidth() != width) {
         label->setFixedWidth(width);
         changed = true;
     }
+    const int height = std::max(kStationBoxHeightPx, hint.height());
+    if (label->minimumHeight() != height || label->maximumHeight() != height) {
+        label->setFixedHeight(height);
+        changed = true;
+    }
     return changed;
 }
+
+} // namespace
+
+void MainWindow::refitStationLabel()
+{
+    if (!m_stationNickLabel)
+        return;
+    if (setStatusBarStationText(m_stationNickLabel, m_stationNickLabel->text()))
+        updateStatusBarMinimumWidth();
+}
+
+namespace {
 
 // "Gateware 75" on a radio that supplies a label, "4.2.20.41343" on one that
 // does not. The caller never asks which family it is talking to — the word
@@ -6327,6 +6349,13 @@ void MainWindow::buildUI()
     m_stationNickLabel->installEventFilter(this);
     hbox->addWidget(m_stationNickLabel, 0, Qt::AlignVCenter);
     m_stationLabel = m_stationNickLabel;  // alias for existing references
+    // ANAN fork build 518 (operator, 19.11: "until the radio is on the frame
+    // does not follow the text and the text does not fit"). OUR ERROR: the
+    // frame was sized once, above, BEFORE the label was put into the bar --
+    // in the bar it takes the bar's font, which is wider, and nothing sized
+    // it again until a radio connected. It is sized again now that it is in
+    // place, and whenever its font or style changes (MainWindow::eventFilter).
+    refitStationLabel();
 
     hbox->addStretch(1);
 

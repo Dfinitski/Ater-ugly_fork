@@ -454,6 +454,8 @@ private:
     void toggleActiveApplicationWindowFullScreen();
     void applyDarkTheme();
     void updateStatusBarMinimumWidth();
+    // Build 518: the station name's frame sized to its text again.
+    void refitStationLabel();
 
     // Audio thread helpers — invoke AudioEngine methods on the worker thread (#502)
     void audioStartRx();

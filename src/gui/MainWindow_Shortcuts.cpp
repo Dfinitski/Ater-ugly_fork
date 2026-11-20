@@ -968,6 +968,14 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
         QToolTip::showText(helpEvent->globalPos(), tooltip, m_tnfIndicator);
         return true;
     }
+    // Build 518: the station name's frame follows its text -- sized again
+    // whenever the label's font or style changes or it is shown (deferred:
+    // not inside the event that reports the change).
+    if (obj == m_stationNickLabel
+        && (event->type() == QEvent::FontChange || event->type() == QEvent::StyleChange
+            || event->type() == QEvent::Show || event->type() == QEvent::Polish)) {
+        QTimer::singleShot(0, this, [this] { refitStationLabel(); });
+    }
     // ANAN fork build 512 (operator, 19.11): a click on the station name in
     // the middle of the bottom bar opens the device settings (Radio Setup,
     // the radio model's page). It replaces build 253's double click to the
