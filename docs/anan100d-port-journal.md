@@ -9084,6 +9084,17 @@ takeMaxLiveFilterWaitUs` и их счётчики. `WdspChannel.cpp/.h` посл
 Не подтверждено: MIDI / COM-порт при старте (535), плавность прогрессивного шага (536), модули
 FTX на Windows 11 (537, 539).
 
+### 517. Сборка 541 — ошибка компиляции сборки 535 на Windows (20.11)
+
+MSVC: `SerialPortController.cpp(742): error C2027: use of undefined type 'QTimer'`. НАША ОШИБКА:
+повтор открытия порта (535) использует `QTimer::singleShot`, а `SerialPortController.h` включает
+`<QTimer>` только не на Windows (там, где используется QSerialPort). errcheck идёт не под Windows и
+этого не видел. Исправление: `#include <QTimer>` в `SerialPortController.cpp`.
+
+Сборки 535–540 на Windows из-за этого не собирались — значит, и подтверждения оператора от 20.11
+(«по первым двум проверено») относятся к более ранней сборке (533 / релиз), а 534–540 на радио не
+запускались.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

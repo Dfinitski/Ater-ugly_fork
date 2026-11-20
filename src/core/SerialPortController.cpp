@@ -1,6 +1,9 @@
 #include "SerialPortController.h"
 #include "AppSettings.h"
 #include "LogManager.h"
+// Build 541: for the open retries of build 535 -- on Windows the header does
+// not bring QTimer in (it only does where QSerialPort is used).
+#include <QTimer>
 
 #ifndef Q_OS_WIN
 #ifdef HAVE_SERIALPORT
