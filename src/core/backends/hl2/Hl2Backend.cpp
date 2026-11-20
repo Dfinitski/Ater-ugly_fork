@@ -2789,7 +2789,7 @@ void Hl2Backend::ananApplyCodecSettings()
         emit ananCodecMicInputChanged(cdc);
         pushTxCompressor();
     }
-    const int boost = st.value(QStringLiteral("AnanMicBoost"), QStringLiteral("False")).toString()
+    const int boost = st.value(QStringLiteral("AnanMicBoost"), QStringLiteral("True")).toString()
                               == QLatin1String("True") ? 1 : 0;
     if (boost != m_ananMicBoostPushed && m_metis) {
         m_ananMicBoostPushed = boost;

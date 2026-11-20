@@ -3208,7 +3208,7 @@ QJsonObject captureAnanTxProfile(RadioModel* model)
     p.insert(QStringLiteral("micLevel"), tx.micLevel());
     p.insert(QStringLiteral("micSource"), st.value(QStringLiteral("AnanMicSource"), 0).toInt());
     p.insert(QStringLiteral("micBoost"),
-             st.value(QStringLiteral("AnanMicBoost"), QStringLiteral("False")).toString()
+             st.value(QStringLiteral("AnanMicBoost"), QStringLiteral("True")).toString()
                  == QLatin1String("True"));
     p.insert(QStringLiteral("procOn"), tx.speechProcessorEnable());
     p.insert(QStringLiteral("procLevel"), tx.speechProcessorLevel());
@@ -4173,12 +4173,17 @@ QWidget* RadioSetupDialog::buildAnanAudioTab()
     mvb->addLayout(micRow);
     auto* boost = new QCheckBox("Radio mic boost +20 dB");
     boost->setObjectName(QStringLiteral("ananMicBoost"));
-    boost->setChecked(st.value(QStringLiteral("AnanMicBoost"), QStringLiteral("False")).toString()
+    boost->setChecked(st.value(QStringLiteral("AnanMicBoost"), QStringLiteral("True")).toString()
                       == QLatin1String("True"));
-    connect(boost, &QCheckBox::toggled, this, [](bool on) {
+    connect(boost, &QCheckBox::toggled, this, [this](bool on) {
         AppSettings::instance().setValue(QStringLiteral("AnanMicBoost"),
                                          on ? QStringLiteral("True") : QStringLiteral("False"));
         AppSettings::instance().save();
+        // Build 522: the same setting on the ANAN Hardware page.
+        if (auto* other = findChild<QCheckBox*>(QStringLiteral("ananHwMicBoost"))) {
+            const QSignalBlocker b(other);
+            other->setChecked(on);
+        }
     });
     mvb->addWidget(boost);
     auto* micHint = new QLabel(
@@ -4290,6 +4295,28 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     };
     auto* micPttChk = mkChk("Mic PTT", "ananHwMicPtt",
         "The PTT line of the front-panel microphone jack keys the radio.");
+    // Build 522 (operator, 19.11): "Mic +20 dB", second row, on by default --
+    // what the 20dB button of the P/CW applet did (that button is gone). An
+    // application setting ("AnanMicBoost"), so it is not one of `controls`.
+    {
+        auto* micBoostChk = new QCheckBox(QStringLiteral("Mic +20 dB"));
+        micBoostChk->setObjectName(QStringLiteral("ananHwMicBoost"));
+        micBoostChk->setToolTip(QStringLiteral(
+            "+20 dB boost of the radio's microphone input (CDC)."));
+        micBoostChk->setChecked(AppSettings::instance()
+                                    .value(QStringLiteral("AnanMicBoost"), QStringLiteral("True"))
+                                    .toString() == QLatin1String("True"));
+        connect(micBoostChk, &QCheckBox::toggled, this, [this](bool on) {
+            AppSettings::instance().setValue(QStringLiteral("AnanMicBoost"),
+                                             on ? QStringLiteral("True") : QStringLiteral("False"));
+            AppSettings::instance().save();
+            if (auto* other = findChild<QCheckBox*>(QStringLiteral("ananMicBoost"))) {
+                const QSignalBlocker b(other);
+                other->setChecked(on);
+            }
+        });
+        cvb->addWidget(micBoostChk);
+    }
     auto* micTipChk = mkChk("PTT on tip, microphone on ring", "ananHwMicTipPtt",
         "Off (default): microphone and bias on the tip, PTT on the ring.\n"
         "On: PTT on the tip, microphone and bias on the ring.");

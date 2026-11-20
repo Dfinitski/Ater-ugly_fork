@@ -215,7 +215,7 @@ void PhoneCwApplet::applyRadioMicChoice()
         return;
     auto& st = AppSettings::instance();
     const int micSource = st.value(QStringLiteral("AnanMicSource"), 0).toInt() == 1 ? 1 : 0;
-    const bool boost = st.value(QStringLiteral("AnanMicBoost"), QStringLiteral("False")).toString()
+    const bool boost = st.value(QStringLiteral("AnanMicBoost"), QStringLiteral("True")).toString()
                        == QLatin1String("True");
     {
         const QSignalBlocker blocker(m_micSourceCombo);
@@ -248,6 +248,13 @@ void PhoneCwApplet::applyRadioMicChoice()
         m_accBtn->setEnabled(true);
         m_accBtn->setChecked(boost);
     }
+    // Build 522 (operator, 19.11): the boost is "Mic +20 dB" of the device
+    // settings now; the button is not shown (kept for the syncs), and the
+    // mic level slider is as long as the monitor one below -- the value
+    // label takes what that row has beside its slider (48 + 46 = 55 + 39).
+    m_accBtn->setVisible(false);
+    if (m_micLevelLabel)
+        m_micLevelLabel->setFixedWidth(39);
     m_accBtn->setAccessibleName(QStringLiteral("Radio microphone boost"));
     const QString tip = QStringLiteral("+20 dB boost of the radio's microphone input (MIC)");
     m_accBtn->setToolTip(tip);
@@ -725,7 +732,11 @@ QJsonObject PhoneCwApplet::captureMicProfile() const
     p[QStringLiteral("version")] = 1;
     p[QStringLiteral("micSource")] = m_micSourceCombo->currentText();
     p[QStringLiteral("micLevel")] = m_micLevelSlider->value();
-    p[QStringLiteral("boost")] = m_accBtn->isChecked();
+    // Build 522: in radio-mic mode the setting itself (the button is hidden).
+    p[QStringLiteral("boost")] = radioMicMode()
+        ? AppSettings::instance().value(QStringLiteral("AnanMicBoost"), QStringLiteral("True"))
+              .toString() == QLatin1String("True")
+        : m_accBtn->isChecked();
     p[QStringLiteral("proc")] = m_procBtn->isChecked();
     p[QStringLiteral("procLevel")] = m_procSlider->value();
     // Build 422: not in FDV -- the sliders show the sub-mode's band there.
@@ -752,8 +763,19 @@ void PhoneCwApplet::applyMicProfile(const QJsonObject& p)
     }
     if (p.contains(QStringLiteral("micLevel")))
         m_micLevelSlider->setValue(p.value(QStringLiteral("micLevel")).toInt(m_micLevelSlider->value()));
-    if (p.contains(QStringLiteral("boost")))
-        m_accBtn->setChecked(p.value(QStringLiteral("boost")).toBool());
+    if (p.contains(QStringLiteral("boost"))) {
+        const bool on = p.value(QStringLiteral("boost")).toBool();
+        if (radioMicMode()) {   // build 522: straight to the setting
+            auto& st = AppSettings::instance();
+            st.setValue(QStringLiteral("AnanMicBoost"),
+                        on ? QStringLiteral("True") : QStringLiteral("False"));
+            st.save();
+            const QSignalBlocker blocker(m_accBtn);
+            m_accBtn->setChecked(on);
+        } else {
+            m_accBtn->setChecked(on);
+        }
+    }
     if (p.contains(QStringLiteral("proc")))
         m_procBtn->setChecked(p.value(QStringLiteral("proc")).toBool());
     if (p.contains(QStringLiteral("procLevel")))
