@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <chrono>
 #include <utility>
 
 #ifdef _WIN32
@@ -66,6 +67,38 @@ std::mutex g_channelMutex;
 // entry point runs from a static constructor. Every WDSP control call here
 // also takes it (RXASetNC/RXASetMP re-plan).
 std::mutex& g_setupMutex = AetherSDR::fftwPlannerMutex();
+
+// ANAN fork build 525 (operator, 19.11: "changing the filter width smoothly on
+// the panadapter stops the audio and the panadapter"; log of 19.11 20:45:
+// "longest gap 1080 ms" with a sub receiver and Auto AGC on). OUR ERROR:
+// setFilterLive() (build 208) designs the filter on a worker thread, but under
+// g_setupMutex -- the process-wide planner lock every control call here takes
+// as well. While an edge is dragged the workers of the receiver and of its sub
+// receiver design back to back and hand the lock to each other; a control
+// call on the I/O thread (Auto AGC answers every filter change with setAgc())
+// waited for it with nothing to give it its turn -- an unfair mutex -- for as
+// long as the drag lasted, and the I/O thread carries the audio and the
+// spectrum. Two parts:
+//  - control calls announce themselves (g_setupWaiters); a live design does
+//    not start while one waits, so a control call waits for at most the
+//    design already running;
+//  - the AGC and meter setters neither take the lock nor wait for a live
+//    design (beginControlOperation(false)): they plan no FFT and touch no
+//    filter core, and WDSP guards them with the channel's own csDSP.
+std::atomic<int> g_setupWaiters{0};
+
+class ControlSetupLock {
+public:
+    ControlSetupLock() noexcept
+    {
+        g_setupWaiters.fetch_add(1, std::memory_order_seq_cst);
+        g_setupMutex.lock();
+        g_setupWaiters.fetch_sub(1, std::memory_order_seq_cst);
+    }
+    ~ControlSetupLock() { g_setupMutex.unlock(); }
+    ControlSetupLock(const ControlSetupLock&) = delete;
+    ControlSetupLock& operator=(const ControlSetupLock&) = delete;
+};
 // apfshadow.c's `selection`: 0 double-pole, 1 matched, 2 gaussian, 3 bi-quad.
 constexpr int kApfSelectionDoublePole = 0;
 // WDSP ANF shape, RXA.c create_rxa's own: 64 taps, delay 16, leakage 0.1.
@@ -704,7 +737,7 @@ bool WdspChannel::setMode(Mode mode) noexcept
         return false;
     }
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         if (m_config.direction == Direction::Receive) {
             SetRXAMode(m_channelId, wdspMode(mode));
             applyRxPanel(m_channelId, mode, m_binaural);   // build 306
@@ -737,6 +770,11 @@ bool WdspChannel::setFilterLive(double lowHz, double highHz) noexcept
         // lock of its own: setFilter() only.
         return false;
     }
+    // Build 525: control calls first. Not for ever (200 ms): a caller that
+    // never stops calling must not keep the passband from changing.
+    for (int waited = 0; waited < 400
+         && g_setupWaiters.load(std::memory_order_seq_cst) > 0; ++waited)
+        std::this_thread::sleep_for(std::chrono::microseconds(500));
     // Claim, then look: beginControlOperation() sets its flag, then looks at
     // ours. Both sequentially consistent, so at least one of the two sees the
     // other -- never both inside.
@@ -751,6 +789,7 @@ bool WdspChannel::setFilterLive(double lowHz, double highHz) noexcept
         // The FFTW planner only (minimum-phase design plans FFTs). Not the
         // channel: WDSP's own double buffer and csDSP / fircore update lock
         // keep fexchange running on the old masks until the swap.
+        // Build 525: the plain lock -- this is the one that gives way.
         const std::scoped_lock setupLock(g_setupMutex);
         SetRXABandpassFreqs(m_channelId, m_config.amReceive ? 50.0 : lowHz,
             m_config.amReceive ? std::max(-lowHz, highHz) : highHz);
@@ -772,7 +811,7 @@ bool WdspChannel::setFilter(double lowHz, double highHz) noexcept
         return false;
     }
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         if (m_wbfm) {
             setFreqs_bps(m_wbfm->filter.get(), -highHz, -lowHz);
             flush_bps(m_wbfm->filter.get());
@@ -801,7 +840,7 @@ bool WdspChannel::setTxCompressor(bool on, double gainDb) noexcept
         return false;
     }
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         SetTXACompressorGain(m_channelId, std::clamp(gainDb, 0.0, 20.0));
         SetTXACompressorRun(m_channelId, on ? 1 : 0);
     }
@@ -823,7 +862,7 @@ bool WdspChannel::setTxMinimumPhase(bool on) noexcept
     {
         // setMp_fircore re-plans the masks (FFTs at nc * pfactor): the same
         // planner and lock as setMinimumPhase() on receive.
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         TXASetMP(m_channelId, on ? 1 : 0);
     }
     m_config.minimumPhase = on;
@@ -838,7 +877,7 @@ bool WdspChannel::setTxLeveler(bool on, double topDb) noexcept
         return false;
     }
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         SetTXALevelerTop(m_channelId, std::clamp(topDb, 0.0, 20.0));
         SetTXALevelerSt(m_channelId, on ? 1 : 0);
     }
@@ -879,7 +918,7 @@ bool WdspChannel::setFmDeviation(double deviationHz) noexcept
         return false;
     }
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         SetRXAFMDeviation(m_channelId, deviationHz);
     }
     // Stored so open() can re-push it: reconfigure() frees the fmd stage.
@@ -898,7 +937,7 @@ bool WdspChannel::setSquelch(bool on, int level, double levelOffsetDb) noexcept
     m_config.squelchLevel = std::clamp(level, 0, 100);
     m_config.levelSquelchOffsetDb = levelOffsetDb;
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         applySquelchLocked(m_config.mode);
     }
     endControlOperation();
@@ -1005,15 +1044,13 @@ bool WdspChannel::setAgc(int agcMode, double maximumGainDb) noexcept
 {
     // RX-only: SetRXAAGC* has no transmit counterpart, and a TX channel has no
     // AGC stage to configure.
+    // Build 525: no planner lock and no wait for a live filter design.
     if (m_config.direction != Direction::Receive || !std::isfinite(maximumGainDb) ||
-        !beginControlOperation()) {
+        !beginControlOperation(false)) {
         return false;
     }
-    {
-        const std::scoped_lock setupLock(g_setupMutex);
-        applyRxAgc(m_channelId, effectiveAgcMode(agcMode), maximumGainDb,
-                   m_config.agcSlopeDb, m_config.agcFixedGainDb);
-    }
+    applyRxAgc(m_channelId, effectiveAgcMode(agcMode), maximumGainDb,
+               m_config.agcSlopeDb, m_config.agcFixedGainDb);
     m_config.agcMode = agcMode;
     m_config.maximumAgcGainDb = maximumGainDb;
     endControlOperation();
@@ -1025,7 +1062,7 @@ bool WdspChannel::setBinaural(bool on) noexcept
     if (m_config.direction != Direction::Receive || !beginControlOperation())
         return false;
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         m_binaural = on;
         applyRxPanel(m_channelId, m_config.mode, on);
     }
@@ -1035,7 +1072,7 @@ bool WdspChannel::setBinaural(bool on) noexcept
 
 bool WdspChannel::setAgcHold(bool hold, double volts) noexcept
 {
-    if (m_config.direction != Direction::Receive || !beginControlOperation())
+    if (m_config.direction != Direction::Receive || !beginControlOperation(false))
         return false;
     RXASetAGCHold(m_channelId, hold ? 1 : 0, volts);
     endControlOperation();
@@ -1045,7 +1082,7 @@ bool WdspChannel::setAgcHold(bool hold, double volts) noexcept
 bool WdspChannel::setSMeterAverage(double avgDb) noexcept
 {
     if (m_config.direction != Direction::Receive || !std::isfinite(avgDb)
-        || !beginControlOperation())
+        || !beginControlOperation(false))
         return false;
     RXASetSMeterAverage(m_channelId, avgDb);
     endControlOperation();
@@ -1059,7 +1096,7 @@ double WdspChannel::agcVolts() const noexcept
 
 bool WdspChannel::resetLevelHistory() noexcept
 {
-    if (m_config.direction != Direction::Receive || !beginControlOperation())
+    if (m_config.direction != Direction::Receive || !beginControlOperation(false))
         return false;
     RXAResetLevelHistory(m_channelId);
     endControlOperation();
@@ -1069,13 +1106,10 @@ bool WdspChannel::resetLevelHistory() noexcept
 bool WdspChannel::setAgcFixedGain(double fixedGainDb) noexcept
 {
     if (m_config.direction != Direction::Receive || !std::isfinite(fixedGainDb) ||
-        !beginControlOperation()) {
+        !beginControlOperation(false)) {   // build 525, as setAgc()
         return false;
     }
-    {
-        const std::scoped_lock setupLock(g_setupMutex);
-        SetRXAAGCFixed(m_channelId, fixedGainDb);
-    }
+    SetRXAAGCFixed(m_channelId, fixedGainDb);
     // Stored so setAgc() and open() push the operator's value, not the
     // construction default: applyRxAgc() re-sends it on every mode change.
     m_config.agcFixedGainDb = fixedGainDb;
@@ -1107,7 +1141,7 @@ bool WdspChannel::setAnf(bool enabled, double gain) noexcept
         return false;
     }
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         // Gain before run, as for the APF.
         SetRXAANFVals(m_channelId, kAnfTaps, kAnfDelay, gain, kAnfLeakage);
         SetRXAANFRun(m_channelId, enabled ? 1 : 0);
@@ -1138,7 +1172,7 @@ bool WdspChannel::setApf(bool enabled, double centerHz, double bandwidthHz,
         return false;
     }
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         // Shape before run: switching on first would run one block through
         // whatever design the stage last held.
         SetRXASPCWFreq(m_channelId, centerHz);
@@ -1191,7 +1225,7 @@ bool WdspChannel::setFilterTaps(int taps) noexcept
     {
         // setNc_fircore re-plans six FIR cores and FFTW's planner is process
         // global. This, and only this, is what the lock is for.
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         RXASetNC(m_channelId, taps);
     }
     if (wasRunning) {
@@ -1217,7 +1251,7 @@ bool WdspChannel::setMinimumPhase(bool on) noexcept
         // RXASetMP does not stop the channel, but it does run every mask
         // through mp_imp_exec, which plans and executes FFTs at nc * pfactor.
         // Same planner, same lock.
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         RXASetMP(m_channelId, on ? 1 : 0);
     }
     m_config.minimumPhase = on;
@@ -1232,7 +1266,7 @@ bool WdspChannel::setShift(double shiftHz) noexcept
         return false;
     }
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         SetRXAShiftFreq(m_channelId, shiftHz);
         // Running the stage at 0 Hz costs a pointless rotate per sample, so
         // switch it off when there is no offset to apply.
@@ -1270,7 +1304,7 @@ bool WdspChannel::addNotch(int index, double centerHz, double widthHz,
     }
     int result = -1;
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         result = RXANBPAddNotch(m_channelId, index, centerHz, widthHz,
                                 active ? 1 : 0);
     }
@@ -1288,7 +1322,7 @@ bool WdspChannel::editNotch(int index, double centerHz, double widthHz,
     }
     int result = -1;
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         result = RXANBPEditNotch(m_channelId, index, centerHz, widthHz,
                                  active ? 1 : 0);
     }
@@ -1304,7 +1338,7 @@ bool WdspChannel::removeNotch(int index) noexcept
     }
     int result = -1;
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         result = RXANBPDeleteNotch(m_channelId, index);
     }
     endControlOperation();
@@ -1317,7 +1351,7 @@ bool WdspChannel::setNotchesEnabled(bool on) noexcept
         return false;
     }
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         RXANBPSetNotchesRun(m_channelId, on ? 1 : 0);
     }
     endControlOperation();
@@ -1331,7 +1365,7 @@ bool WdspChannel::setNotchTuneFrequency(double tuneHz) noexcept
         return false;
     }
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         RXANBPSetTuneFrequency(m_channelId, tuneHz);
     }
     endControlOperation();
@@ -1347,7 +1381,7 @@ int WdspChannel::notchCount() const noexcept
     // the NOTCHDB under g_setupMutex. Every other accessor on this class either
     // goes through beginControlOperation() or takes that lock; these two are
     // read-only and cheap, so the lock is all they need to match the contract.
-    const std::scoped_lock setupLock(g_setupMutex);
+    const ControlSetupLock setupLock;
     if (!m_open)
         return 0;
     int count = 0;
@@ -1361,7 +1395,7 @@ bool WdspChannel::notchAt(int index, double* centerHz, double* widthHz,
     if (m_config.direction != Direction::Receive || index < 0)
         return false;
     // See notchCount() — same interlock, same reason.
-    const std::scoped_lock setupLock(g_setupMutex);
+    const ControlSetupLock setupLock;
     if (!m_open)
         return false;
     double center = 0.0;
@@ -1443,7 +1477,7 @@ int WdspChannel::openWithExchangeDepthForTest(int channelId, int exchangeDepth) 
     config.inputBlockSize = kWbfmInputBlockSize;
     config.dspBlockSize = kWbfmDspBlockSize;
     // The same lock and setup order as open().
-    const std::scoped_lock setupLock(g_setupMutex);
+    const ControlSetupLock setupLock;
     loadWisdomOnce();
     return openWdspChannel(channelId, config, exchangeDepth);
 }
@@ -1771,7 +1805,7 @@ void WdspChannel::setNoiseBlankerHold(bool hold) noexcept
 
 bool WdspChannel::open() noexcept
 {
-    const std::scoped_lock setupLock(g_setupMutex);
+    const ControlSetupLock setupLock;
     loadWisdomOnce();   // import cached FFTW wisdom so PATIENT plans don't re-measure
     const bool preparedWbfm = m_config.wbfmReceive && !m_config.blockForOutput;
     if (openWdspChannel(m_channelId, m_config,
@@ -1932,7 +1966,7 @@ void WdspChannel::close() noexcept
     SetChannelState(m_channelId, 0, 1);
     m_running.store(false, std::memory_order_relaxed);
     {
-        const std::scoped_lock setupLock(g_setupMutex);
+        const ControlSetupLock setupLock;
         CloseChannel(m_channelId);
         // After the channel has stopped and drained: while it is still running
         // a callback can be inside processIq(), and destroying the stage under
@@ -1945,7 +1979,7 @@ void WdspChannel::close() noexcept
     m_open = false;
 }
 
-bool WdspChannel::beginControlOperation() noexcept
+bool WdspChannel::beginControlOperation(bool waitForLiveFilter) noexcept
 {
     // Test hook — see refuseControlOperationsForTest().
     if (m_refuseControlForTest.load(std::memory_order_relaxed) != 0) {
@@ -1960,7 +1994,8 @@ bool WdspChannel::beginControlOperation() noexcept
     // A setFilterLive() on another thread finishes first (build 208): it
     // re-designs filters a control operation may be replacing. It backs off
     // on seeing our flag, so this waits for at most one design.
-    while (m_liveSetter.load(std::memory_order_seq_cst))
+    // Build 525: not for a call that touches no filter core (AGC, meters).
+    while (waitForLiveFilter && m_liveSetter.load(std::memory_order_seq_cst))
         std::this_thread::yield();
     if (m_callbacksInFlight.load(std::memory_order_seq_cst) != 0) {
         m_controlOperation.store(false, std::memory_order_seq_cst);

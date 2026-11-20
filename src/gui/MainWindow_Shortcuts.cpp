@@ -982,7 +982,10 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
     // nickname field: the two would fight over the same dialog.
     if (obj == m_stationNickLabel && event->type() == QEvent::MouseButtonRelease) {
         auto* me = static_cast<QMouseEvent*>(event);
-        if (me->button() == Qt::LeftButton && m_stationNickLabel->rect().contains(me->pos()))
+        // Build 525 (operator, 19.11): only with a radio connected -- without
+        // one there is nothing to set up.
+        if (me->button() == Qt::LeftButton && m_stationNickLabel->rect().contains(me->pos())
+            && m_radioModel.isConnected())
             openRadioSetupPage(QStringLiteral("ANAN Hardware"));
         return true;
     }

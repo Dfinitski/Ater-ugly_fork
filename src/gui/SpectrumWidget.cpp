@@ -655,6 +655,15 @@ static int filterEdgeHitAtPixel(int mx, int loX, int hiX, int grabPx)
     return 0;
 }
 
+// ANAN fork build 525 (operator, 19.11): a sub receiver (A' / B', slices 6
+// and 7) takes its filter from its main receiver -- its passband edges are
+// not grabbed on the panadapter, and the pointer does not turn into the
+// resize arrow over them.
+static bool subReceiverSliceId(int sliceId)
+{
+    return sliceId >= 6;
+}
+
 static bool filterPassbandBodyHitAtPixel(int mx, int loX, int hiX, int grabPx)
 {
     const int left = std::min(loX, hiX);
@@ -10802,7 +10811,7 @@ bool SpectrumWidget::sliceCursorShapeAt(const QPoint& localPos,
         const int sliceX = mhzToX(so.freqMhz);
         const int loX = mhzToX(so.freqMhz + so.filterLowHz / 1.0e6);
         const int hiX = mhzToX(so.freqMhz + so.filterHighHz / 1.0e6);
-        if ((so.fdvCenterHz != 0 ? 0 : filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx)) != 0) {
+        if (((so.fdvCenterHz != 0 || subReceiverSliceId(so.sliceId)) ? 0 : filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx)) != 0) {
             shape = Qt::SizeHorCursor;
             return true;
         }
@@ -10824,7 +10833,7 @@ bool SpectrumWidget::sliceCursorShapeAt(const QPoint& localPos,
     if (ao) {
         const int loX = mhzToX(ao->freqMhz + ao->filterLowHz / 1.0e6);
         const int hiX = mhzToX(ao->freqMhz + ao->filterHighHz / 1.0e6);
-        if ((ao->fdvCenterHz != 0 ? 0 : filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx)) != 0) {
+        if (((ao->fdvCenterHz != 0 || subReceiverSliceId(ao->sliceId)) ? 0 : filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx)) != 0) {
             shape = Qt::SizeHorCursor;
             return true;
         }
@@ -11735,7 +11744,7 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
             const int hiX = mhzToX(so.freqMhz + so.filterHighHz / 1.0e6);
             const int left = std::min(loX, hiX);
             const int right = std::max(loX, hiX);
-            const int edgeHit = (so.fdvCenterHz != 0 ? 0 : filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx));
+            const int edgeHit = ((so.fdvCenterHz != 0 || subReceiverSliceId(so.sliceId)) ? 0 : filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx));
             if (edgeHit != 0) {
                 const int edgeHz = edgeHit < 0 ? so.filterLowHz : so.filterHighHz;
                 emit sliceClicked(so.sliceId);
@@ -11785,7 +11794,7 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
         const int loX = mhzToX(ao->freqMhz + ao->filterLowHz / 1.0e6);
         const int hiX = mhzToX(ao->freqMhz + ao->filterHighHz / 1.0e6);
 
-        const int edgeHit = (ao->fdvCenterHz != 0 ? 0 : filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx));
+        const int edgeHit = ((ao->fdvCenterHz != 0 || subReceiverSliceId(ao->sliceId)) ? 0 : filterEdgeHitAtPixel(mx, loX, hiX, kFilterEdgeGrabPx));
         if (edgeHit != 0) {
             m_draggingFilter = edgeHit < 0 ? FilterEdge::Low : FilterEdge::High;
             // Store anchor offset so the edge doesn't snap to cursor (#764)

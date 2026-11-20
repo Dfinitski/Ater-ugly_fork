@@ -649,7 +649,9 @@ private:
     // first time someone clicked NB2.
     void openNoiseBlanker() noexcept;
     void closeNoiseBlanker() noexcept;
-    bool beginControlOperation() noexcept;
+    // waitForLiveFilter = false (build 525): for a call that touches no
+    // filter core -- it does not wait for a setFilterLive() in progress.
+    bool beginControlOperation(bool waitForLiveFilter = true) noexcept;
     void endControlOperation() noexcept;
 
     struct WbfmState;
