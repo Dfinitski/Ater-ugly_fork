@@ -272,6 +272,10 @@ private:
     // "AnanMicSource") and +ACC becomes "+20dB" (radio mic boost,
     // "AnanMicBoost").
     void applyRadioMicChoice();
+    // Build 524: the mic level is kept apart for the computer's microphone
+    // and the codec's ("AnanMicLevelPc" / "AnanMicLevelCdc"); the source the
+    // slider shows the level of, -1 before the first look.
+    int m_ananMicSrcShown{-1};
     // The radio's jacks are not Flex's: either the capability says inputs are
     // not selectable or the host modulates (HL2 / ANAN).
     [[nodiscard]] bool radioMicMode() const;

@@ -344,6 +344,9 @@ private:
     // Lazy page construction — deferred builders keyed by page index (#1776)
     QHash<int, std::function<QWidget*()>> m_deferredBuilders;
     void buildDeferredTab(int index);
+    // Build 524: widens the dialog when the page shown needs more than its
+    // width, so that no page has a horizontal scroll bar.
+    void fitWidthToCurrentPage();
 
     // External APD page (visible only when the radio reports apd configurable=1)
     int                       m_apdPageIndex{-1};

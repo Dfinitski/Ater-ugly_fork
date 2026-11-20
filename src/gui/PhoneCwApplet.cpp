@@ -28,6 +28,8 @@
 #include <QMenu>
 #include <QToolTip>
 #include <QTimer>
+#include <QMouseEvent>
+#include <QStyleOptionComboBox>
 #include <QDir>
 #include <QStandardPaths>
 #include "core/ThemeManager.h"
@@ -91,6 +93,50 @@ static constexpr float kLevelGaugeFloorDbfs = -40.0f;
 // Mouse-over readout formatter for the ALC gauges — one decimal of dBFS so a
 // transmitting operator can read the exact SSB-peak level off the bar rather
 // than eyeballing it against the -20…0 scale. (#3936)
+// Build 524 (operator, 19.11): the mic level of each microphone of an ANAN --
+// 0 the computer's (PC), 1 the codec's (CDC).
+static QString ananMicLevelKey(int source)
+{
+    return source == 1 ? QStringLiteral("AnanMicLevelCdc") : QStringLiteral("AnanMicLevelPc");
+}
+
+// Build 524: the microphone source list with its text centred -- an editable,
+// read-only combo (as CatControlApplet's VFO lists); a press anywhere on it
+// opens the list, which an editable combo does only on its arrow.
+class CenteredMicCombo final : public GuardedComboBox {
+public:
+    CenteredMicCombo()
+    {
+        setEditable(true);
+        setInsertPolicy(QComboBox::NoInsert);
+        setCompleter(nullptr);
+        lineEdit()->setAlignment(Qt::AlignCenter);
+        lineEdit()->setReadOnly(true);
+        lineEdit()->setFocusPolicy(Qt::NoFocus);
+        lineEdit()->setAttribute(Qt::WA_TransparentForMouseEvents);
+    }
+    void mousePressEvent(QMouseEvent* ev) override
+    {
+        if (ControlsLock::isLocked() || !isEnabled()) {
+            ev->ignore();
+            return;
+        }
+        if (ev->button() == Qt::LeftButton) {
+            // As a press on the arrow: Qt's own way of opening the list.
+            QStyleOptionComboBox opt;
+            initStyleOption(&opt);
+            const QPoint at = style()->subControlRect(QStyle::CC_ComboBox, &opt,
+                                                      QStyle::SC_ComboBoxArrow, this).center();
+            QMouseEvent onArrow(QEvent::MouseButtonPress, QPointF(at), ev->globalPosition(),
+                                Qt::LeftButton, ev->buttons(), ev->modifiers());
+            GuardedComboBox::mousePressEvent(&onArrow);
+            ev->accept();
+            return;
+        }
+        GuardedComboBox::mousePressEvent(ev);
+    }
+};
+
 static HGauge::HoverValueFormatter alcHoverFormatter()
 {
     return [](float v) {
@@ -249,12 +295,44 @@ void PhoneCwApplet::applyRadioMicChoice()
         m_accBtn->setChecked(boost);
     }
     // Build 522 (operator, 19.11): the boost is "Mic +20 dB" of the device
-    // settings now; the button is not shown (kept for the syncs), and the
-    // mic level slider is as long as the monitor one below -- the value
-    // label takes what that row has beside its slider (48 + 46 = 55 + 39).
+    // settings now; the button is not shown (kept for the syncs). Build 524:
+    // the mic level slider ENDS where the monitor one below does -- the
+    // value label is as wide as that row's (46).
     m_accBtn->setVisible(false);
     if (m_micLevelLabel)
-        m_micLevelLabel->setFixedWidth(39);
+        m_micLevelLabel->setFixedWidth(46);
+    // Build 524 (operator, 19.11): each microphone has its own level. When
+    // the source is another one than the slider shows the level of, that
+    // microphone's stored level is put on the slider and sent to the radio
+    // (after this call: it is reached from the model's own signals too).
+    if (micSource != m_ananMicSrcShown && m_micLevelSlider) {
+        const int was = m_ananMicSrcShown;
+        m_ananMicSrcShown = micSource;
+        const int now = m_micLevelSlider->value();
+        // The microphone left behind keeps the level it had, if it was never
+        // stored (the slider not moved since this build).
+        if (was >= 0 && st.value(ananMicLevelKey(was), -1).toInt() < 0) {
+            st.setValue(ananMicLevelKey(was), now);
+            st.save();
+        }
+        const int stored = st.value(ananMicLevelKey(micSource), -1).toInt();
+        // Never stored: the level stays as it is.
+        if (stored >= 0 && stored != now) {
+            const int v = std::clamp(stored, m_micLevelSlider->minimum(),
+                                     m_micLevelSlider->maximum());
+            {
+                const QSignalBlocker blocker(m_micLevelSlider);
+                m_micLevelSlider->setValue(v);
+            }
+            if (m_micLevelLabel)
+                m_micLevelLabel->setText(QStringLiteral("%1%").arg(v));
+            // What the slider shows by then (a profile may have set it since).
+            QTimer::singleShot(0, this, [this, micSource] {
+                if (m_model && !m_radeActive && radioMicMode() && m_ananMicSrcShown == micSource)
+                    m_model->setMicLevel(m_micLevelSlider->value());
+            });
+        }
+    }
     m_accBtn->setAccessibleName(QStringLiteral("Radio microphone boost"));
     const QString tip = QStringLiteral("+20 dB boost of the radio's microphone input (MIC)");
     m_accBtn->setToolTip(tip);
@@ -396,7 +474,7 @@ void PhoneCwApplet::buildPhonePanel()
         auto* row = new QHBoxLayout;
         row->setSpacing(4);
 
-        m_micSourceCombo = new GuardedComboBox;
+        m_micSourceCombo = new CenteredMicCombo;   // build 524: centred text
         m_micSourceCombo->setFixedWidth(55);
         m_micSourceCombo->setFixedHeight(22);
         m_micSourceCombo->setAccessibleName("Microphone source");
@@ -416,6 +494,7 @@ void PhoneCwApplet::buildPhonePanel()
                     st.setValue(QStringLiteral("AnanMicSource"),
                                 t == QLatin1String("CDC") ? 1 : 0);
                     st.save();
+                    applyRadioMicChoice();   // build 524: that microphone's level
                 }
                 return;
             }
@@ -432,9 +511,9 @@ void PhoneCwApplet::buildPhonePanel()
         m_micLevelSlider->setAccessibleDescription("Microphone input level, 0 to 100");
         row->addWidget(m_micLevelSlider, 1);
 
-        m_micLevelLabel = new QLabel("50");
+        m_micLevelLabel = new QLabel("50%");
         m_micLevelLabel->setStyleSheet(kLabelStyle);
-        m_micLevelLabel->setFixedWidth(22);
+        m_micLevelLabel->setFixedWidth(34);   // build 524: "100%"
         m_micLevelLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         row->addWidget(m_micLevelLabel);
 
@@ -448,7 +527,13 @@ void PhoneCwApplet::buildPhonePanel()
         row->addWidget(m_accBtn);
 
         connect(m_micLevelSlider, &QSlider::valueChanged, this, [this](int v) {
-            m_micLevelLabel->setText(QString::number(v));
+            m_micLevelLabel->setText(QStringLiteral("%1%").arg(v));
+            // Build 524: kept for the microphone it was set with.
+            if (!m_updatingFromModel && radioMicMode() && m_ananMicSrcShown >= 0) {
+                auto& st = AppSettings::instance();
+                st.setValue(ananMicLevelKey(m_ananMicSrcShown), v);
+                st.save();
+            }
             // Don't push to the radio in RADE mode: the slider is acting
             // as client-side RADE gain (PcMicGain), and sending
             // mic_level=N would silently overwrite the user's hardware-mic
@@ -624,7 +709,7 @@ void PhoneCwApplet::buildPhonePanel()
         m_monSlider->setAccessibleDescription("TX sidetone monitor volume");
         row->addWidget(m_monSlider, 1);
 
-        m_monLabel = new QLabel("50");
+        m_monLabel = new QLabel("50%");
         m_monLabel->setStyleSheet(kLabelStyle);
         m_monLabel->setFixedWidth(46);   // as TX Low / TX High
         m_monLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -636,7 +721,7 @@ void PhoneCwApplet::buildPhonePanel()
         });
 
         connect(m_monSlider, &QSlider::valueChanged, this, [this](int v) {
-            m_monLabel->setText(QString::number(v));
+            m_monLabel->setText(QStringLiteral("%1%").arg(v));
             if (!m_updatingFromModel && m_model)
                 m_model->setMonGainSb(v);
         });
@@ -732,6 +817,16 @@ QJsonObject PhoneCwApplet::captureMicProfile() const
     p[QStringLiteral("version")] = 1;
     p[QStringLiteral("micSource")] = m_micSourceCombo->currentText();
     p[QStringLiteral("micLevel")] = m_micLevelSlider->value();
+    // Build 524: and the level of each microphone of an ANAN.
+    if (radioMicMode()) {
+        auto& st = AppSettings::instance();
+        const int shown = m_ananMicSrcShown == 1 ? 1 : 0;
+        const int now = m_micLevelSlider->value();
+        p[QStringLiteral("micLevelPc")] =
+            shown == 0 ? now : st.value(ananMicLevelKey(0), now).toInt();
+        p[QStringLiteral("micLevelCdc")] =
+            shown == 1 ? now : st.value(ananMicLevelKey(1), now).toInt();
+    }
     // Build 523 (operator, 19.11): the radio's +20 dB mic boost is a device
     // setting ("Mic +20 dB") and is not part of a profile any more; only the
     // +ACC input of a radio with selectable inputs is.
@@ -761,7 +856,21 @@ void PhoneCwApplet::applyMicProfile(const QJsonObject& p)
         if (idx >= 0 && idx != m_micSourceCombo->currentIndex())
             m_micSourceCombo->setCurrentIndex(idx);
     }
-    if (p.contains(QStringLiteral("micLevel")))
+    // Build 524: a profile with a level per microphone -- both are stored,
+    // the one of the microphone in use goes to the slider. An older profile
+    // has one level, taken for the microphone in use.
+    if (radioMicMode() && p.contains(QStringLiteral("micLevelPc"))
+        && p.contains(QStringLiteral("micLevelCdc"))) {
+        auto& st = AppSettings::instance();
+        const int pc = p.value(QStringLiteral("micLevelPc")).toInt(m_micLevelSlider->value());
+        const int cdc = p.value(QStringLiteral("micLevelCdc")).toInt(m_micLevelSlider->value());
+        st.setValue(ananMicLevelKey(0), pc);
+        st.setValue(ananMicLevelKey(1), cdc);
+        st.save();
+        const int src = st.value(QStringLiteral("AnanMicSource"), 0).toInt() == 1 ? 1 : 0;
+        m_ananMicSrcShown = src;
+        m_micLevelSlider->setValue(src == 1 ? cdc : pc);
+    } else if (p.contains(QStringLiteral("micLevel")))
         m_micLevelSlider->setValue(p.value(QStringLiteral("micLevel")).toInt(m_micLevelSlider->value()));
     // Build 523: a "boost" stored by an older build is left alone in
     // radio-mic mode (see captureMicProfile).
@@ -1663,10 +1772,10 @@ void PhoneCwApplet::syncPhoneFromModel()
     if (clientOwnsGain) {
         int pcGain = AppSettings::instance().value("PcMicGain", 100).toInt();
         m_micLevelSlider->setValue(pcGain);
-        m_micLevelLabel->setText(QString::number(pcGain));
+        m_micLevelLabel->setText(QStringLiteral("%1%").arg(pcGain));
     } else {
         m_micLevelSlider->setValue(m_model->micLevel());
-        m_micLevelLabel->setText(QString::number(m_model->micLevel()));
+        m_micLevelLabel->setText(QStringLiteral("%1%").arg(m_model->micLevel()));
     }
     // Held, not merely set once: setSelectableMicInputs(false) unlights +ACC,
     // and a refresh must not light a dimmed control back up from a model value
@@ -1691,7 +1800,7 @@ void PhoneCwApplet::syncPhoneFromModel()
     { const QSignalBlocker b(m_daxBtn); m_daxBtn->setChecked(m_model->daxOn()); }
     m_monBtn->setChecked(m_model->sbMonitor());
     m_monSlider->setValue(m_model->monGainSb());
-    m_monLabel->setText(QString::number(m_model->monGainSb()));
+    m_monLabel->setText(QStringLiteral("%1%").arg(m_model->monGainSb()));
 
     {
         const QSignalBlocker blocker(m_micProfileCombo);

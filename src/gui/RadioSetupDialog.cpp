@@ -1414,6 +1414,8 @@ RadioSetupDialog::RadioSetupDialog(RadioModel* model, AudioEngine* audio,
         buildDeferredTab(index);
         m_pages->setCurrentIndex(index);
         m_pageTitle->setText(current->text(0));
+        // Build 524: once the page is laid out.
+        QTimer::singleShot(0, this, [this] { fitWidthToCurrentPage(); });
     });
     connect(search, &QLineEdit::textChanged, this, [this](const QString& text) {
         const QString needle = text.trimmed();
@@ -3236,6 +3238,13 @@ void applyAnanTxProfile(RadioModel* model, const QJsonObject& p)
     if (p.contains(QStringLiteral("micSource")))
         st.setValue(QStringLiteral("AnanMicSource"),
                     std::clamp(p.value(QStringLiteral("micSource")).toInt(), 0, 2));
+    // Build 524: the Mic applet keeps a level per microphone -- the
+    // profile's level is that of the microphone it selects (before the
+    // model is told, so the applet does not bring the older one back).
+    if (p.contains(QStringLiteral("micLevel")))
+        st.setValue(st.value(QStringLiteral("AnanMicSource"), 0).toInt() == 1
+                        ? QStringLiteral("AnanMicLevelCdc") : QStringLiteral("AnanMicLevelPc"),
+                    p.value(QStringLiteral("micLevel")).toInt());
     // Build 437: a profile stored before has none -- the present delay stays.
     if (p.contains(QStringLiteral("rfDelayMs")))
         st.setValue(QStringLiteral("AnanRfDelayMs"), std::clamp(p.value(QStringLiteral("rfDelayMs")).toInt(), 1, 255));
@@ -4280,19 +4289,31 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     auto* connGroup = new QGroupBox("Microphone && Connectors");
     auto* cvb = new QVBoxLayout(connGroup);
     cvb->setSpacing(6);
-    auto mkChk = [&](const char* text, const char* name, const char* tip) {
+    // Build 524 (operator, 19.11): two columns. The first has what an
+    // ANAN-100D has; the second starts with "Mic +20 dB", and the options of
+    // the bigger radios (mic jack wiring, bias, XLR) appear under it.
+    auto* connCols = new QHBoxLayout;
+    connCols->setSpacing(24);
+    auto* connCol1 = new QVBoxLayout;
+    connCol1->setSpacing(6);
+    auto* connCol2 = new QVBoxLayout;
+    connCol2->setSpacing(6);
+    connCols->addLayout(connCol1);
+    connCols->addLayout(connCol2);
+    connCols->addStretch(1);
+    cvb->addLayout(connCols);
+    auto mkChk = [&](QVBoxLayout* col, const char* text, const char* name, const char* tip) {
         auto* c = new QCheckBox(QString::fromLatin1(text));
         c->setObjectName(QString::fromLatin1(name));
         c->setToolTip(QString::fromLatin1(tip));
-        cvb->addWidget(c);
+        col->addWidget(c);
         controls->append(c);
         return c;
     };
-    auto* micPttChk = mkChk("Mic PTT", "ananHwMicPtt",
-        "The PTT line of the front-panel microphone jack keys the radio.");
-    // Build 522 (operator, 19.11): "Mic +20 dB", second row, on by default --
-    // what the 20dB button of the P/CW applet did (that button is gone). An
+    // Build 522 (operator, 19.11): "Mic +20 dB", on by default -- what the
+    // 20dB button of the P/CW applet did (that button is gone). An
     // application setting ("AnanMicBoost"), so it is not one of `controls`.
+    // Build 524: the top of the second column.
     {
         auto* micBoostChk = new QCheckBox(QStringLiteral("Mic +20 dB"));
         micBoostChk->setObjectName(QStringLiteral("ananHwMicBoost"));
@@ -4310,34 +4331,38 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
                 other->setChecked(on);
             }
         });
-        cvb->addWidget(micBoostChk);
+        connCol2->addWidget(micBoostChk);
     }
-    auto* micTipChk = mkChk("PTT on tip, microphone on ring", "ananHwMicTipPtt",
+    auto* micPttChk = mkChk(connCol2, "Mic PTT", "ananHwMicPtt",
+        "The PTT line of the front-panel microphone jack keys the radio.");
+    auto* micTipChk = mkChk(connCol2, "PTT on tip, microphone on ring", "ananHwMicTipPtt",
         "Off (default): microphone and bias on the tip, PTT on the ring.\n"
         "On: PTT on the tip, microphone and bias on the ring.");
-    auto* micBiasChk = mkChk("Mic bias", "ananHwMicBias",
+    auto* micBiasChk = mkChk(connCol2, "Mic bias", "ananHwMicBias",
         "Bias voltage for an electret microphone.");
-    auto* micXlrChk = mkChk("Balanced XLR microphone input", "ananHwMicXlr",
+    auto* micXlrChk = mkChk(connCol2, "Balanced XLR microphone input", "ananHwMicXlr",
         "ANAN-G2: the balanced XLR input instead of the 3.5 mm jack.");
-    auto* gndChk = mkChk("RX2 input grounded on transmit", "ananHwAdc2Gnd",
+    auto* gndChk = mkChk(connCol1, "RX2 input grounded on transmit", "ananHwAdc2Gnd",
         "Grounds the second ADC's input (RX2 / BPF2) while transmitting.\n"
         "Not applied while PureSignal takes its feedback on that ADC.");
     // Build 502 (operator, 18.11): what switches on transmit with PureSignal
     // off (with it on, both always do).
-    auto* txBypassChk = mkChk("Bypass BPF1 When TX", "ananHwTxBypassBpf",
+    auto* txBypassChk = mkChk(connCol1, "Bypass BPF1 When TX", "ananHwTxBypassBpf",
         "Bypass the first receiver's band-pass filter (BPF1) on every transmission.\n"
         "Off: only while PureSignal is on. For the 7000DLE / 8000DLE / G2;\n"
         "other radios are sent the protocol's bypass bit all the same.");
     // Build 506.
-    auto* txBypass2Chk = mkChk("Bypass BPF2 When TX", "ananHwTxBypassBpf2",
+    auto* txBypass2Chk = mkChk(connCol1, "Bypass BPF2 When TX", "ananHwTxBypassBpf2",
         "Bypass the second receiver's band-pass filter (BPF2) on every transmission.\n"
         "Off: only while PureSignal takes its feedback on ADC2.\n"
         "For the 7000DLE / 8000DLE / G2 (radios with a second filter bank).");
-    auto* psCouplerChk = mkChk("PS Coupler Always when TX", "ananHwPsCouplerOnTx",
+    auto* psCouplerChk = mkChk(connCol1, "PS Coupler Always when TX", "ananHwPsCouplerOnTx",
         "Switch the PureSignal feedback path (the coupler, or the input chosen\n"
         "in the PureSignal applet) on every transmission -- to watch the own\n"
         "signal with PureSignal off. On the 7000DLE / 8000DLE / G2 the receive\n"
         "band-pass filter is bypassed with it. Off: only while PureSignal is on.");
+    connCol1->addStretch(1);
+    connCol2->addStretch(1);
     auto* connNone = new QLabel("This radio has no microphone or input options.");
     setTone(connNone, Tone::Hint);
     connNone->setVisible(false);
@@ -4471,6 +4496,8 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
             modelCombo->setEnabled(haveRadio && forced);
             if (noRadioLbl)
                 noRadioLbl->setVisible(!haveRadio);
+            // Build 524: the options shown have changed with the radio.
+            QTimer::singleShot(0, this, [this] { fitWidthToCurrentPage(); });
         };
         connect(backend, &IRadioBackend::extensionResult, guard,
                 [guard, requestId, fill](quint64 id, const QVariant& result) {
@@ -8240,6 +8267,33 @@ bool RadioSetupDialog::confirmPeripheralRemoval(const QString& label, const QStr
     boxOwner.get()->button(QMessageBox::Ok)->setText(tr("Remove"));
     const int ret = boxOwner.get()->exec();
     return self && boxOwner && ret == QMessageBox::Ok;
+}
+
+// Build 524 (operator, 19.11: "open the device settings so that no horizontal
+// scrolling is needed"). The dialog's width is fixed (960); a page whose
+// content needs more got a horizontal scroll bar. The width now grows by what
+// the page shown lacks (never past the screen), and does not shrink again.
+void RadioSetupDialog::fitWidthToCurrentPage()
+{
+    if (!m_pages || !isVisible())
+        return;
+    QWidget* current = m_pages->currentWidget();
+    if (!current)
+        return;
+    auto* scroll = qobject_cast<QScrollArea*>(current);
+    if (!scroll)
+        scroll = current->findChild<QScrollArea*>();
+    if (!scroll || !scroll->widget() || !scroll->viewport())
+        return;
+    const int need = scroll->widget()->minimumSizeHint().width();
+    const int have = scroll->viewport()->width();
+    if (need <= have)
+        return;
+    int target = width() + (need - have);
+    if (const QScreen* scr = screen())
+        target = std::min(target, scr->availableGeometry().width());
+    if (target > width())
+        setFixedWidth(target);
 }
 
 void RadioSetupDialog::buildDeferredTab(int index)
