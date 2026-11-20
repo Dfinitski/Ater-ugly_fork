@@ -81,11 +81,20 @@ MidiControlManager::MidiControlManager(QObject* parent)
     , m_hotplugTimer(new QTimer(this))
     , m_relativeTimer(new QTimer(this))
 {
-    m_hotplugTimer->setInterval(5000);
+    // ANAN fork build 535 (operator, 20.11: "5 s is too long -- five attempts
+    // in all, one second apart"). One tick a second: with the port open it
+    // only refills the attempts; with it closed it spends one and tries.
+    m_hotplugTimer->setInterval(1000);
     connect(m_hotplugTimer, &QTimer::timeout, this, [this] {
-        // Hotplug: if disconnected and we have a saved port name, try to reconnect
-        if (m_midiIn && m_midiIn->isPortOpen()) return;
-        if (m_retryName.isEmpty()) return;   // build 534, see openPort()
+        if (m_midiIn && m_midiIn->isPortOpen()) {
+            m_retriesLeft = kOpenAttempts - 1;
+            return;
+        }
+        if (m_retryName.isEmpty() || m_retriesLeft <= 0) {
+            m_hotplugTimer->stop();
+            return;
+        }
+        --m_retriesLeft;
         openPortByName(m_retryName);
     });
 
@@ -131,17 +140,20 @@ QStringList MidiControlManager::enumeratePorts()
 // began with closePort(), which stops it. So a port that could not be opened
 // at start-up was never tried again, and a controller unplugged later was
 // tried once. Now the port asked for is remembered (m_retryName) and tried
-// every 5 s until it opens or closePort() is called (Disconnect, shutdown).
+// again -- build 535: five attempts in all, a second apart -- until it opens
+// or closePort() is called (Disconnect, shutdown).
 void MidiControlManager::noteOpenFailure(const QString& what)
 {
-    if (!m_retryName.isEmpty())
+    const bool more = !m_retryName.isEmpty() && m_retriesLeft > 0;
+    if (more)
         m_hotplugTimer->start();
-    if (what == m_lastOpenError)
-        return;   // the same failure as 5 s ago: said once
+    if (what == m_lastOpenError && more)
+        return;   // the same failure as a second ago: said once, and at the end
     m_lastOpenError = what;
     qCWarning(lcDevices).noquote()
         << "MidiControlManager: open failed:" << what
-        << (m_retryName.isEmpty() ? QString() : QStringLiteral("-- trying again every 5 s"));
+        << (more ? QStringLiteral("-- %1 more attempt(s), 1 s apart").arg(m_retriesLeft)
+                 : QStringLiteral("-- no more attempts"));
     emit portError(what);
 }
 
@@ -169,6 +181,7 @@ bool MidiControlManager::openPort(int portIndex)
         m_midiIn->ignoreTypes(true, true, true); // ignore sysex, timing, active sensing
         qCInfo(lcDevices) << "MidiControlManager: opened port" << m_portName;
         m_retryName = m_portName;
+        m_retriesLeft = kOpenAttempts - 1;
         m_lastOpenError.clear();
         m_hotplugTimer->start();
         emit portOpened(m_portName);
@@ -194,8 +207,8 @@ bool MidiControlManager::openPortByName(const QString& portName)
         noteOpenFailure(QString::fromStdString(e.getMessage()));
         return false;
     }
-    // Not in the list (not plugged in, or not enumerated yet): keep looking.
-    if (!m_retryName.isEmpty())
+    // Not in the list (not plugged in, or not enumerated yet): look again.
+    if (!m_retryName.isEmpty() && m_retriesLeft > 0)
         m_hotplugTimer->start();
     return false;
 }
@@ -205,6 +218,7 @@ void MidiControlManager::closePort()
     if (m_discardTxInputs) { m_discardTxInputs(); }
     m_hotplugTimer->stop();
     m_retryName.clear();   // build 534: closed on purpose -- no more attempts
+    m_retriesLeft = kOpenAttempts - 1;
     if (m_midiIn) {
         try {
             if (m_midiIn->isPortOpen())

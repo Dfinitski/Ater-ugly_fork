@@ -157,6 +157,9 @@ private:
     // at start-up, or the one that was open); empty after closePort(). And
     // the last failure logged, so a retry every 5 s does not fill the log.
     QString m_retryName;
+    // Build 535: five attempts in all, a second apart (operator).
+    static constexpr int kOpenAttempts = 5;
+    int m_retriesLeft{kOpenAttempts - 1};
     QString m_lastOpenError;
     void noteOpenFailure(const QString& what);
 

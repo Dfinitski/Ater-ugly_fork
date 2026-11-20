@@ -728,7 +728,24 @@ void SerialPortController::loadSettings()
 #  endif
 #endif
         } else {
-            open(port, baud, data, par, stop);
+            // ANAN fork build 535 (operator, 20.11; a user's log: `failed to
+            // open "COM17" Win32 error 5` at start-up, "sometimes it starts,
+            // sometimes not"). A port that is busy at that moment was given
+            // up at once. Five attempts in all, a second apart; each goes
+            // through loadSettings() again, so a port switched off or
+            // changed in the meantime is not opened.
+            if (open(port, baud, data, par, stop)) {
+                m_openAttempts = 0;
+            } else if (++m_openAttempts < kOpenAttempts) {
+                qCInfo(lcDevices) << "SerialPortController:" << port << "attempt" << m_openAttempts
+                                  << "of" << kOpenAttempts << "failed -- again in 1 s";
+                QTimer::singleShot(1000, this, [this] {
+                    if (!isOpen())
+                        loadSettings();
+                });
+            } else {
+                m_openAttempts = 0;   // given up; the next loadSettings() starts anew
+            }
         }
     } else if (!shouldOpen && isOpen()) {
         close();

@@ -134,6 +134,10 @@ private:
     bool          m_lastCtsActive{false};
     bool          m_lastDsrActive{false};
     bool          m_lastDcdActive{false};
+    // ANAN fork build 535: attempts to open the port already made by
+    // loadSettings() since it last was open (five in all, a second apart).
+    static constexpr int kOpenAttempts = 5;
+    int           m_openAttempts{0};
     bool          m_lastKeyDown{false};
     bool          m_lastDitActive{false};
     bool          m_lastDahActive{false};
