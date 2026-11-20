@@ -9,6 +9,8 @@
 #include "core/MidiSettings.h"
 
 #include <QTimer>
+#include <QWindow>
+#include <QMouseEvent>
 #include <memory>
 #include <thread>
 
@@ -100,6 +102,35 @@ static const QString kBtnGlyphStyle =
 
 // One apply site for the shared primary-button sheet — the colour ratchet
 // counts setStyleSheet() call sites, not colours (tools/audit_colours.py).
+// ANAN fork build 533 (operator, 19.11): the manual binding editor has no
+// title bar (build 532) -- it is dragged by any place that is not a control.
+// A press on the window itself, or on a label (which passes it on to the
+// window), starts the system's own window move.
+class DragAnywhereFilter final : public QObject {
+public:
+    explicit DragAnywhereFilter(QWidget* window) : QObject(window), m_window(window)
+    {
+        window->installEventFilter(this);
+    }
+
+protected:
+    bool eventFilter(QObject* obj, QEvent* ev) override
+    {
+        if (obj == m_window && ev->type() == QEvent::MouseButtonPress) {
+            auto* me = static_cast<QMouseEvent*>(ev);
+            if (me->button() == Qt::LeftButton && m_window->windowHandle()
+                && m_window->windowHandle()->startSystemMove()) {
+                ev->accept();
+                return true;
+            }
+        }
+        return QObject::eventFilter(obj, ev);
+    }
+
+private:
+    QWidget* m_window;
+};
+
 static QPushButton* makeStyledButton(const QString& text)
 {
     auto* btn = new QPushButton(text);
@@ -192,6 +223,12 @@ MidiMappingDialog::MidiMappingDialog(MidiControlManager* manager, QWidget* paren
         m_bindingTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents);
         m_bindingTable->horizontalHeader()->setSectionResizeMode(7, QHeaderView::ResizeToContents);
         m_bindingTable->horizontalHeader()->setSectionResizeMode(8, QHeaderView::ResizeToContents);
+        // ANAN fork build 533 (operator, 19.11: "a click on a binding lights
+        // its fields turquoise -- what for? not all of them, and the lit
+        // buttons look bad"). The selection had no use here (every action of
+        // a row is its own control), so there is none, and no focus frame.
+        m_bindingTable->setSelectionMode(QAbstractItemView::NoSelection);
+        m_bindingTable->setFocusPolicy(Qt::NoFocus);
         m_bindingTable->setSelectionBehavior(QAbstractItemView::SelectRows);
         m_bindingTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
         m_bindingTable->verticalHeader()->setVisible(false);
@@ -910,6 +947,7 @@ void MidiMappingDialog::openManualEditor(const QString& paramId, const MidiBindi
     // It was the system's own title bar. None now: a frame of the theme, and
     // the title as the first line of the form.
     dlg.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
+    new DragAnywhereFilter(&dlg);   // build 533
     dlg.setObjectName("midiManualBindingDialog");
     // checkBoxIndicatorStyle() is the #4013 fix for invisible indicators in
     // dark themes; it returns an unresolved template, so it must ride through
