@@ -636,6 +636,12 @@ std::optional<double> Hl2Backend::couplerSwr(int fwdRaw, int revRaw) const noexc
     return (1.0 + rho) / (1.0 - rho);
 }
 
+bool Hl2Backend::ananDuplexOn() const
+{
+    return AppSettings::instance().value(QStringLiteral("AnanDuplex"), QStringLiteral("False"))
+               .toString() == QLatin1String("True");
+}
+
 QString Hl2Backend::radioDisplayName() const
 {
     return QString::fromLatin1(ananTraits().key);
@@ -7325,10 +7331,17 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
         }
         if (m_ps)   // PureSignal: SetPSMox and the feedback gate follow the key
             m_ps->setKeyed(key, m_ananCwTxSilent.load(std::memory_order_relaxed));
+        // Build 584 (operator, 21.11): DUP switches the guard interval after
+        // the over off -- read now, so a DUP change between overs counts.
+        const bool duplex = ananDuplexOn();
         for (const Receiver& r : m_rx) {   // full duplex: AGC held, all else runs
-            if (r.dsp)
+            if (r.dsp) {
+                if (!key)
+                    QMetaObject::invokeMethod(r.dsp, "setOverTailEnabled", Qt::QueuedConnection,
+                                              Q_ARG(bool, !duplex));
                 QMetaObject::invokeMethod(r.dsp, "setAgcTxHold", Qt::QueuedConnection,
                                           Q_ARG(bool, key));
+            }
         }
         // ANAN-100D port (operator, 31.10): the FFT history is never dropped
         // at a key edge -- a restarted average has to accumulate again and
@@ -7450,6 +7463,16 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
             // still held is released NOW rather than deferred into a fresh
             // hold. Normally a no-op, because the monitor path already
             // unmuted; it is here so that it stays a no-op.
+            if (m_unkeyUnmuteTimer) {
+                m_unkeyUnmuteTimer->stop();
+            }
+            if (m_rxAudioMuted) {
+                applyRxAudioMute(false);
+            }
+        } else if (!key && ananDuplexOn()) {
+            // Build 584 (operator, 21.11): DUP -- no guard interval after the
+            // over: the host's hold is skipped too, the receivers open at the
+            // unkey (their DSP skips its tail, setOverTailEnabled).
             if (m_unkeyUnmuteTimer) {
                 m_unkeyUnmuteTimer->stop();
             }

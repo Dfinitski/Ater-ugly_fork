@@ -901,6 +901,9 @@ private:
     };
     std::array<SmTrace, 4> m_smTrace;
     bool m_ananDuplex{false};
+    // Build 584: DUP as it is now (AppSettings "AnanDuplex"; the button is
+    // on the ANAN TX / Mic applets only).
+    [[nodiscard]] bool ananDuplexOn() const;
     // Build 194: the radio runs Protocol 1 firmware (rates stop at 384 ksps).
     // Set at connect from the discovery sweep and at linkUp from the transport.
     std::atomic<bool> m_ananP1{false};
