@@ -211,21 +211,49 @@ void SerialPortController::close()
     m_lastDitActive = false;
     m_lastDahActive = false;
 
+    // ANAN-100D port, build 568 (a user's MIDI panel and COM port stayed
+    // busy after the program was closed, until the cable was pulled). The
+    // handle is non-overlapped, so Windows runs one request at a time on it:
+    // while the watcher sits in WaitCommEvent, every other call on this
+    // handle from another thread -- SetCommMask, which was meant to abort the
+    // wait, EscapeCommFunction, CloseHandle -- queues behind it and returns
+    // only when a modem line changes. On a port whose lines never change
+    // (a USB CDC device such as an Arduino) that is never: close() hung, the
+    // shutdown waited for it with the window already gone, and the hidden
+    // process kept this port and the MIDI port, which is closed after it.
+    // CancelIoEx does not queue behind the wait; it ends it with
+    // ERROR_OPERATION_ABORTED, which the watcher takes as its exit. So: stop
+    // the watcher first, touch the handle afterwards.
+    m_stopWinWatch.store(true);
+    bool watcherStopped = true;
+    if (m_winWatchThread) {
+        watcherStopped = false;
+        // Repeated for up to 3 s: the watcher may be between its flag test
+        // and the call when the first cancel arrives.
+        for (int i = 0; i < 300 && !watcherStopped; ++i) {
+            ::CancelIoEx(hPort, nullptr);
+            watcherStopped = m_winWatchThread->wait(10);
+        }
+    }
+    if (!watcherStopped) {
+        // Never seen; anything further on this handle would block as above,
+        // and a running QThread must not be destroyed. Leave both behind.
+        qCWarning(lcDevices) << "SerialPortController: the watcher thread did not stop;"
+                             << "the port handle is left open";
+        m_winWatchThread = nullptr;
+        m_hWin        = nullptr;
+        m_winPortName.clear();
+        m_winBaudRate = 0;
+        return;
+    }
+    delete m_winWatchThread;
+    m_winWatchThread = nullptr;
+
     // Deassert configured output pins
     if (m_dtrFn != PinFunction::None)
         ::EscapeCommFunction(hPort, m_dtrActiveHigh ? CLRDTR : SETDTR);
     if (m_rtsFn != PinFunction::None)
         ::EscapeCommFunction(hPort, m_rtsActiveHigh ? CLRRTS : SETRTS);
-
-    // Stop watcher thread: flag it, then abort the pending WaitCommEvent
-    m_stopWinWatch.store(true);
-    ::SetCommMask(hPort, 0);    // causes pending WaitCommEvent to return immediately
-
-    if (m_winWatchThread) {
-        m_winWatchThread->wait(3000);
-        delete m_winWatchThread;
-        m_winWatchThread = nullptr;
-    }
 
     ::CloseHandle(hPort);
     m_hWin        = nullptr;
