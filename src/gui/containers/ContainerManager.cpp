@@ -316,6 +316,10 @@ void ContainerManager::floatContainer(const QString& id)
     int dockedWidth = (c->isVisible() && c->window() && c->window()->isVisible())
         ? c->width() : 0;
     // Build 262: or the panel column it sits in, if that is wider.
+    // Build 573 (operator, 21.11: "after tearing off, the applet must have
+    // the size it had in the frame"): its height there, same condition.
+    const int dockedHeight = (c->isVisible() && c->window() && c->window()->isVisible())
+        ? c->height() : 0;
     if (QWidget* slot = c->parentWidget(); slot && slot->isVisible())
         dockedWidth = std::max(dockedWidth, slot->width());
 
@@ -334,6 +338,9 @@ void ContainerManager::floatContainer(const QString& id)
     // Build 262: FloatingContainerWindow sizes the width to the content on
     // opening (several passes); the panel width is its floor.
     win->setOpeningWidthFloor(dockedWidth);
+    // Build 573: and, when known, the whole size it had in the panel.
+    if (dockedWidth > 0 && dockedHeight > 0)
+        win->setOpeningSize(QSize(dockedWidth, dockedHeight));
     win->takeContainer(c);
     connect(win, &FloatingContainerWindow::dockRequested,
             this, &ContainerManager::onFloatingWindowDock);

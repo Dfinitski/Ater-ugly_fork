@@ -119,6 +119,7 @@ void FloatingContainerWindow::setGeometryKey(const QString& key)
 void FloatingContainerWindow::restoreAndEnsureVisible(QWidget* anchor)
 {
     m_restoring = true;
+    m_geometryRestored = false;
     bool restored = false;
     if (!m_geometryKey.isEmpty()) {
         const QByteArray geom = QByteArray::fromBase64(
@@ -165,6 +166,7 @@ void FloatingContainerWindow::restoreAndEnsureVisible(QWidget* anchor)
             }
         }
     }
+    m_geometryRestored = restored;
     m_fitWidth = true;
     fitHeightToContent();
     // Content built while the window is shown (the CAT port table) does not
@@ -245,9 +247,11 @@ bool FloatingContainerWindow::event(QEvent* ev)
 
 void FloatingContainerWindow::fitHeightToContent()
 {
-    // ANAN-100D port (operator, 30.10): no resizing up and down by mouse.
-    // Fixed height = what the content asks for; the width stays free.
-    // FramelessResizer drops the edges of an axis that cannot resize.
+    // ANAN-100D port (operator, 30.10): no resizing up and down by mouse --
+    // fixed height = what the content asks for.
+    // Build 573 (operator, 21.11: "allow it again; a torn-off applet must
+    // have the size it had in the frame"): the height is free. What stays
+    // of the fit is below -- the opening size, and following the content.
     if (!m_container || !m_layout)
         return;
     int h = std::max({m_layout->sizeHint().height(),
@@ -275,15 +279,30 @@ void FloatingContainerWindow::fitHeightToContent()
         h = std::min(h, screen->availableGeometry().height() * 9 / 10);
         w = std::min(w, screen->availableGeometry().width() * 9 / 10);
     }
-    if (minimumHeight() != h || maximumHeight() != h)
-        setFixedHeight(h);
-    // Width: the content's at every opening (m_fitWidth, set by
-    // restoreAndEnsureVisible), then free to make wider or narrower by mouse.
-    // Build 262 (operator, 10.11: "TX Control shrank when torn off"): the
-    // content's width is not narrower than the applet was in the panel.
-    w = std::max(w, m_openingWidthFloor);
-    if (m_fitWidth && width() != w)
-        resize(w, height());
+    if (m_fitWidth) {
+        // The opening passes (m_fitWidth, set by restoreAndEnsureVisible).
+        QSize target = size();
+        if (m_openingSize.isValid()) {
+            // Torn off the panel: exactly as it was there.
+            target = m_openingSize;
+        } else {
+            // Restored at start, or never shown in a panel. Width: the
+            // content's (build 219), not narrower than the applet was in the
+            // panel (build 262). Height: the saved one; the content's when
+            // nothing was saved.
+            target.setWidth(std::max(w, m_openingWidthFloor));
+            if (!m_geometryRestored)
+                target.setHeight(h);
+        }
+        if (size() != target)
+            resize(target);
+    } else if (m_contentHeight >= 0 && h != m_contentHeight) {
+        // Afterwards both axes are the operator's. The content changed its
+        // height (a section opened or closed, rows were added): the window
+        // changes by the same amount and keeps the operator's own addition.
+        resize(width(), height() + h - m_contentHeight);
+    }
+    m_contentHeight = h;
 }
 
 void FloatingContainerWindow::closeEvent(QCloseEvent* ev)

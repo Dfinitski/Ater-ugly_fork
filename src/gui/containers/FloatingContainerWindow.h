@@ -44,6 +44,11 @@ public:
     void setGeometryKey(const QString& key);
     // Build 262: see m_openingWidthFloor. Set before restoreAndEnsureVisible().
     void setOpeningWidthFloor(int w) { m_openingWidthFloor = std::max(0, w); }
+    // Build 573 (operator, 21.11): the size the applet had in the panel it
+    // is torn off from -- the window opens at exactly this size. Invalid =
+    // not known (a window restored at start): the saved geometry is used.
+    // Set before restoreAndEnsureVisible().
+    void setOpeningSize(const QSize& s) { m_openingSize = s; }
     QString geometryKey() const { return m_geometryKey; }
 
     // Called by ContainerManager before the app exits.  Saves geometry,
@@ -73,8 +78,10 @@ signals:
     void dockRequested(ContainerWidget* container);
 
 protected:
-    // ANAN-100D port: the height follows the content (no manual vertical
-    // resizing); re-fitted on every layout change.
+    // ANAN-100D port: on every layout change the height follows the
+    // content. Since build 573 the height is the operator's again (30.10 ..
+    // build 572 it was fixed): the window grows or shrinks by what the
+    // content gained or lost and keeps what the operator added or took.
     bool event(QEvent* ev) override;
     void closeEvent(QCloseEvent* ev) override;
     void moveEvent(QMoveEvent* ev) override;
@@ -87,6 +94,9 @@ private:
     // Build 262: the opening width never goes below this (the applet's width
     // in the panel it was torn off from); 0 = no floor.
     int m_openingWidthFloor = 0;
+    QSize m_openingSize;             // build 573, see setOpeningSize()
+    bool  m_geometryRestored = false; // build 573: a saved geometry was applied
+    int   m_contentHeight = -1;       // build 573: what the content asked for last
     bool m_fitPending{false};
     void applyPresentation();
 
