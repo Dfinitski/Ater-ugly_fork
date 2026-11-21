@@ -590,15 +590,18 @@ void RxApplet::buildUI()
         });
         row->addWidget(m_txAntBtn);
 
-        row->addStretch(1);
-
         // Filter width and QSK share the antenna controls' font and row height.
+        // ANAN fork build 571 (operator, 21.11): the filter width belongs to
+        // the left group, right after the TX antenna; the stretch that stood
+        // before it now follows it (QSK stays at the right end).
         m_filterWidthLbl = new QLabel("2.7K");
         m_filterWidthLbl->setFixedHeight(20);
         m_filterWidthLbl->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
         m_filterWidthLbl->setAlignment(Qt::AlignCenter);
         AetherSDR::ThemeManager::instance().applyStyleSheet(m_filterWidthLbl, "QLabel { color: {{color.accent.bright}}; font-size: 10px; font-weight: bold; }");
         row->addWidget(m_filterWidthLbl);
+
+        row->addStretch(1);
 
         // QSK indicator (read-only — controlled via CW applet Breakin button)
         m_qskBtn = new QPushButton("QSK");
