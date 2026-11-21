@@ -2885,6 +2885,7 @@ VfoWidget* SpectrumWidget::takeVfoWidget(int sliceId)
         child->removeEventFilter(this);
     }
     w->setParent(nullptr);
+    scheduleRateGroupCover();   // build 570
     return w;
 }
 
@@ -2980,6 +2981,7 @@ void SpectrumWidget::removeVfoWidget(int sliceId)
         if (m_vfoWidget == w)
             m_vfoWidget = nullptr;
         delete w;
+        scheduleRateGroupCover();   // build 570
     }
 }
 
@@ -13353,6 +13355,21 @@ bool SpectrumWidget::applyAnchoredZoom(double bandwidthFactor,
 bool SpectrumWidget::eventFilter(QObject* watched, QEvent* event)
 {
     QWidget* widget = qobject_cast<QWidget*>(watched);
+    // Build 570: a flag moved, changed size, appeared or went -- does it
+    // overlap the zoom indicator and the rate group now? (Also during a drag.)
+    if (widget) {
+        switch (event->type()) {
+        case QEvent::Move:
+        case QEvent::Resize:
+        case QEvent::Show:
+        case QEvent::Hide:
+            if (qobject_cast<VfoWidget*>(widget))
+                scheduleRateGroupCover();
+            break;
+        default:
+            break;
+        }
+    }
     if (!widget || anyDragActive()) {
         return SPECTRUM_BASE_CLASS::eventFilter(watched, event);
     }
@@ -13749,9 +13766,12 @@ int SpectrumWidget::drawWideChip(QPainter& p, int rightX) const
 
 int SpectrumWidget::rateGroupWidth() const
 {
-    if (!m_rateLabel || !m_rateLabel->isVisible())
+    // Build 570: hidden under a flag, the group keeps its place.
+    if (!m_rateLabel || (!m_rateLabel->isVisible() && !m_rateGroupCovered))
         return 0;
-    const int zoomW = (m_zoomLabel && m_zoomLabel->isVisible()) ? m_zoomLabel->width() + 4 : 0;
+    const bool zoomShown = m_zoomLabel
+        && (m_rateGroupCovered ? m_zoomLabelWanted : m_zoomLabel->isVisible());
+    const int zoomW = zoomShown ? m_zoomLabel->width() + 4 : 0;
     return zoomW + m_rateDownBtn->width() + 2 + m_rateLabel->width() + 2 + m_rateUpBtn->width() + 8;
 }
 
@@ -13780,14 +13800,55 @@ void SpectrumWidget::refreshRateLabel()
             if (m_zoomLabel->text() != zoomText)
                 m_zoomLabel->setText(zoomText);
         }
-        if (m_zoomLabel->isVisible() != show) {
-            m_zoomLabel->setVisible(show);
+        m_zoomLabelWanted = show;
+        const bool visible = show && !m_rateGroupCovered;   // build 570
+        if (m_zoomLabel->isVisible() != visible) {
+            m_zoomLabel->setVisible(visible);
             positionZoomButtons();
         }
     }
+    // Build 570: this runs four times a second -- it also catches a change
+    // of a flag's parts that sends no move or resize of the flag itself.
+    updateRateGroupCover();
     const double tol = 1e-6;
     m_rateDownBtn->setEnabled(rateMhz > std::max(m_minBwMhz, 0.048) + tol);
     m_rateUpBtn->setEnabled(rateMhz < m_maxBwMhz - tol);
+}
+
+void SpectrumWidget::scheduleRateGroupCover()
+{
+    // After the current round of moves: a flag's own parts (the collapsed
+    // flag's lines, its buttons) are placed right after the flag itself.
+    if (m_rateCoverPending || !m_rateLabel)
+        return;
+    m_rateCoverPending = true;
+    QTimer::singleShot(0, this, [this] { updateRateGroupCover(); });
+}
+
+void SpectrumWidget::updateRateGroupCover()
+{
+    m_rateCoverPending = false;
+    if (!m_rateLabel || !m_rateDownBtn || !m_rateUpBtn)
+        return;
+    // The group's place, shown or not (a hidden widget keeps its geometry).
+    QRect group = m_rateDownBtn->geometry() | m_rateLabel->geometry() | m_rateUpBtn->geometry();
+    if (m_zoomLabel && m_zoomLabelWanted)
+        group |= m_zoomLabel->geometry();
+    bool covered = false;
+    for (const VfoWidget* flag : std::as_const(m_vfoWidgets)) {
+        if (flag && flag->flagCovers(group)) {
+            covered = true;
+            break;
+        }
+    }
+    if (covered == m_rateGroupCovered)
+        return;
+    m_rateGroupCovered = covered;
+    m_rateDownBtn->setVisible(!covered);
+    m_rateLabel->setVisible(!covered);
+    m_rateUpBtn->setVisible(!covered);
+    if (m_zoomLabel)
+        m_zoomLabel->setVisible(!covered && m_zoomLabelWanted);
 }
 
 void SpectrumWidget::stepReceiverRate(int direction)
@@ -13837,6 +13898,7 @@ void SpectrumWidget::positionZoomButtons()
         m_rateUpBtn->raise();
         m_rateLabel->raise();
         m_rateDownBtn->raise();
+        scheduleRateGroupCover();   // build 570: the group moved
     }
     constexpr int pad = 4;
     constexpr int sz = 22;

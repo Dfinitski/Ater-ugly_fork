@@ -8444,6 +8444,26 @@ void VfoWidget::setRadeCallsign(const QString& callsign)
 }
 #endif
 
+bool VfoWidget::flagCovers(const QRect& area) const
+{
+    if (!isHidden() && geometry().intersects(area))
+        return true;
+    const QWidget* parent = parentWidget();
+    // The shadow is not counted: it is not the flag.
+    const std::initializer_list<QWidget*> satellites = {
+        m_closeSliceBtn.data(), m_lockVfoBtn.data(),
+        m_recordBtn.data(), m_playBtn.data(),
+        m_collapsedFreqLabel.data(), m_collapsedValueLabel.data(),
+        m_fdvTextLabel.data(),
+    };
+    for (const QWidget* sat : satellites) {
+        if (sat && !sat->isHidden() && sat->parentWidget() == parent
+            && sat->geometry().intersects(area))
+            return true;
+    }
+    return false;
+}
+
 void VfoWidget::reparentFlagSatellites(QWidget* newParent)
 {
     if (!newParent) {

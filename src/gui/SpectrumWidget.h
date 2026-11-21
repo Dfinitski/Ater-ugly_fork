@@ -2433,6 +2433,15 @@ private:
     // ANAN-100D port: "Zoom xN.N" (magnification) left of the rate group.
     QLabel*      m_zoomLabel{nullptr};
     void refreshRateLabel();
+    // ANAN fork build 570 (operator, 21.11): the zoom indicator and the rate
+    // group hide while any receiver's flag overlaps them and come back when
+    // none does. Their place stays reserved (rateGroupWidth()), so what is
+    // drawn to their left does not slide under the flag.
+    bool m_rateGroupCovered{false};
+    bool m_zoomLabelWanted{false};
+    bool m_rateCoverPending{false};
+    void scheduleRateGroupCover();
+    void updateRateGroupCover();
     std::function<void(double)> m_rateStepZoom;
 
     // See setPanEdgeTaperEnabled()'s own comment.

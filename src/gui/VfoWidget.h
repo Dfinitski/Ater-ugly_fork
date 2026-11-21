@@ -331,6 +331,11 @@ public:
     // entirely when the old pan is torn down (#4037 review).
     void reparentFlagSatellites(QWidget* newParent);
 
+    // ANAN fork build 570: true when the flag, or one of its parts that
+    // live beside it on the spectrum (buttons, the collapsed flag's
+    // frequency and SmartMTR lines), overlaps `area` (parent coordinates).
+    [[nodiscard]] bool flagCovers(const QRect& area) const;
+
     // Which side of the slice marker the flag panel is currently rendered on.
     // Tracked by updatePosition() via m_lastOnLeft.  Used by panFollowVfo()
     // to extend the pan-follow trigger to the flag's outer edge — single-side
