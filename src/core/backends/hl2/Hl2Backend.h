@@ -904,6 +904,10 @@ private:
     // Build 584: DUP as it is now (AppSettings "AnanDuplex"; the button is
     // on the ANAN TX / Mic applets only).
     [[nodiscard]] bool ananDuplexOn() const;
+    // Build 585 (operator, 21.11: "with DUP and MON the receiver passes
+    // without a break; with DUP alone the guard interval must stay"): the
+    // guard interval after the over is off only with both DUP and MON on.
+    [[nodiscard]] bool ananNoUnkeyGuard() const { return ananDuplexOn() && m_monEnabled; }
     // Build 194: the radio runs Protocol 1 firmware (rates stop at 384 ksps).
     // Set at connect from the discovery sweep and at linkUp from the transport.
     std::atomic<bool> m_ananP1{false};

@@ -7333,7 +7333,8 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
             m_ps->setKeyed(key, m_ananCwTxSilent.load(std::memory_order_relaxed));
         // Build 584 (operator, 21.11): DUP switches the guard interval after
         // the over off -- read now, so a DUP change between overs counts.
-        const bool duplex = ananDuplexOn();
+        // Build 585: DUP and MON together, not DUP alone (ananNoUnkeyGuard).
+        const bool duplex = ananNoUnkeyGuard();
         for (const Receiver& r : m_rx) {   // full duplex: AGC held, all else runs
             if (r.dsp) {
                 if (!key)
@@ -7469,10 +7470,11 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
             if (m_rxAudioMuted) {
                 applyRxAudioMute(false);
             }
-        } else if (!key && ananDuplexOn()) {
-            // Build 584 (operator, 21.11): DUP -- no guard interval after the
-            // over: the host's hold is skipped too, the receivers open at the
-            // unkey (their DSP skips its tail, setOverTailEnabled).
+        } else if (!key && ananNoUnkeyGuard()) {
+            // Build 584 (operator, 21.11): no guard interval after the over
+            // -- since build 585 with DUP and MON both on: the host's hold is
+            // skipped too, the receivers open at the unkey (their DSP skips
+            // its tail, setOverTailEnabled).
             if (m_unkeyUnmuteTimer) {
                 m_unkeyUnmuteTimer->stop();
             }
