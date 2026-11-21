@@ -303,6 +303,7 @@
 #include <QFile>
 #include <QStandardPaths>
 #include "core/ThemeManager.h"
+#include "core/fdv/FdvState.h"   // build 572
 
 namespace AetherSDR {
 
@@ -6365,6 +6366,78 @@ void MainWindow::buildUI()
     m_statusMessageLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     applyStatusBarCompactLabelStyle(m_statusMessageLabel, QStringLiteral("{{color.text.primary}}"));
     hbox->addWidget(m_statusMessageLabel, 1);
+
+    // ANAN fork build 572 (operator, 21.11): a branch for one user. While the
+    // FreeDV text field (FdvState::callsign) reads RZ3QS, two buttons stand
+    // left of the station name -- "A1" and "A2", drawn as the RX applet's
+    // AGC "A" button. They are the ANT menu's Dith and Rand of ADC1 (keys
+    // AnanAdc1Dither / AnanAdc1Random): a click writes the key, which the
+    // backend sends and the menu's checkbox shows; a change made in the menu
+    // shows here (polled). Hidden for everybody else.
+    {
+        struct Rz3qsButton {
+            const char* text;
+            const char* key;
+            const char* objectName;
+            const char* tip;
+        };
+        static constexpr Rz3qsButton kButtons[] = {
+            {"A1", "AnanAdc1Dither", "rz3qsA1", "A1 -- the ANT menu's Dith (ADC1)"},
+            {"A2", "AnanAdc1Random", "rz3qsA2", "A2 -- the ANT menu's Rand (ADC1)"},
+        };
+        QList<QPushButton*> buttons;
+        for (const Rz3qsButton& def : kButtons) {
+            auto* b = new QPushButton(QString::fromLatin1(def.text));
+            b->setObjectName(QString::fromLatin1(def.objectName));
+            b->setAccessibleName(QString::fromLatin1(def.text));
+            b->setToolTip(QString::fromLatin1(def.tip));
+            b->setCheckable(true);
+            b->setAutoDefault(false);
+            b->setFocusPolicy(Qt::NoFocus);
+            b->setFixedSize(26, 20);
+            // The RX applet's kButtonBase() + kBlueActive().
+            AetherSDR::ThemeManager::instance().applyStyleSheet(b,
+                "QPushButton { background: {{color.background.1}}; "
+                "border: 1px solid {{color.background.2}}; "
+                "border-radius: 3px; color: {{color.text.primary}}; "
+                "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
+                "QPushButton:hover { background: {{color.background.2}}; }"
+                "QPushButton:checked { background: {{color.accent.dim}}; "
+                "color: {{color.text.primary}}; "
+                "border: 1px solid {{color.accent.bright}}; }");
+            b->hide();
+            const QString key = QString::fromLatin1(def.key);
+            b->setProperty("rz3qsKey", key);
+            connect(b, &QPushButton::clicked, this, [key](bool on) {
+                auto& st = AppSettings::instance();
+                st.setValue(key, on ? QStringLiteral("True") : QStringLiteral("False"));
+                st.save();
+            });
+            hbox->addWidget(b, 0, Qt::AlignVCenter);
+            buttons.append(b);
+        }
+        auto* rzTimer = new QTimer(m_statusBarContainer);
+        rzTimer->setInterval(500);
+        auto refresh = [buttons] {
+            const bool show = fdv::FdvState::instance().callsign == QLatin1String("RZ3QS");
+            for (QPushButton* b : buttons) {
+                if (b->isHidden() == show)
+                    b->setVisible(show);
+                if (!show)
+                    continue;
+                const bool on = AppSettings::instance()
+                                    .value(b->property("rz3qsKey").toString(), QStringLiteral("False"))
+                                    .toString() == QLatin1String("True");
+                if (b->isChecked() != on) {
+                    const QSignalBlocker blocker(b);
+                    b->setChecked(on);
+                }
+            }
+        };
+        connect(rzTimer, &QTimer::timeout, m_statusBarContainer, refresh);
+        rzTimer->start();
+        refresh();
+    }
 
     m_stationNickLabel = new QLabel("N0CALL");
     AetherSDR::ThemeManager::instance().applyStyleSheet(
