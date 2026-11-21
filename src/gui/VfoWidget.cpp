@@ -436,9 +436,8 @@ static const QString kFlatBtn =
 // Build 548 (operator, 20.11: "over the spectrum -- draw it as it was drawn
 // there before, the same transparency, only 25 % lighter"). The collapsed
 // flag's SmartMTR numbers, drawn as the spectrum overlay drew them under the
-// flag until build 545: no plate, light 11 px text with a black one-pixel halo,
-// the unit ("s", "dB", "dBm") dimmer than the number. The old dim factor was
-// 0.55; every opacity is x 1.25 here, capped at 1.
+// flag until build 545: no plate, light 11 px text with a black one-pixel
+// halo. Build 556: one opacity for the whole text (see paintEvent).
 class OutlinedValueLabel : public QLabel
 {
 public:
@@ -474,16 +473,13 @@ protected:
         p.setFont(font());
         const QFontMetricsF fm(font());
         const double lineH = fm.height();
-        const double kUnitDim = 0.55;
-        const double kLighter = 1.25;
-        const double numOp = qMin(1.0, m_opacity * kLighter);
-        const double unitOp = qMin(1.0, m_opacity * kUnitDim * kLighter);
-        double x = 1.0;
-        auto seg = [&](const QString& t, double op) {
-            if (t.isEmpty())
-                return;
-            const double w = fm.horizontalAdvance(t);
-            const QRectF r(x, 1.0, w + 1.0, lineH);
+        // Build 556 (operator, 20.11: "the digits are brighter than the
+        // letters -- the same colour for the digits"): the whole text at the
+        // units' opacity (the old 0.55, x 1.25).
+        const double op = qMin(1.0, m_opacity * 0.55 * 1.25);
+        const QString t = text();
+        if (!t.isEmpty()) {
+            const QRectF r(1.0, 1.0, fm.horizontalAdvance(t) + 1.0, lineH);
             QColor black(0, 0, 0);
             black.setAlphaF(op);
             p.setPen(black);
@@ -494,27 +490,6 @@ protected:
             white.setAlphaF(white.alphaF() * op);
             p.setPen(white);
             p.drawText(r, Qt::AlignVCenter | Qt::AlignLeft, t);
-            x += w;
-        };
-        const QStringList words = text().split(QLatin1Char(' '), Qt::SkipEmptyParts);
-        for (int i = 0; i < words.size(); ++i) {
-            const QString& s = words[i];
-            QString prefix, number = s, suffix;
-            if (s.startsWith(QLatin1Char('s'))) {
-                prefix = QStringLiteral("s");
-                number = s.mid(1);
-            } else if (s.endsWith(QStringLiteral("dBm"))) {
-                suffix = QStringLiteral("dBm");
-                number = s.left(s.size() - 3);
-            } else if (s.endsWith(QStringLiteral("dB"))) {
-                suffix = QStringLiteral("dB");
-                number = s.left(s.size() - 2);
-            }
-            if (i > 0)
-                x += fm.horizontalAdvance(QLatin1Char(' '));
-            seg(prefix, unitOp);
-            seg(number, numOp);
-            seg(suffix, unitOp);
         }
     }
 
@@ -1361,15 +1336,20 @@ void VfoWidget::buildUI()
         // too long for the gap is cut. Clicks pass through as they did.
         m_smartMtrValueLabel = new QLabel;
         m_smartMtrValueLabel->setFixedHeight(30);
-        m_smartMtrValueLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-        m_smartMtrValueLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        // Build 556 (operator, 20.11: "the S value centred over the dB value
+        // under it"): the label is as wide as its text (set with the text,
+        // never wider than the gap) and centres its lines; the stretch
+        // after it keeps the frequency on the right.
+        m_smartMtrValueLabel->setFixedWidth(0);
+        m_smartMtrValueLabel->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
         m_smartMtrValueLabel->setTextFormat(Qt::PlainText);
         m_smartMtrValueLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
         // #a8b5c3 = the tab texts (kTabLblNormal).
         m_smartMtrValueLabel->setStyleSheet(
             "QLabel { color: #a8b5c3; font-size: 11px; font-weight: bold;"
             " background: transparent; border: none; padding: 0; margin: 0; }");
-        freqRow->addWidget(m_smartMtrValueLabel, 1);
+        freqRow->addWidget(m_smartMtrValueLabel);
+        freqRow->addStretch(1);
         freqRow->addWidget(m_freqStack);
         // Build 472: the TX button over the VFO name, right of the frequency,
         // on the SPLIT VFO's flag only (setSplitVfoMode).
@@ -5028,6 +5008,10 @@ void VfoWidget::updateSmartMtrValueText()
                 continue;
             sUnit = m.primary;
             level = m.secondary;
+            // Build 556: a capital S ("S6"; "+10dB" and a dBFS-only reading
+            // are left as they are).
+            if (sUnit.startsWith(QLatin1Char('s')))
+                sUnit[0] = QLatin1Char('S');
             opacity = m.opacity;
             break;
         }
@@ -5044,8 +5028,23 @@ void VfoWidget::updateSmartMtrValueText()
 #endif
     if (room && !m_collapsed)
         text = joined(QLatin1Char('\n'));
-    if (m_smartMtrValueLabel->text() != text)
+    if (m_smartMtrValueLabel->text() != text) {
         m_smartMtrValueLabel->setText(text);
+        // Build 556: as wide as the widest line, within the gap left of the
+        // frequency (known once the row has been laid out).
+        int w = 0;
+        if (!text.isEmpty()) {
+            m_smartMtrValueLabel->ensurePolished();
+            const QFontMetrics fm = m_smartMtrValueLabel->fontMetrics();
+            const QStringList lines = text.split(QLatin1Char('\n'));
+            for (const QString& line : lines)
+                w = qMax(w, fm.horizontalAdvance(line));
+            w += 2;
+            if (m_freqStack && m_freqStack->x() > m_smartMtrValueLabel->x())
+                w = qMin(w, m_freqStack->x() - m_smartMtrValueLabel->x() - 4);
+        }
+        m_smartMtrValueLabel->setFixedWidth(qMax(0, w));
+    }
 
     // Build 547: the collapsed flag has them under its frequency, in one line.
     if (!m_collapsedValueLabel)
