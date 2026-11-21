@@ -11699,6 +11699,21 @@ void SpectrumWidget::mousePressEvent(QMouseEvent* ev)
             connect(popOutAction, &QAction::triggered, this, [this, floating]() {
                 emit popOutRequested(!floating);
             });
+            // Build 559 (operator, 20.11): "Always on top" for a floated
+            // panadapter only -- not shown and not applied while docked.
+            // The window is a PanFloatingWindow; reached through its
+            // meta-object, so this file does not depend on that class.
+            QWidget* fw = floating ? window() : nullptr;
+            if (fw && fw->metaObject()->indexOfMethod("setAlwaysOnTop(bool)") >= 0) {
+                QAction* onTopAction = menu.addAction(QStringLiteral("Always on top"));
+                onTopAction->setObjectName(QStringLiteral("panAlwaysOnTop"));
+                onTopAction->setCheckable(true);
+                onTopAction->setChecked(fw->property("panAlwaysOnTop").toBool());
+                connect(onTopAction, &QAction::toggled, fw, [fw](bool on) {
+                    QMetaObject::invokeMethod(fw, "setAlwaysOnTop", Qt::DirectConnection,
+                                              Q_ARG(bool, on));
+                });
+            }
         }
 
         ev->accept();

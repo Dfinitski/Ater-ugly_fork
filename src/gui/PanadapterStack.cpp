@@ -1089,6 +1089,7 @@ void PanadapterStack::floatPanadapter(const QString& panId)
     m_floatingWindows[panId] = fw;
     rebuildDockedSplitter();
     fw->restoreWindowGeometry();
+    fw->restoreAlwaysOnTop();   // build 559: before it is shown
     fw->show();
     fw->raise();
     saveFloatingState();
