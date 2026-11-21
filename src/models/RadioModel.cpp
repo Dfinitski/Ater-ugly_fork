@@ -4173,6 +4173,14 @@ void RadioModel::finishRadioWake(const QString& message, bool success)
 
 void RadioModel::disconnectFromRadio()
 {
+    // Build 544: every receiver closes with the radio.
+    {
+        const QList<SliceModel*> all = m_slices;
+        for (SliceModel* s : all) {
+            if (s)
+                emit sliceClosing(s->sliceId());
+        }
+    }
     resetTxOperations();
     restoreTuneInhibit();
     cancelRadioWake();
@@ -5836,6 +5844,8 @@ bool RadioModel::addSliceOnPan(const QString& panId, double freqMhz)
 
 bool RadioModel::removeSlice(int sliceId)
 {
+    if (slice(sliceId))
+        emit sliceClosing(sliceId);   // build 544
     return dispatchSliceRemoval(slice(sliceId), controlSession());
 }
 
@@ -5861,6 +5871,14 @@ bool RadioModel::removePanadapter(const QString& panId, PanCloseIntent intent)
         || !control->supports(PanLifecycleAction::Remove)
         || !original->ownedByClient(clientHandle())
         || (intent == PanCloseIntent::Ordinary && m_panadapters.size() <= 1)) { return false; }
+    // Build 544: the receivers of this panadapter go with it.
+    {
+        const QList<SliceModel*> onPan = m_slices;
+        for (SliceModel* s : onPan) {
+            if (s && s->panId() == panId)
+                emit sliceClosing(s->sliceId());
+        }
+    }
     const QString waterfallId = original->waterfallId();
     const quint64 revision = original->controlRevision();
     const quint64 retired = m_displayRetirements.value(panId);

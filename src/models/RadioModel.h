@@ -1228,6 +1228,11 @@ signals:
     void backendCwKeyingForwarded(bool down);
     void sliceAdded(SliceModel* slice);
     void sliceRemoved(int sliceId);
+    // ANAN fork build 544: a slice is about to be closed by this program --
+    // removeSlice(), removePanadapter() or disconnectFromRadio() -- while the
+    // slice and its panadapter still exist (sliceRemoved comes when both may
+    // be gone). For what has to be read from them before they go.
+    void sliceClosing(int sliceId);
     // Emitted immediately before "sub slice all" is dispatched during connect
     // handshake, opening the connect-time slice enumeration window.
     void sliceConnectEnumerationStarted();

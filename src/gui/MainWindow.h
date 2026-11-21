@@ -1137,19 +1137,17 @@ private:
         QJsonObject live;                   // its state, refreshed every 0.5 s
     };
     QHash<int, AnanBandMemSlot> m_ananBandMem;   // by slice id
-    // ANAN fork build 531 (operator, 19.11): the last session. Each receiver's
-    // recall snapshot (what a quick-memory button stores) as it was when the
-    // program closed, AppSettings "AnanLastSession"; applied once after the
-    // radio has started. m_ananSessionLive: the newest snapshot of each
-    // receiver; m_ananSessionPending: what still waits to be applied.
+    // ANAN fork builds 531 / 543 / 544: the state each receiver (slice 0..3)
+    // had when it was last closed -- what a quick-memory button stores,
+    // without the sub receiver; AppSettings "AnanLastSession". Stored where a
+    // receiver closes, applied when it is added (MainWindow_Wiring.cpp).
     QHash<int, QJsonObject> m_ananSessionLive;
-    QHash<int, QJsonObject> m_ananSessionPending;
-    // Build 543: the receivers there are now, and when each appeared (ms of
-    // m_ananSessionClock) -- one that appears gets its stored state back.
-    QHash<int, qint64> m_ananSessionSeenAt;
-    QElapsedTimer m_ananSessionClock;
+    bool m_ananSessionLoaded{false};
+    void ananSessionLoad();
     void ananSessionSave();
-    void ananSessionRestoreStep();
+    void ananSessionCapture(int sliceId, bool save = true);
+    void ananSessionCaptureAll();
+    void ananSessionRestore(int sliceId);
     void ananBandMemTick();
     void ananBandMemFlush();                // store every receiver's current band
     QJsonObject ananBandMemSnapshot(SliceModel* s) const;

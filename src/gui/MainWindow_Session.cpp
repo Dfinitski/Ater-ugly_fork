@@ -1421,6 +1421,16 @@ void MainWindow::wireRadioModel()
             this, &MainWindow::onSliceAdded);
     connect(&m_radioModel, &RadioModel::sliceRemoved,
             this, &MainWindow::onSliceRemoved);
+    // ANAN fork build 544: a receiver's state is stored where it is closed
+    // and put back when it is added (see ananSessionCapture / Restore).
+    connect(&m_radioModel, &RadioModel::sliceClosing, this,
+            [this](int sliceId) { ananSessionCapture(sliceId); });
+    connect(&m_radioModel, &RadioModel::sliceAdded, this, [this](SliceModel* s) {
+        if (!s)
+            return;
+        const int sliceId = s->sliceId();
+        QTimer::singleShot(0, this, [this, sliceId] { ananSessionRestore(sliceId); });
+    });
     // A removed TX slice hands a radio-wide span control to the fallback
     // pane (#5750). Queued: the slice may still be in the model's list while
     // sliceRemoved is being delivered.
