@@ -116,31 +116,25 @@ public:
     //   CW: 4096 -> 2048, and under kRxShortTapsMinWidthHz 8192 -> 4096.
     // Build 555: the other modes and a receiver with a notch run
     // kRxFilterTaps, which is 4096 too now.
-    static constexpr int kRxSsbFilterTaps = 4096;
+    // Build 583 (operator, 21.11: "all filters 2048, except any with a notch
+    // on"): 2048 (21.3 ms) in every mode and every passband; a notch keeps
+    // kRxFilterTaps (4096, 42.7 ms), whose length sets the 100 Hz notch floor.
+    static constexpr int kRxSsbFilterTaps = 2048;
     static constexpr int kRxShortFilterTaps = 2048;
-    static constexpr int kRxCwNarrowFilterTaps = 4096;
+    static constexpr int kRxCwNarrowFilterTaps = 2048;
     static constexpr double kRxShortTapsMinWidthHz = 100.0;
     static constexpr double kRxTapsHysteresisHz = 20.0;
     [[nodiscard]] static constexpr int rxFilterTapsFor(WdspChannel::Mode mode, double lowHz,
                                                        double highHz, int notchCount,
                                                        int currentTaps = 0) noexcept
     {
-        // Build 440: DRM (linear) keeps the long filter -- its latency costs
-        // nothing there; the short one is CW's.
-        if (notchCount > 0 || mode == WdspChannel::Mode::Drm
-            || mode == WdspChannel::Mode::Digu || mode == WdspChannel::Mode::Digl)
-            return kRxFilterTaps;
-        if (mode == WdspChannel::Mode::Lsb || mode == WdspChannel::Mode::Usb)
-            return kRxSsbFilterTaps;   // build 553
-        // Build 554: the lengths below are CW's (this branch was "the modes
-        // that are not minimum phase", which is every mode now).
-        if (mode != WdspChannel::Mode::Cwl && mode != WdspChannel::Mode::Cwu)
-            return kRxFilterTaps;
-        const double width = highHz >= lowHz ? highHz - lowHz : lowHz - highHz;
-        const bool shortening = currentTaps <= 0 || currentTaps > kRxShortFilterTaps;
-        const double needed = kRxShortTapsMinWidthHz
-                              + (shortening && currentTaps > 0 ? kRxTapsHysteresisHz : 0.0);
-        return width >= needed ? kRxShortFilterTaps : kRxCwNarrowFilterTaps;
+        // Build 583: one length for every mode and passband (DRM and DIGI
+        // too), the long one only with a notch.
+        static_cast<void>(mode);
+        static_cast<void>(lowHz);
+        static_cast<void>(highHz);
+        static_cast<void>(currentTaps);
+        return notchCount > 0 ? kRxFilterTaps : kRxShortFilterTaps;
     }
 
     struct Config {
@@ -840,6 +834,25 @@ private:
     std::size_t m_smPos{0};
     void applyAgcHold();
     int m_outMuteFrames{0};   // output frames still silenced after the over
+    // ANAN fork build 583 (operator, 21.11: "estimate the guard interval at
+    // the change to receive and set the least possible, growing with a notch
+    // or heavier processing"). Counted from the unkey (the AGC hold's
+    // release, setAgcTxHold(false)), not from the host's unmute: the time the
+    // host's mute already held is credited. overTailMs() =
+    //   the RX chain's delay -- (taps - 1) / 2 at 48 kHz for each bandpass
+    //   running (nbp0 always; bp1 too with ANF, AM, SAM, FM), the AGC's
+    //   look-ahead (4 x 1 ms attack) and one input block --
+    //   + kOverInputTailMs: our own transmitter in the IQ after the unkey
+    //     (log 31.10 18:17: clean from the first 20 ms)
+    //   + kOverMarginMs.
+    // 2048 taps, 192 kHz, nothing else: 81 ms from the unkey (the host's
+    // 70 ms hold + 11 ms); notch + ANF: 145 ms. Was a fixed 200 ms after the
+    // host's unmute (270 ms from the unkey).
+    static constexpr double kOverInputTailMs = 20.0;
+    static constexpr double kOverMarginMs = 30.0;
+    static constexpr double kOverMinAfterUnmuteMs = 5.0;
+    [[nodiscard]] double overTailMs() const;
+    double m_lastOverTailMs{-1.0};
     std::atomic<bool> m_sMeterPeak {true};
     std::atomic<std::uint64_t> m_unsettled {0};   // build 335: see unsettledBins()
     std::atomic<float> m_ananInPeak {0.0f};

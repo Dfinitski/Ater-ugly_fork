@@ -725,8 +725,12 @@ void Hl2RxDsp::setAudioMuted(bool muted)
     // chain's pipeline still holds audio of the over (our own transmitter at
     // the held gain, and the AGC's pop at its end) -- measured on the WDSP
     // bench (scratchpad/rxagc/t3).
+    // Build 583: the tail is counted from the unkey (applyAgcHold); the
+    // host's unmute adds only a short floor, so the output never opens on
+    // the very block the mute lifted.
     if (m_audioMuted && !muted)
-        m_outMuteFrames = m_config.audioSampleRateHz / 5;
+        m_outMuteFrames = std::max(m_outMuteFrames,
+            static_cast<int>(m_config.audioSampleRateHz * kOverMinAfterUnmuteMs / 1000.0));
     if (muted) {   // the host has keyed: its mute and hold take over
         m_pressBlankFrames = 0;
         m_pressHold = false;
@@ -761,6 +765,19 @@ void Hl2RxDsp::pressBlank()
     m_pressHold = true;
     m_pressBlankFrames = m_config.audioSampleRateHz / 2;
     applyAgcHold();
+}
+
+double Hl2RxDsp::overTailMs() const
+{
+    const int taps = m_channel ? m_channel->config().filterTaps : kRxShortFilterTaps;
+    const auto mode = m_config.mode;
+    const bool bp1 = m_anfOn || mode == WdspChannel::Mode::Am || mode == WdspChannel::Mode::Sam
+                     || mode == WdspChannel::Mode::Fm;
+    const double bandpassMs = (bp1 ? 2.0 : 1.0) * (taps - 1) / 2.0 * 1000.0 / kWdspDspSampleRateHz;
+    const double agcMs = 4.0;   // RXA AGC: n_tau 4 x tau_attack 1 ms (RXA.c)
+    const double blockMs = m_config.inputSampleRateHz > 0
+        ? 1000.0 * m_config.dspBlockSize / m_config.inputSampleRateHz : 0.0;
+    return bandpassMs + agcMs + blockMs + kOverInputTailMs + kOverMarginMs;
 }
 
 void Hl2RxDsp::applyAgcHold()
@@ -802,8 +819,17 @@ void Hl2RxDsp::applyAgcHold()
             m_spectrum->markOverStart();
     } else {
         // Put back when the over has left the chain, not now: the filters
-        // ahead of the AGC and the meter still hold ~85 ms of it.
-        m_outMuteFrames = std::max(m_outMuteFrames, m_config.audioSampleRateHz / 5);
+        // ahead of the AGC and the meter still hold it. Build 583: as long
+        // as the chain in use needs (overTailMs), from here -- the unkey.
+        const double tailMs = overTailMs();
+        if (tailMs != m_lastOverTailMs) {
+            m_lastOverTailMs = tailMs;
+            qCInfo(lcHl2RxDsp).nospace() << "RX over tail " << tailMs << " ms from the unkey ("
+                << (m_channel ? m_channel->config().filterTaps : 0) << " taps"
+                << (m_anfOn ? ", ANF" : "") << ")";
+        }
+        m_outMuteFrames = std::max(m_outMuteFrames,
+            static_cast<int>(std::ceil(m_config.audioSampleRateHz * tailMs / 1000.0)));
         m_restorePending = true;
         // The panadapter's FFT sees the IQ undelayed: its average goes back
         // 60 ms of IQ after the release (MOX off reaching the radio and its
@@ -1395,7 +1421,9 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
                             || m_pressBlankFrames > 0;
         if (inOver) {
             std::fill(m_stereo.begin(), m_stereo.end(), 0.0f);   // the output mute only
-            if (!m_audioMuted && !m_agcTxHeld && m_pressBlankFrames == 0) {
+            // Build 583: counts down from the AGC release (the unkey), also
+            // while the host's mute still holds -- that time is credited.
+            if (!m_agcTxHeld && m_pressBlankFrames == 0) {
                 m_outMuteFrames = std::max(0, m_outMuteFrames - static_cast<int>(outN));
                 if (m_outMuteFrames == 0 && m_restorePending && canPushToChannel()) {
                     // The over has left the chain: AGC and S-meter back at
