@@ -164,8 +164,12 @@ enum class AnanModel : int {
     Anan10 = 0, Anan100, Anan10E, Anan100B, Anan100D, Anan200D,
     Anan7000DLE, Anan8000DLE, OrionMkII, AnvelinaPro3,
     AnanG2, AnanG2_1K, AnanG2E,
+    // Build 578 (operator, 21.11): a 50 W radio that is an ANAN-100D on the
+    // wire. Chosen by hand only (Forcedly assign the radio): the board
+    // reports Angelia, whose default stays the ANAN-100D.
+    Odyssey3,
 };
-inline constexpr int kAnanModelCount = 13;
+inline constexpr int kAnanModelCount = 14;
 
 // A directional coupler reading -> watts (Thetis console.cs computeAlexFwdPower
 // / computeRefPower): V = (raw - offset) / 4095 * refVolts, W = V^2 / bridge.
@@ -201,6 +205,10 @@ struct ModelTraits {
     bool xlrMic = false;
     // Thetis HardwareSpecific.RXMeterCalbrationOffsetDefaults.
     double rxMeterOffsetDb = 0.98;
+    // Build 578: rated output power for the power gauges (needle S-meter,
+    // SmartMTR): scale top = 1.2 x, red from it. 0 = the program's usual
+    // scale (120 W, red from 100 W).
+    int ratedWatts = 0;
 };
 
 [[nodiscard]] const ModelTraits& modelTraits(AnanModel m) noexcept;

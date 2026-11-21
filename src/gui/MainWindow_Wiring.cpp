@@ -4,6 +4,7 @@
 // panFollowVfo()/revealFrequencyIfNeeded().
 
 #include "MainWindow.h"
+#include "gui/AnanRatedPower.h"   // build 578
 #include "gui/RecallSnapshot.h"
 #include "core/ForkName.h"
 #include "ForkDisplayDefaults.h"
@@ -8240,6 +8241,13 @@ void MainWindow::wireMeters()
         m_appletPanel->txApplet()->setPowerScale(radioMaxWatts, integratedAmp);
         m_appletPanel->tunerApplet()->setPowerScale(selection.maxWatts, selection.highPowerAmplifier);
         m_appletPanel->setMeterPowerScale(selection.maxWatts, selection.highPowerAmplifier);
+        // ANAN fork build 578 (operator, 21.11): the needle S-meter of a 50 W
+        // Odyssey-3 reads to 60 W, red from 50 W -- the radio itself, with no
+        // external amplifier taking over the gauge.
+        if (!selection.highPowerAmplifier && selection.maxWatts <= 100) {
+            if (const int rated = ananRatedWatts(m_radioModel); rated > 0)
+                m_appletPanel->sMeterWidget()->setRatedPowerScale(rated);
+        }
     };
     connect(&m_kxpa100Model, &Kxpa100Model::statusUpdated, this, updatePowerScale);
     connect(&m_kxpa100Model, &Kxpa100Model::availabilityChanged, this, updatePowerScale);
@@ -8270,6 +8278,8 @@ void MainWindow::wireMeters()
     // infoChanged is the signal tied to the model() data this reads.
 
     connect(&m_radioModel, &RadioModel::infoChanged, this, updatePowerScale);
+    // Build 578: the ANAN model (and its rating) can change while connected.
+    connect(&m_radioModel, &RadioModel::capabilitiesChanged, this, updatePowerScale);
 
     // TGXL indicator: two-line rich text — label on top, state smaller below.
     // Green = OPERATE, amber = BYPASS, grey = STANDBY (matches SmartSDR)

@@ -163,6 +163,12 @@ const std::array<ModelTraits, kAnanModelCount>& allTraits() noexcept
         // G2E: 3.3 V slow ADCs (deskHPSDR rx_panadapter.c).
         a[12].userAdcRefVolts = 3.3;
         a[12].rxMeterOffsetDb = 0.98;
+        // Build 578: Odyssey-3 -- everything as the ANAN-100D (a[4]) but its
+        // name and its 50 W rating.
+        a[13] = a[4];
+        a[13].model = AnanModel::Odyssey3;
+        a[13].key = "Odyssey-3";
+        a[13].ratedWatts = 50;
         return a;
     }();
     return table;

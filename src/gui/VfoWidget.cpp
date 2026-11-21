@@ -31,6 +31,7 @@
 #include "core/DigitalVoiceFeature.h"
 #include "core/KiwiSdrProtocol.h"
 #include "models/RadioModel.h"
+#include "gui/AnanRatedPower.h"   // build 578
 #include "core/backends/anan/AnanUiState.h"
 #include "models/SliceModel.h"
 #include "models/TransmitModel.h"
@@ -5138,6 +5139,12 @@ double VfoWidget::txPowerFullScaleW() const
     if (ratedW <= 100 && m_radioModel
         && m_radioModel->model().startsWith(QStringLiteral("AU-")))
         ratedW = 500;
+    // ANAN fork build 578 (operator, 21.11): the Odyssey-3 is rated 50 W --
+    // scale to 60 W, red from 50 W.
+    if (ratedW <= 100 && m_radioModel) {
+        if (const int rated = ananRatedWatts(*m_radioModel); rated > 0)
+            ratedW = rated;
+    }
     return ratedW * kPowerHeadroom;
 }
 

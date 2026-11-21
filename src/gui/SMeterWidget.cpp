@@ -926,7 +926,8 @@ void SMeterWidget::paintEvent(QPaintEvent*)
         const SMeterGeometry::PowerTickPolicy& policy =
             m_geometry.powerTickPolicy(m_powerScaleMax);
         const int tickStep = policy.tickStepWatts;
-        const int labelStep = policy.labelStepWatts;
+        const int labelStep = m_powerLabelStepOverride > 0 ? m_powerLabelStepOverride
+                                                           : policy.labelStepWatts;   // build 578
         for (int w = 0; w <= maxW; w += tickStep) {
             const float frac = static_cast<float>(w) / m_powerScaleMax;
             const QColor& tc = (w >= redW) ? redColor : blueColor;
@@ -1203,6 +1204,7 @@ void SMeterWidget::setPowerScale(int maxWatts, bool hasAmplifier)
     m_havePowerScale = true;
     m_lastMaxWatts = maxWatts;
     m_lastHasAmplifier = hasAmplifier;
+    m_powerLabelStepOverride = 0;   // build 578
 
     if (hasAmplifier) {
         m_powerScaleMax = 2000.0f;
@@ -1221,6 +1223,23 @@ void SMeterWidget::setPowerScale(int maxWatts, bool hasAmplifier)
         m_powerScaleMax = 120.0f;
         m_powerRedStart = 100.0f;
     }
+    updateNeedleTarget();
+    update();
+}
+
+void SMeterWidget::setRatedPowerScale(int ratedWatts)
+{
+    if (ratedWatts <= 0)
+        return;
+    const float top = static_cast<float>(ratedWatts) * 1.2f;
+    // Whatever setPowerScale() is called with next must apply again.
+    m_havePowerScale = false;
+    if (m_powerScaleMax == top && m_powerRedStart == static_cast<float>(ratedWatts)
+        && m_powerLabelStepOverride == 20)
+        return;
+    m_powerScaleMax = top;
+    m_powerRedStart = static_cast<float>(ratedWatts);
+    m_powerLabelStepOverride = 20;
     updateNeedleTarget();
     update();
 }

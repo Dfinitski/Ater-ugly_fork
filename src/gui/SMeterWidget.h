@@ -78,6 +78,10 @@ public slots:
 
     // Set TX power gauge scale: barefoot (120W), Aurora (600W), amplifier (2000W).
     void setPowerScale(int maxWatts, bool hasAmplifier);
+    // ANAN fork build 578: a radio rated below 100 W (Odyssey-3, 50 W): scale
+    // top 1.2 x rated, red from rated, labels every 20 W. Call after
+    // setPowerScale(); the next setPowerScale() call replaces it.
+    void setRatedPowerScale(int ratedWatts);
 
     // Peak hold configuration.
     void setPeakHoldEnabled(bool enabled);
@@ -179,6 +183,7 @@ private:
     // TX Power gauge scale (dynamic)
     float m_powerScaleMax{120.0f};
     float m_powerRedStart{100.0f};
+    int   m_powerLabelStepOverride{0};   // build 578: 0 = the geometry's policy
 
     // setPowerScale() no-ops when neither input moved (#4845) — it's called
     // on every RadioModel::infoChanged, most of which carry no scale-relevant
