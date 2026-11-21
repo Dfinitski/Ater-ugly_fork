@@ -28,8 +28,13 @@ Q_LOGGING_CATEGORY(lcCrossNeedleMeter, "aether.gui.crossneedle")
 namespace {
 
 constexpr double kDesignAspect = 1.5;
-constexpr double kForwardFullScale = 20.0;
-constexpr double kReflectedFullScale = 4.0;
+// ANAN fork build 579 (operator, 21.11): a 10 W face (was 20 W), ranges
+// x1 / x10 / x100 / x1000 -- 10 W, 100 W, 1 kW, 10 kW. The printed ticks
+// (resources/meterfaces/cross-needle-v12.json) are the 20 W face's at half
+// the value; the movement and the SWR guides are in normalised power, so they
+// are unchanged.
+constexpr double kForwardFullScale = 10.0;
+constexpr double kReflectedFullScale = 2.0;
 constexpr MeterSmoother::Ballistics kNeedleBallistics{0.075f, 0.250f, 0.0005f};
 
 class CrossNeedleMeterAccessible : public QAccessibleWidget {

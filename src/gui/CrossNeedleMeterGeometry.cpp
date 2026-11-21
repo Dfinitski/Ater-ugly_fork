@@ -564,14 +564,14 @@ CrossNeedleMeterGeometry CrossNeedleMeterGeometry::fallback() {
     CrossNeedleMeterGeometry geometry;
     geometry.formatVersion = 6;
     geometry.designVersion = 19;
-    geometry.rangeLabel = QStringLiteral("RANGE  20 W x1   200 W x10   2 kW x100");
+    geometry.rangeLabel = QStringLiteral("RANGE  10 W x1   100 W x10   1 kW x100   10 kW x1000");
     geometry.forwardTitle = {QStringLiteral("FORWARD"), QPointF(180.0, 545.0), -58.0};
     geometry.reflectedTitle = {QStringLiteral("REFLECTED"), QPointF(1320.0, 545.0), 58.0};
     geometry.forwardScale.center = QPointF(1099.0, 1057.0);
     geometry.forwardScale.radius = 952.5350893203638;
     geometry.forwardScale.startRadians = -2.922529943067865;
     geometry.forwardScale.endRadians = -1.6309954106531042;
-    geometry.forwardScale.values = {0.0, 20.0};
+    geometry.forwardScale.values = {0.0, 10.0};   // build 579: 10 W face
     geometry.forwardScale.referenceAnglesRadians = {-2.922529943067865,
                                                      -1.7009954106531042};
     geometry.forwardScale.responseModel = QStringLiteral("concave_bernstein_v1");
@@ -583,14 +583,14 @@ CrossNeedleMeterGeometry CrossNeedleMeterGeometry::fallback() {
     geometry.forwardScale.maximumReferenceErrorPixels = 1.0;
     geometry.forwardScale.anglesRadians = {
         angleForValue(geometry.forwardScale, 0.0),
-        angleForValue(geometry.forwardScale, 20.0)};
-    geometry.forwardScale.labels = {QStringLiteral("0"), QStringLiteral("20")};
+        angleForValue(geometry.forwardScale, 10.0)};
+    geometry.forwardScale.labels = {QStringLiteral("0"), QStringLiteral("10")};
     geometry.forwardScale.minorSubdivisions = 5;
     geometry.reflectedScale.center = QPointF(401.0, 1057.0);
     geometry.reflectedScale.radius = 952.5350893203638;
     geometry.reflectedScale.startRadians = -0.21906271052192816;
     geometry.reflectedScale.endRadians = -1.510597242936689;
-    geometry.reflectedScale.values = {0.0, 4.0};
+    geometry.reflectedScale.values = {0.0, 2.0};
     geometry.reflectedScale.referenceAnglesRadians = {-0.21906271052192816,
                                                        -1.440597242936689};
     geometry.reflectedScale.responseModel = QStringLiteral("concave_bernstein_v1");
@@ -602,8 +602,8 @@ CrossNeedleMeterGeometry CrossNeedleMeterGeometry::fallback() {
     geometry.reflectedScale.maximumReferenceErrorPixels = 1.0;
     geometry.reflectedScale.anglesRadians = {
         angleForValue(geometry.reflectedScale, 0.0),
-        angleForValue(geometry.reflectedScale, 4.0)};
-    geometry.reflectedScale.labels = {QStringLiteral("0"), QStringLiteral("4")};
+        angleForValue(geometry.reflectedScale, 2.0)};
+    geometry.reflectedScale.labels = {QStringLiteral("0"), QStringLiteral("2")};
     geometry.reflectedScale.minorSubdivisions = 2;
     geometry.swrStyle.graphClearance = 60.0;
     geometry.swrStyle.curveSamples = 128;
@@ -1391,10 +1391,15 @@ double CrossNeedleMeterGeometry::swrFromPowers(double forwardWatts, double refle
 }
 
 double CrossNeedleMeterGeometry::rangeMultiplierFor(int maxWatts, bool amplifierActive) {
-    if (amplifierActive || maxWatts > 200) {
+    // ANAN fork build 579 (operator, 21.11): 10 W face, decades 10 W / 100 W /
+    // 1 kW / 10 kW (was 20 W / 200 W / 2 kW). A 100 W radio reads on 100 W.
+    if (amplifierActive || maxWatts > 1000) {
+        return 1000.0;
+    }
+    if (maxWatts > 100) {
         return 100.0;
     }
-    if (maxWatts > 20) {
+    if (maxWatts > 10) {
         return 10.0;
     }
     return 1.0;
