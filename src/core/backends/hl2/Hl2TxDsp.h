@@ -207,7 +207,7 @@ private:
     TxCoordinator::Context m_txContext;
     bool m_configured = false;
     bool m_compOn = false;
-    bool m_linearPhase = false;   // build 418
+    bool m_linearPhase = true;    // build 418; build 554: every mode
     bool m_cfirOn = false;
     void applyCfir();
     bool m_ttOn = false;

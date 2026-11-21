@@ -81,13 +81,16 @@ public:
     // 5.33 ms B / C), the same failure as RADE behind the minimum-phase
     // transmit filter (build 418). Linear phase: 85 ms flat, nothing against
     // Dream's 0.8 s of buffering.
+    // ANAN fork build 554 (operator, 20.11: "make SSB linear too, at 4096 --
+    // then all the filters are linear"): no mode runs minimum phase any more.
+    // The price is the filter's delay, (taps - 1) / 2 samples at 48 kHz:
+    // 42.7 ms in SSB (4096), 85.3 ms in the modes still at 8192 (AM, SAM,
+    // FM, DSB ...), as DIGI and DRM already had; twice that while WDSP's
+    // second bandpass runs (NR, ANF, SNB).
     [[nodiscard]] static constexpr bool rxMinimumPhaseFor(WdspChannel::Mode mode) noexcept
     {
-        // Build 441: DIGU / DIGL too (sound-card data modes, OFDM among
-        // them), as on transmit since build 418.
-        return mode != WdspChannel::Mode::Cwl && mode != WdspChannel::Mode::Cwu
-            && mode != WdspChannel::Mode::Drm && mode != WdspChannel::Mode::Digu
-            && mode != WdspChannel::Mode::Digl;
+        static_cast<void>(mode);
+        return false;
     }
 
     // RXA panel gain, applied after the AGC: unity removes WDSP's x4, which put
@@ -125,7 +128,9 @@ public:
             return kRxFilterTaps;
         if (mode == WdspChannel::Mode::Lsb || mode == WdspChannel::Mode::Usb)
             return kRxSsbFilterTaps;   // build 553
-        if (rxMinimumPhaseFor(mode))
+        // Build 554: the lengths below are CW's (this branch was "the modes
+        // that are not minimum phase", which is every mode now).
+        if (mode != WdspChannel::Mode::Cwl && mode != WdspChannel::Mode::Cwu)
             return kRxFilterTaps;
         const double width = highHz >= lowHz ? highHz - lowHz : lowHz - highHz;
         const bool shortening = currentTaps <= 0 || currentTaps > kRxShortFilterTaps;

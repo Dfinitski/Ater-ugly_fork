@@ -9144,10 +9144,11 @@ void Hl2Backend::pushTxPassband(const QString& mode)
         // Build 418: the data modes -- FreeDV or FTX on the transmitting
         // receiver, DIGU / DIGL -- transmit through a linear-phase filter
         // (see Hl2TxDsp::buildModulator); voice keeps minimum phase.
-        const auto& fs = fdv::FdvState::instance();
-        const bool fdvTx = fs.sliceId >= 0 && ddcForSlice(fs.sliceId) == m_txDdc;
-        const bool ftxTx = m_ftxDdc >= 0 && m_ftxDdc == m_txDdc;
-        const bool linear = fdvTx || ftxTx || isDigitalDataMode(mode);
+        // Build 554 (operator, 20.11: "put linear on transmit too, for all
+        // modes"): every mode now. 16384 taps at 192 kHz -- 42.7 ms for each
+        // TXA bandpass in circuit (one; up to three with the compressor and
+        // CESSB), in the signal and in the MON.
+        const bool linear = true;
         QMetaObject::invokeMethod(m_txDsp, "setLinearPhase", Qt::QueuedConnection,
             Q_ARG(bool, linear));
         QMetaObject::invokeMethod(m_txDsp, "setFilter", Qt::QueuedConnection,
