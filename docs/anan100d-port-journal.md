@@ -10008,6 +10008,19 @@ errcheck `FloatingContainerWindow.cpp`, `ContainerManager.cpp` — без диа
 
 errcheck `FloatingContainerWindow.cpp` — без диагностик. На экране не проверено.
 
+### 555. Сборка 575 — окно PureSignal: ручная задержка и «Previous delay» убраны (21.11)
+
+Оператор: «в окне Pure Signal при нажатии на Measure delay почему-то открывается установка
+задержки ручная. Убери ручную установку вообще и кнопку Previous тоже — они не нужны».
+
+`PsAmpViewDialog`: убраны строка «Amp delay» (поле нс + Set) и кнопка «Previous delay» сборки
+434, их обновление в `refresh()` и члены класса. Задержка — только из Measure delay. Бэкенд
+(`AnanPureSignal::setBandDelayManual`, `restorePreviousDelay`, `previousDelayText`) не тронут —
+не вызывается. Почему строка «открывалась» при нажатии Measure delay — по коду она была видна
+всегда; вероятно, окно переразмечалось при смене текста статуса и строка попадала в вид.
+
+errcheck `PsAmpViewDialog.cpp` — без диагностик. На экране не проверено.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

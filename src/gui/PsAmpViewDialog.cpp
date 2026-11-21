@@ -252,34 +252,9 @@ PsAmpViewDialog::PsAmpViewDialog(PsApplet* applet, QWidget* parent)
             ps->startDelayMeasure();
         refresh();
     });
-    // Build 434 (operator, 15.11): the band's amp delay typed in, and the
-    // previous one (before the last measurement / change) back.
-    {
-        auto* row = new QHBoxLayout;
-        row->addWidget(new QLabel(tr("Amp delay")));
-        m_delayNs = new QSpinBox;
-        m_delayNs->setRange(0, 19990);
-        m_delayNs->setSingleStep(10);
-        m_delayNs->setSuffix(tr(" ns"));
-        m_delayNs->setToolTip(tr("The band's amp delay, typed in (Set). The one it replaces is kept (Previous)."));
-        row->addWidget(m_delayNs, 1);
-        m_delaySet = new QPushButton(tr("Set"));
-        m_delaySet->setFixedWidth(52);
-        row->addWidget(m_delaySet);
-        tg->addLayout(row, 5, 0, 1, 2);
-        m_delayPrev = new QPushButton(tr("Previous delay"));
-        tg->addWidget(m_delayPrev, 6, 0, 1, 2);
-        connect(m_delaySet, &QPushButton::clicked, this, [this] {
-            if (auto* ps = m_applet ? m_applet->pureSignal() : nullptr)
-                ps->setBandDelayManual(m_delayNs->value());
-            refresh();
-        });
-        connect(m_delayPrev, &QPushButton::clicked, this, [this] {
-            if (auto* ps = m_applet ? m_applet->pureSignal() : nullptr)
-                ps->restorePreviousDelay();
-            refresh();
-        });
-    }
+    // Build 575 (operator, 21.11: "remove the manual setting and Previous,
+    // they are not needed"): the amp delay by hand and "Previous delay" of
+    // build 434 are gone; the delay comes from Measure delay only.
     side->addWidget(tests);
 
     auto* corr = new QGroupBox(tr("Correction file"));
@@ -426,17 +401,6 @@ void PsAmpViewDialog::refresh()
         m_single->setChecked(single);
         m_cal->setChecked(st.enabled && st.calibrating);
         m_measDelay->setEnabled(st.enabled && st.measStep < 0);
-        // Build 434.
-        const QString prev = ps->previousDelayText();
-        m_delayPrev->setEnabled(st.measStep < 0 && !prev.isEmpty());
-        m_delayPrev->setText(prev.isEmpty() ? tr("Previous delay") : tr("Previous: %1").arg(prev.section(QLatin1Char(' '), 0, 1)));
-        m_delayPrev->setToolTip(prev.isEmpty() ? tr("No previous delay on this band yet")
-                                               : tr("Back to %1 (pressed again: back to the present one)").arg(prev));
-        m_delaySet->setEnabled(st.measStep < 0);
-        if (!m_delayNs->hasFocus() && m_delayNs->value() != int(std::lround(ps->settings().ampDelayNs))) {
-            const QSignalBlocker b(m_delayNs);
-            m_delayNs->setValue(int(std::lround(ps->settings().ampDelayNs)));
-        }
     }
     const int si = std::clamp(st.state, 0, 9);
     QString fbColor = QStringLiteral("#e03030");

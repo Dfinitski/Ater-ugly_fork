@@ -97,10 +97,6 @@ private:
     QTimer* m_timer = nullptr;
     QCheckBox* m_hold = nullptr;
     QPushButton* m_measDelay = nullptr;
-    // Build 434: the amp delay by hand / the previous one back.
-    QSpinBox* m_delayNs = nullptr;
-    QPushButton* m_delaySet = nullptr;
-    QPushButton* m_delayPrev = nullptr;
     QPushButton* m_twoTone = nullptr;
     QPushButton* m_cal = nullptr;
     QPushButton* m_auto = nullptr;
