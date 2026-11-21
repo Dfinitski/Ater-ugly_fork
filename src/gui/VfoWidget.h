@@ -438,6 +438,7 @@ private:
     void pushSmartMtrOptions();
     // Throttled bridge from the meter's repaint to a spectrum-overlay refresh.
     void onSmartMtrRepainted();
+    void updateSmartMtrValueText();   // build 545
     bool usesUnavailableSignalMeter() const;
     static float signalDbmToMeterFraction(float dbm);
 
@@ -567,6 +568,7 @@ private:
     QElapsedTimer m_labelDirtyClock;
     qint64 m_lastLabelDirtyMs{-1};
     bool m_smartMtrLabelsVisible{false};
+    QLabel* m_smartMtrValueLabel{nullptr};   // build 545: left of the frequency
     float m_micDbfs{-40.0f}; // latest mic level (dBFS); SmartMTR TX scale
     float m_micPeakDbfs{-40.0f}; // latest mic peak (dBFS, radio MICPEAK stat)
     // Latest TX-meter values, cached for the SmartMTR TX scales (see the setters).

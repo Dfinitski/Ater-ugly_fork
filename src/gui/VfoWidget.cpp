@@ -1256,7 +1256,22 @@ void VfoWidget::buildUI()
         m_radeStatusLabel->hide();
         freqRow->addWidget(m_radeStatusLabel);
 #endif
-        freqRow->addStretch(1);
+        // Build 545 (operator, 20.11: "the SmartMTR numbers are drawn below
+        // the flag -- put them before the frequency field, in the colour of
+        // the mode button's text"). The label takes the row's free space in
+        // place of the stretch: its width never moves the frequency, a text
+        // too long for the gap is cut. Clicks pass through as they did.
+        m_smartMtrValueLabel = new QLabel;
+        m_smartMtrValueLabel->setFixedHeight(30);
+        m_smartMtrValueLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        m_smartMtrValueLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        m_smartMtrValueLabel->setTextFormat(Qt::PlainText);
+        m_smartMtrValueLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+        // #a8b5c3 = the tab texts (kTabLblNormal).
+        m_smartMtrValueLabel->setStyleSheet(
+            "QLabel { color: #a8b5c3; font-size: 11px; font-weight: bold;"
+            " background: transparent; border: none; padding: 0; margin: 0; }");
+        freqRow->addWidget(m_smartMtrValueLabel, 1);
         freqRow->addWidget(m_freqStack);
         // Build 472: the TX button over the VFO name, right of the frequency,
         // on the SPLIT VFO's flag only (setSplitVfoMode).
@@ -4867,6 +4882,7 @@ void VfoWidget::pushSmartMtrInput()
         }
     }
     m_smartMtrWidget->setMeterInput(in, m_relativeSignal ? m_relativeUnavailableReason : QString());
+    updateSmartMtrValueText();   // build 545: not only when the meter repaints
 }
 
 void VfoWidget::pushSmartMtrOptions()
@@ -4902,146 +4918,60 @@ void VfoWidget::pushSmartMtrOptions()
 
     m_smartMtrWidget->setExtremesOptions(show, speed, values);
     m_smartMtrWidget->setShowTypeLabel(mv.showTxMeterType());
-    emit smartMtrLabelsChanged(); // refresh the spectrum-drawn value labels
+    updateSmartMtrValueText();   // build 545
+    emit smartMtrLabelsChanged(); // clears what the spectrum drew before
+}
+
+// Build 545: the SmartMTR numbers, left of the frequency. Two lines, as they
+// were under the flag: the S unit over the dBm. With the extremes shown, each
+// line is "minimum...maximum".
+void VfoWidget::updateSmartMtrValueText()
+{
+    if (!m_smartMtrValueLabel)
+        return;
+    QString text;
+    bool room = true;
+#ifdef HAVE_RADE
+    // FreeDV writes its SNR and offset in the same place.
+    room = !(m_radeStatusLabel && !m_radeStatusLabel->isHidden());
+#endif
+    if (room && m_smartMtrWidget && m_smartMtr && !m_collapsed) {
+        const auto labels = m_smartMtrWidget->extremeLabels();
+        if (labels.size() == 1) {
+            text = labels[0].primary;
+            if (!labels[0].secondary.isEmpty())
+                text += QLatin1Char('\n') + labels[0].secondary;
+        } else if (labels.size() >= 2) {
+            const auto& hi = labels[0].isMax ? labels[0] : labels[1];
+            const auto& lo = labels[0].isMax ? labels[1] : labels[0];
+            // No unit on the range line: "-103...-85dBm" does not fit the gap.
+            auto bare = [](QString v) {
+                if (v.endsWith(QStringLiteral("dBm")))
+                    v.chop(3);
+                return v;
+            };
+            const QString dots = QString(QChar(0x2026));
+            text = lo.primary + dots + hi.primary;
+            if (!lo.secondary.isEmpty() || !hi.secondary.isEmpty())
+                text += QLatin1Char('\n') + bare(lo.secondary) + dots + bare(hi.secondary);
+        }
+    }
+    if (m_smartMtrValueLabel->text() != text)
+        m_smartMtrValueLabel->setText(text);
 }
 
 void VfoWidget::onSmartMtrRepainted()
 {
-    // The animated bar is painted inside the flag, independently of the
-    // spectrum's optional value-label overlay. An empty overlay needs no
-    // rebuild on each bar frame. Do erase its last labels immediately when a
-    // reading disappears, even inside the normal animation throttle window.
-    if (m_smartMtrWidget->extremeLabels().isEmpty()) {
-        if (m_smartMtrLabelsVisible) {
-            m_smartMtrLabelsVisible = false;
-            m_lastLabelDirtyMs = -1;
-            emit smartMtrLabelsChanged();
-        }
-        return;
-    }
-
-    // The meter repaints up to ~120 Hz while markers move; the spectrum's
-    // static-overlay redraw (which draws the value labels) is comparatively
-    // costly, so throttle the refresh requests to ~20 Hz.
-    const qint64 now = m_labelDirtyClock.elapsed();
-    if (m_lastLabelDirtyMs >= 0 && now - m_lastLabelDirtyMs < 50)
-        return;
-    m_lastLabelDirtyMs = now;
-    m_smartMtrLabelsVisible = true;
-    emit smartMtrLabelsChanged();
+    // Build 545: the numbers are a label in the flag now; the spectrum draws
+    // nothing for them and needs no redraw.
+    updateSmartMtrValueText();
 }
 
 void VfoWidget::drawSmartMtrLabels(QPainter& p) const
 {
-    using namespace SmartMtrUnits;
-    // Don't gate on m_smartMtrWidget->isVisible(): in the default GPU flag mode
-    // the flag QWidget is hidden (setVisible(false)) and drawn as a grabbed
-    // sprite, so the in-meter triangle markers ride along in that sprite but
-    // isVisible() is false — which used to skip these overlay-drawn value labels
-    // entirely (they only appeared on the brief "live"/hover frames). Gate on the
-    // meter having a real size instead — the same condition the flag sprite is
-    // drawn under — so the labels track the markers in both GPU and software modes.
-    if (!m_smartMtrWidget || !m_smartMtr || m_collapsed
-        || m_smartMtrWidget->size().isEmpty())
-        return;
-    const auto labels = m_smartMtrWidget->extremeLabels();
-    if (labels.isEmpty())
-        return;
-
-    const auto g = SmartMtrGeometry::fit(m_smartMtrWidget->rect());
-
-    QFont f = font();
-    f.setPixelSize(qMax(8, qRound(g.len(kLabelHeightNormal))));
-    f.setWeight(QFont::Light);
-    const QFontMetricsF fm(f);
-    const double lineH = fm.height();
-
-    const double gap = 2.0;                       // px between line and labels
-    const double stripTop = y() + height() + 2.0; // labels sit just below the flag
-    const double lineBottom = stripTop + 2.0 * lineH;
-    const double lineW = qMax(1.0, g.len(1.0));
-    const double kUnitDim = 0.55; // unit text + connector line dim factor
-
-    p.save();
-    p.setRenderHint(QPainter::Antialiasing, true);
-    p.setFont(f);
-
-    // Draw one stacked text line; the unit (leading "s" / trailing "dB"/"dBm") is
-    // dimmed to emphasise the number. Anchored to the marker line: MAX grows to
-    // the right of x, MIN is right-aligned to the left of x.
-    auto drawLine = [&](const QString& s, double topY, double x, bool isMax,
-                        double opacity) {
-        if (s.isEmpty())
-            return;
-        QString prefix, number = s, suffix;
-        if (s.startsWith(QLatin1Char('s'))) {
-            prefix = QStringLiteral("s");
-            number = s.mid(1);
-        } else if (s.endsWith(QStringLiteral("dBm"))) {
-            suffix = QStringLiteral("dBm");
-            number = s.left(s.size() - 3);
-        } else if (s.endsWith(QStringLiteral("dB"))) {
-            suffix = QStringLiteral("dB");
-            number = s.left(s.size() - 2);
-        }
-        const double wp = fm.horizontalAdvance(prefix);
-        const double wn = fm.horizontalAdvance(number);
-        const double ws = fm.horizontalAdvance(suffix);
-        const double left = isMax ? (x + gap) : (x - gap - (wp + wn + ws));
-
-        auto seg = [&](const QString& t, double sx, double op) {
-            if (t.isEmpty())
-                return;
-            const QRectF r(sx, topY, fm.horizontalAdvance(t) + 1.0, lineH);
-            QColor black(0, 0, 0);
-            black.setAlphaF(op);
-            p.setPen(black);
-            static const int kOff[4][2] = { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } };
-            for (const auto& o : kOff)
-                p.drawText(r.translated(o[0], o[1]), Qt::AlignVCenter | Qt::AlignLeft, t);
-            QColor white = SmartMtrColors::kIndicator;
-            white.setAlphaF(white.alphaF() * op);
-            p.setPen(white);
-            p.drawText(r, Qt::AlignVCenter | Qt::AlignLeft, t);
-        };
-        const double unitOp = opacity * kUnitDim; // dim the unit
-        double cx = left;
-        seg(prefix, cx, unitOp);
-        cx += wp;
-        seg(number, cx, opacity);
-        cx += wn;
-        seg(suffix, cx, unitOp);
-    };
-
-    for (const auto& m : labels) {
-        const double xUnit = kHoleMargX + m.position;
-        const QPoint mk = m_smartMtrWidget->mapTo(
-            parentWidget(), g.point(xUnit, kHoleMargY).toPoint());
-        const double x = mk.x();
-        const double lineTop = stripTop; // just below the flag (drawn under the flags)
-
-        // Vertical marker line, dimmed to the same level as the unit text, with a
-        // dark halo so it reads over a bright background.
-        QColor halo(0, 0, 0);
-        halo.setAlphaF(0.7 * m.opacity * kUnitDim);
-        QPen haloPen(halo);
-        haloPen.setWidthF(lineW + 2.0);
-        haloPen.setCapStyle(Qt::RoundCap);
-        p.setPen(haloPen);
-        p.drawLine(QPointF(x, lineTop), QPointF(x, lineBottom));
-        QColor line = SmartMtrColors::kExtreme;
-        line.setAlphaF(line.alphaF() * m.opacity * kUnitDim);
-        QPen pen(line);
-        pen.setWidthF(lineW);
-        pen.setCapStyle(Qt::RoundCap);
-        p.setPen(pen);
-        p.drawLine(QPointF(x, lineTop), QPointF(x, lineBottom));
-
-        drawLine(m.primary, stripTop, x, m.isMax, m.opacity);
-        drawLine(m.secondary, stripTop + lineH, x, m.isMax, m.opacity);
-    }
-
-    p.restore();
+    // Build 545: nothing is drawn below the flag any more (see
+    // updateSmartMtrValueText()).
+    Q_UNUSED(p);
 }
 
 void VfoWidget::setMicLevel(float micDbfs, float micPeakDbfs)
@@ -8227,6 +8157,7 @@ void VfoWidget::setRadeActive(bool on, const QString& label)
             m_radeStatusLabel->setText("");
         }
     }
+    updateSmartMtrValueText();   // build 545: the two share one place
     if (m_radeInfoRow) {
         // Build 341 (operator, 13.11): no row between the frequency and the
         // meter in FreeDV -- the SNR is written left of the frequency.
