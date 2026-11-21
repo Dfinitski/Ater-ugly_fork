@@ -1033,6 +1033,9 @@ void Hl2RxDsp::startSubBuild()
             m_sub->setSMeterPeak(sMeterPeak());
         emit subMeterUpdate(dbfs);
     }, Qt::DirectConnection);
+    connect(sub.get(), &Hl2RxDsp::rmsMeterUpdate, this, [this](float dbfs) {   // build 562
+        emit subRmsMeterUpdate(dbfs);
+    }, Qt::DirectConnection);
     sub->setSMeterPeak(sMeterPeak());
     sub->setNoiseBlanker(m_nbKind, m_nbLevel, m_nbFill);
     sub->setSquelch(m_squelchOn, m_squelchLevel, m_squelchOffsetDb);
@@ -1455,6 +1458,10 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
                 m_smRing[m_smPos] = sm;
                 m_smPos = (m_smPos + 1) % m_smRing.size();
                 emit meterUpdate(static_cast<float>(sm));
+                // Build 562: the RMS reading beside it (the same one when the
+                // detector is Average).
+                emit rmsMeterUpdate(static_cast<float>(
+                    sMeterPeak() ? m_channel->meter(WdspChannel::Meter::SignalAverage) : sm));
             }
         }
         // Post-DDC half of §13 item 16's ADC pairing: adcmeter just ran on this

@@ -440,6 +440,9 @@ private:
     void onSmartMtrRepainted();
     void updateSmartMtrValueText();   // build 545
     void placeCollapsedLabels();      // build 547
+    void smartMtrValueTick();         // build 562
+    double m_smartValDbm = std::numeric_limits<double>::quiet_NaN();        // shown
+    double m_smartValWindowMax = std::numeric_limits<double>::quiet_NaN();  // stand-in source
     bool usesUnavailableSignalMeter() const;
     static float signalDbmToMeterFraction(float dbm);
 

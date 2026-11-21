@@ -692,6 +692,11 @@ signals:
     void meterUpdate(float dbfs);                           // audio-RMS S-meter
     // Build 472: the SPLIT receiver's S-meter (its own channel, same detector).
     void subMeterUpdate(float dbfs);
+    // Build 562: the RMS reading (WDSP's average signal meter) whatever the
+    // detector above is, at the same moments -- for the numbers on the flag
+    // (anan::RmsPeakBoard). The sub receiver's likewise.
+    void rmsMeterUpdate(float dbfs);
+    void subRmsMeterUpdate(float dbfs);
 
 private:
     // Build 470: the SPLIT receiver (setSubReceiver).

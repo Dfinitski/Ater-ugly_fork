@@ -32,6 +32,7 @@
 #include "core/backends/anan/AnanPureSignal.h"
 #include "core/backends/anan/AnanTxEngine.h"
 #include "core/backends/anan/AnanUiState.h"
+#include "core/backends/anan/AnanRmsPeak.h"
 #include "core/backends/anan/AnanXvtr.h"
 
 #include "core/AutomationBridgeSettings.h"
@@ -2094,6 +2095,35 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
                 }
             }
         }
+    });
+
+    // Build 562 (operator, 21.11): the numbers on the flag -- the RMS reading
+    // in dBm, referred exactly as the needle's value above, the highest of
+    // each 0.5 s (anan::RmsPeakBoard, read by VfoWidget). Not fed while
+    // keyed: the board's value goes stale and the flag shows none.
+    auto rmsToBoard = [this, ui](const QPointer<Hl2RxDsp>& producer, float dbfs, bool sub) {
+        const auto* ids = m_ids.byUi(ui);
+        Receiver* r = ids ? rx(ids->ddcIndex) : nullptr;
+        if (!producer || !r || r->dsp != producer.data() || m_keyed || m_radioPtt)
+            return;
+        if (sub && !splitOfOwner(ui))
+            return;
+        const int smRx = std::clamp(ids->ddcIndex, 0, 1);
+        const int smAtt = std::max(0, m_ananAdcAttPushed[std::clamp(m_ananAdc[smRx], 0, 1)]);
+        const double modelDb = ananTraits().rxMeterOffsetDb
+                             - anan::modelTraits(anan::AnanModel::Anan100D).rxMeterOffsetDb;
+        const double dbm = m_dbRef.toDbm(dbfs) + modelDb
+                         + anan::AnanUiState::instance().sMeterOffsetDb(smAtt, m_ananLnaPushed == 1)
+                         - ananXvtrRxGainDb(ids->ddcIndex);
+        anan::RmsPeakBoard::instance().feed(sub ? splitUiOf(ui) : ui, dbm);
+    };
+    connect(dsp, &Hl2RxDsp::rmsMeterUpdate, this,
+            [rmsToBoard, producer = QPointer<Hl2RxDsp>(dsp)](float dbfs) {
+        rmsToBoard(producer, dbfs, false);
+    });
+    connect(dsp, &Hl2RxDsp::subRmsMeterUpdate, this,
+            [rmsToBoard, producer = QPointer<Hl2RxDsp>(dsp)](float dbfs) {
+        rmsToBoard(producer, dbfs, true);
     });
 
     // Build 472: the SPLIT VFO's S-meter -- the same reference and Setup

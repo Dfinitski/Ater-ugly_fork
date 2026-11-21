@@ -32,6 +32,7 @@
 #include "core/KiwiSdrProtocol.h"
 #include "models/RadioModel.h"
 #include "core/backends/anan/AnanUiState.h"
+#include "core/backends/anan/AnanRmsPeak.h"
 #include "models/SliceModel.h"
 #include "models/TransmitModel.h"
 #include "Theme.h"
@@ -1174,6 +1175,14 @@ void VfoWidget::buildUI()
     connect(m_recordBtn, &QPushButton::clicked, this, [this](bool checked) {
         emit recordToggled(checked);
     });
+
+    // Build 562: the SmartMTR numbers, twice a second.
+    {
+        auto* valueTimer = new QTimer(this);
+        valueTimer->setInterval(500);
+        connect(valueTimer, &QTimer::timeout, this, &VfoWidget::smartMtrValueTick);
+        valueTimer->start();
+    }
 
     // Record pulse animation
     m_recordPulse = new QTimer(this);
@@ -4950,7 +4959,10 @@ void VfoWidget::pushSmartMtrInput()
         }
     }
     m_smartMtrWidget->setMeterInput(in, m_relativeSignal ? m_relativeUnavailableReason : QString());
-    updateSmartMtrValueText();   // build 545: not only when the meter repaints
+    // Build 562: the stand-in source of the numbers (see smartMtrValueTick()).
+    if (in.hasValue && (in.kind == MeterKind::Signal || in.kind == MeterKind::RelativeSignal)
+        && !(in.value <= m_smartValWindowMax))
+        m_smartValWindowMax = in.value;
 }
 
 void VfoWidget::pushSmartMtrOptions()
@@ -4997,24 +5009,21 @@ void VfoWidget::updateSmartMtrValueText()
 {
     if (!m_smartMtrValueLabel)
         return;
-    // Build 546 (operator, 20.11): with the extremes shown, the maximum alone
-    // -- nothing has to be shortened then.
+    // Build 562: the level is the 0.5 s peak of the RMS reading
+    // (smartMtrValueTick()), no longer the needle's or its extremes'.
     QString sUnit, level;
-    double opacity = 1.0;   // the extremes fade with their markers
-    if (m_smartMtrWidget && m_smartMtr) {
-        const auto labels = m_smartMtrWidget->extremeLabels();
-        for (const auto& m : labels) {
-            if (!m.isMax)
-                continue;
-            sUnit = m.primary;
-            level = m.secondary;
-            // Build 556: a capital S ("S6"; "+10dB" and a dBFS-only reading
-            // are left as they are).
-            if (sUnit.startsWith(QLatin1Char('s')))
-                sUnit[0] = QLatin1Char('S');
-            opacity = m.opacity;
-            break;
+    const double opacity = 1.0;
+    if (m_smartMtrWidget && m_smartMtr && m_smartMtrWidget->showsSignalValues()
+        && std::isfinite(m_smartValDbm)) {
+        m_smartMtrWidget->valueStrings(m_smartValDbm, sUnit, level);
+        if (sUnit.isEmpty()) {   // a level without an S unit: one line
+            sUnit = level;
+            level.clear();
         }
+        // Build 556: a capital S ("S6"; "+10dB" and a dBFS-only reading are
+        // left as they are).
+        if (sUnit.startsWith(QLatin1Char('s')))
+            sUnit[0] = QLatin1Char('S');
     }
     auto joined = [&](QChar sep) {
         return level.isEmpty() ? sUnit : sUnit + sep + level;
@@ -5065,7 +5074,28 @@ void VfoWidget::updateSmartMtrValueText()
 void VfoWidget::onSmartMtrRepainted()
 {
     // Build 545: the numbers are a label in the flag now; the spectrum draws
-    // nothing for them and needs no redraw.
+    // nothing for them and needs no redraw. Build 562: nor are they the
+    // needle's -- see smartMtrValueTick().
+}
+
+// Build 562 (operator, 21.11: "a peak detector of 0.5 s on those numbers, so
+// they update every 0.5 s; and see that the values are RMS"). Every 0.5 s:
+// the peak of the RMS reading the backend holds for this slice
+// (anan::RmsPeakBoard). Where there is none -- another radio family, or a
+// relative (dBFS) meter -- the highest value this flag's own meter stream
+// brought in the same 0.5 s.
+void VfoWidget::smartMtrValueTick()
+{
+    double v = std::numeric_limits<double>::quiet_NaN();
+    if (m_slice && !m_relativeSignal) {
+        const float held = AetherSDR::anan::RmsPeakBoard::instance().held(m_slice->sliceId());
+        if (std::isfinite(held))
+            v = held;
+    }
+    if (!std::isfinite(v))
+        v = m_smartValWindowMax;
+    m_smartValWindowMax = std::numeric_limits<double>::quiet_NaN();
+    m_smartValDbm = v;
     updateSmartMtrValueText();
 }
 

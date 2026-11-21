@@ -129,6 +129,22 @@ private:
 
     // Value-label text per kind: S-unit (signal: "s6" / "+10dB"; mic: empty) and
     // the dB(m) line.
+public:
+    // Build 562: for the numbers on the flag (VfoWidget), which have their
+    // own source now. Whether the signal meter is to show numbers at all,
+    // and a level worded as the labels word it ("s6" / "+10dB", "-91dBm").
+    bool showsSignalValues() const
+    {
+        return m_showValues != MeterValues::None
+            && (m_kind == MeterKind::Signal || m_kind == MeterKind::RelativeSignal);
+    }
+    void valueStrings(double raw, QString& sUnit, QString& level) const
+    {
+        sUnit = extremeSUnit(raw);
+        level = extremeDbm(raw);
+    }
+
+private:
     QString extremeSUnit(double raw) const;
     QString extremeDbm(double raw) const;
 
