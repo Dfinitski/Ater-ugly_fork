@@ -45,8 +45,9 @@ public:
     // Build 262: see m_openingWidthFloor. Set before restoreAndEnsureVisible().
     void setOpeningWidthFloor(int w) { m_openingWidthFloor = std::max(0, w); }
     // Build 573 (operator, 21.11): the size the applet had in the panel it
-    // is torn off from -- the window opens at exactly this size. Invalid =
-    // not known (a window restored at start): the saved geometry is used.
+    // is torn off from -- the window opens not smaller than this (build 574:
+    // and large enough for its whole content, so that nothing scrolls).
+    // Invalid = not known (a window restored at start): the saved geometry.
     // Set before restoreAndEnsureVisible().
     void setOpeningSize(const QSize& s) { m_openingSize = s; }
     QString geometryKey() const { return m_geometryKey; }

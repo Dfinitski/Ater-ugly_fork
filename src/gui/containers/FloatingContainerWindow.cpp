@@ -283,8 +283,12 @@ void FloatingContainerWindow::fitHeightToContent()
         // The opening passes (m_fitWidth, set by restoreAndEnsureVisible).
         QSize target = size();
         if (m_openingSize.isValid()) {
-            // Torn off the panel: exactly as it was there.
-            target = m_openingSize;
+            // Torn off the panel. Build 574 (operator, 21.11: "every applet
+            // opens so that nothing scrolls, but not smaller than it was on
+            // the panel"): the content's whole size (w, h above count what
+            // the scroll areas hold), each axis not below the panel's.
+            target = QSize(std::max(w, m_openingSize.width()),
+                           std::max(h, m_openingSize.height()));
         } else {
             // Restored at start, or never shown in a panel. Width: the
             // content's (build 219), not narrower than the applet was in the
