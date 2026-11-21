@@ -1148,6 +1148,11 @@ private:
     void ananSessionCapture(int sliceId, bool save = true);
     void ananSessionCaptureAll();
     void ananSessionRestore(int sliceId);
+    // Build 565: the noise reduction engine set to the selected receiver's
+    // choice (AnanRxDspStore.h), and the store kept true to the engine.
+    void ananRxNrApply();
+    void ananRxNrSyncFromEngine();
+    qint64 m_ananRxNrGuardUntilMs{0};
     void ananBandMemTick();
     void ananBandMemFlush();                // store every receiver's current band
     QJsonObject ananBandMemSnapshot(SliceModel* s) const;

@@ -76,6 +76,7 @@
 #include "PsApplet.h"
 #include "containers/ContainerManager.h"
 #include "RxApplet.h"
+#include "AnanRxDspStore.h"
 #include "SMeterWidget.h"
 #include "TunerApplet.h"
 #include "TxApplet.h"
@@ -1756,6 +1757,29 @@ MainWindow::MainWindow(QWidget* parent)
     });
     connect(m_appletPanel->rxApplet(), &RxApplet::sliceActivationRequested,
             this, &MainWindow::setActiveSlice);
+    // ANAN fork build 565: the receiver row's noise reduction button.
+    connect(m_appletPanel->rxApplet(), &RxApplet::rxNrToggled, this, [this](bool on) {
+        if (m_activeSliceId < 0)
+            return;
+        const int owner = AetherSDR::anan_rxdsp::ownerOf(m_activeSliceId);
+        AetherSDR::anan_rxdsp::setNr(owner, on, AetherSDR::anan_rxdsp::nrMethod(owner));
+        ananRxNrApply();
+        m_appletPanel->rxApplet()->refreshRxDspButtons();
+    });
+    connect(m_appletPanel->rxApplet(), &RxApplet::rxNrMethodChosen, this, [this](const QString& method) {
+        if (m_activeSliceId < 0)
+            return;
+        const int owner = AetherSDR::anan_rxdsp::ownerOf(m_activeSliceId);
+        AetherSDR::anan_rxdsp::setNr(owner, AetherSDR::anan_rxdsp::nrOn(owner), method);
+        ananRxNrApply();
+        m_appletPanel->rxApplet()->refreshRxDspButtons();
+    });
+    {
+        auto* nrSync = new QTimer(this);
+        nrSync->setInterval(500);
+        connect(nrSync, &QTimer::timeout, this, &MainWindow::ananRxNrSyncFromEngine);
+        nrSync->start();
+    }
     connect(m_appletPanel->rxApplet(), &RxApplet::calibrateAgcTRequested,
             this, &MainWindow::showAgcCalibrationDialog);
     // Sync slice tab capacity after radio info/status reports actual capacity.
@@ -9381,6 +9405,60 @@ void MainWindow::setActiveSliceInternal(int sliceId, bool revealOffscreen)
 #endif
 
     qDebug() << "MainWindow: active slice set to" << sliceId;
+    ananRxNrApply();   // build 565: the noise reduction follows the selected receiver
+}
+
+// ANAN fork build 565 (operator, 21.11; his choice: "by the active receiver").
+// The noise reduction methods (NR2, NR4, MNR, DFNR, RN2, BNR, NNR) run in the
+// audio engine on the mixed sound -- one for the whole program. Each receiver
+// keeps its own "on / off" and method; the engine is set to those of the
+// receiver that is selected (a sub receiver: its owner's).
+void MainWindow::ananRxNrApply()
+{
+    if (!m_audio || m_activeSliceId < 0 || !m_radioModel.isConnected()
+        || m_radioModel.usesFlexCommandPlane())
+        return;
+    const int owner = AetherSDR::anan_rxdsp::ownerOf(m_activeSliceId);
+    const QString current = activeAetherDspMethod();
+    if (AetherSDR::anan_rxdsp::nrOnRaw(owner).isEmpty()) {
+        // Never set for this receiver: it starts with what is running.
+        AetherSDR::anan_rxdsp::setNr(owner, !current.isEmpty(), current);
+        if (m_appletPanel && m_appletPanel->rxApplet())
+            m_appletPanel->rxApplet()->refreshRxDspButtons();
+        return;
+    }
+    const QString wanted = AetherSDR::anan_rxdsp::nrOn(owner)
+        ? AetherSDR::anan_rxdsp::nrMethod(owner) : QString();
+    if (wanted == current)
+        return;
+    // The engine switches on its own thread: the store is not corrected from
+    // it until it has had time to.
+    m_ananRxNrGuardUntilMs = QDateTime::currentMSecsSinceEpoch() + 1500;
+    if (!current.isEmpty())
+        setAetherDspMethodEnabled(current, false);
+    if (!wanted.isEmpty())
+        setAetherDspMethodEnabled(wanted, true);
+}
+
+// The engine can be switched elsewhere (the AetherRX window, a method that
+// could not start): twice a second the selected receiver's store is made to
+// say what actually runs, and its button with it.
+void MainWindow::ananRxNrSyncFromEngine()
+{
+    if (!m_audio || m_activeSliceId < 0 || !m_radioModel.isConnected()
+        || m_radioModel.usesFlexCommandPlane()
+        || QDateTime::currentMSecsSinceEpoch() < m_ananRxNrGuardUntilMs)
+        return;
+    const int owner = AetherSDR::anan_rxdsp::ownerOf(m_activeSliceId);
+    if (AetherSDR::anan_rxdsp::nrOnRaw(owner).isEmpty())
+        return;   // ananRxNrApply() has not seen this receiver yet
+    const QString current = activeAetherDspMethod();
+    const bool on = AetherSDR::anan_rxdsp::nrOn(owner);
+    if (on == !current.isEmpty() && (!on || current == AetherSDR::anan_rxdsp::nrMethod(owner)))
+        return;
+    AetherSDR::anan_rxdsp::setNr(owner, !current.isEmpty(), current);
+    if (m_appletPanel && m_appletPanel->rxApplet())
+        m_appletPanel->rxApplet()->refreshRxDspButtons();
 }
 
 // Mini-pan applet: a pure view that creates no radio objects. It re-slices the

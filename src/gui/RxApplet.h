@@ -110,6 +110,9 @@ public:
     // If maxSlices <= 1, the row is hidden.
     void setMaxSlices(int maxSlices);
     bool ananRow() const;   // build 476: the A, A', B, B', C, D row
+    // Build 565: the NB and noise reduction buttons of the first row, shown
+    // as the stores (AnanRxDspStore.h) and the receiver have them.
+    void refreshRxDspButtons();
     // Build 497: the slice this applet shows and edits.
     SliceModel* shownSlice() const { return m_slice; }
     // ANAN fork build 486 (operator, 17.11): with a SPLIT VFO (A' / B')
@@ -129,6 +132,10 @@ signals:
     // ANAN fork build 515: "+RX" after the receiver buttons -- one more
     // independent receiver (the next after the highest open one).
     void addReceiverRequested();
+    // ANAN fork build 565: the noise reduction button of the first row. The
+    // engine is MainWindow's; it answers with refreshRxDspButtons().
+    void rxNrToggled(bool on);
+    void rxNrMethodChosen(const QString& method);
     // Emitted when the user requests the AGC-T noise calibration panel
     // (right-click on the AGC-T slider). Carries the active slice id.
     void calibrateAgcTRequested(int sliceId);
@@ -241,6 +248,10 @@ private:
     RadioModel* m_radioModel{nullptr};
     ControlAvailabilityRegistry* m_filterAvailability{nullptr};
     QPushButton* m_autoAgcTButton{nullptr};
+    QPushButton* m_rxNbBtn{nullptr};   // build 565
+    QPushButton* m_rxNrBtn{nullptr};
+    QMetaObject::Connection m_rxNbConn;
+    SliceModel* rxDspSlice() const;    // the receiver itself, or a sub receiver's owner
     QPushButton* m_binauralBtn{nullptr};   // build 307
     std::optional<ReceiveFilterControl> m_receiveFilterControl;
     // exclusiveSquelchScaleValue(caps.squelchLevelScale): the receiver's own gate.

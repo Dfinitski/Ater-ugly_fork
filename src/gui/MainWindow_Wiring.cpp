@@ -4153,7 +4153,15 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
         s->setAudioGain(static_cast<float>(mem.value(QStringLiteral("vol")).toInt()));
     if (mem.contains(QStringLiteral("nbL")))
         s->setNbLevel(mem.value(QStringLiteral("nbL")).toInt());
-    if (mem.contains(QStringLiteral("nb")) && mem.value(QStringLiteral("nb")).toBool() != s->nbOn())
+    // Build 565: which blanker, when the snapshot has it ("nb" alone meant
+    // on / off and always came back as the first one).
+    if (mem.contains(QStringLiteral("nbKind"))
+        && AetherSDR::isValidNoiseBlankerKind(mem.value(QStringLiteral("nbKind")).toInt())) {
+        const auto kind =
+            static_cast<AetherSDR::NoiseBlankerKind>(mem.value(QStringLiteral("nbKind")).toInt());
+        if (kind != s->nbKind())
+            s->setNbKind(kind);
+    } else if (mem.contains(QStringLiteral("nb")) && mem.value(QStringLiteral("nb")).toBool() != s->nbOn())
         s->setNb(mem.value(QStringLiteral("nb")).toBool());
     if (mem.contains(QStringLiteral("nrL")))
         s->setNrLevel(mem.value(QStringLiteral("nrL")).toInt());

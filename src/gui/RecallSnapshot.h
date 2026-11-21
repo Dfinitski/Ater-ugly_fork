@@ -77,6 +77,7 @@ inline QJsonObject capture(const RadioModel& model, const SliceModel* s)
     }
     o.insert(QStringLiteral("vol"), static_cast<int>(s->audioGain()));
     o.insert(QStringLiteral("nb"), s->nbOn());
+    o.insert(QStringLiteral("nbKind"), static_cast<int>(s->nbKind()));   // build 565: NB or NB2
     o.insert(QStringLiteral("nbL"), s->nbLevel());
     o.insert(QStringLiteral("nr"), s->nrOn());
     o.insert(QStringLiteral("nrL"), s->nrLevel());

@@ -47,9 +47,12 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include "core/AppSettings.h"
+#include "AnanRxDspStore.h"
 #include <QAction>
 #include <QAccessible>
 #include <QFontMetrics>
+#include <QSignalBlocker>
+#include <utility>
 #include <QPainter>
 #include <QPointer>
 #include <QWheelEvent>
@@ -493,6 +496,101 @@ void RxApplet::buildUI()
 
         // Filter width and QSK share the antenna controls' font and row height.
         m_filterWidthLbl = new QLabel("2.7K");
+        // ANAN fork build 565 (operator, 21.11): NB and noise reduction, on
+        // the right of the receiver row -- the size of the receiver buttons
+        // (wider only when the name needs it), lit like the AGC "A" button.
+        // Left click: on / off. Right click: which blanker (NB, NB2), which
+        // noise reduction method. Kept per receiver (AnanRxDspStore.h).
+        {
+            auto mk = [this](const char* name, const QString& accessible) {
+                auto* b = mkToggle(QStringLiteral("NB"), nullptr, kBlueActive());
+                b->setObjectName(QString::fromLatin1(name));
+                b->setAccessibleName(accessible);
+                b->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+                b->setFixedSize(22, 20);
+                b->setContextMenuPolicy(Qt::CustomContextMenu);
+                b->hide();
+                return b;
+            };
+            m_rxNbBtn = mk("rxAppletNb", tr("Noise blanker"));
+            m_rxNbBtn->setToolTip(tr("Noise blanker of this receiver.\n"
+                                     "Left click: on / off. Right click: NB or NB2."));
+            m_rxNrBtn = mk("rxAppletNr", tr("Noise reduction"));
+            m_rxNrBtn->setToolTip(tr("Noise reduction, as set for this receiver.\n"
+                                     "Left click: on / off. Right click: the method.\n"
+                                     "It works on the sound of all receivers together and\n"
+                                     "follows the receiver that is selected."));
+            connect(m_rxNbBtn, &QPushButton::clicked, this, [this](bool on) {
+                if (SliceModel* s = rxDspSlice()) {
+                    s->setNbKind(on ? AetherSDR::anan_rxdsp::nbKind(
+                                          AetherSDR::anan_rxdsp::ownerOf(s->sliceId()))
+                                    : AetherSDR::NoiseBlankerKind::Off);
+                }
+                refreshRxDspButtons();   // as the receiver has it (it may confirm later)
+            });
+            connect(m_rxNbBtn, &QWidget::customContextMenuRequested, this, [this](const QPoint&) {
+                SliceModel* s = rxDspSlice();
+                if (!s)
+                    return;
+                const int owner = AetherSDR::anan_rxdsp::ownerOf(s->sliceId());
+                const auto cur = AetherSDR::anan_rxdsp::nbKind(owner);
+                QMenu menu(m_rxNbBtn);
+                for (const auto& [label, kind] :
+                     {std::pair<const char*, AetherSDR::NoiseBlankerKind>{
+                          "NB", AetherSDR::NoiseBlankerKind::Impulse},
+                      {"NB2", AetherSDR::NoiseBlankerKind::Advanced}}) {
+                    QAction* a = menu.addAction(QString::fromLatin1(label));
+                    a->setCheckable(true);
+                    a->setChecked(kind == cur);
+                    a->setData(static_cast<int>(kind));
+                }
+                const QAction* sel = menu.exec(m_rxNbBtn->mapToGlobal(QPoint(0, m_rxNbBtn->height())));
+                if (!sel)
+                    return;
+                const auto kind = static_cast<AetherSDR::NoiseBlankerKind>(sel->data().toInt());
+                AetherSDR::anan_rxdsp::setNbKind(owner, kind);
+                if (SliceModel* now = rxDspSlice(); now && now->nbOn())
+                    now->setNbKind(kind);
+                refreshRxDspButtons();
+            });
+            connect(m_rxNrBtn, &QPushButton::clicked, this, [this](bool on) {
+                emit rxNrToggled(on);
+            });
+            connect(m_rxNrBtn, &QWidget::customContextMenuRequested, this, [this](const QPoint&) {
+                if (!m_slice)
+                    return;
+                const QString cur = AetherSDR::anan_rxdsp::nrMethod(
+                    AetherSDR::anan_rxdsp::ownerOf(m_slice->sliceId()));
+                // The methods this build has (as the AetherRX selector gates them).
+                QStringList methods{QStringLiteral("NR2")};
+#ifdef HAVE_SPECBLEACH
+                methods << QStringLiteral("NR4");
+#endif
+#ifdef Q_OS_MACOS
+                methods << QStringLiteral("MNR");
+#endif
+#ifdef HAVE_DFNR
+                methods << QStringLiteral("DFNR");
+#endif
+                methods << QStringLiteral("RN2");
+#ifdef HAVE_NVIDIA_AFX
+                methods << QStringLiteral("BNR");
+#endif
+                methods << QStringLiteral("NNR");
+                QMenu menu(m_rxNrBtn);
+                for (const QString& m : std::as_const(methods)) {
+                    QAction* a = menu.addAction(m);
+                    a->setCheckable(true);
+                    a->setChecked(m == cur);
+                }
+                if (const QAction* sel =
+                        menu.exec(m_rxNrBtn->mapToGlobal(QPoint(0, m_rxNrBtn->height()))))
+                    emit rxNrMethodChosen(sel->text());
+            });
+            row->addWidget(m_rxNbBtn);
+            row->addWidget(m_rxNrBtn);
+        }
+
         m_filterWidthLbl->setFixedHeight(20);
         m_filterWidthLbl->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
         m_filterWidthLbl->setAlignment(Qt::AlignCenter);
@@ -1923,6 +2021,7 @@ bool RxApplet::ananRow() const
 
 void RxApplet::setMaxSlices(int maxSlices)
 {
+    refreshRxDspButtons();   // build 565: shown on an ANAN only -- known by now
     if (ananRow() && maxSlices > 1)
         maxSlices = kAnanRowCount;
     if (!m_sliceBtns.isEmpty()) {
@@ -2262,7 +2361,63 @@ void RxApplet::setSlice(SliceModel* slice)
     if (m_slice) connectSlice(m_slice);
     syncAutoAgcThreshold();
     updateFreqLabel();
+    // Build 565: the NB button follows the receiver whose blanker it is.
+    disconnect(m_rxNbConn);
+    m_rxNbConn = {};
+    if (SliceModel* s = rxDspSlice()) {
+        m_rxNbConn = connect(s, &SliceModel::nbKindChanged, this,
+                             [this](AetherSDR::NoiseBlankerKind) { refreshRxDspButtons(); });
+    }
+    refreshRxDspButtons();
     applySubReceiverLock();   // build 486
+}
+
+// Build 565. A sub receiver (6 / 7) has its main receiver's blanker and noise
+// reduction: the buttons show the owner's.
+SliceModel* RxApplet::rxDspSlice() const
+{
+    if (!m_slice)
+        return nullptr;
+    if (m_slice->sliceId() >= 6 && m_radioModel)
+        return m_radioModel->slice(AetherSDR::anan_rxdsp::ownerOf(m_slice->sliceId()));
+    return m_slice;
+}
+
+void RxApplet::refreshRxDspButtons()
+{
+    if (!m_rxNbBtn || !m_rxNrBtn)
+        return;
+    SliceModel* s = rxDspSlice();
+    const bool show = ananRow() && s;
+    m_rxNbBtn->setVisible(show);
+    m_rxNrBtn->setVisible(show);
+    if (!show)
+        return;
+    const int owner = AetherSDR::anan_rxdsp::ownerOf(s->sliceId());
+    // A blanker switched on elsewhere (the flag's DSP tab, a memory) is the
+    // one this receiver's button means from now on.
+    auto kind = AetherSDR::anan_rxdsp::nbKind(owner);
+    if (s->nbOn() && s->nbKind() != kind) {
+        kind = s->nbKind();
+        AetherSDR::anan_rxdsp::setNbKind(owner, kind);
+    }
+    auto show1 = [](QPushButton* b, const QString& text, bool on) {
+        if (b->text() != text) {
+            b->setText(text);
+            QFont f = b->font();
+            f.setPixelSize(10);
+            f.setBold(true);
+            b->setFixedSize(qMax(22, QFontMetrics(f).horizontalAdvance(text) + 8), 20);
+        }
+        if (b->isChecked() != on) {
+            const QSignalBlocker blocker(b);
+            b->setChecked(on);
+        }
+    };
+    show1(m_rxNbBtn, kind == AetherSDR::NoiseBlankerKind::Advanced ? QStringLiteral("NB2")
+                                                                   : QStringLiteral("NB"),
+          s->nbOn());
+    show1(m_rxNrBtn, AetherSDR::anan_rxdsp::nrMethod(owner), AetherSDR::anan_rxdsp::nrOn(owner));
 }
 
 void RxApplet::applySubReceiverLock()
