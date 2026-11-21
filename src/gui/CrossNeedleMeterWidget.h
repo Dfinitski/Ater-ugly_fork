@@ -102,6 +102,13 @@ class CrossNeedleMeterWidget : public QWidget {
     QTimer m_animationTimer;
     QElapsedTimer m_animationClock;
     QTimer m_accessibilityTimer;
+    // ANAN fork build 582 (operator, 21.11): automatic range. Up at once when
+    // a needle reaches 90 % of the range (9 W on x1); down to the range below
+    // when both stay under 70 % of that range (7 W on x10) for
+    // kRangeDownHoldMs. Every radio, every range (x1 ... x1000).
+    QTimer m_rangeDownTimer;
+    bool updateAutoRange();   // true when the range went up
+    void stepRangeDown();
 
     QPixmap m_staticLayer;
     QSize m_cacheSize;
@@ -111,7 +118,7 @@ class CrossNeedleMeterWidget : public QWidget {
     double m_forwardWatts{0.0};
     double m_reflectedWatts{0.0};
     double m_swr{1.0};
-    double m_rangeMultiplier{10.0};
+    double m_rangeMultiplier{1.0};   // build 582: automatic, starts at x1
     bool m_transmitting{false};
     bool m_reflectedPowerMeasured{false};
     bool m_rangeLegendVisible{true};

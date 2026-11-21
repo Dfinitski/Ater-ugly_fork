@@ -36,6 +36,11 @@ constexpr double kDesignAspect = 1.5;
 constexpr double kForwardFullScale = 10.0;
 constexpr double kReflectedFullScale = 2.0;
 constexpr MeterSmoother::Ballistics kNeedleBallistics{0.075f, 0.250f, 0.0005f};
+// Build 582: automatic range (see CrossNeedleMeterWidget.h).
+constexpr double kRangeMaxMultiplier = 1000.0;
+constexpr double kRangeUpFraction = 0.9;     // of the present range
+constexpr double kRangeDownFraction = 0.7;   // of the range below
+constexpr int kRangeDownHoldMs = 1500;
 
 class CrossNeedleMeterAccessible : public QAccessibleWidget {
   public:
@@ -122,6 +127,10 @@ CrossNeedleMeterWidget::CrossNeedleMeterWidget(QWidget *parent)
     m_animationTimer.setTimerType(Qt::PreciseTimer);
     m_animationTimer.setInterval(kMeterSmootherIntervalMs);
     connect(&m_animationTimer, &QTimer::timeout, this, &CrossNeedleMeterWidget::advanceNeedles);
+
+    m_rangeDownTimer.setSingleShot(true);   // build 582
+    m_rangeDownTimer.setInterval(kRangeDownHoldMs);
+    connect(&m_rangeDownTimer, &QTimer::timeout, this, &CrossNeedleMeterWidget::stepRangeDown);
 
     m_accessibilityTimer.setSingleShot(true);
     m_accessibilityTimer.setInterval(kMeterReadoutUpdateMs);
@@ -229,13 +238,52 @@ void CrossNeedleMeterWidget::setTransmitting(bool transmitting) {
 }
 
 void CrossNeedleMeterWidget::setPowerScale(int maxWatts, bool amplifierActive) {
-    const double multiplier =
-        CrossNeedleMeterGeometry::rangeMultiplierFor(maxWatts, amplifierActive);
-    if (qFuzzyCompare(multiplier, m_rangeMultiplier)) {
-        return;
+    // ANAN fork build 582 (operator, 21.11): the range follows the measured
+    // power (updateAutoRange), not the radio's rating. Kept for the callers.
+    Q_UNUSED(maxWatts);
+    Q_UNUSED(amplifierActive);
+}
+
+bool CrossNeedleMeterWidget::updateAutoRange() {
+    const bool active = m_transmitting || m_automationFixture;
+    const double fwd = active ? m_forwardWatts : 0.0;
+    const double rev = active ? m_reflectedWatts : 0.0;
+    bool up = false;
+    while (m_rangeMultiplier < kRangeMaxMultiplier
+           && (fwd >= kRangeUpFraction * kForwardFullScale * m_rangeMultiplier
+               || rev >= kRangeUpFraction * kReflectedFullScale * m_rangeMultiplier)) {
+        m_rangeMultiplier *= 10.0;
+        up = true;
     }
-    m_rangeMultiplier = multiplier;
-    updateTargets(true);
+    const double below = m_rangeMultiplier / 10.0;
+    const bool fitsBelow = m_rangeMultiplier > 1.0
+        && fwd < kRangeDownFraction * kForwardFullScale * below
+        && rev < kRangeDownFraction * kReflectedFullScale * below;
+    if (!fitsBelow)
+        m_rangeDownTimer.stop();
+    else if (!m_rangeDownTimer.isActive())
+        m_rangeDownTimer.start();
+    if (up) {
+        m_cacheValid = false;   // the legend shows the range
+        update();
+    }
+    return up;
+}
+
+void CrossNeedleMeterWidget::stepRangeDown() {
+    // The hold ran out with the power still below the range under this one.
+    if (m_rangeMultiplier <= 1.0)
+        return;
+    const bool active = m_transmitting || m_automationFixture;
+    const double below = m_rangeMultiplier / 10.0;
+    if (active && (m_forwardWatts >= kRangeDownFraction * kForwardFullScale * below
+                   || m_reflectedWatts >= kRangeDownFraction * kReflectedFullScale * below))
+        return;
+    m_rangeMultiplier = below;
+    m_cacheValid = false;
+    updateTargets(true);   // re-arms the hold for the next step down
+    publishAutomationProperties();
+    update();
 }
 
 void CrossNeedleMeterWidget::setAutomationFixture(float forwardWatts, float swr) {
@@ -284,6 +332,8 @@ void CrossNeedleMeterWidget::updateTargets(bool snap) {
     // arrive on independent worker threads, so a late power packet after RX
     // must update the cache without bringing the needles back off their stops.
     const bool active = m_transmitting || m_automationFixture;
+    if (updateAutoRange())   // build 582
+        snap = true;
     const double multiplier = std::max(1.0, m_rangeMultiplier);
     const float forwardTarget =
         active ? static_cast<float>(
@@ -566,8 +616,20 @@ void CrossNeedleMeterWidget::drawFace(QPainter &painter) const {
         rangeFont.setBold(true);
         painter.setFont(rangeFont);
         painter.setPen(colors.secondaryText);
-        drawCenteredMultilineText(painter, m_geometry.rangeLabelCenter,
-                                  m_geometry.rangeLabel);
+        // Build 582 (operator, 21.11): the present range in the face's text
+        // colour, the rest grey as before. Line 0 is "RANGE", line 1 x1,
+        // line 2 x10 ...
+        const QStringList lines = m_geometry.rangeLabel.split(QLatin1Char('\n'));
+        const int active = 1 + int(std::lround(std::log10(std::max(1.0, m_rangeMultiplier))));
+        const double lineHeight = QFontMetricsF(painter.font()).height();
+        const double firstCenterY = m_geometry.rangeLabelCenter.y()
+            - lineHeight * (double(lines.size()) - 1.0) / 2.0;
+        for (int i = 0; i < lines.size(); ++i) {
+            painter.setPen(i == active ? colors.text : colors.secondaryText);
+            drawCenteredText(painter,
+                             QPointF(m_geometry.rangeLabelCenter.x(), firstCenterY + i * lineHeight),
+                             lines[i]);
+        }
     }
 
     QFont unitFont = font();
