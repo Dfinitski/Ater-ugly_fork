@@ -919,11 +919,13 @@ void Hl2RxDsp::publishHeldSpectrum()
     emit spectrumReady(m_heldBins, m_heldRaw);
 }
 
-void Hl2RxDsp::ncoMoved(double deltaHz)
+void Hl2RxDsp::ncoMoved(double deltaHz, bool holdFrame)
 {
     // Build 551: keep the last published frame (m_bins and the spectrum's
     // raw bins hold it until the next transform) and move it with the axis.
-    if (m_spectrum && m_config.inputSampleRateHz > 0 && m_config.fftSize >= 64) {
+    if (!holdFrame)
+        m_specHeld = false;   // build 557: the backend starts the picture afresh
+    if (holdFrame && m_spectrum && m_config.inputSampleRateHz > 0 && m_config.fftSize >= 64) {
         const std::size_t n = static_cast<std::size_t>(m_config.fftSize);
         const double binHz = static_cast<double>(m_config.inputSampleRateHz) / m_config.fftSize;
         const int k = static_cast<int>(std::lround(deltaHz / binHz));
@@ -932,10 +934,10 @@ void Hl2RxDsp::ncoMoved(double deltaHz)
             m_heldRaw = m_spectrum->rawBins();
             m_specHeld = true;
         }
-        // A jump of more than half the span starts the panadapter afresh
-        // (Hl2Backend::moveNcoForView drops the average): nothing is held.
-        const int half = static_cast<int>(n / 2);
-        if (m_specHeld && (m_heldBins.size() != n || k >= half || k <= -half))
+        // Build 557: held for any move that leaves some of the old span
+        // (the backend says when the picture starts afresh: holdFrame).
+        const int all = static_cast<int>(n);
+        if (m_specHeld && (m_heldBins.size() != n || k >= all || k <= -all))
             m_specHeld = false;
         if (m_specHeld) {
             shiftHeldBins(m_heldBins, k);

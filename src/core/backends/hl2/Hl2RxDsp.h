@@ -307,7 +307,7 @@ public:
     // for kNcoMoveSettleMs the spectrum is not fed (its average is moved by
     // deltaHz now) and the audio dips -- a short fade, silence, fade back --
     // over the time the shift and the IQ disagree.
-    Q_INVOKABLE void ncoMoved(double deltaHz);
+    Q_INVOKABLE void ncoMoved(double deltaHz, bool holdFrame);   // build 557: holdFrame
     // ANAN fork build 335: the averaged bins of the last emitted frame that
     // are not built up yet after a pan move (Hl2Spectrum::unsettledBins), as
     // [lo, hi) fftshifted; lo == hi when all are settled. Any thread.

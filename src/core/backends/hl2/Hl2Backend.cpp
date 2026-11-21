@@ -6335,6 +6335,23 @@ void Hl2Backend::moveNcoForView(int ddc, Receiver& r, double newNcoHz, double vi
     if (newNcoHz <= 0.0 || newNcoHz == r.ncoHz)
         return;
     const double ncoDeltaHz = newNcoHz - r.ncoHz;
+    // ANAN fork build 557 (operator, 20.11, after 551: "I still see jerks and
+    // the whole panadapter recalculated while I drag"). OUR ERROR, of build
+    // 334: the average was dropped on any NCO move of more than half the
+    // span, taken for "a jump elsewhere". A DRAG makes exactly such moves
+    // whenever the view is narrower than 40 % of the rate: the lead is
+    // 1.8 * (0.96 * rate - view) / 2, past rate / 2 from view < 0.404 * rate
+    // -- every zoomed-in drag, at any rate; at 48 kHz that is every 15-40 kHz
+    // dragged. Each dropped the whole picture and built it anew, and build
+    // 551's held frame was switched off for the same moves. But the view a
+    // drag moves the NCO for lies INSIDE the band captured before the move
+    // (that is why the move was needed only now): its bins are all there in
+    // the shifted average. Dropped only when the view really is somewhere
+    // the receiver did not see.
+    const double rateHz = static_cast<double>(m_sampleRateHz);
+    const bool viewWasCaptured =
+        rateHz > 0.0 && std::abs(viewCenterHz - r.ncoHz) + panViewHz(r) / 2.0 <= rateHz / 2.0;
+    const bool freshStart = std::abs(ncoDeltaHz) > rateHz / 2.0 && !viewWasCaptured;
     panMoveDiagMove(ddc, ncoDeltaHz);   // build 359
     r.ncoHz = newNcoHz;
     r.viewOffsetHz = viewCenterHz - newNcoHz;
@@ -6355,10 +6372,10 @@ void Hl2Backend::moveNcoForView(int ddc, Receiver& r, double newNcoHz, double vi
         // Build 334 (operator, 12.11): build 332 dropped the average on every
         // NCO move -- visible as needless FFT restarts while dragging. Back to
         // dropping it only on a jump of more than half the span.
-        if (std::abs(ncoDeltaHz) > static_cast<double>(m_sampleRateHz) / 2.0)
+        if (freshStart)
             dropPanAverage(r);
         QMetaObject::invokeMethod(r.dsp, "ncoMoved", Qt::QueuedConnection,
-                                  Q_ARG(double, ncoDeltaHz));
+                                  Q_ARG(double, ncoDeltaHz), Q_ARG(bool, !freshStart));
     }
 }
 
