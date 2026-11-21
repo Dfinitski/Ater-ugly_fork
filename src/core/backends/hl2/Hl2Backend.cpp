@@ -7936,7 +7936,11 @@ void Hl2Backend::ananPushCodecMix()
     // silence on the radio's clock) and MON is mixed into it (m_monFifo).
     p.active = m_metis && m_hw.hasLocalCodec()
                && fdv::FdvState::instance().sliceId < 0;
-    p.aetherRx = AppSettings::instance().value(QStringLiteral("AnanCodecAetherRx"), QStringLiteral("False"))
+    // Build 567 (operator, 21.11: "NR2 does not work on the radio's speaker
+    // -- switch it"): on by default. It was off since 01.11 because the
+    // audio reached AudioEngine through the GUI thread; since build 374 it
+    // goes there on the audio thread ("AnanAudioThread").
+    p.aetherRx = AppSettings::instance().value(QStringLiteral("AnanCodecAetherRx"), QStringLiteral("True"))
                      .toString() == QLatin1String("True");
     if (p.active) {
         // Same law as forwardSpeakerAudioToCodec().
@@ -8095,11 +8099,10 @@ void Hl2Backend::ananIoCodecAudio(const void* dsp, const std::vector<float>& pcm
 
     // ANAN-100D port (operator, 31.10): the codec can play the same audio as
     // the PC speaker -- AudioEngine's output after the whole AetherRX chain
-    // (AnanCodecFeed), taken here on the radio's clock, MON added. Since
-    // 01.11 only with "AnanCodecAetherRx" on: that audio reaches AudioEngine
-    // through the GUI thread, and every window stall was a rustle or a click
-    // on the radio speaker. By default the raw receiver mix below plays --
-    // produced here from the radio's IQ, on its clock, as Thetis does.
+    // (AnanCodecFeed), taken here on the radio's clock, MON added.
+    // "AnanCodecAetherRx" (on by default since build 567) turns it off; the
+    // raw receiver mix below then plays -- and also whenever AudioEngine
+    // delivers nothing (PC audio disabled).
     if (auto& feed = anan::AnanCodecFeed::instance(); p.aetherRx && feed.live()) {
         const std::size_t frames24 = n / 2;
         const std::size_t frames48 = frames24 * 2;

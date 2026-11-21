@@ -19,8 +19,8 @@
 // per-frame correction; the depth is trimmed only if it grows past 250 ms,
 // and an underrun (the GUI thread stalled) fades to silence and primes again.
 //
-// Since 01.11 this path is optional (AppSettings "AnanCodecAetherRx", default
-// off): by default the codec plays the I/O-thread mix on the radio's clock.
+// The path is optional (AppSettings "AnanCodecAetherRx"): off, the codec plays
+// the I/O-thread mix on the radio's clock. Default on since build 567.
 
 #include <algorithm>
 #include <atomic>

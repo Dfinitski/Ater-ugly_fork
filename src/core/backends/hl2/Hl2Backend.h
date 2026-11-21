@@ -1043,9 +1043,9 @@ private:
         float gain = 0.0f;           // linear, the Codec volume law included
         bool law = false;            // ANAN soft knee
         // The codec plays AudioEngine's post-AetherRX output (AnanCodecFeed)
-        // instead of this mix: AppSettings "AnanCodecAetherRx", default off
-        // (01.11: that audio crosses the GUI thread -- rustle and clicks on
-        // the radio speaker whenever the window is busy).
+        // instead of this mix: AppSettings "AnanCodecAetherRx", default on
+        // since build 567 (off 01.11..566: that audio crossed the GUI thread
+        // then; since build 374 it runs on the audio thread).
         bool aetherRx = false;
         // Build 513: [kCodecMixMax + n] is sub receiver n -- the chain of the
         // receiver it belongs to (the key), and its own weights.
