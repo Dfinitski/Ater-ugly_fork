@@ -572,14 +572,19 @@ QString SMeterWidget::sUnitsTextFor(float dbm) const
 {
     if (m_relativeLevel) { return tr("Relative RF"); }
     const SMeterGeometry::RxScale& scale = m_geometry.rxScale;
+    // ANAN fork build 580 (operator, 21.11: at -117 dBm the needle meter
+    // read S2, SmartMTR S1): the S unit REACHED -- floor, not round. S1 is
+    // -121 .. -115.01 dBm, so -117 dBm is S1 (+4 dB). Above S9 the overshoot
+    // is shown once it rounds to +1 dB or more. Same rule as SmartMTR
+    // (SmartMtrWidget::extremeSUnit).
     if (dbm <= scale.minimumDbm) {
         return QStringLiteral("S0");
     }
-    if (dbm <= scale.s9Dbm) {
-        const int s = qRound((dbm - scale.minimumDbm) / scale.dbPerSUnit);
-        return QStringLiteral("S%1").arg(qBound(0, s, 9));
-    }
-    return QStringLiteral("S9+%1").arg(qRound(dbm - scale.s9Dbm));
+    const int over = qRound(dbm - scale.s9Dbm);
+    if (over >= 1)
+        return QStringLiteral("S9+%1").arg(over);
+    const int s = static_cast<int>(std::floor((dbm - scale.minimumDbm) / scale.dbPerSUnit));
+    return QStringLiteral("S%1").arg(qBound(0, s, 9));
 }
 
 // --- Mapping -----------------------------------------------------------------

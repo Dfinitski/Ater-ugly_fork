@@ -293,11 +293,12 @@ QVector<DetectedVoiceSignal> detectVoiceSignals(
 
 QString sLabel(float dbm)
 {
-    if (dbm >= -73.0f) {
-        const int plus = static_cast<int>(std::ceil(dbm + 73.0f));
-        return plus > 0 ? QString("S9+%1").arg(plus) : QStringLiteral("S9");
-    }
-    int sNum = static_cast<int>(std::ceil((dbm + 127.0f) / 6.0f));
+    // ANAN fork build 580: the S unit reached (floor; S1 = -121 .. -115.01
+    // dBm), the overshoot over S9 once it rounds to +1 dB -- as the S-meters.
+    const int plus = static_cast<int>(std::lround(dbm + 73.0f));
+    if (plus >= 1)
+        return QString("S9+%1").arg(plus);
+    int sNum = static_cast<int>(std::floor((dbm + 127.0f) / 6.0f));
     sNum = std::clamp(sNum, 0, 9);
     return QString("S%1").arg(sNum);
 }

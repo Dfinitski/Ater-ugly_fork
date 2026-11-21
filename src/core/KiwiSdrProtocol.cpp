@@ -1843,13 +1843,15 @@ QString convertDbmToSUnits(float dbm)
 {
     constexpr float kS9Dbm = -73.0f;
     constexpr float kDbPerSUnit = 6.0f;
-    if (dbm > kS9Dbm) {
+    // ANAN fork build 580: the S unit reached (floor), the overshoot over S9
+    // once it rounds to +1 dB -- as the S-meters.
+    if (qRound(dbm - kS9Dbm) >= 1) {
         return QStringLiteral("S9 + %1 dB")
             .arg(qRound(dbm - kS9Dbm));
     }
 
     const int sValue = std::clamp(
-        qRound(9.0f + ((dbm - kS9Dbm) / kDbPerSUnit)),
+        static_cast<int>(std::floor(9.0f + ((dbm - kS9Dbm) / kDbPerSUnit))),
         0,
         9);
     return QStringLiteral("S%1").arg(sValue);
