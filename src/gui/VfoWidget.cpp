@@ -4923,8 +4923,8 @@ void VfoWidget::pushSmartMtrOptions()
 }
 
 // Build 545: the SmartMTR numbers, left of the frequency. Two lines, as they
-// were under the flag: the S unit over the dBm. With the extremes shown, each
-// line is "minimum...maximum".
+// were under the flag: the S unit over the dBm. With the extremes shown, the
+// maximum.
 void VfoWidget::updateSmartMtrValueText()
 {
     if (!m_smartMtrValueLabel)
@@ -4936,24 +4936,16 @@ void VfoWidget::updateSmartMtrValueText()
     room = !(m_radeStatusLabel && !m_radeStatusLabel->isHidden());
 #endif
     if (room && m_smartMtrWidget && m_smartMtr && !m_collapsed) {
+        // Build 546 (operator, 20.11): with the extremes shown, the maximum
+        // alone -- nothing has to be shortened then.
         const auto labels = m_smartMtrWidget->extremeLabels();
-        if (labels.size() == 1) {
-            text = labels[0].primary;
-            if (!labels[0].secondary.isEmpty())
-                text += QLatin1Char('\n') + labels[0].secondary;
-        } else if (labels.size() >= 2) {
-            const auto& hi = labels[0].isMax ? labels[0] : labels[1];
-            const auto& lo = labels[0].isMax ? labels[1] : labels[0];
-            // No unit on the range line: "-103...-85dBm" does not fit the gap.
-            auto bare = [](QString v) {
-                if (v.endsWith(QStringLiteral("dBm")))
-                    v.chop(3);
-                return v;
-            };
-            const QString dots = QString(QChar(0x2026));
-            text = lo.primary + dots + hi.primary;
-            if (!lo.secondary.isEmpty() || !hi.secondary.isEmpty())
-                text += QLatin1Char('\n') + bare(lo.secondary) + dots + bare(hi.secondary);
+        for (const auto& m : labels) {
+            if (!m.isMax)
+                continue;
+            text = m.primary;
+            if (!m.secondary.isEmpty())
+                text += QLatin1Char('\n') + m.secondary;
+            break;
         }
     }
     if (m_smartMtrValueLabel->text() != text)
