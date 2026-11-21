@@ -1143,8 +1143,8 @@ private:
         // so the first sliceChanged reports what WDSP was actually opened with.
         QString agcMode = QStringLiteral("med");
         int agcThresholdDb = 65;
-        // The AGC mode held while DIGU/DIGL run AGC off (followModeAgc());
-        // restored on leaving them unless the operator set AGC since. Empty
+        // The other modes' AGC, held while DIGU/DIGL run the DIGI group's
+        // (followModeAgc(), build 549); restored on leaving them. Empty
         // when nothing is waiting. A receiver seeded from another copies it.
         QString agcModeBeforeDigital;
 
@@ -1225,7 +1225,8 @@ private:
     // Moves r's AGC with its mode: off on entering DIGU/DIGL from
     // previousMode, the held AGC on leaving them. Every site that writes
     // Receiver::mode calls it. True when agcMode changed.
-    static bool followModeAgc(Receiver& r, const QString& previousMode);
+    static bool followModeAgc(Receiver& r, const QString& previousMode,
+                              const QString& digitalAgc);   // build 549
     // WDSP shift: the slice's offset from the NCO less the BFO, so the marker lands
     // on the pitch.
     [[nodiscard]] double rxShiftHz(const Receiver& r) const noexcept;

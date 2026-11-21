@@ -247,6 +247,31 @@ bool isKnownAgcModeString(const QString& mode) noexcept
            || m == QLatin1String("med") || m == QLatin1String("fast");
 }
 
+// ANAN fork, build 549 (operator, 20.11: "AGC is forbidden in DIGI -- allow
+// it, on by default; it is remembered for the DIGI mode group"). The AGC mode
+// DIGU / DIGL run, in AppSettings "AnanAgcModeDigi"; never set -- medium, the
+// receiver's default.
+QString digiAgcMode()
+{
+    const QString m = AppSettings::instance()
+        .value(QStringLiteral("AnanAgcModeDigi"), QStringLiteral("med")).toString().trimmed().toLower();
+    return isKnownAgcModeString(m) ? m : QStringLiteral("med");
+}
+
+void storeDigiAgcMode(const QString& mode)
+{
+    auto& st = AppSettings::instance();
+    st.setValue(QStringLiteral("AnanAgcModeDigi"), mode);
+    st.save();
+}
+
+// The receiver the FTX mode has taken over keeps AGC off, as before: its
+// decoders take the I/Q and it is out of the loudspeaker.
+bool isFtxDdc(int ftxSliceDdc, int ddc) noexcept
+{
+    return ftxSliceDdc >= 0 && ftxSliceDdc == ddc;
+}
+
 // Default RX passband per mode, in Hz relative to the carrier; the sign carries
 // the sideband (SliceModel's convention), and a wrong sign would be silently
 // "corrected" by normalizeFilterPolarity. Digital modes pass the full 3 kHz
@@ -2183,7 +2208,7 @@ bool Hl2Backend::addReceiver(const Receiver& requested)
         seed.agcModeBeforeDigital = first.agcModeBeforeDigital;
         seed.agcThresholdDb = first.agcThresholdDb;
         // A data mode runs AGC off over the held mode, as a mode click does.
-        followModeAgc(seed, first.mode);
+        followModeAgc(seed, first.mode, digiAgcMode());
     }
     // The AGC-off level is this receiver's own: the one remembered for its
     // index, else the default. It is not copied from the first receiver.
@@ -5189,17 +5214,18 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
     notifyOperatingStateChanged();
 }
 
-// DIGU/DIGL run AGC off: medium AGC raises the noise between FT8 frames,
-// which inflates the decoder's noise reference and costs weak decodes beside
-// a strong signal (#5629). The held AGC returns on leaving them. Never
-// re-imposed inside a data mode, so an operator's own AGC choice stands.
-bool Hl2Backend::followModeAgc(Receiver& r, const QString& previousMode)
+// Upstream ran DIGU/DIGL with AGC off (#5629: medium AGC raises the noise
+// between FT8 frames for a decoder fed with audio). Build 549: they run the
+// DIGI group's own AGC mode (digitalAgc: digiAgcMode(), or "off" for the FTX
+// receiver). The other modes' AGC is held meanwhile and returns on leaving.
+bool Hl2Backend::followModeAgc(Receiver& r, const QString& previousMode,
+                               const QString& digitalAgc)
 {
     const bool wasDigital = isDigitalDataMode(previousMode);
     const bool isDigital = isDigitalDataMode(r.mode);
     if (isDigital && !wasDigital) {
         r.agcModeBeforeDigital = r.agcMode;
-        r.agcMode = QStringLiteral("off");
+        r.agcMode = digitalAgc;
         return true;
     }
     if (wasDigital && !isDigital && !r.agcModeBeforeDigital.isEmpty()) {
@@ -5246,7 +5272,10 @@ void Hl2Backend::setSliceMode(int sliceId, const QString& requested)
         r->filterHighHz = hi;
     }
 
-    if (followModeAgc(*r, previous) && r->dsp) {
+    // Build 549: the DIGI group's AGC; off for the receiver FTX has taken.
+    const int ftxSlice = ftx::FtxState::instance().sliceId;
+    const bool ftxRx = isFtxDdc(ftxSlice >= 0 ? ddcForSlice(ftxSlice) : -1, ddc);
+    if (followModeAgc(*r, previous, ftxRx ? QStringLiteral("off") : digiAgcMode()) && r->dsp) {
         QMetaObject::invokeMethod(r->dsp, "setAgc", Qt::QueuedConnection,
             Q_ARG(int, wdspAgcMode(r->agcMode)),
             Q_ARG(double, agcCeilingFor(*r)));
@@ -5378,7 +5407,15 @@ void Hl2Backend::setSliceAgc(int sliceId, const QString& mode, int thresholdDb)
         // A changed mode is the operator's choice, so leaving DIGU/DIGL no
         // longer overrides it. A threshold change repeats the current mode.
         if (m != r->agcMode) {
-            r->agcModeBeforeDigital.clear();
+            // Build 549: in DIGU / DIGL the choice is the DIGI group's -- it
+            // is stored for it, and the other modes' held AGC still returns
+            // on leaving. The FTX receiver: as before.
+            const int ftxSlice = ftx::FtxState::instance().sliceId;
+            const bool ftxRx = isFtxDdc(ftxSlice >= 0 ? ddcForSlice(ftxSlice) : -1, ddc);
+            if (isDigitalDataMode(r->mode) && !ftxRx)
+                storeDigiAgcMode(m);
+            else
+                r->agcModeBeforeDigital.clear();
         }
         r->agcMode = m;
     } else if (!m.isEmpty()) {
@@ -11003,7 +11040,7 @@ void Hl2Backend::seedReceiverAgc()
                                          : defaults.agcThresholdDb;
         r.agcModeBeforeDigital.clear();
         // A receiver already in DIGU/DIGL runs AGC off over the seeded mode.
-        followModeAgc(r, QString());
+        followModeAgc(r, QString(), digiAgcMode());
     }
     // Prime the remembered pair from what was just seeded, so a capture taken
     // before the operator touches the control records the restored value rather
@@ -11124,7 +11161,7 @@ void Hl2Backend::seedOpenReceiversFromMemory()
             r.mode = memory.mode;
             r.filterLowHz = memory.filterLowHz;
             r.filterHighHz = memory.filterHighHz;
-            followModeAgc(r, previousMode);
+            followModeAgc(r, previousMode, digiAgcMode());
         }
         seedReceiverExtras(r, memory);
     }
@@ -12464,7 +12501,7 @@ void Hl2Backend::pushInitialState()
                     // does; the loop below pushes it to the DSP.
                     const QString previousMode = txRx->mode;
                     txRx->mode = m_restoredState.mode;
-                    followModeAgc(*txRx, previousMode);
+                    followModeAgc(*txRx, previousMode, digiAgcMode());
                     const auto [pbLowHz, pbHighHz] =
                         defaultPassbandForMode(txRx->mode);
                     txRx->filterLowHz = pbLowHz;
