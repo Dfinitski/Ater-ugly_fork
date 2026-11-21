@@ -857,6 +857,7 @@ void Hl2RxDsp::setSpectrumFftSize(int fftSize)
     m_spectrum = std::move(next);
     m_spectrum->setSlidingWindow(true);   // build 225: fine bins at the full frame rate
     m_config.fftSize = fftSize;
+    m_specHeld = false;   // build 551: a held frame is of the old size
 }
 
 void Hl2RxDsp::shiftSpectrum(double deltaHz)
@@ -867,11 +868,94 @@ void Hl2RxDsp::shiftSpectrum(double deltaHz)
     m_spectrum->shiftBins(static_cast<int>(std::lround(deltaHz / binHz)));
 }
 
+// ANAN fork build 551 (operator, 20.11: "the panadapter still jerks while I
+// drag it, and at 48 kHz the jerks are very frequent"). After an NCO move the
+// window is emptied (it holds IQ of the old NCO), and the next frame needs a
+// whole new one: fftSize / rate -- 8192 points are 43 ms at 192 kHz and
+// 171 ms at 48 kHz (341 ms zoomed in), plus the 12 ms skipped. For that long
+// no frame was published, while the backend went on moving the view with the
+// drag: the panadapter showed the last frame, cut for where the view WAS, and
+// jumped when frames came back. A drag across the screen moves the NCO five
+// or six times at any rate; only the length of each gap grows as the rate
+// falls. Now the last frame is kept, moved onto the new axis as the average
+// is, and published again at the frame rate until a real one is ready -- the
+// backend cuts each for where the view is now, so the picture follows the
+// drag; its content is as old as the gap. Newly uncovered bins hold the
+// level at the edge of the usable span (there is no data for them yet; they
+// are marked unsettled by Hl2Spectrum as before).
+static void shiftHeldBins(std::vector<float>& v, int k)
+{
+    const int n = static_cast<int>(v.size());
+    if (k == 0 || n < 64)
+        return;
+    const int inset = n / 10;   // the usable span ends 10 % in
+    if (k > 0) {
+        for (int i = 0; i < n - k; ++i)
+            v[static_cast<std::size_t>(i)] = v[static_cast<std::size_t>(i + k)];
+        const float fill = v[static_cast<std::size_t>(std::max(0, n - k - 1 - inset))];
+        for (int i = n - k; i < n; ++i)
+            v[static_cast<std::size_t>(i)] = fill;
+    } else {
+        const int m = -k;
+        for (int i = n - 1; i >= m; --i)
+            v[static_cast<std::size_t>(i)] = v[static_cast<std::size_t>(i - m)];
+        const float fill = v[static_cast<std::size_t>(std::min(n - 1, m + inset))];
+        for (int i = 0; i < m; ++i)
+            v[static_cast<std::size_t>(i)] = fill;
+    }
+}
+
+void Hl2RxDsp::publishHeldSpectrum()
+{
+    if (!m_specHeld)
+        return;
+    if (!m_heldClock.isValid())
+        m_heldClock.start();
+    const qint64 now = m_heldClock.elapsed();
+    const qint64 every = m_spectrumIntervalMs > 0 ? m_spectrumIntervalMs : 33;
+    if (m_heldLastMs >= 0 && now - m_heldLastMs < every)
+        return;
+    m_heldLastMs = now;
+    emit spectrumReady(m_heldBins, m_heldRaw);
+}
+
 void Hl2RxDsp::ncoMoved(double deltaHz)
 {
+    // Build 551: keep the last published frame (m_bins and the spectrum's
+    // raw bins hold it until the next transform) and move it with the axis.
+    if (m_spectrum && m_config.inputSampleRateHz > 0 && m_config.fftSize >= 64) {
+        const std::size_t n = static_cast<std::size_t>(m_config.fftSize);
+        const double binHz = static_cast<double>(m_config.inputSampleRateHz) / m_config.fftSize;
+        const int k = static_cast<int>(std::lround(deltaHz / binHz));
+        if (!m_specHeld && m_bins.size() == n && m_spectrum->rawBins().size() == n) {
+            m_heldBins = m_bins;
+            m_heldRaw = m_spectrum->rawBins();
+            m_specHeld = true;
+        }
+        // A jump of more than half the span starts the panadapter afresh
+        // (Hl2Backend::moveNcoForView drops the average): nothing is held.
+        const int half = static_cast<int>(n / 2);
+        if (m_specHeld && (m_heldBins.size() != n || k >= half || k <= -half))
+            m_specHeld = false;
+        if (m_specHeld) {
+            shiftHeldBins(m_heldBins, k);
+            shiftHeldBins(m_heldRaw, k);
+            m_heldLastMs = -1;   // the first one at once
+        }
+    }
     shiftSpectrum(deltaHz);
     if (m_spectrum)
         m_spectrum->reset();   // the partial window is old-NCO IQ
+    if (m_specHeld && m_spectrum) {
+        // The bins uncovered now are unsettled from this moment, not from
+        // the next real frame.
+        int ulo = 0, uhi = 0;
+        if (!m_spectrum->unsettledBins(ulo, uhi))
+            ulo = uhi = 0;
+        m_unsettled.store((static_cast<std::uint64_t>(static_cast<std::uint32_t>(ulo)) << 32)
+                              | static_cast<std::uint32_t>(uhi),
+                          std::memory_order_relaxed);
+    }
     m_specSkipSamples = m_config.inputSampleRateHz * kNcoMoveSettleMs / 1000;
     // 3 ms down, silence, 5 ms up: 20 ms in all, from the next output block.
     m_dipTotalFrames = m_config.audioSampleRateHz * 20 / 1000;
@@ -886,6 +970,7 @@ void Hl2RxDsp::dropSpectrumAverage()
     // keeping it would seed the fresh average with the old spectrum.
     m_spectrum->reset();
     m_spectrum->dropAverage();
+    m_specHeld = false;   // build 551: the old spectrum is not shown again
 }
 
 void Hl2RxDsp::setSubReceiver(bool on, double shiftHz)
@@ -1205,6 +1290,7 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
         // Build 466: no frame -- the panadapter stands still.
     } else if (m_specSkipSamples > 0) {
         m_specSkipSamples -= static_cast<int>(m_conjugated.size());
+        publishHeldSpectrum();   // build 551
     } else if (spectrumFrameDue()) {
         // "Due" STAYS true until a frame actually completes: one EP6 block is
         // 126 samples and a frame is 1024, so a frame boundary can be up to one
@@ -1218,6 +1304,9 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
                               std::memory_order_relaxed);
             emit spectrumReady(m_bins, m_spectrum->rawBins());
             m_lastSpectrumMs = m_spectrumClock.elapsed();
+            m_specHeld = false;   // build 551: a real frame again
+        } else {
+            publishHeldSpectrum();   // build 551: the window is still refilling
         }
     } else {
         // Keep the window fed without paying for a transform. This is the whole

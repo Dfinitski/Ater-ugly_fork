@@ -799,6 +799,16 @@ private:
     int m_specRestoreSamples{0};
     static constexpr int kNcoMoveSettleMs = 12;
     int m_specSkipSamples{0};      // build 209: IQ not fed to the spectrum after an NCO move
+    // Build 551: the last frame, moved onto the new axis, is published again
+    // at the frame rate while the window refills after an NCO move (see
+    // ncoMoved()). m_heldBins / m_heldRaw: that frame; m_heldLastMs: when it
+    // was last published, on m_heldClock (-1: not yet).
+    bool m_specHeld{false};
+    std::vector<float> m_heldBins;
+    std::vector<float> m_heldRaw;
+    QElapsedTimer m_heldClock;
+    qint64 m_heldLastMs{-1};
+    void publishHeldSpectrum();
     int m_dipFrames{0};            // build 209: output frames left in the NCO-move dip
     int m_dipTotalFrames{0};
     double m_preOverSMeterDb{-400.0};
