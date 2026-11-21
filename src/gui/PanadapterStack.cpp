@@ -1064,12 +1064,23 @@ void PanadapterStack::floatPanadapter(const QString& panId)
     // nullptr. Using adoptApplet() calls addWidget() internally which sets
     // the parent to the floating window in one step, avoiding the transient
     // top-level NSWindow that corrupts the NSResponder chain (#1668).
-    // Parenting the floating window to MainWindow keeps it on top of the
-    // main window without becoming WindowStaysOnTopHint (which would
-    // float above other apps too).  Qt::Window inside PanFloatingWindow
-    // keeps it as a top-level window — the parent only affects z-order
-    // and lifetime.
-    auto* fw = new PanFloatingWindow(window());
+    // ANAN fork build 558 (operator, 20.11: "a panadapter pulled out of the
+    // window must stay on screen when the main window is minimized -- make
+    // each one an independent window"). The floating window had MainWindow
+    // as its parent, which made it an OWNED window: kept above the main
+    // window, without a taskbar button, and minimized with it (Windows; the
+    // transient-for hint does the same under most X11 / Wayland window
+    // managers). No parent now: its own taskbar button, its own minimize,
+    // and the main window may cover it. Closing it by the system still docks
+    // it (PanFloatingWindow::closeEvent), as the dock button does.
+    // Its lifetime was never the parent's: dockPanadapter(),
+    // removePanadapter(), removeAll() and prepareShutdown() delete it; the
+    // connection below covers a stack destroyed without prepareShutdown().
+    auto* fw = new PanFloatingWindow(nullptr);
+    connect(this, &QObject::destroyed, fw, [fw] {
+        fw->setShuttingDown(true);
+        fw->deleteLater();
+    });
     fw->adoptApplet(applet);
     m_lentToCanvas.remove(panId); // the float window owns it now
     applet->setOnCanvas(false);   // floating now; canvas releases its entry
