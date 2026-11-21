@@ -34,6 +34,7 @@
 #include <QJsonObject>
 #endif
 #include <QThread>
+#include <QStringList>
 #include <QTimer>
 
 #include <algorithm>
@@ -487,11 +488,42 @@ void MainWindow::wireSpotSubsystem()
                          spotColorForSource, addPassiveSpotToModel]
                         (const DxSpot& spot, const QString& source) {
         if (!m_radioModel.isConnected()) return;
-        if (isDuplicateSpot(spot)) return;
+        const bool clientSide = !SpotCommandPolicy::shouldSendSpotAddCommands(
+            m_radioModel.backendCapabilities().alwaysUseClientSideSpots);
+        if (isDuplicateSpot(spot)) {
+            // Build 552 (operator, 20.11: "when a spot comes again, start its
+            // lifetime anew"). A repeat -- the same station on the same
+            // frequency, from any of the sources that come through here --
+            // was dropped, and the spot on screen ran out on its first
+            // timing. Where the spots are this program's (no radio-side
+            // list), the repeat now replaces it: one spot still, with the
+            // repeat's data and a full lifetime. Nothing to replace (the
+            // echo of a manual spot, #2658; a Flex) -- dropped as before.
+            if (!clientSide)
+                return;
+            static const QStringList kSources = {
+                QStringLiteral("DXCluster"), QStringLiteral("RBN"), QStringLiteral("SpotCollector"),
+                QStringLiteral("POTA"), QStringLiteral("FreeDV")};
+            QVector<int> same;
+            const auto& shown = m_radioModel.spotModel().spots();
+            for (auto it = shown.cbegin(); it != shown.cend(); ++it) {
+                if (kSources.contains(it->source)
+                    && it->callsign.compare(spot.dxCall, Qt::CaseInsensitive) == 0
+                    && std::abs(it->rxFreqMhz - spot.freqMhz) < 0.001)
+                    same.append(it.key());
+            }
+            if (same.isEmpty())
+                return;
+            for (int id : same) {
+                m_passiveSpotExpiryMs.remove(id);
+                m_radioModel.spotModel().removeSpot(id);
+            }
+            // The repeat is the spot now: later repeats are measured from it.
+            m_spotDedup[spot.dxCall] = {spot.freqMhz, QDateTime::currentMSecsSinceEpoch()};
+        }
         const int lifetimeSec = spotLifetimeSeconds(spot, source);
         const QString spotColor = spotColorForSource(spot, source);
-        if (!SpotCommandPolicy::shouldSendSpotAddCommands(
-                m_radioModel.backendCapabilities().alwaysUseClientSideSpots)) {
+        if (clientSide) {
             addPassiveSpotToModel(spot, source, spotColor, lifetimeSec);
             return;
         }
