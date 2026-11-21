@@ -4,6 +4,7 @@
 
 class QPushButton;
 class QCheckBox;
+class QComboBox;
 class QLabel;
 class QLineEdit;
 
@@ -66,6 +67,7 @@ private:
     QLabel*      m_clientsInfo{nullptr};   // build 321: per-client streams
     QCheckBox*   m_centerLockIq{nullptr};  // build 324
     QCheckBox*   m_tciSpots{nullptr};      // build 510: "Spots"
+    QComboBox*   m_tciSpotLife{nullptr};   // build 550: their lifetime
 
     QWidget*     m_rxRow[kChannels]{};  // per-channel row container — hidden to gate to maxSlices()
     MeterSlider* m_rxMeter[kChannels]{};

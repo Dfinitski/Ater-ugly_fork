@@ -553,6 +553,28 @@ void MainWindow::wireSpotSubsystem()
     connect(&m_radioModel.spotModel(), &SpotModel::spotsCleared,
             this, [this] { m_passiveSpotExpiryMs.clear(); m_n1mmSpotIdByKey.clear(); });
 
+    // Build 550 (operator, 20.11): the spots TCI clients send have a lifetime
+    // (TCI applet, "TciSpotLifetimeMin"; 0 -- no limit). They are added by
+    // TciProtocol straight into the model and were never removed by time.
+    // Counted from SpotData::addedMs; the setting is read at each sweep.
+    auto* tciSpotExpiryTimer = new QTimer(this);
+    tciSpotExpiryTimer->start(5000);
+    connect(tciSpotExpiryTimer, &QTimer::timeout, this, [this] {
+        const int minutes = AppSettings::instance()
+            .value(QStringLiteral("TciSpotLifetimeMin"), QStringLiteral("30")).toString().toInt();
+        if (minutes <= 0)
+            return;
+        const qint64 oldest = QDateTime::currentMSecsSinceEpoch() - qint64(minutes) * 60000;
+        QVector<int> expired;
+        const auto& spots = m_radioModel.spotModel().spots();
+        for (auto it = spots.cbegin(); it != spots.cend(); ++it) {
+            if (it->source == QLatin1String("TCI") && it->addedMs > 0 && it->addedMs <= oldest)
+                expired.append(it.key());
+        }
+        for (int id : expired)
+            m_radioModel.spotModel().removeSpot(id);
+    });
+
     // N1MM/DXLog spots (#2906): the logger sends explicit add/update/delete, so
     // these bypass queueSpotCmd's freq dedup and key on
     // N1MMSpotParser::spotKey() (callsign+band); a long lifetime backstops a

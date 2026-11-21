@@ -15,9 +15,12 @@
 #include <QPushButton>
 #include <QLineEdit>
 #include <QCheckBox>
+#include <QComboBox>
+#include "ComboStyle.h"
 #include <QMenu>
 #include <QActionGroup>
 #include <algorithm>
+#include <utility>
 #endif
 
 namespace AetherSDR {
@@ -251,6 +254,37 @@ void TciApplet::buildUI()
         m_centerLockIq->ensurePolished();
         row->addSpacing(m_centerLockIq->fontMetrics().horizontalAdvance(QStringLiteral("     ")));
         row->addWidget(m_tciSpots);
+        // Build 550 (operator, 20.11): how long a TCI spot lives, right after
+        // "Spots". The times of the FreeDV Reporter's filter; "No limit" in
+        // place of its "Any time". Read where the spots are swept
+        // (MainWindow, "TciSpotLifetimeMin"), so a change acts on the spots
+        // already shown.
+        m_tciSpotLife = new QComboBox;
+        m_tciSpotLife->setObjectName(QStringLiteral("tciSpotLifetime"));
+        m_tciSpotLife->setAccessibleName(tr("TCI spot lifetime"));
+        m_tciSpotLife->setToolTip(tr("A spot sent by a TCI client is removed after this time.\n"
+                                     "The same station sent again on the same frequency starts its time anew."));
+        m_tciSpotLife->setFocusPolicy(Qt::NoFocus);
+        for (const auto& [label, minutes] : {std::pair<const char*, int>{"No limit", 0}, {"5 min", 5},
+                                             {"15 min", 15}, {"30 min", 30}, {"1 hour", 60},
+                                             {"3 hours", 180}, {"12 hours", 720}})
+            m_tciSpotLife->addItem(QString::fromLatin1(label), minutes);
+        AetherSDR::applyComboStyle(m_tciSpotLife, QStringLiteral("QComboBox { font-size: 11px; }"));
+        m_tciSpotLife->setFixedHeight(20);
+        {
+            const int saved = settings.value(QStringLiteral("TciSpotLifetimeMin"), QStringLiteral("30"))
+                                  .toString().toInt();
+            const int at = m_tciSpotLife->findData(saved);
+            m_tciSpotLife->setCurrentIndex(at >= 0 ? at : m_tciSpotLife->findData(30));
+        }
+        connect(m_tciSpotLife, &QComboBox::currentIndexChanged, this, [this](int) {
+            auto& ss = AppSettings::instance();
+            ss.setValue(QStringLiteral("TciSpotLifetimeMin"),
+                        QString::number(m_tciSpotLife->currentData().toInt()));
+            ss.save();
+        });
+        row->addSpacing(6);
+        row->addWidget(m_tciSpotLife);
         row->addStretch(1);
         outer->addLayout(row);
     }

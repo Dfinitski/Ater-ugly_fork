@@ -1545,6 +1545,24 @@ QString TciProtocol::cmdSpot(const QStringList& args)
         if (AppSettings::instance().value(QStringLiteral("TciSpotsEnabled"), QStringLiteral("True"))
                 .toString() != QLatin1String("True"))
             return;
+        // Build 550: the same station sent again on the same frequency is
+        // the same spot -- the one on screen is replaced, so its time starts
+        // anew (SpotModel stamps a spot when it is added) and repeats no
+        // longer pile up. Before, every "spot:" added one more.
+        {
+            const QString call = kvs.value(QStringLiteral("callsign"));
+            const double mhz = kvs.value(QStringLiteral("rx_freq")).toDouble();
+            QList<int> same;
+            const auto& spots = model->spotModel().spots();
+            for (auto it = spots.cbegin(); it != spots.cend(); ++it) {
+                if (it->source == QLatin1String("TCI")
+                    && it->callsign.compare(call, Qt::CaseInsensitive) == 0
+                    && std::abs(it->rxFreqMhz - mhz) < 0.001)
+                    same.append(it.key());
+            }
+            for (int id : same)
+                model->spotModel().removeSpot(id);
+        }
         static int idx = 10000;
         model->spotModel().applySpotStatus(idx++, kvs);
     }, Qt::QueuedConnection);
