@@ -164,6 +164,12 @@ private:
     // it is rebuilt from the pushed full scale in setMeterInput(). Both the marker
     // draw and the raw->units mapping read it instead of the registry directly.
     MeterConfig m_activeCfg;
+    // ANAN fork build 577 (operator, 21.11): the drawing is moved down by
+    // this many pixels so the gap above the labels equals the gap under the
+    // bar (the ticks under it are gone since build 576). The background
+    // stays where it is. Set in paintEvent.
+    double m_contentShiftPx{0.0};
+    double contentShiftPx(const SmartMtrGeometry& g) const;
 
     // Extremes (min/max peak-hold markers): a sliding-window envelope tracker that
     // glides at a constant linear slew (distinct from the bar's exponential
@@ -190,6 +196,7 @@ private:
     QPixmap m_aboveBar;
     QSize m_cacheSize;                       // logical widget size of the cache
     qreal m_cacheDpr = 0.0;                  // device-pixel ratio of the cache
+    double m_cacheShift = 0.0;               // build 577: m_contentShiftPx of the cache
     MeterKind m_cacheKind = MeterKind::Signal; // kind the markers were built for
     // Power's markers depend on the pushed full scale, so a radio swap (barefoot
     // <-> Aurora <-> amp) must re-raster even though the kind is unchanged.

@@ -242,9 +242,42 @@ void SmartMtrWidget::changeEvent(QEvent* e)
     QWidget::changeEvent(e);
 }
 
+double SmartMtrWidget::contentShiftPx(const SmartMtrGeometry& g) const
+{
+    // Where the tallest scale label's digits start, as drawMarkers places
+    // them (same fonts, same anchor), against the empty strip under the bar.
+    bool anyLabel = false, anyStrong = false;
+    for (const ScaleMarker& m : m_activeCfg.markers) {
+        if (m.label.isEmpty() || m.position < kScaleMin || m.position > kScaleMax)
+            continue;
+        anyLabel = true;
+        anyStrong = anyStrong || m.labelStyle == LabelStyle::Strong;
+    }
+    if (!anyLabel)
+        return 0.0;
+    auto labelFont = [&](bool strong) {
+        QFont f = font();
+        f.setPixelSize(qMax(8, qRound(g.len(strong ? kLabelHeight : kLabelHeightNormal))));
+        return f;
+    };
+    const QFontMetricsF normalFm(labelFont(false));
+    const QFontMetricsF tallFm(labelFont(anyStrong));
+    double largeH = 0.0, largeW = 0.0;
+    markerExtent(MarkerSize::Large, largeH, largeW);
+    const double bottom = g.rect(0.0, kHoleMargY - largeH, 1.0, largeH).top() - g.len(kLabelGap);
+    const double centerY = bottom - normalFm.height() / 2.0;
+    const double topGap = (centerY - tallFm.capHeight() / 2.0) - g.originY;
+    const double bottomGap = g.len(kControlH - kHoleMargY - kHoleH);
+    return std::max(0.0, (bottomGap - topGap) / 2.0);
+}
+
 void SmartMtrWidget::paintEvent(QPaintEvent*)
 {
-    const auto g = SmartMtrGeometry::fit(rect());
+    auto g = SmartMtrGeometry::fit(rect());
+    // Build 577: everything but the background a little lower (see
+    // m_contentShiftPx).
+    m_contentShiftPx = contentShiftPx(g);
+    g.originY += m_contentShiftPx;
 
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
@@ -257,7 +290,7 @@ void SmartMtrWidget::paintEvent(QPaintEvent*)
     // rebuildStaticLayers) — keeping the hot repaint cheap over the GPU panadapter.
     const qreal dpr = devicePixelRatioF();
     if (!m_cacheValid || m_cacheSize != size() || m_cacheKind != m_input.kind
-        || m_cacheDpr != dpr || m_cacheMin != m_input.min || m_cacheMax != m_input.max)
+        || m_cacheShift != m_contentShiftPx || m_cacheDpr != dpr || m_cacheMin != m_input.min || m_cacheMax != m_input.max)
         rebuildStaticLayers(g);
 
     p.drawPixmap(0, 0, m_belowBar);
@@ -311,6 +344,7 @@ void SmartMtrWidget::rebuildStaticLayers(const SmartMtrGeometry& g)
     }
 
     m_cacheSize = logical;
+    m_cacheShift = m_contentShiftPx;
     m_cacheDpr = dpr;
     m_cacheKind = m_input.kind;
     m_cacheMin = m_input.min;
@@ -320,7 +354,9 @@ void SmartMtrWidget::rebuildStaticLayers(const SmartMtrGeometry& g)
 
 void SmartMtrWidget::drawControl(QPainter& p, const SmartMtrGeometry& g) const
 {
-    p.fillRect(g.rect(0.0, 0.0, kControlW, kControlH), SmartMtrColors::kControl);
+    // Build 577: the background is not moved with the drawing.
+    p.fillRect(g.rect(0.0, 0.0, kControlW, kControlH).translated(0.0, -m_contentShiftPx),
+               SmartMtrColors::kControl);
 }
 
 void SmartMtrWidget::drawHole(QPainter& p, const SmartMtrGeometry& g) const
