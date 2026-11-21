@@ -43,6 +43,7 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QLockFile>
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QDateTime>
@@ -858,6 +859,33 @@ int main(int argc, char* argv[])
 
     qDebug() << "Starting AetherSDR" << app.applicationVersion();
     qInfo() << "ANAN fork build" << AETHER_FORK_BUILD;   // build 526: in every log
+
+    // ANAN fork build 560 (a user's logs, 21.11: at every start the COM port
+    // is refused with Win32 error 5 and the MIDI input cannot be opened, five
+    // attempts a second apart -- both are BUSY, not late; only unplugging the
+    // device frees them). Whoever holds them is outside this log. One
+    // candidate is a previous run of this program that left the screen but
+    // not the task list: it would hold exactly these two. So every run takes
+    // a lock file and says whether another one has it. A stale lock (its
+    // owner is gone) is taken over silently by QLockFile.
+    QLockFile instanceLock(logDir + QStringLiteral("/running.lock"));
+    instanceLock.setStaleLockTime(0);   // by the owner's life only, not by age
+    if (instanceLock.tryLock(0)) {
+        qInfo() << "Other copies of this program: none running";
+    } else {
+        qint64 otherPid = 0;
+        QString otherHost;
+        QString otherApp;
+        if (instanceLock.getLockInfo(&otherPid, &otherHost, &otherApp)) {
+            qWarning().noquote()
+                << QStringLiteral("Other copies of this program: one is ALREADY RUNNING, pid %1 (%2). "
+                                  "It may hold the COM and MIDI ports. If none of its windows is on "
+                                  "screen, the previous run did not exit -- end it in Task Manager.")
+                       .arg(otherPid).arg(otherApp);
+        } else {
+            qWarning() << "Other copies of this program: the lock file is held, by whom is not known";
+        }
+    }
 
     int exitCode = 0;
     {
