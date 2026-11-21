@@ -361,6 +361,28 @@ void SmartMtrWidget::drawIndicator(QPainter& p, const SmartMtrGeometry& g) const
         // Bright value line at the moving (left) edge of the fill.
         p.fillRect(g.rect(kHoleMargX + pos, kHoleMargY, kIndicatorLine, kHoleH),
                    SmartMtrColors::kIndicator);
+    } else if (m_input.kind == MeterKind::Signal || m_input.kind == MeterKind::RelativeSignal) {
+        // ANAN fork build 576 (operator, 21.11): the receive bar coloured as
+        // the flag's own S-meter bar (VfoWidget, green -> yellow -> red over
+        // the scale), not plain red. The flag's stops are by bar fraction
+        // with S9 at 0.6; here S9 sits at the middle of the scale band, so
+        // the stops are moved to the same signal levels (dBm): -100 -> 0.25,
+        // -82 -> 0.417, -58 -> 0.625, -35.5 -> 0.8125. The relative meter is
+        // linear on both, so it keeps the flag's fractions.
+        const bool relative = m_input.kind == MeterKind::RelativeSignal;
+        const QRectF band = g.rect(kHoleMargX + kScaleMin, kHoleMargY,
+                                   kScaleMax - kScaleMin, kHoleH);
+        QLinearGradient grad(band.left(), 0.0, band.right(), 0.0);
+        grad.setColorAt(0.00, QColor(0x00, 0x90, 0x30));                     // dark green
+        grad.setColorAt(relative ? 0.30 : 0.25, QColor(0x00, 0xc0, 0x40));   // green
+        grad.setColorAt(relative ? 0.50 : 0.4167, QColor(0xd4, 0xc0, 0x00)); // yellow
+        grad.setColorAt(relative ? 0.70 : 0.625, QColor(0xdd, 0x14, 0x00));  // red
+        grad.setColorAt(relative ? 0.85 : 0.8125, QColor(0xff, 0x00, 0x00)); // bright red
+        grad.setColorAt(1.00, QColor(0xff, 0x00, 0x00));                     // bright red
+        p.fillRect(g.rect(kHoleMargX, kHoleMargY, pos, kHoleH), grad);
+        p.fillRect(g.rect(kHoleMargX + pos - kIndicatorLine, kHoleMargY,
+                          kIndicatorLine, kHoleH),
+                   SmartMtrColors::kIndicator);
     } else {
         p.fillRect(g.rect(kHoleMargX, kHoleMargY, pos, kHoleH),
                    SmartMtrColors::kForeground);
@@ -423,8 +445,6 @@ void SmartMtrWidget::drawMarkers(QPainter& p, const SmartMtrGeometry& g) const
     if (cfg.markers.empty())
         return;
 
-    const double holeBottom = kHoleMargY + kHoleH;
-
     // Every label is anchored at the LARGE tick height so a small labeled tick's
     // label sits on the same baseline row as the large ones (only the tick stays
     // shorter). Its opacity still follows the tick, so a small tick's label reads
@@ -478,10 +498,10 @@ void SmartMtrWidget::drawMarkers(QPainter& p, const SmartMtrGeometry& g) const
         if (m.size == MarkerSize::Small)
             tickColor.setAlphaF(tickColor.alphaF() * kMarkerSmallOpacity);
 
-        // Symmetric pair, each stuck to a hole edge and growing outward.
+        // Stuck to the hole's top edge, growing upward. ANAN fork build 576
+        // (operator, 21.11): the matching tick under the hole is not drawn.
         const QRectF above = g.rect(x, kHoleMargY - h, w, h);
         p.fillRect(above, tickColor);
-        p.fillRect(g.rect(x, holeBottom, w, h), tickColor);
 
         if (m.label.isEmpty())
             continue;
