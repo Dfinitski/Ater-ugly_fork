@@ -101,7 +101,17 @@ public:
     // the passband is under kRxShortTapsMinWidthHz; 2048 would leave a -33 dB
     // skirt 50 Hz out (hl2_rxdsp_adaptive_taps_test measures each length).
     // Shortening needs kRxTapsHysteresisHz of margin; currentTaps <= 0 = none.
-    static constexpr int kRxShortFilterTaps = 4096;
+    // ANAN fork build 553 (operator, 20.11: "users say our SSB and CW filters
+    // are too steep -- make the filter one step shorter"). The skirt's width
+    // is set by the length alone (a windowed design: about 4 * 48000 / taps Hz
+    // to the full stopband), so half the taps is a skirt twice as wide:
+    //   SSB (LSB / USB): 8192 -> 4096;
+    //   CW: 4096 -> 2048, and under kRxShortTapsMinWidthHz 8192 -> 4096.
+    // The other modes and any receiver with a notch keep 8192: the notch
+    // floor (kMinNotchWidthHz) is the long filter's.
+    static constexpr int kRxSsbFilterTaps = 4096;
+    static constexpr int kRxShortFilterTaps = 2048;
+    static constexpr int kRxCwNarrowFilterTaps = 4096;
     static constexpr double kRxShortTapsMinWidthHz = 100.0;
     static constexpr double kRxTapsHysteresisHz = 20.0;
     [[nodiscard]] static constexpr int rxFilterTapsFor(WdspChannel::Mode mode, double lowHz,
@@ -110,14 +120,18 @@ public:
     {
         // Build 440: DRM (linear) keeps the long filter -- its latency costs
         // nothing there; the short one is CW's.
-        if (rxMinimumPhaseFor(mode) || notchCount > 0 || mode == WdspChannel::Mode::Drm
+        if (notchCount > 0 || mode == WdspChannel::Mode::Drm
             || mode == WdspChannel::Mode::Digu || mode == WdspChannel::Mode::Digl)
+            return kRxFilterTaps;
+        if (mode == WdspChannel::Mode::Lsb || mode == WdspChannel::Mode::Usb)
+            return kRxSsbFilterTaps;   // build 553
+        if (rxMinimumPhaseFor(mode))
             return kRxFilterTaps;
         const double width = highHz >= lowHz ? highHz - lowHz : lowHz - highHz;
         const bool shortening = currentTaps <= 0 || currentTaps > kRxShortFilterTaps;
         const double needed = kRxShortTapsMinWidthHz
                               + (shortening && currentTaps > 0 ? kRxTapsHysteresisHz : 0.0);
-        return width >= needed ? kRxShortFilterTaps : kRxFilterTaps;
+        return width >= needed ? kRxShortFilterTaps : kRxCwNarrowFilterTaps;
     }
 
     struct Config {
