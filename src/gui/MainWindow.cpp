@@ -6756,6 +6756,13 @@ void MainWindow::buildUI()
         auto* utcStack = new QWidget;
         utcStack->setObjectName(QStringLiteral("ananUtcClock"));
         utcStack->setAccessibleName(QStringLiteral("UTC time"));
+        // Build 569 (operator, 21.11: "pressed to the right edge, the text is
+        // cut"): the width of the date / time stack whose place this is --
+        // reserved the same way, both rows at the telemetry minimum.
+        reserveTelemetryStack(utcStack, {
+            QStringLiteral("UTC Time:"),
+            QStringLiteral("00:00:00")
+        });
         auto* utcBox = new QVBoxLayout(utcStack);
         utcBox->setContentsMargins(0, 0, 0, 0);
         utcBox->setSpacing(0);
@@ -6763,18 +6770,13 @@ void MainWindow::buildUI()
         auto* utcTitle = new QLabel(QStringLiteral("UTC Time:"));
         applyStatusBarCompactLabelStyle(utcTitle, QStringLiteral("{{color.text.secondary}}"));
         utcTitle->setAlignment(Qt::AlignCenter);
+        utcTitle->setMinimumWidth(kTelemetryStackMinWidth);
         auto* utcValue = new QLabel(QStringLiteral("00:00:00"));
         // Build 328 (operator, 12.11: the time line stood out on its own): the
         // same colour as its "UTC Time:" title and the bar's other labels.
         applyStatusBarCompactLabelStyle(utcValue, QStringLiteral("{{color.text.secondary}}"));
         utcValue->setAlignment(Qt::AlignCenter);
-        // Fixed width for "00:00:00", so the bar does not shift each second.
-        {
-            // The stylesheet is not applied yet: measure with the bar's 12 px.
-            QFont f = utcValue->font();
-            f.setPixelSize(12);
-            utcValue->setMinimumWidth(QFontMetrics(f).horizontalAdvance(QStringLiteral("00:00:00")) + 6);
-        }
+        utcValue->setMinimumWidth(kTelemetryStackMinWidth);
         utcBox->addWidget(utcTitle);
         utcBox->addWidget(utcValue);
         hbox->addWidget(utcStack);
