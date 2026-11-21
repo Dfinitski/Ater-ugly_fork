@@ -1437,7 +1437,7 @@ void VfoWidget::buildUI()
     m_meterStack->setAttribute(Qt::WA_TranslucentBackground);
     m_meterStack->setAccessibleName(tr("Signal meter"));
     m_meterStack->setAccessibleDescription(
-        tr("Click to reveal the S-Meter / SmartMTR selector"));
+        tr("Click to reveal the SmartMTR settings"));   // build 581
     // Clickable control → hand cursor (children are mouse-transparent, so the
     // cursor falls through to the strip).
     m_meterStack->setCursor(Qt::ArrowCursor);
@@ -1547,6 +1547,9 @@ void VfoWidget::buildUI()
     });
 
     meterMenuOuter->addWidget(meterBtnRow);
+    // ANAN fork build 581 (operator, 21.11): no meter type choice any more --
+    // the menu holds the SmartMTR settings only.
+    meterBtnRow->hide();
 
     // ── SmartMTR-only options (vertical) ───────────────────────────────────
     // Shown below the selector buttons; disabled while the standard S-meter is
@@ -1577,7 +1580,7 @@ void VfoWidget::buildUI()
         return lbl;
     };
 
-    meterMenuOuter->addWidget(makeSeparator());
+    // Build 581: the separator under the (hidden) selector row goes too.
 
     // Shared styling for the SmartMTR option checkboxes.
     auto styleMeterCheck = [](QCheckBox* c) {

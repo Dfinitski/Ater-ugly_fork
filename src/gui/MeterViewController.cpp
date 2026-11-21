@@ -10,7 +10,9 @@ MeterViewController& MeterViewController::instance()
 }
 
 MeterViewController::MeterViewController()
-    : m_smartMtr(DisplaySettings::smartMtr())  // restore persisted choice
+    // ANAN fork build 581 (operator, 21.11: "remove the flag's S-meter, the
+    // SmartMTR always works"): always SmartMTR, whatever was saved.
+    : m_smartMtr(true)
     , m_showExtremes(DisplaySettings::showExtremes())
     , m_extremesSpeed(DisplaySettings::extremesSpeed())
     , m_showValues(DisplaySettings::showValues())
@@ -21,6 +23,7 @@ MeterViewController::MeterViewController()
 
 void MeterViewController::setSmartMtr(bool on)
 {
+    on = true;   // build 581: the S-meter view is gone
     if (m_smartMtr == on) {
         return;
     }

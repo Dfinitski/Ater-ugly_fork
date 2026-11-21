@@ -8238,6 +8238,8 @@ void MainWindow::wireMeters()
         }
         const bool integratedAmp = m_radioModel.amplifier().present()
             && m_radioModel.amplifier().operate();
+        // Build 581: Odyssey-3's 50 W face on the TX applet too.
+        m_appletPanel->txApplet()->setRatedWatts(ananRatedWatts(m_radioModel));
         m_appletPanel->txApplet()->setPowerScale(radioMaxWatts, integratedAmp);
         m_appletPanel->tunerApplet()->setPowerScale(selection.maxWatts, selection.highPowerAmplifier);
         m_appletPanel->setMeterPowerScale(selection.maxWatts, selection.highPowerAmplifier);

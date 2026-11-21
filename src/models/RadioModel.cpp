@@ -1213,6 +1213,26 @@ void RadioModel::setupBackend(const QString& family)
     // signal to bind to and cannot observe a stale picture.
     connect(m_backend.get(), &IRadioBackend::capabilitiesChanged, this,
             [this] {
+        // ANAN fork build 581 (operator, 21.11: "Odyssey-3 chosen by hand
+        // still shows ANAN-100D everywhere"): the model name was taken from
+        // discovery at connect only. A model the operator assigns while
+        // connected on the same board (no reconnect: ANAN-100D -> Odyssey-3)
+        // changed the backend's model and nothing else. Follow the backend's
+        // model; the name and the nickname follow it where they were the
+        // model's own name.
+        if (isConnected()) {
+            const RadioCapabilities caps = m_backend->capabilities();
+            if (caps.manufacturer == QLatin1String("Apache Labs") && !caps.model.isEmpty()
+                && caps.model != m_model) {
+                const QString old = m_model;
+                if (!old.isEmpty() && m_name.startsWith(old))
+                    m_name = caps.model + m_name.mid(old.size());
+                if (m_nickname == old)
+                    m_nickname = caps.model;
+                m_model = caps.model;
+                emit infoChanged();
+            }
+        }
         publishCapabilities(isConnected());
         refreshCwProfilesOnCapabilityChange();
         // All currently supported wake profiles transmit. If an RX-only Icom

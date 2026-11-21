@@ -19,6 +19,14 @@ namespace AetherSDR {
 using namespace SmartMtrUnits;
 
 namespace {
+// ANAN fork build 581 (operator, 21.11: "raise the flag's lower buttons to
+// the SmartMTR as they stand to the flag's S-meter"): the widget ends at the
+// bar's bottom edge -- the 5 units below it held the under-bar ticks, gone
+// since build 576. kControlH itself is shared with the EQ output fader.
+constexpr double kWidgetH = kHoleMargY + kHoleH;   // 30 units
+} // namespace
+
+namespace {
 // Tick footprint (height away from the hole, thickness) for a marker size.
 void markerExtent(MarkerSize size, double& height, double& width)
 {
@@ -267,13 +275,13 @@ double SmartMtrWidget::contentShiftPx(const SmartMtrGeometry& g) const
     const double bottom = g.rect(0.0, kHoleMargY - largeH, 1.0, largeH).top() - g.len(kLabelGap);
     const double centerY = bottom - normalFm.height() / 2.0;
     const double topGap = (centerY - tallFm.capHeight() / 2.0) - g.originY;
-    const double bottomGap = g.len(kControlH - kHoleMargY - kHoleH);
+    const double bottomGap = g.len(kWidgetH - kHoleMargY - kHoleH);   // build 581: 0
     return std::max(0.0, (bottomGap - topGap) / 2.0);
 }
 
 void SmartMtrWidget::paintEvent(QPaintEvent*)
 {
-    auto g = SmartMtrGeometry::fit(rect());
+    auto g = SmartMtrGeometry::fit(rect(), kWidgetH);   // build 581
     // Build 577: everything but the background a little lower (see
     // m_contentShiftPx).
     m_contentShiftPx = contentShiftPx(g);
@@ -355,7 +363,7 @@ void SmartMtrWidget::rebuildStaticLayers(const SmartMtrGeometry& g)
 void SmartMtrWidget::drawControl(QPainter& p, const SmartMtrGeometry& g) const
 {
     // Build 577: the background is not moved with the drawing.
-    p.fillRect(g.rect(0.0, 0.0, kControlW, kControlH).translated(0.0, -m_contentShiftPx),
+    p.fillRect(g.rect(0.0, 0.0, kControlW, kWidgetH).translated(0.0, -m_contentShiftPx),
                SmartMtrColors::kControl);
 }
 
@@ -810,14 +818,14 @@ QSize SmartMtrWidget::sizeHint() const
     // Baseline at the design size; the width is only a hint (the widget expands
     // to the parent), and the height is recomputed from the actual width via
     // heightForWidth().
-    return QSize(qRound(kControlW), qRound(kControlH));
+    return QSize(qRound(kControlW), qRound(kWidgetH));   // build 581
 }
 
 int SmartMtrWidget::heightForWidth(int width) const
 {
     // Preserve the design aspect ratio so a full-width control is fully visible
     // (no vertical clipping) under the uniform UNITS->pixel scale.
-    return qRound(width * (kControlH / kControlW));
+    return qRound(width * (kWidgetH / kControlW));   // build 581
 }
 
 } // namespace AetherSDR

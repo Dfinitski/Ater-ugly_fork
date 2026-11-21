@@ -22,7 +22,10 @@ struct SmartMtrGeometry {
 
     // Build the mapping that fits the kControlW x kControlH design, centered,
     // into the given widget pixel rect.
-    static SmartMtrGeometry fit(const QRect& widgetRect);
+    // ANAN fork build 581: designH = the design height used (the SmartMTR
+    // widget uses less than kControlH since its under-bar ticks are gone).
+    static SmartMtrGeometry fit(const QRect& widgetRect,
+                                double designH = SmartMtrUnits::kControlH);
 
     // A length in UNITS -> pixels.
     double len(double units) const { return units * pxPerUnit; }
@@ -42,18 +45,17 @@ struct SmartMtrGeometry {
     }
 };
 
-inline SmartMtrGeometry SmartMtrGeometry::fit(const QRect& widgetRect)
+inline SmartMtrGeometry SmartMtrGeometry::fit(const QRect& widgetRect, double designH)
 {
     const double w = widgetRect.width();
     const double h = widgetRect.height();
 
     SmartMtrGeometry g;
     // Uniform scale that fits the whole design area in both axes.
-    g.pxPerUnit = std::min(w / SmartMtrUnits::kControlW,
-                           h / SmartMtrUnits::kControlH);
+    g.pxPerUnit = std::min(w / SmartMtrUnits::kControlW, h / designH);
     // Center the scaled design in the widget; leftover is transparent letterbox.
     g.originX = widgetRect.x() + (w - SmartMtrUnits::kControlW * g.pxPerUnit) / 2.0;
-    g.originY = widgetRect.y() + (h - SmartMtrUnits::kControlH * g.pxPerUnit) / 2.0;
+    g.originY = widgetRect.y() + (h - designH * g.pxPerUnit) / 2.0;
     return g;
 }
 

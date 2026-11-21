@@ -1031,6 +1031,20 @@ void TxApplet::confirmAndClearAtuMemories()
     }
 }
 
+void TxApplet::setRatedWatts(int ratedWatts)
+{
+    ratedWatts = std::max(0, ratedWatts);
+    if (ratedWatts == m_ratedWatts)
+        return;
+    m_ratedWatts = ratedWatts;
+    if (m_havePowerScale) {
+        const int maxWatts = m_lastMaxWatts;
+        const bool hasAmplifier = m_lastHasAmplifier;
+        m_havePowerScale = false;
+        setPowerScale(maxWatts, hasAmplifier);
+    }
+}
+
 void TxApplet::setPowerScale(int maxWatts, bool hasAmplifier)
 {
     if (m_havePowerScale && maxWatts == m_lastMaxWatts && hasAmplifier == m_lastHasAmplifier) {
@@ -1045,14 +1059,19 @@ void TxApplet::setPowerScale(int maxWatts, bool hasAmplifier)
     // Amplified output power is shown in the AMP applet.
     auto* gauge = static_cast<HGauge*>(m_fwdGauge);
     float gaugeFullScaleW = 0.0f;
+    // Build 581: a model rated below 100 W uses the rated face below
+    // (Odyssey-3: 0 / 20 / 40 / 50 / 60 W, red from 50 W).
+    const bool rated = m_ratedWatts > 0 && m_ratedWatts < 100 && maxWatts <= 100;
+    if (rated)
+        maxWatts = m_ratedWatts;
     if (maxWatts > 100) {
         // Aurora (500 W): 0–600 W, red > 500 W
         gauge->setRange(0.0f, 600.0f, 500.0f,
             {{0, "0"}, {100, "100"}, {200, "200"}, {300, "300"},
              {400, "400"}, {500, "500"}, {600, "600"}});
         gaugeFullScaleW = 600.0f;
-    } else if (!m_forwardPowerScaleFollowsBandRating
-               || maxWatts <= 0 || maxWatts == 100) {
+    } else if (!rated && (!m_forwardPowerScaleFollowsBandRating
+               || maxWatts <= 0 || maxWatts == 100)) {
         // Preserve the established 100 W barefoot face exactly. In particular,
         // this is the ordinary FlexRadio path. A lower-power face is an
         // explicit per-band capability, not something inferred from one number.

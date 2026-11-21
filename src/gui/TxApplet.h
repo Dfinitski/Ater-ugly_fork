@@ -59,6 +59,10 @@ public slots:
     // across overs. (#2561)
     void setTransmitting(bool tx);
     void setPowerScale(int maxWatts, bool hasAmplifier);
+    // ANAN fork build 581 (operator, 21.11): the rating of an ANAN model
+    // below 100 W (Odyssey-3: 50 W) -- the forward power face reads to
+    // 1.2 x, red from it. 0 = none.
+    void setRatedWatts(int ratedWatts);
 
 private:
     void buildUI();
@@ -179,6 +183,7 @@ private:
     int  m_lastMaxWatts{-1};
     bool m_lastHasAmplifier{false};
     bool m_havePowerScale{false};
+    int  m_ratedWatts{0};   // build 581, see setRatedWatts()
 };
 
 } // namespace AetherSDR
