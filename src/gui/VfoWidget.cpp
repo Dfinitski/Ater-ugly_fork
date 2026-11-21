@@ -47,6 +47,7 @@
 #include <QStyle>
 #include <QStyleOptionSlider>
 #include <QTimer>
+#include <QFontMetricsF>
 #include <QLabel>
 #include <QSlider>
 #include <QAccessible>
@@ -432,6 +433,95 @@ static const QString kFlatBtn =
 // ANAN fork, build 448 (operator, 16.11: new users did not take the speaker,
 // DSP, mode and X/RIT tabs for buttons -- #6888a0 looked like disabled
 // buttons): the tabs are light, brighten and underline under the mouse.
+// Build 548 (operator, 20.11: "over the spectrum -- draw it as it was drawn
+// there before, the same transparency, only 25 % lighter"). The collapsed
+// flag's SmartMTR numbers, drawn as the spectrum overlay drew them under the
+// flag until build 545: no plate, light 11 px text with a black one-pixel halo,
+// the unit ("s", "dB", "dBm") dimmer than the number. The old dim factor was
+// 0.55; every opacity is x 1.25 here, capped at 1.
+class OutlinedValueLabel : public QLabel
+{
+public:
+    explicit OutlinedValueLabel(QWidget* parent) : QLabel(parent)
+    {
+        QFont f = font();
+        f.setPixelSize(11);
+        f.setWeight(QFont::Light);
+        setFont(f);
+        setAttribute(Qt::WA_TranslucentBackground);
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+    }
+    void setValueOpacity(double o)
+    {
+        if (qAbs(o - m_opacity) < 0.04)
+            return;
+        m_opacity = o;
+        update();
+    }
+    QSize sizeHint() const override
+    {
+        const QFontMetricsF fm(font());
+        return QSize(int(std::ceil(fm.horizontalAdvance(text()))) + 3,
+                     int(std::ceil(fm.height())) + 2);
+    }
+    QSize minimumSizeHint() const override { return sizeHint(); }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setFont(font());
+        const QFontMetricsF fm(font());
+        const double lineH = fm.height();
+        const double kUnitDim = 0.55;
+        const double kLighter = 1.25;
+        const double numOp = qMin(1.0, m_opacity * kLighter);
+        const double unitOp = qMin(1.0, m_opacity * kUnitDim * kLighter);
+        double x = 1.0;
+        auto seg = [&](const QString& t, double op) {
+            if (t.isEmpty())
+                return;
+            const double w = fm.horizontalAdvance(t);
+            const QRectF r(x, 1.0, w + 1.0, lineH);
+            QColor black(0, 0, 0);
+            black.setAlphaF(op);
+            p.setPen(black);
+            static const int kOff[4][2] = { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } };
+            for (const auto& o : kOff)
+                p.drawText(r.translated(o[0], o[1]), Qt::AlignVCenter | Qt::AlignLeft, t);
+            QColor white = SmartMtrColors::kIndicator;
+            white.setAlphaF(white.alphaF() * op);
+            p.setPen(white);
+            p.drawText(r, Qt::AlignVCenter | Qt::AlignLeft, t);
+            x += w;
+        };
+        const QStringList words = text().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        for (int i = 0; i < words.size(); ++i) {
+            const QString& s = words[i];
+            QString prefix, number = s, suffix;
+            if (s.startsWith(QLatin1Char('s'))) {
+                prefix = QStringLiteral("s");
+                number = s.mid(1);
+            } else if (s.endsWith(QStringLiteral("dBm"))) {
+                suffix = QStringLiteral("dBm");
+                number = s.left(s.size() - 3);
+            } else if (s.endsWith(QStringLiteral("dB"))) {
+                suffix = QStringLiteral("dB");
+                number = s.left(s.size() - 2);
+            }
+            if (i > 0)
+                x += fm.horizontalAdvance(QLatin1Char(' '));
+            seg(prefix, unitOp);
+            seg(number, numOp);
+            seg(suffix, unitOp);
+        }
+    }
+
+private:
+    double m_opacity{1.0};
+};
+
 static const char* kTabLblColor = "#c8d8e8";
 // Build 462 (operator, 16.11: "the tab texts are brighter than the speaker
 // and the frequency digits -- bring them to the speaker's colour"): all three
@@ -1153,15 +1243,10 @@ void VfoWidget::buildUI()
     m_collapsedFreqLabel->installEventFilter(this);
 
     // Build 547 (operator, 20.11): the SmartMTR numbers under the collapsed
-    // flag's frequency, in one line. #a8b5c3 = the tab texts, as on the
-    // expanded flag (build 545); the dark plate of the frequency label, since
-    // the text lies over the spectrum.
-    m_collapsedValueLabel = new QLabel(btnParent);
-    m_collapsedValueLabel->setStyleSheet(
-        "QLabel { background: rgba(10,10,20,220); border: none; border-radius: 3px;"
-        " color: #a8b5c3; font-size: 11px; font-weight: bold; padding: 0px 4px; }");
+    // flag's frequency, in one line. Build 548: drawn as the spectrum overlay
+    // drew them (OutlinedValueLabel), no plate.
+    m_collapsedValueLabel = new OutlinedValueLabel(btnParent);
     m_collapsedValueLabel->setTextFormat(Qt::PlainText);
-    m_collapsedValueLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
     m_collapsedValueLabel->hide();
 
     // ── Frequency row (right-aligned, double-click to edit) ────────────────
@@ -4935,6 +5020,7 @@ void VfoWidget::updateSmartMtrValueText()
     // Build 546 (operator, 20.11): with the extremes shown, the maximum alone
     // -- nothing has to be shortened then.
     QString sUnit, level;
+    double opacity = 1.0;   // the extremes fade with their markers
     if (m_smartMtrWidget && m_smartMtr) {
         const auto labels = m_smartMtrWidget->extremeLabels();
         for (const auto& m : labels) {
@@ -4942,6 +5028,7 @@ void VfoWidget::updateSmartMtrValueText()
                 continue;
             sUnit = m.primary;
             level = m.secondary;
+            opacity = m.opacity;
             break;
         }
     }
@@ -4966,6 +5053,7 @@ void VfoWidget::updateSmartMtrValueText()
     const QString line = (m_collapsed && m_collapsedFreqLabel
                           && !m_collapsedFreqLabel->isHidden())
         ? joined(QLatin1Char(' ')) : QString();
+    static_cast<OutlinedValueLabel*>(m_collapsedValueLabel.data())->setValueOpacity(opacity);
     const bool shown = !m_collapsedValueLabel->isHidden();
     if (m_collapsedValueLabel->text() == line && shown == !line.isEmpty())
         return;
