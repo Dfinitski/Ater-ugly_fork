@@ -58,13 +58,18 @@ public:
     // widths from it.
     // This is the LONG length (rxFilterTapsFor): whenever a notch exists it is
     // in force, so the advertised notch floor derives from it.
-    static constexpr int kRxFilterTaps = 8192;
+    // ANAN fork build 555 (operator, 20.11, after every mode went linear in
+    // 554: "shorten all the filters to 4096, then the delays are acceptable"):
+    // 4096 -- 42.7 ms of delay in every mode (CW without a notch: 2048,
+    // 21.3 ms). The notch floor that follows from it is 100 Hz, not 50: WDSP
+    // widens a narrower request, and the UI is told the floor
+    // (RadioCapabilities::notchMinWidthHz), so what is drawn is what runs.
+    static constexpr int kRxFilterTaps = 4096;
     static constexpr double kMinNotchWidthHz =
         1600.0 / (static_cast<double>(kRxFilterTaps) / 256.0)
         * (static_cast<double>(kWdspDspSampleRateHz) / 48000.0);
-    static_assert(kMinNotchWidthHz <= 50.0,
-                  "RX filter taps no longer allow a 50 Hz notch; the width "
-                  "presets in the TNF menu assume one.");
+    static_assert(kMinNotchWidthHz <= 100.0,
+                  "RX filter taps no longer allow a 100 Hz notch (build 555).");
 
     // RX filter phase per mode (#5498): minimum phase preserves the notch
     // floor and cuts post-unmute return from 128 to 44 ms (AGC off). CW stays
@@ -84,9 +89,8 @@ public:
     // ANAN fork build 554 (operator, 20.11: "make SSB linear too, at 4096 --
     // then all the filters are linear"): no mode runs minimum phase any more.
     // The price is the filter's delay, (taps - 1) / 2 samples at 48 kHz:
-    // 42.7 ms in SSB (4096), 85.3 ms in the modes still at 8192 (AM, SAM,
-    // FM, DSB ...), as DIGI and DRM already had; twice that while WDSP's
-    // second bandpass runs (NR, ANF, SNB).
+    // 42.7 ms at 4096 (every mode since build 555; 21.3 ms in CW at 2048);
+    // twice that while WDSP's second bandpass runs (NR, ANF, SNB).
     [[nodiscard]] static constexpr bool rxMinimumPhaseFor(WdspChannel::Mode mode) noexcept
     {
         static_cast<void>(mode);
@@ -110,8 +114,8 @@ public:
     // to the full stopband), so half the taps is a skirt twice as wide:
     //   SSB (LSB / USB): 8192 -> 4096;
     //   CW: 4096 -> 2048, and under kRxShortTapsMinWidthHz 8192 -> 4096.
-    // The other modes and any receiver with a notch keep 8192: the notch
-    // floor (kMinNotchWidthHz) is the long filter's.
+    // Build 555: the other modes and a receiver with a notch run
+    // kRxFilterTaps, which is 4096 too now.
     static constexpr int kRxSsbFilterTaps = 4096;
     static constexpr int kRxShortFilterTaps = 2048;
     static constexpr int kRxCwNarrowFilterTaps = 4096;
