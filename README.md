@@ -75,22 +75,23 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 533
+## Build 557
 
-Full notes: [docs/release-notes-build-533.md](docs/release-notes-build-533.md).
+Full notes: [docs/release-notes-build-557.md](docs/release-notes-build-557.md).
 
-- **Sub receivers:** independent volume and balance (their own audio stream); the active VFO of
-  the pair is the one tuned; SPLIT on the flag is an indicator; SubRX in the panadapter menu.
-- **Filter drag** no longer stalls the audio with a sub receiver and Auto AGC on.
-- **Last session** is saved on exit and restored at start (panadapter zoom included); quick
-  and station memories keep the tuning step.
-- **Transmit options:** Bypass BPF1 / BPF2 When TX, PS Coupler Always when TX, Mic +20 dB,
-  Codec Level Compensation; separate mic level for the PC and codec microphones.
-- **TCI:** I/Q up to 192 kHz for skimmers, Spots checkbox.
-- **MIDI:** progressive tuning for VFO knobs, per knob, with a settable threshold.
-- **Windows:** the settings menu tree stays open after a choice.
+- **Filters:** linear phase in every mode, receive and transmit; receive filters 4096 taps
+  (CW 2048) — gentler skirts, 43 ms of filter delay (21 ms in CW); the narrowest notch is
+  100 Hz.
+- **AGC in DIGI:** the DIGI mode group has its own AGC mode, on by default.
+- **Receivers A … D** keep their state between closing and opening, and between sessions.
+- **RX2 input protection on transmit:** Full ATT RX2 when TX, Ground RX2 When TX.
+- **SmartMTR numbers** are inside the flag, left of the frequency.
+- **Panadapter drag** no longer stops and jumps at the edge of the captured band.
+- **Spots:** lifetime for TCI spots; a repeated spot starts its lifetime anew.
+- **MIDI / COM ports** not ready at start are tried again; progressive tuning starts smoothly.
+- **Logs** list the module files at start (present, marked as downloaded, loads or not).
 
-Earlier notes: [build 494](docs/release-notes-build-494.md), [build 468](docs/release-notes-build-468.md), [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 533](docs/release-notes-build-533.md), [build 494](docs/release-notes-build-494.md), [build 468](docs/release-notes-build-468.md), [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Downloads
 
