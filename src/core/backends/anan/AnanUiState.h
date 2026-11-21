@@ -49,8 +49,11 @@ public:
         sMeterUseLna = st.value(QStringLiteral("AnanSMeterUseLna"), QStringLiteral("False")).toString()
                        == QLatin1String("True");
         sMeterLnaGainDb = std::clamp(st.value(QStringLiteral("AnanSMeterLnaGainDb"), 0).toInt(), 0, 99);
-        sMeterPeak = st.value(QStringLiteral("AnanSMeterDetector"), QStringLiteral("Peak")).toString()
-                     != QLatin1String("Average");
+        // Build 563 (operator, 21.11: "make averaging the default in the
+        // settings"): Average unless Peak was chosen. (The fork's display
+        // defaults had already written Average once for everybody.)
+        sMeterPeak = st.value(QStringLiteral("AnanSMeterDetector"), QStringLiteral("Average")).toString()
+                     == QLatin1String("Peak");
         showNoiseLine = st.value(QStringLiteral("AnanShowNoiseLine"), QStringLiteral("True")).toString()
                         == QLatin1String("True");
         // Build 379: waterfall averaging (Display panel), as Thetis' default
@@ -215,7 +218,7 @@ public:
     int sMeterLnaGainDb = 0;
     // Detector (Thetis' two receive meter modes): Peak "Signal" (default, as
     // Thetis) or Average "Sig Avg". See Hl2RxDsp::setSMeterPeak.
-    bool sMeterPeak = true;
+    bool sMeterPeak = false;   // build 563: Average by default
     void setSMeterDetector(bool peak)
     {
         sMeterPeak = peak;

@@ -3580,9 +3580,11 @@ QWidget* RadioSetupDialog::buildRxTab()
         det->addItem(QStringLiteral("Average"));
         det->setCurrentIndex(ui.sMeterPeak ? 0 : 1);
         det->setToolTip(QStringLiteral(
-            "Peak (Thetis \"Signal\", default): the needle is up as soon as a signal appears.\n"
-            "Average (Thetis \"Sig Avg\"): 100 ms power average; reads noise lower, follows\n"
-            "speech more slowly. A steady carrier reads the same on both."));
+            "Average (Thetis \"Sig Avg\", default): 100 ms power average (RMS); reads noise\n"
+            "lower, follows speech more slowly.\n"
+            "Peak (Thetis \"Signal\"): the needle is up as soon as a signal appears.\n"
+            "A steady carrier reads the same on both. The numbers on the flag follow\n"
+            "this setting too."));
         connect(det, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [](int i) {
             AetherSDR::anan::AnanUiState::instance().setSMeterDetector(i == 0);
         });

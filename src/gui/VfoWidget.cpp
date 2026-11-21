@@ -32,7 +32,6 @@
 #include "core/KiwiSdrProtocol.h"
 #include "models/RadioModel.h"
 #include "core/backends/anan/AnanUiState.h"
-#include "core/backends/anan/AnanRmsPeak.h"
 #include "models/SliceModel.h"
 #include "models/TransmitModel.h"
 #include "Theme.h"
@@ -4959,7 +4958,7 @@ void VfoWidget::pushSmartMtrInput()
         }
     }
     m_smartMtrWidget->setMeterInput(in, m_relativeSignal ? m_relativeUnavailableReason : QString());
-    // Build 562: the stand-in source of the numbers (see smartMtrValueTick()).
+    // Builds 562, 563: the numbers' source (see smartMtrValueTick()).
     if (in.hasValue && (in.kind == MeterKind::Signal || in.kind == MeterKind::RelativeSignal)
         && !(in.value <= m_smartValWindowMax))
         m_smartValWindowMax = in.value;
@@ -5009,8 +5008,8 @@ void VfoWidget::updateSmartMtrValueText()
 {
     if (!m_smartMtrValueLabel)
         return;
-    // Build 562: the level is the 0.5 s peak of the RMS reading
-    // (smartMtrValueTick()), no longer the needle's or its extremes'.
+    // Builds 562, 563: the level is the 0.5 s peak of the S-meter stream
+    // (smartMtrValueTick()), no longer the needle's position or its extremes.
     QString sUnit, level;
     const double opacity = 1.0;
     if (m_smartMtrWidget && m_smartMtr && m_smartMtrWidget->showsSignalValues()
@@ -5079,23 +5078,16 @@ void VfoWidget::onSmartMtrRepainted()
 }
 
 // Build 562 (operator, 21.11: "a peak detector of 0.5 s on those numbers, so
-// they update every 0.5 s; and see that the values are RMS"). Every 0.5 s:
-// the peak of the RMS reading the backend holds for this slice
-// (anan::RmsPeakBoard). Where there is none -- another radio family, or a
-// relative (dBFS) meter -- the highest value this flag's own meter stream
-// brought in the same 0.5 s.
+// they update every 0.5 s"). Build 563 (operator: "they must not be separate
+// -- the SmartMTR takes the same values as the main S-meter, so the detector
+// setting acts on both"): every 0.5 s, the highest value the S-meter stream
+// of this flag brought in that time -- the very values the needle and the
+// S-Meter view get, on the detector chosen in Setup > Receive. Build 562's
+// separate RMS reading is gone.
 void VfoWidget::smartMtrValueTick()
 {
-    double v = std::numeric_limits<double>::quiet_NaN();
-    if (m_slice && !m_relativeSignal) {
-        const float held = AetherSDR::anan::RmsPeakBoard::instance().held(m_slice->sliceId());
-        if (std::isfinite(held))
-            v = held;
-    }
-    if (!std::isfinite(v))
-        v = m_smartValWindowMax;
+    m_smartValDbm = m_smartValWindowMax;
     m_smartValWindowMax = std::numeric_limits<double>::quiet_NaN();
-    m_smartValDbm = v;
     updateSmartMtrValueText();
 }
 
