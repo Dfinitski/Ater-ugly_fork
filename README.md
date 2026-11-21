@@ -75,23 +75,24 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 557
+## Build 572
 
-Full notes: [docs/release-notes-build-557.md](docs/release-notes-build-557.md).
+Full notes: [docs/release-notes-build-572.md](docs/release-notes-build-572.md).
 
-- **Filters:** linear phase in every mode, receive and transmit; receive filters 4096 taps
-  (CW 2048) — gentler skirts, 43 ms of filter delay (21 ms in CW); the narrowest notch is
-  100 Hz.
-- **AGC in DIGI:** the DIGI mode group has its own AGC mode, on by default.
-- **Receivers A … D** keep their state between closing and opening, and between sessions.
-- **RX2 input protection on transmit:** Full ATT RX2 when TX, Ground RX2 When TX.
-- **SmartMTR numbers** are inside the flag, left of the frequency.
-- **Panadapter drag** no longer stops and jumps at the edge of the captured band.
-- **Spots:** lifetime for TCI spots; a repeated spot starts its lifetime anew.
-- **MIDI / COM ports** not ready at start are tried again; progressive tuning starts smoothly.
-- **Logs** list the module files at start (present, marked as downloaded, loads or not).
+- **Fixed (Windows):** with a COM port open in Serial & Controllers the program could stay
+  running after it was closed and keep the COM port and the MIDI controller busy until the
+  cable was pulled.
+- **Noise reduction on the radio's own speaker:** it now plays the audio after NR2 / NR4 /
+  DFNR / RN2 and the rest of the client receive chain.
+- **RX applet:** NB and noise reduction buttons on the receiver row, kept per receiver.
+- **Pulled-out panadapter** is an independent window, with **Always on top**.
+- **Zoom indicator and bandwidth buttons** hide while a flag covers them.
+- **S-meter detector** is Average by default; the SmartMTR numbers follow the main S-meter.
+- **Full ATT RX1 when TX.**
+- **Status bar:** TX after the antennas, UTC Time at the right end.
+- **RtMidi 6.1.0** — untested on all three systems; report a MIDI controller that stops working.
 
-Earlier notes: [build 533](docs/release-notes-build-533.md), [build 494](docs/release-notes-build-494.md), [build 468](docs/release-notes-build-468.md), [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 557](docs/release-notes-build-557.md), [build 533](docs/release-notes-build-533.md), [build 494](docs/release-notes-build-494.md), [build 468](docs/release-notes-build-468.md), [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Downloads
 
