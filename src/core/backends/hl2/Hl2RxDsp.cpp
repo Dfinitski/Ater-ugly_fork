@@ -728,7 +728,7 @@ void Hl2RxDsp::setAudioMuted(bool muted)
     // Build 583: the tail is counted from the unkey (applyAgcHold); the
     // host's unmute adds only a short floor, so the output never opens on
     // the very block the mute lifted.
-    if (m_audioMuted && !muted && m_overTailEnabled)   // build 584: none in DUP
+    if (m_audioMuted && !muted)
         m_outMuteFrames = std::max(m_outMuteFrames,
             static_cast<int>(m_config.audioSampleRateHz * kOverMinAfterUnmuteMs / 1000.0));
     if (muted) {   // the host has keyed: its mute and hold take over
@@ -742,28 +742,6 @@ void Hl2RxDsp::setAudioMuted(bool muted)
     // Nothing is flushed on release: a flush leaves it unarmed ~200 ms at
     // backtau 0.05 s (#5499 item 3). The hold sits inside the m_nbActive gate,
     // so with the blanker off (the default) it does nothing.
-}
-
-void Hl2RxDsp::setOverTailEnabled(bool on)
-{
-    if (m_sub)
-        m_sub->setOverTailEnabled(on);
-    m_overTailEnabled = on;
-}
-
-void Hl2RxDsp::restorePreOverLevels()
-{
-    // The over has left the chain (or, in DUP, is not waited for): AGC and
-    // S-meter back at their pre-over levels (WDSP patches 24, 25).
-    m_restorePending = false;
-    if (m_preOverAgcVolts > 0.0 && !m_channel->setAgcHold(false, m_preOverAgcVolts))
-        qCWarning(lcHl2RxDsp) << "RX AGC restore refused";
-    if (m_preOverSMeterDb > -300.0 && !m_channel->setSMeterAverage(m_preOverSMeterDb))
-        qCWarning(lcHl2RxDsp) << "RX S-meter restore refused";
-    // (The panadapter's average went back earlier, see
-    // m_specRestoreSamples; this is a no-op unless it has not.)
-    if (m_spectrum)
-        m_spectrum->restorePreOver();
 }
 
 void Hl2RxDsp::setAgcTxHold(bool on)
@@ -843,21 +821,16 @@ void Hl2RxDsp::applyAgcHold()
         // Put back when the over has left the chain, not now: the filters
         // ahead of the AGC and the meter still hold it. Build 583: as long
         // as the chain in use needs (overTailMs), from here -- the unkey.
-        // Build 584: DUP -- no tail at all.
-        const double tailMs = m_overTailEnabled ? overTailMs() : 0.0;
+        const double tailMs = overTailMs();
         if (tailMs != m_lastOverTailMs) {
             m_lastOverTailMs = tailMs;
             qCInfo(lcHl2RxDsp).nospace() << "RX over tail " << tailMs << " ms from the unkey ("
                 << (m_channel ? m_channel->config().filterTaps : 0) << " taps"
                 << (m_anfOn ? ", ANF" : "") << ")";
         }
-        m_outMuteFrames = m_overTailEnabled
-            ? std::max(m_outMuteFrames,
-                       static_cast<int>(std::ceil(m_config.audioSampleRateHz * tailMs / 1000.0)))
-            : 0;
+        m_outMuteFrames = std::max(m_outMuteFrames,
+            static_cast<int>(std::ceil(m_config.audioSampleRateHz * tailMs / 1000.0)));
         m_restorePending = true;
-        if (!m_overTailEnabled && m_channel && canPushToChannel())
-            restorePreOverLevels();
         // The panadapter's FFT sees the IQ undelayed: its average goes back
         // 60 ms of IQ after the release (MOX off reaching the radio and its
         // DUC FIFO draining), not with the AGC.
@@ -1452,8 +1425,19 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
             // while the host's mute still holds -- that time is credited.
             if (!m_agcTxHeld && m_pressBlankFrames == 0) {
                 m_outMuteFrames = std::max(0, m_outMuteFrames - static_cast<int>(outN));
-                if (m_outMuteFrames == 0 && m_restorePending && canPushToChannel())
-                    restorePreOverLevels();
+                if (m_outMuteFrames == 0 && m_restorePending && canPushToChannel()) {
+                    // The over has left the chain: AGC and S-meter back at
+                    // their pre-over levels (WDSP patches 24, 25).
+                    m_restorePending = false;
+                    if (m_preOverAgcVolts > 0.0 && !m_channel->setAgcHold(false, m_preOverAgcVolts))
+                        qCWarning(lcHl2RxDsp) << "RX AGC restore refused";
+                    if (m_preOverSMeterDb > -300.0 && !m_channel->setSMeterAverage(m_preOverSMeterDb))
+                        qCWarning(lcHl2RxDsp) << "RX S-meter restore refused";
+                    // (The panadapter's average went back earlier, see
+                    // m_specRestoreSamples; this is a no-op unless it has not.)
+                    if (m_spectrum)
+                        m_spectrum->restorePreOver();
+                }
             }
         }
         if (m_dipFrames > 0 && m_dipTotalFrames > 0) {

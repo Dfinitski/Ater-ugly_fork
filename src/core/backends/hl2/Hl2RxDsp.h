@@ -552,11 +552,6 @@ public:
     Q_INVOKABLE void setAudioMuted(bool muted);
     // ANAN-100D port: AGC gain held while transmitting (full duplex).
     Q_INVOKABLE void setAgcTxHold(bool on);
-    // ANAN fork build 584 (operator, 21.11: "with the duplex button on, the
-    // guard interval must be off altogether"): no over tail -- the output
-    // opens at the unkey and the AGC / S-meter go back to their pre-over
-    // levels at once. Set by the backend at each key edge (DUP).
-    Q_INVOKABLE void setOverTailEnabled(bool on);
     // ANAN-100D port: the radio's PTT status edge, called on this thread by
     // the I/O hook -- silence and AGC hold before the host keys.
     void pressBlank();
@@ -858,8 +853,6 @@ private:
     static constexpr double kOverMinAfterUnmuteMs = 5.0;
     [[nodiscard]] double overTailMs() const;
     double m_lastOverTailMs{-1.0};
-    bool m_overTailEnabled{true};   // build 584: false in DUP
-    void restorePreOverLevels();    // build 584: the end-of-over restore
     std::atomic<bool> m_sMeterPeak {true};
     std::atomic<std::uint64_t> m_unsettled {0};   // build 335: see unsettledBins()
     std::atomic<float> m_ananInPeak {0.0f};
