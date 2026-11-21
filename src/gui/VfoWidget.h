@@ -439,6 +439,7 @@ private:
     // Throttled bridge from the meter's repaint to a spectrum-overlay refresh.
     void onSmartMtrRepainted();
     void updateSmartMtrValueText();   // build 545
+    void placeCollapsedLabels();      // build 547
     bool usesUnavailableSignalMeter() const;
     static float signalDbmToMeterFraction(float dbm);
 
@@ -515,6 +516,7 @@ private:
     int            m_angleAccum{0};     // mouse wheel angle accumulator
     qint64         m_lastWheelMs{0};    // debounce: timestamp of last accepted wheel step
     QPointer<QLabel> m_collapsedFreqLabel;
+    QPointer<QLabel> m_collapsedValueLabel;   // build 547: SmartMTR numbers under it
 
     // Accessibility: debounced frequency announcement (300 ms settle before speaking)
     QTimer   m_accessibleFrequencyTimer;

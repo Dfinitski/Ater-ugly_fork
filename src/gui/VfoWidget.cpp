@@ -894,6 +894,7 @@ VfoWidget::~VfoWidget()
         m_collapsedFreqLabel->removeEventFilter(this);
     }
     delete m_collapsedFreqLabel.data();
+    delete m_collapsedValueLabel.data();   // build 547
 }
 
 void VfoWidget::buildUI()
@@ -1150,6 +1151,18 @@ void VfoWidget::buildUI()
     // this, clicks fall through to the SpectrumWidget underneath, which
     // reports the cursor's step-snapped frequency instead of the VFO's.
     m_collapsedFreqLabel->installEventFilter(this);
+
+    // Build 547 (operator, 20.11): the SmartMTR numbers under the collapsed
+    // flag's frequency, in one line. #a8b5c3 = the tab texts, as on the
+    // expanded flag (build 545); the dark plate of the frequency label, since
+    // the text lies over the spectrum.
+    m_collapsedValueLabel = new QLabel(btnParent);
+    m_collapsedValueLabel->setStyleSheet(
+        "QLabel { background: rgba(10,10,20,220); border: none; border-radius: 3px;"
+        " color: #a8b5c3; font-size: 11px; font-weight: bold; padding: 0px 4px; }");
+    m_collapsedValueLabel->setTextFormat(Qt::PlainText);
+    m_collapsedValueLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_collapsedValueLabel->hide();
 
     // ── Frequency row (right-aligned, double-click to edit) ────────────────
     m_freqStack = new QStackedWidget;
@@ -3664,6 +3677,7 @@ void VfoWidget::setCollapsed(bool collapsed, bool persist)
             updateCollapsedFrequencyLabel();
             m_collapsedFreqLabel->show();
         }
+        updateSmartMtrValueText();   // build 547: shows and places the numbers
     } else {
         // Restore full width, remove fixed height constraint
         setMinimumWidth(WIDGET_W);
@@ -3675,6 +3689,7 @@ void VfoWidget::setCollapsed(bool collapsed, bool persist)
         if (m_collapsedFreqLabel) {
             m_collapsedFreqLabel->hide();
         }
+        updateSmartMtrValueText();   // build 547: back to the flag's own label
 
         // Restore only widgets that were visible before collapse.
         // Block signals on interactive buttons during restore to prevent
@@ -4283,19 +4298,7 @@ void VfoWidget::updatePosition(int vfoX, int specTop, FlagDir dir)
     }
 
     // Position collapsed frequency label next to the collapsed widget
-    if (m_collapsedFreqLabel && m_collapsed) {
-        const int freqGap = 2;
-        int freqX;
-        int freqH = m_collapsedFreqLabel->sizeHint().height();
-        int freqY = newPos.y() + (height() - freqH) / 2;  // vertically centered
-        int freqW = m_collapsedFreqLabel->sizeHint().width();
-        if (onLeft) {
-            freqX = newPos.x() - freqW - freqGap;
-        } else {
-            freqX = newPos.x() + w + freqGap;
-        }
-        m_collapsedFreqLabel->move(freqX, freqY);
-    }
+    placeCollapsedLabels();   // build 547
 }
 
 void VfoWidget::syncShadowGeometry()
@@ -4929,27 +4932,47 @@ void VfoWidget::updateSmartMtrValueText()
 {
     if (!m_smartMtrValueLabel)
         return;
+    // Build 546 (operator, 20.11): with the extremes shown, the maximum alone
+    // -- nothing has to be shortened then.
+    QString sUnit, level;
+    if (m_smartMtrWidget && m_smartMtr) {
+        const auto labels = m_smartMtrWidget->extremeLabels();
+        for (const auto& m : labels) {
+            if (!m.isMax)
+                continue;
+            sUnit = m.primary;
+            level = m.secondary;
+            break;
+        }
+    }
+    auto joined = [&](QChar sep) {
+        return level.isEmpty() ? sUnit : sUnit + sep + level;
+    };
+
     QString text;
     bool room = true;
 #ifdef HAVE_RADE
     // FreeDV writes its SNR and offset in the same place.
     room = !(m_radeStatusLabel && !m_radeStatusLabel->isHidden());
 #endif
-    if (room && m_smartMtrWidget && m_smartMtr && !m_collapsed) {
-        // Build 546 (operator, 20.11): with the extremes shown, the maximum
-        // alone -- nothing has to be shortened then.
-        const auto labels = m_smartMtrWidget->extremeLabels();
-        for (const auto& m : labels) {
-            if (!m.isMax)
-                continue;
-            text = m.primary;
-            if (!m.secondary.isEmpty())
-                text += QLatin1Char('\n') + m.secondary;
-            break;
-        }
-    }
+    if (room && !m_collapsed)
+        text = joined(QLatin1Char('\n'));
     if (m_smartMtrValueLabel->text() != text)
         m_smartMtrValueLabel->setText(text);
+
+    // Build 547: the collapsed flag has them under its frequency, in one line.
+    if (!m_collapsedValueLabel)
+        return;
+    const QString line = (m_collapsed && m_collapsedFreqLabel
+                          && !m_collapsedFreqLabel->isHidden())
+        ? joined(QLatin1Char(' ')) : QString();
+    const bool shown = !m_collapsedValueLabel->isHidden();
+    if (m_collapsedValueLabel->text() == line && shown == !line.isEmpty())
+        return;
+    m_collapsedValueLabel->setText(line);
+    m_collapsedValueLabel->adjustSize();
+    m_collapsedValueLabel->setVisible(!line.isEmpty());
+    placeCollapsedLabels();
 }
 
 void VfoWidget::onSmartMtrRepainted()
@@ -6240,12 +6263,35 @@ void VfoWidget::updateCollapsedFrequencyLabel()
         m_collapsedFreqLabel->setText(text);
         m_collapsedFreqLabel->adjustSize();
     }
+    placeCollapsedLabels();   // build 547
+}
+
+// Build 547: the frequency and, under it, the SmartMTR numbers beside the
+// collapsed flag. The two together are centred on the flag's name and TX
+// badges; alone, the frequency is centred on the flag as before. Both keep to the flag's edge -- the side of the marker and the
+// filter.
+void VfoWidget::placeCollapsedLabels()
+{
+    if (!m_collapsed || !m_collapsedFreqLabel)
+        return;
     const int gap = 2;
-    const int x = m_lastOnLeft
-        ? pos().x() - m_collapsedFreqLabel->sizeHint().width() - gap
-        : pos().x() + COLLAPSED_W + gap;
-    const int y = pos().y() + (height() - m_collapsedFreqLabel->sizeHint().height()) / 2;
-    m_collapsedFreqLabel->move(x, y);
+    const int rowGap = 1;
+    const QSize fs = m_collapsedFreqLabel->sizeHint();
+    const bool withValue = m_collapsedValueLabel && !m_collapsedValueLabel->isHidden();
+    const QSize vs = withValue ? m_collapsedValueLabel->sizeHint() : QSize(0, 0);
+    const int total = fs.height() + (withValue ? rowGap + vs.height() : 0);
+    // The badges are painted from y = 4 to y = 42 of the 44 px (paintEvent):
+    // the pair is centred on them; the frequency alone stays where it was.
+    const int top = withValue ? pos().y() + 4 + (38 - total) / 2
+                              : pos().y() + (height() - total) / 2;
+    const int nearLeft = pos().x() - gap;              // labels end here
+    const int nearRight = pos().x() + COLLAPSED_W + gap; // or start here
+    m_collapsedFreqLabel->move(m_lastOnLeft ? nearLeft - fs.width() : nearRight, top);
+    if (withValue) {
+        m_collapsedValueLabel->move(m_lastOnLeft ? nearLeft - vs.width() : nearRight,
+                                    top + fs.height() + rowGap);
+        m_collapsedValueLabel->raise();
+    }
 }
 
 void VfoWidget::updateCaptureStatus()
@@ -8297,7 +8343,8 @@ void VfoWidget::reparentFlagSatellites(QWidget* newParent)
     const std::initializer_list<QWidget*> satellites = {
         m_closeSliceBtn.data(), m_lockVfoBtn.data(),
         m_recordBtn.data(), m_playBtn.data(),
-        m_collapsedFreqLabel.data(), m_shadowWidget.data(),
+        m_collapsedFreqLabel.data(), m_collapsedValueLabel.data(),
+        m_shadowWidget.data(),
         m_fdvTextLabel.data(),   // build 338
     };
     for (QWidget* sat : satellites) {
