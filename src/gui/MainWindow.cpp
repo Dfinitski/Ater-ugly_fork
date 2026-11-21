@@ -6311,47 +6311,21 @@ void MainWindow::buildUI()
         refresh();
     }
 
-    // Build 255 (operator, 10.11): UTC clock after the antennas -- "UTC Time:"
-    // over the time, the PC clock converted to UTC, once a second.
-    {
-        addSep();
-        auto* utcStack = new QWidget;
-        utcStack->setObjectName(QStringLiteral("ananUtcClock"));
-        utcStack->setAccessibleName(QStringLiteral("UTC time"));
-        auto* utcBox = new QVBoxLayout(utcStack);
-        utcBox->setContentsMargins(0, 0, 0, 0);
-        utcBox->setSpacing(0);
-        utcBox->setAlignment(Qt::AlignVCenter);
-        auto* utcTitle = new QLabel(QStringLiteral("UTC Time:"));
-        applyStatusBarCompactLabelStyle(utcTitle, QStringLiteral("{{color.text.secondary}}"));
-        utcTitle->setAlignment(Qt::AlignCenter);
-        auto* utcValue = new QLabel(QStringLiteral("00:00:00"));
-        // Build 328 (operator, 12.11: the time line stood out on its own): the
-        // same colour as its "UTC Time:" title and the bar's other labels.
-        applyStatusBarCompactLabelStyle(utcValue, QStringLiteral("{{color.text.secondary}}"));
-        utcValue->setAlignment(Qt::AlignCenter);
-        // Fixed width for "00:00:00", so the bar does not shift each second.
-        {
-            // The stylesheet is not applied yet: measure with the bar's 12 px.
-            QFont f = utcValue->font();
-            f.setPixelSize(12);
-            utcValue->setMinimumWidth(QFontMetrics(f).horizontalAdvance(QStringLiteral("00:00:00")) + 6);
-        }
-        utcBox->addWidget(utcTitle);
-        utcBox->addWidget(utcValue);
-        hbox->addWidget(utcStack);
-        auto* utcTimer = new QTimer(utcStack);
-        auto tick = [utcValue, utcStack, utcTimer] {
-            const QDateTime now = QDateTime::currentDateTimeUtc();
-            utcValue->setText(now.toString(QStringLiteral("HH:mm:ss")));
-            utcStack->setToolTip(now.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss 'UTC'")));
-            // Next tick just after the next whole second.
-            utcTimer->start(1000 - now.time().msec() + 5);
-        };
-        utcTimer->setSingleShot(true);
-        connect(utcTimer, &QTimer::timeout, utcStack, tick);
-        tick();
-    }
+    // ANAN fork build 564 (operator, 21.11: "TX goes where UTC Time is, UTC
+    // Time goes where the local time is, the local time is removed"). The TX
+    // indicator, after the antennas -- the place of build 255's UTC clock.
+    addSep();
+    m_txIndicator = new QLabel("TX");
+    m_txIndicator->setFixedSize(36, 36);
+    m_txIndicator->setAlignment(Qt::AlignCenter);
+    m_txIndicator->setCursor(Qt::PointingHandCursor);
+    m_txIndicator->setToolTip("Click to cancel TX");
+    m_txIndicator->setAccessibleName("Cancel transmit");
+    m_txIndicator->setAccessibleDescription("Click to send key up, PTT off, Tune off, and MOX off.");
+    m_txIndicator->installEventFilter(this);
+    keyboardOperable(m_txIndicator);
+    m_txIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 21px; }");
+    hbox->addWidget(m_txIndicator);
 
     // ── Center stretch → STATION → stretch ───────────────────────────────
     // Build 259 (operator, 10.11: "when a message appears at the bottom left
@@ -6751,22 +6725,50 @@ void MainWindow::buildUI()
     }
     hbox->addWidget(m_pgxlContainer);
 
-    addSep();
+    // Build 564: the "UTC Time:" clock of build 255, at the right end -- the
+    // place of the date / time stack, which is no longer shown.
+    {
+        addSep();
+        auto* utcStack = new QWidget;
+        utcStack->setObjectName(QStringLiteral("ananUtcClock"));
+        utcStack->setAccessibleName(QStringLiteral("UTC time"));
+        auto* utcBox = new QVBoxLayout(utcStack);
+        utcBox->setContentsMargins(0, 0, 0, 0);
+        utcBox->setSpacing(0);
+        utcBox->setAlignment(Qt::AlignVCenter);
+        auto* utcTitle = new QLabel(QStringLiteral("UTC Time:"));
+        applyStatusBarCompactLabelStyle(utcTitle, QStringLiteral("{{color.text.secondary}}"));
+        utcTitle->setAlignment(Qt::AlignCenter);
+        auto* utcValue = new QLabel(QStringLiteral("00:00:00"));
+        // Build 328 (operator, 12.11: the time line stood out on its own): the
+        // same colour as its "UTC Time:" title and the bar's other labels.
+        applyStatusBarCompactLabelStyle(utcValue, QStringLiteral("{{color.text.secondary}}"));
+        utcValue->setAlignment(Qt::AlignCenter);
+        // Fixed width for "00:00:00", so the bar does not shift each second.
+        {
+            // The stylesheet is not applied yet: measure with the bar's 12 px.
+            QFont f = utcValue->font();
+            f.setPixelSize(12);
+            utcValue->setMinimumWidth(QFontMetrics(f).horizontalAdvance(QStringLiteral("00:00:00")) + 6);
+        }
+        utcBox->addWidget(utcTitle);
+        utcBox->addWidget(utcValue);
+        hbox->addWidget(utcStack);
+        auto* utcTimer = new QTimer(utcStack);
+        auto tick = [utcValue, utcStack, utcTimer] {
+            const QDateTime now = QDateTime::currentDateTimeUtc();
+            utcValue->setText(now.toString(QStringLiteral("HH:mm:ss")));
+            utcStack->setToolTip(now.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss 'UTC'")));
+            // Next tick just after the next whole second.
+            utcTimer->start(1000 - now.time().msec() + 5);
+        };
+        utcTimer->setSingleShot(true);
+        connect(utcTimer, &QTimer::timeout, utcStack, tick);
+        tick();
+    }
 
-    m_txIndicator = new QLabel("TX");
-    m_txIndicator->setFixedSize(36, 36);
-    m_txIndicator->setAlignment(Qt::AlignCenter);
-    m_txIndicator->setCursor(Qt::PointingHandCursor);
-    m_txIndicator->setToolTip("Click to cancel TX");
-    m_txIndicator->setAccessibleName("Cancel transmit");
-    m_txIndicator->setAccessibleDescription("Click to send key up, PTT off, Tune off, and MOX off.");
-    m_txIndicator->installEventFilter(this);
-    keyboardOperable(m_txIndicator);
-    m_txIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 21px; }");
-    hbox->addWidget(m_txIndicator);
-
-    addSep();
-
+    // The date / time stack that stood here. Kept, hidden: its labels are
+    // still written by the GPS / system clock code.
     // UTC date (top) + UTC time (bottom) stacked, right-aligned. Two-row
     // layout matches all other telemetry stacks in the status bar (#1583).
     auto* timeStack = new QWidget;
@@ -6791,6 +6793,7 @@ void MainWindow::buildUI()
     timeVbox->addWidget(m_gpsDateLabel);
     timeVbox->addWidget(m_gpsTimeLabel);
     hbox->addWidget(timeStack);
+    timeStack->hide();
 
     statusBar()->addWidget(m_statusBarContainer, 1);
     wireStatusBarMessages();
