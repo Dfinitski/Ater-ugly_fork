@@ -4350,6 +4350,11 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
         "ANAN-G2: the balanced XLR input instead of the 3.5 mm jack.");
     // Build 542 (operator, 20.11): both on by default; switching either off
     // asks first -- without them the RX2 input can be damaged on transmit.
+    // Build 561 (operator, 21.11): the same for RX1, above it.
+    auto* fullAtt1Chk = mkChk(connCol3, "Full ATT RX1 when TX", "ananHwAdc1FullAtt",
+        "The first ADC's step attenuator (RX1) at 31 dB while transmitting.\n"
+        "Off: it keeps its receive value on transmit.\n"
+        "Not applied while PureSignal takes its feedback on that ADC.");
     auto* fullAttChk = mkChk(connCol3, "Full ATT RX2 when TX", "ananHwAdc2FullAtt",
         "The second ADC's step attenuator (RX2) at 31 dB while transmitting.\n"
         "Off: it keeps its receive value on transmit.\n"
@@ -4429,7 +4434,7 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     const QPointer<QComboBox> pageGuard(modelCombo);   // build 439 (was the Dither box)
     m_hl2HardwareReseed = [this, pageGuard, noRadioLbl, controls,
                            modelCombo, psNote, micPttChk, micTipChk, micBiasChk, micXlrChk,
-                           gndChk, fullAttChk, txBypassChk, txBypass2Chk, psCouplerChk, connNone, connGroup, forceModelChk,
+                           gndChk, fullAttChk, fullAtt1Chk, txBypassChk, txBypass2Chk, psCouplerChk, connNone, connGroup, forceModelChk,
                            forceNote] {
         if (!pageGuard)
             return;
@@ -4490,6 +4495,8 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
             {   // build 542
                 const QSignalBlocker b(fullAttChk);
                 fullAttChk->setChecked(m.value(QStringLiteral("ananAdc2FullAttOnTx"), true).toBool());
+                const QSignalBlocker b1(fullAtt1Chk);   // build 561
+                fullAtt1Chk->setChecked(m.value(QStringLiteral("ananAdc1FullAttOnTx"), true).toBool());
             }
             {   // build 502
                 const QSignalBlocker b1(txBypassChk), b2(psCouplerChk), b3(txBypass2Chk);
@@ -4562,15 +4569,17 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     });
     // Build 542: switching an RX2 protection off is confirmed first; "Cancel"
     // puts the tick back and nothing is sent.
-    auto rx2Guard = [this, apply](QCheckBox* chk, const QString& field, const QString& name) {
-        connect(chk, &QCheckBox::toggled, this, [this, apply, chk, field, name](bool on) {
+    // Build 561: the receiver is named (RX1 has such an option too).
+    auto rx2Guard = [this, apply](QCheckBox* chk, const QString& field, const QString& name,
+                                  const QString& rx = QStringLiteral("RX2")) {
+        connect(chk, &QCheckBox::toggled, this, [this, apply, chk, field, name, rx](bool on) {
             if (!on) {
                 const auto answer = FramelessMessageBox::warning(
-                    this, QStringLiteral("RX2 input protection"),
-                    QStringLiteral("\"%1\" protects the RX2 receiver input while transmitting.\n\n"
-                                   "Switching this option off can, in some cases, damage the RX2 "
+                    this, QStringLiteral("%1 input protection").arg(rx),
+                    QStringLiteral("\"%1\" protects the %2 receiver input while transmitting.\n\n"
+                                   "Switching this option off can, in some cases, damage the %2 "
                                    "receiver input. Do it only if you know why you need it.\n\n"
-                                   "Switch it off?").arg(name),
+                                   "Switch it off?").arg(name, rx),
                     QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
                 if (answer != QMessageBox::Yes) {
                     const QSignalBlocker b(chk);
@@ -4583,6 +4592,8 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     };
     rx2Guard(gndChk, QStringLiteral("ananAdc2GndOnTx"), QStringLiteral("Ground RX2 When TX"));
     rx2Guard(fullAttChk, QStringLiteral("ananAdc2FullAttOnTx"), QStringLiteral("Full ATT RX2 when TX"));
+    rx2Guard(fullAtt1Chk, QStringLiteral("ananAdc1FullAttOnTx"), QStringLiteral("Full ATT RX1 when TX"),
+             QStringLiteral("RX1"));   // build 561
     connect(txBypassChk, &QCheckBox::toggled, this, [apply](bool on) {
         apply(QVariantMap{{QStringLiteral("ananTxBypassBpf"), on}});
     });

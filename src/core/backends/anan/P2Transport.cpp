@@ -2122,8 +2122,8 @@ void P2Transport::setAdcAttenuation(int adc, int db)
     m_adcAtt[static_cast<std::size_t>(adc)] = db;
     if (m_run && m_configured) {
         sendHighPriority(true);
-        if (adc == 1 && !m_adc1FullAttOnTx)
-            sendTransmitSpecific();   // build 542: its transmit value is this one
+        if ((adc == 1 && !m_adc1FullAttOnTx) || (adc == 0 && !m_adc0FullAttOnTx))
+            sendTransmitSpecific();   // builds 542, 561: its transmit value is this one
     }
 }
 
@@ -2318,6 +2318,25 @@ void P2Transport::setPsCouplerOnTx(bool on)
 // (AnanTxAttenuationDb, 31 by default); it is this option's now: 31 dB when
 // on, ADC1's receive attenuation when off. PureSignal feedback on ADC1 keeps
 // its own value in both cases.
+// ANAN fork build 561 (operator, 21.11: "exactly the same check box for RX1,
+// the protocol has the same for the first receiver"). ADC0 while
+// transmitting -- Protocol 2: byte 59 of the Transmitter Specific packet;
+// Protocol 1: C0 0x1C C3 and ADC0's own byte (P1State::txAdc0AttDb). On (the
+// default): the transmit attenuator, AnanTxAttenuationDb -- 31 dB unless the
+// key was edited, which is what was sent until now. Off: ADC0's receive
+// attenuation. PureSignal feedback on ADC0 keeps its own value in both cases.
+void P2Transport::setAdc0FullAttOnTx(bool on)
+{
+    if (on == m_adc0FullAttOnTx)
+        return;
+    m_adc0FullAttOnTx = on;
+    qCInfo(lcAnanP2T) << "ANAN P2 transport: ADC1 (RX1) full attenuation on TX" << (on ? "on" : "off");
+    if (m_run && m_configured) {
+        sendTransmitSpecific();
+        sendHighPriority(true);
+    }
+}
+
 void P2Transport::setAdc1FullAttOnTx(bool on)
 {
     if (on == m_adc1FullAttOnTx)
@@ -2417,7 +2436,8 @@ void P2Transport::sendTransmitSpecific()
     // its receive attenuation (nothing is added on transmit).
     const auto pkt = buildTransmitSpecific(m_txSpecSeq++, m_micBoost, effectiveCwKeyer(), m_txAttDb,
                                            m_psEnabled ? m_psAttDb : -1, m_psAdc, m_micControl,
-                                           m_adc1FullAttOnTx ? kMaxStepAttenuationDb : m_adcAtt[1]);
+                                           m_adc1FullAttOnTx ? kMaxStepAttenuationDb : m_adcAtt[1],
+                                           m_adc0FullAttOnTx ? m_txAttDb : m_adcAtt[0]);   // build 561
     sendDatagram(*m_sock, pkt, m_txHost, kTransmitSpecificPort, m_counters.txBytes, m_counters.txPackets);
 }
 
@@ -3116,7 +3136,8 @@ P1CcState P2Transport::p1State() const
     s.duplex = true;
     // With PureSignal on, ADC0's transmit attenuation is the feedback
     // attenuator (Thetis SetTxAttenData from the PS auto-attenuate).
-    s.txAdc0AttDb = m_psEnabled ? m_psAttDb : m_txAttDb;
+    // Build 561: "Full ATT RX1 when TX" off -- ADC0's receive attenuation.
+    s.txAdc0AttDb = m_psEnabled ? m_psAttDb : (m_adc0FullAttOnTx ? m_txAttDb : m_adcAtt[0]);
     // PS feedback input while transmitting, as on Protocol 2 (C0=0 C3: bit 7
     // _Rx_1_Out, bit 6 _Rx_2_In = EXT1, bit 5 _Rx_1_In = EXT2): internal
     // coupler = no RX input bit; EXT1 = EXT1 + RX bypass out; RX bypass = RX

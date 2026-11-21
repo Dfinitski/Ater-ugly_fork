@@ -291,7 +291,8 @@ std::array<std::uint8_t, 60> buildTransmitSpecific(std::uint32_t seq, bool micBo
                                                    int psFeedbackAttDb,
                                                    int psFeedbackAdc,
                                                    std::uint8_t micControlBits,
-                                                   int adc1TxAttenuationDb) noexcept
+                                                   int adc1TxAttenuationDb,
+                                                   int adc0TxAttenuationDb) noexcept
 {
     std::array<std::uint8_t, 60> pkt{};
     writeU32be(&pkt[0], seq);
@@ -323,7 +324,8 @@ std::array<std::uint8_t, 60> buildTransmitSpecific(std::uint32_t seq, bool micBo
     pkt[57] = att;
     pkt[58] = adc1TxAttenuationDb >= 0
         ? static_cast<std::uint8_t>(std::clamp(adc1TxAttenuationDb, 0, 31)) : att;   // build 542
-    pkt[59] = att;
+    pkt[59] = adc0TxAttenuationDb >= 0
+        ? static_cast<std::uint8_t>(std::clamp(adc0TxAttenuationDb, 0, 31)) : att;   // build 561
     if (psFeedbackAttDb >= 0)
         pkt[psFeedbackAdc == 1 ? 58 : 59] = static_cast<std::uint8_t>(std::clamp(psFeedbackAttDb, 0, 31));
     return pkt;

@@ -511,6 +511,7 @@ QVariantMap Hl2Backend::ananHwFields() const
         {QStringLiteral("ananMicXlr"), on("AnanMicXlr", false)},
         {QStringLiteral("ananAdc2GndOnTx"), on("AnanAdc2GndOnTx", true)},
         {QStringLiteral("ananAdc2FullAttOnTx"), on("AnanAdc2FullAttOnTx", true)},   // build 542
+        {QStringLiteral("ananAdc1FullAttOnTx"), on("AnanAdc1FullAttOnTx", true)},   // build 561: RX1
         // Build 502: "Bypass BPF When TX", "PS Coupler Always when TX".
         {QStringLiteral("ananTxBypassBpf"), on("AnanTxBypassBpf", false)},
         {QStringLiteral("ananTxBypassBpf2"), on("AnanTxBypassBpf2", false)},   // build 506
@@ -528,6 +529,7 @@ void Hl2Backend::applyAnanHwFields(const QVariantMap& in)
     bool any = false;
     for (const char* k : {"AnanMicPttOff", "AnanMicTipPtt", "AnanMicBias", "AnanMicXlr", "AnanAdc2GndOnTx",
                           "AnanAdc2FullAttOnTx",   // build 542
+                          "AnanAdc1FullAttOnTx",   // build 561
                           "AnanTxBypassBpf", "AnanTxBypassBpf2", "AnanPsCouplerOnTx"}) {
         // "AnanMicPttOff" <-> field "ananMicPttOff"
         QString field = QString::fromLatin1(k);
@@ -601,6 +603,8 @@ void Hl2Backend::pushAnanModelOptions()
                               Q_ARG(bool, on("AnanAdc2GndOnTx", true)));
     QMetaObject::invokeMethod(m_metis, "setAdc1FullAttOnTx", Qt::QueuedConnection,   // build 542
                               Q_ARG(bool, on("AnanAdc2FullAttOnTx", true)));
+    QMetaObject::invokeMethod(m_metis, "setAdc0FullAttOnTx", Qt::QueuedConnection,   // build 561
+                              Q_ARG(bool, on("AnanAdc1FullAttOnTx", true)));
     // Build 502.
     QMetaObject::invokeMethod(m_metis, "setTxBypassBpf", Qt::QueuedConnection,
                               Q_ARG(bool, on("AnanTxBypassBpf", false)));

@@ -362,7 +362,9 @@ std::array<std::uint8_t, 60> buildTransmitSpecific(std::uint32_t seq = 0,
                                                    int psFeedbackAttDb = -1,
                                                    int psFeedbackAdc = 0,
                                                    std::uint8_t micControlBits = 0,
-                                                   int adc1TxAttenuationDb = -1) noexcept;
+                                                   int adc1TxAttenuationDb = -1,
+                                                   int adc0TxAttenuationDb = -1) noexcept;
+// adc0TxAttenuationDb (build 561): the same for byte 59 -- ADC0 (the RX1 input).
 // adc1TxAttenuationDb (build 542): byte 58 on its own -- ADC1 (the RX2 input)
 // while transmitting; -1 = as txAttenuationDb. The PureSignal feedback value
 // still takes the byte of the feedback ADC.
