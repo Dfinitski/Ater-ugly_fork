@@ -239,6 +239,10 @@ private:
     static constexpr std::size_t kResumeCushionFrames = 1200;   // 50 ms at 24 kHz
     bool m_resumePending = false;
     std::size_t m_resumeSilentFrames = 0;
+    // Build 598: through the hold the sound device gets silence at the
+    // receiver's own pace instead of nothing -- unless the transmit monitor
+    // is playing to it then (passthrough within the last 200 ms).
+    QElapsedTimer m_passClock;
 
     // Diagnostics: one log line every 5 s. "longest gap" is the longest time
     // between two frames handed to the engine -- the figure this thread

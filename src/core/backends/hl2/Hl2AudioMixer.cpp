@@ -592,6 +592,11 @@ void Hl2AudioMixer::passthrough(const std::vector<float>& pcm)
     // loudspeaker frame from here.
     if (pcm.empty())
         return;
+    // Build 598: the monitor plays to the loudspeaker.
+    if (m_passClock.isValid())
+        m_passClock.restart();
+    else
+        m_passClock.start();
     if (m_codecSink)
         m_codecSink(pcm);
     if (!p.live || !m_streaming)
@@ -625,8 +630,38 @@ void Hl2AudioMixer::mixIn(int receiver, const std::vector<float>& pcm, const Par
     // the unkey timing rely on that), and blocks in flight at key-down are
     // dropped.
     if (muted) {
-        m_resumePending = true;   // build 597
-        m_resumeSilentFrames = 0;
+        // ANAN fork build 598 (operator, 21.11: "let's send the card zeros
+        // without breaks, then it will not run dry"). Through the hold the
+        // engine -- the computer's sound device -- gets silence of the same
+        // length, once per period (the first receiver in the mix clocks it),
+        // so it never runs dry and the first sound after the over comes on a
+        // running device. Only the loudspeaker frames: the copy for the
+        // recorder / decoders (mixedBlockReady) and the radio's codec keep
+        // the gap they had. Not while the transmit monitor plays to the
+        // loudspeaker (it fills the stream itself); then the hold stays a gap
+        // and the 597 cushion covers its end.
+        int first = -1;
+        for (int i = 0; i < kMaxReceivers && first < 0; ++i)
+            if (p.dsp[static_cast<std::size_t>(i)])
+                first = i;
+        const bool monitorPlaying = m_passClock.isValid() && m_passClock.elapsed() < 200;
+        if (!monitorPlaying) {
+            if (receiver == first && p.live && m_streaming && !pcm.empty()) {
+                QVector<float> silence(static_cast<qsizetype>(pcm.size() & ~std::size_t{1}), 0.0f);
+                if (const auto frame = m_producer.produce(std::move(silence))) {
+                    if (m_outClock.isValid())
+                        m_diagMaxGapMs = std::max(m_diagMaxGapMs, m_outClock.restart());
+                    else
+                        m_outClock.start();
+                    ++m_diagFrames;
+                    emit speakerFrameReady(*frame);
+                }
+            }
+            m_resumePending = false;   // the device is running: no cushion
+        } else {
+            m_resumePending = true;    // build 597
+            m_resumeSilentFrames = 0;
+        }
         // Build 513: a sub receiver's block queued just ahead of this one
         // goes with it, or it would stay one block behind from here on.
         for (int i = kMaxReceivers; i < kSlots; ++i)
