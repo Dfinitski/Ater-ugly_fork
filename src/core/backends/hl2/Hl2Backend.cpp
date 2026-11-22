@@ -34,6 +34,9 @@
 #include "core/backends/anan/AnanTxEngine.h"
 #include "core/backends/anan/AnanUiState.h"
 #include "core/backends/anan/AnanXvtr.h"
+#include "core/backends/anan/AnanFreqCalMeasure.h"
+#include <QFutureWatcher>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include "core/AutomationBridgeSettings.h"
 #include "core/AppSettings.h"
@@ -1137,6 +1140,21 @@ Hl2Backend::Hl2Backend(QObject* parent)
         // THERE, and m_rx belongs to the GUI thread. See publishIoDsps().
         if (!blocks.empty())
             ananUnkeyIqFeed(blocks[0]);
+        // Build 633: the frequency calibration's capture (upright: conjugated).
+        if (m_fcalArmed.load(std::memory_order_acquire)) {
+            const int fr = m_fcalRxIo.load(std::memory_order_relaxed);
+            if (fr >= 0 && static_cast<std::size_t>(fr) < blocks.size()) {
+                std::size_t w = m_fcalFill.load(std::memory_order_relaxed);
+                for (const auto& v : blocks[static_cast<std::size_t>(fr)]) {
+                    if (w >= m_fcalBuf.size())
+                        break;
+                    m_fcalBuf[w++] = std::conj(v);
+                }
+                m_fcalFill.store(w, std::memory_order_relaxed);
+                if (w >= m_fcalBuf.size())
+                    m_fcalArmed.store(false, std::memory_order_release);
+            }
+        }
         // Build 466: receivers whose DDC PureSignal holds (ANAN RX3 / RX4
         // while transmitting) get silence, demodulated but not displayed.
         const std::uint32_t held = m_metis->heldReceiverMask();
@@ -8904,6 +8922,209 @@ void Hl2Backend::applyFreqCalPpb(int ppb, bool persist)
     repushAllFrequencies();
 }
 
+// ── Build 633: automatic frequency calibration ──────────────────────────────
+
+namespace {
+// ~1.4 s of IQ at 48..192 kHz (bin 0.73 Hz at 192 kHz), capped at 2^20 samples.
+std::size_t freqCalSamples(double rateHz)
+{
+    std::size_t n = 65536;
+    while (n < (1u << 20) && static_cast<double>(n) < rateHz * 1.3)
+        n <<= 1;
+    return n;
+}
+// The carrier is searched within +-1 kHz of where the current correction puts
+// it, wider on the high bands so the whole +-50 ppm range is covered.
+double freqCalWindowHz(double refHz) { return std::max(1000.0, refHz * 52e-6); }
+} // namespace
+
+void Hl2Backend::freqCalStart(quint64 requestId, double refHz)
+{
+    auto refuse = [this, requestId](const QString& why) {
+        qCInfo(lcHl2).noquote() << "ANAN: frequency calibration refused --" << why;
+        if (requestId != 0)
+            emit extensionError(requestId, why);
+    };
+    if (m_fcalBusy)
+        return refuse(QStringLiteral("A calibration is already running."));
+    if (!m_connected || !m_metis)
+        return refuse(QStringLiteral("The radio is not connected."));
+    if (m_keyed || m_radioPtt)
+        return refuse(QStringLiteral("Not possible while transmitting."));
+    if (!(refHz >= 100'000.0 && refHz <= 60'000'000.0))
+        return refuse(QStringLiteral("No reference frequency."));
+    if (xvtrOffsetHz(refHz) != 0.0)
+        return refuse(QStringLiteral("The reference is on a transverter band."));
+    const double rate = static_cast<double>(m_sampleRateHz);
+    const double win = freqCalWindowHz(refHz);
+    int rx = -1;
+    double best = 0.0;
+    for (std::size_t i = 0; i < m_rx.size(); ++i) {
+        const double d = std::abs(refHz - m_rx[i].ncoHz);
+        if (d + win < 0.45 * rate && (rx < 0 || d < best)) {
+            rx = static_cast<int>(i);
+            best = d;
+        }
+    }
+    if (rx < 0)
+        return refuse(QStringLiteral("%1 MHz is outside the receivers' band.").arg(refHz / 1e6, 0, 'f', 6));
+    m_fcalBusy = true;
+    m_fcal = FreqCalRun{};
+    m_fcal.requestId = requestId;
+    m_fcal.refHz = refHz;
+    m_fcal.rx = rx;
+    m_fcal.rateHz = rate;
+    m_fcal.oldPpb = m_freqCalPpb;
+    m_fcal.pass = 1;
+    qCInfo(lcHl2).nospace() << "ANAN: frequency calibration on " << refHz << " Hz, receiver " << rx + 1
+                            << " (NCO " << m_rx[static_cast<std::size_t>(rx)].ncoHz << " Hz, "
+                            << rate << " Hz), correction now " << m_freqCalPpb << " ppb";
+    freqCalArm();
+}
+
+void Hl2Backend::freqCalArm()
+{
+    if (m_fcal.rx < 0 || static_cast<std::size_t>(m_fcal.rx) >= m_rx.size())
+        return freqCalFinish(false, QStringLiteral("The receiver went away."));
+    const Receiver& r = m_rx[static_cast<std::size_t>(m_fcal.rx)];
+    m_fcal.ncoHz = r.ncoHz;
+    m_fcal.regHz = static_cast<double>(ncoCommandHz(r.ncoHz));
+    m_fcalBuf.assign(freqCalSamples(m_fcal.rateHz), {});
+    m_fcalFill.store(0, std::memory_order_relaxed);
+    m_fcalRxIo.store(m_fcal.rx, std::memory_order_relaxed);
+    m_fcal.clock.start();
+    m_fcalArmed.store(true, std::memory_order_release);
+    if (!m_fcalPoll) {
+        m_fcalPoll = new QTimer(this);
+        m_fcalPoll->setInterval(50);
+        connect(m_fcalPoll, &QTimer::timeout, this, [this] {
+            if (!m_fcalBusy) {
+                m_fcalPoll->stop();
+                return;
+            }
+            if (!m_fcalArmed.load(std::memory_order_acquire)
+                && m_fcalFill.load(std::memory_order_relaxed) >= m_fcalBuf.size()) {
+                m_fcalPoll->stop();
+                freqCalCaptured();
+            } else if (m_fcal.clock.elapsed() > 5000 || !m_connected) {
+                m_fcalArmed.store(false, std::memory_order_release);
+                m_fcalPoll->stop();
+                freqCalFinish(false, QStringLiteral("No samples from the receiver."));
+            }
+        });
+    }
+    m_fcalPoll->start();
+}
+
+void Hl2Backend::freqCalCaptured()
+{
+    // The I/O thread is done with the buffer (m_fcalArmed is false). A move of
+    // the NCO or a key meanwhile voids the capture.
+    if (m_keyed || m_radioPtt)
+        return freqCalFinish(false, QStringLiteral("Transmitting during the measurement."));
+    if (static_cast<std::size_t>(m_fcal.rx) >= m_rx.size()
+        || m_rx[static_cast<std::size_t>(m_fcal.rx)].ncoHz != m_fcal.ncoHz
+        || static_cast<double>(m_sampleRateHz) != m_fcal.rateHz)
+        return freqCalFinish(false, QStringLiteral("The receiver was retuned during the measurement."));
+    auto samples = std::make_shared<std::vector<std::complex<float>>>(std::move(m_fcalBuf));
+    m_fcalBuf.clear();
+    const double fs = m_fcal.rateHz;
+    const double expect = m_fcal.refHz - m_fcal.regHz;
+    const double win = freqCalWindowHz(m_fcal.refHz);
+    auto* watcher = new QFutureWatcher<anan::FreqCalPeak>(this);
+    connect(watcher, &QFutureWatcher<anan::FreqCalPeak>::finished, this, [this, watcher] {
+        const anan::FreqCalPeak pk = watcher->result();
+        watcher->deleteLater();
+        if (!m_fcalBusy)
+            return;
+        const QString where = QStringLiteral("%1 MHz").arg(m_fcal.refHz / 1e6, 0, 'f', 6);
+        if (!pk.found || pk.snrDb < 20.0) {
+            return freqCalFinish(false,
+                QStringLiteral("No carrier strong enough within ±%1 Hz of %2: the peak is %3 dBFS, "
+                               "%4 dB above the noise (20 dB needed).")
+                    .arg(qRound(freqCalWindowHz(m_fcal.refHz)))
+                    .arg(where)
+                    .arg(pk.levelDb, 0, 'f', 1)
+                    .arg(pk.snrDb, 0, 'f', 1));
+        }
+        const double ppb = anan::freqCalPpbFrom(m_fcal.refHz, pk.offsetHz, m_fcal.regHz);
+        qCInfo(lcHl2).nospace() << "ANAN: frequency calibration pass " << m_fcal.pass << ": carrier "
+                                << pk.offsetHz << " Hz from the NCO (register " << m_fcal.regHz
+                                << " Hz), " << pk.levelDb << " dBFS, SNR " << pk.snrDb
+                                << " dB -> " << ppb << " ppb";
+        if (m_fcal.pass == 1) {
+            if (std::abs(ppb) > Hl2FreqCal::kMaxPpb) {
+                return freqCalFinish(false,
+                    QStringLiteral("The carrier near %1 is %2 ppm off — more than 50 ppm: "
+                                   "probably not the reference signal.")
+                        .arg(where)
+                        .arg(ppb / 1000.0, 0, 'f', 2));
+            }
+            m_fcal.ppb1 = ppb;
+            m_fcal.offset1 = pk.offsetHz;
+            m_fcal.level1 = pk.levelDb;
+            m_fcal.snr1 = pk.snrDb;
+            // Pass 2: the new correction applied (live), the same signal again.
+            m_fcal.pass = 2;
+            applyFreqCalPpb(static_cast<int>(std::lround(ppb)), /*persist=*/false);
+            QTimer::singleShot(600, this, [this] {
+                if (m_fcalBusy)
+                    freqCalArm();
+            });
+            return;
+        }
+        // Pass 2: both passes measure the same clock; they must agree.
+        const double diffHz = (ppb - m_fcal.ppb1) * 1e-9 * m_fcal.refHz;
+        const double moveHz = (m_fcal.ppb1 - m_fcal.oldPpb) * 1e-9 * m_fcal.refHz;
+        const double tolHz = std::max(0.5, 0.2 * std::abs(moveHz));
+        const int finalPpb = static_cast<int>(std::lround(0.5 * (ppb + m_fcal.ppb1)));
+        const double residualHz = pk.offsetHz - (m_fcal.refHz - m_fcal.regHz);
+        QVariantMap res{
+            {QStringLiteral("ppb"), finalPpb},
+            {QStringLiteral("oldPpb"), m_fcal.oldPpb},
+            {QStringLiteral("refHz"), m_fcal.refHz},
+            {QStringLiteral("errorHz"), (m_fcal.ppb1 - m_fcal.oldPpb) * 1e-9 * m_fcal.refHz},
+            {QStringLiteral("residualHz"), residualHz},
+            {QStringLiteral("levelDb"), m_fcal.level1},
+            {QStringLiteral("snrDb"), m_fcal.snr1},
+        };
+        if (std::abs(diffHz) > tolHz) {
+            return freqCalFinish(false,
+                QStringLiteral("The check did not agree (%1 Hz apart at %2) — the signal is not "
+                               "steady enough. The old correction is kept.")
+                    .arg(diffHz, 0, 'f', 2)
+                    .arg(where));
+        }
+        applyFreqCalPpb(finalPpb, /*persist=*/true);
+        freqCalFinish(true, QString(), res);
+    });
+    watcher->setFuture(QtConcurrent::run([samples, fs, expect, win] {
+        return anan::freqCalFindCarrier(*samples, fs, expect, win);
+    }));
+}
+
+void Hl2Backend::freqCalFinish(bool ok, const QString& text, const QVariantMap& result)
+{
+    m_fcalArmed.store(false, std::memory_order_release);
+    if (m_fcalPoll)
+        m_fcalPoll->stop();
+    if (!ok && m_freqCalPpb != m_fcal.oldPpb)
+        applyFreqCalPpb(m_fcal.oldPpb, /*persist=*/false);   // the stored value is still the old one
+    m_fcalBusy = false;
+    const quint64 id = m_fcal.requestId;
+    m_fcal.requestId = 0;
+    if (ok) {
+        qCInfo(lcHl2).nospace() << "ANAN: frequency calibration done: " << result.value(QStringLiteral("ppb")).toInt()
+                                << " ppb (was " << result.value(QStringLiteral("oldPpb")).toInt() << ")";
+        if (id != 0)
+            emit extensionResult(id, result);
+    } else {
+        qCInfo(lcHl2).noquote() << "ANAN: frequency calibration failed --" << text;
+        if (id != 0)
+            emit extensionError(id, text);
+    }
+}
+
 void Hl2Backend::submitTxAudio(const QByteArray& int16Stereo, int sampleRateHz,
                                TxAudioSource source,
                                const TxCoordinator::Context& context)
@@ -10064,6 +10285,10 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
                 hwReply.insert(ananHwFields());
                 emit extensionResult(requestId, hwReply);
             }
+            return;
+        }
+        if (verb == QLatin1String("freqcal.measure")) {   // build 633
+            freqCalStart(requestId, arg.toMap().value(QStringLiteral("refHz")).toDouble());
             return;
         }
         if (verb == QLatin1String("freqcal.get")) {

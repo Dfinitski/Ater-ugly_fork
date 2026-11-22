@@ -3712,38 +3712,6 @@ QWidget* RadioSetupDialog::buildCalibrationTab()
     auto* gvb = new QVBoxLayout(group);
     gvb->setSpacing(8);
 
-    {
-        auto* intro = new QLabel(
-            "This radio tunes from a free-running crystal and cannot measure its own error, "
-            "so the correction is applied here. Receive a signal of known frequency, tune "
-            "until it zero-beats, and press Calibrate — or enter an error you already know.");
-        applyLabelStyle(intro);
-        intro->setWordWrap(true);
-        gvb->addWidget(intro);
-
-        auto* warmup = new QLabel(
-            "Let the radio warm up for 15 minutes first. The oscillator drifts as it heats.");
-        setTone(warmup, Tone::Warn);
-        warmup->setWordWrap(true);
-        gvb->addWidget(warmup);
-    }
-
-    // The calibration is stored against the radio's own identity (its MAC), and
-    // that identity does not exist until a radio has been connected this
-    // session. Hl2Backend refuses to persist without one — an empty radio_id is
-    // the family-wide default row, which every other HL2 would then inherit
-    // (AGENTS.md) — and the `freqcal` bridge verb returns an error for the same
-    // reason. The page has to say so as well, or the operator trims, watches the
-    // readout move, and finds nothing was saved. m_calibrationReseed below
-    // disables the controls alongside this label.
-    auto* noRadioLbl = new QLabel(
-        "Connect the radio first. The calibration belongs to one physical radio, "
-        "and there is no radio identity to store it against yet.");
-    setTone(noRadioLbl, Tone::Error);
-    noRadioLbl->setWordWrap(true);
-    noRadioLbl->setVisible(false);
-    gvb->addWidget(noRadioLbl);
-
     auto* grid = new QGridLayout;
     grid->setSpacing(6);
     // Keep the controls next to their labels instead of letting the value
@@ -3774,6 +3742,9 @@ QWidget* RadioSetupDialog::buildCalibrationTab()
     refCombo->addItem(QStringLiteral("CHU — 7.850 MHz"), 7'850'000.0);
     refCombo->addItem(QStringLiteral("CHU — 3.330 MHz"), 3'330'000.0);
     refCombo->addItem(QStringLiteral("CHU — 14.670 MHz"), 14'670'000.0);
+    refCombo->addItem(QStringLiteral("RWM — 4.996 MHz"), 4'996'000.0);    // build 633
+    refCombo->addItem(QStringLiteral("RWM — 9.996 MHz"), 9'996'000.0);
+    refCombo->addItem(QStringLiteral("RWM — 14.996 MHz"), 14'996'000.0);
     refCombo->addItem(QStringLiteral("GPSDO / signal generator (custom)"), 0.0);
     refCombo->setToolTip(
         QStringLiteral("The true frequency of the signal you are zero-beating.\n"
@@ -3992,11 +3963,17 @@ QWidget* RadioSetupDialog::buildCalibrationTab()
 
     gvb->addLayout(grid);
 
-    // ── Calibrate from the current VFO ───────────────────────────────────────
+    // ── Calibrate ────────────────────────────────────────────────────────────
+    // ANAN fork build 633 (operator, 22.11: "I just want to pick a frequency
+    // from the list and press Calibrate", as MicronSDR): the active slice goes
+    // to the reference, the backend measures the carrier in the receiver's IQ
+    // and checks the result with a second capture ("freqcal.measure"), then
+    // the slice comes back.
     auto* calRow = new QHBoxLayout;
     calRow->setSpacing(8);
-    auto* calBtn = new QPushButton("Calibrate from Current VFO");
+    auto* calBtn = new QPushButton("Calibrate");
     calBtn->setObjectName(QStringLiteral("hl2FreqCalCapture"));
+    calBtn->setToolTip(QStringLiteral("Tunes to the reference, measures its carrier and stores the correction."));
     auto* calStatus = new QLabel;
     calStatus->setWordWrap(true);
     calRow->addWidget(calBtn);
@@ -4009,36 +3986,86 @@ QWidget* RadioSetupDialog::buildCalibrationTab()
     };
 
     connect(calBtn, &QPushButton::clicked, this,
-            [this, apply, referenceHz, activeSliceHz, setStatus] {
+            [this, referenceHz, setStatus, calBtn, refCombo, customEdit, ppbSpin, resetBtn] {
         const double ref = referenceHz();
         if (!(ref > 0.0)) {
             setStatus(QStringLiteral("Enter a reference frequency."), Tone::Warn);
             return;
         }
-        const double dialled = activeSliceHz();
-        if (!(dialled > 0.0)) {
-            setStatus(QStringLiteral("No active slice to read."), Tone::Warn);
+        IRadioBackend* backend = m_model ? m_model->backend() : nullptr;
+        if (!backend || !m_model->backendDeclaresExtension(QStringLiteral("hl2"))) {
+            setStatus(QStringLiteral("Connect the radio first."), Tone::Warn);
             return;
         }
-        const int ppb = Hl2FreqCal::ppbFromZeroBeat(ref, dialled);
-        // Refuse an implausible result rather than committing it. Zero-beating
-        // the wrong signal — a harmonic, the opposite sideband, the wrong
-        // station — produces a number that would move every band by kilohertz,
-        // and the operator would have no way to tell that from a real reading.
-        if (ppb == Hl2FreqCal::kMinPpb || ppb == Hl2FreqCal::kMaxPpb) {
-            setStatus(QStringLiteral("That is more than 50 ppm off (%1 MHz vs %2 MHz "
-                                     "reference) — check you are on the right signal.")
-                          .arg(dialled / 1.0e6, 0, 'f', 6)
-                          .arg(ref / 1.0e6, 0, 'f', 6),
-                      Tone::Error);
+        SliceModel* slice = nullptr;
+        for (SliceModel* s : m_model->slices()) {
+            if (s && s->isActive()) {
+                slice = s;
+                break;
+            }
+        }
+        if (!slice) {
+            setStatus(QStringLiteral("No receiver to tune."), Tone::Warn);
             return;
         }
-        apply(ppb);
-        setStatus(QStringLiteral("Calibrated: %1 MHz reads as %2 MHz → %3 ppb.")
-                      .arg(ref / 1.0e6, 0, 'f', 6)
-                      .arg(dialled / 1.0e6, 0, 'f', 6)
-                      .arg(ppb),
-                  Tone::Ok);
+        const QList<QPointer<QWidget>> busy{calBtn, refCombo, customEdit, ppbSpin, resetBtn};
+        for (const QPointer<QWidget>& w : busy) {
+            if (w)
+                w->setEnabled(false);
+        }
+        setStatus(QStringLiteral("Measuring %1 MHz…").arg(ref / 1.0e6, 0, 'f', 6), Tone::Value);
+        QPointer<SliceModel> sp(slice);
+        const double oldMhz = slice->frequency();
+        const bool retune = std::abs(oldMhz * 1.0e6 - ref) >= 1.0;
+        if (retune)
+            slice->setFrequency(ref / 1.0e6);
+        QTimer::singleShot(retune ? 700 : 0, this, [this, ref, sp, oldMhz, retune, setStatus] {
+            IRadioBackend* be = m_model ? m_model->backend() : nullptr;
+            auto done = [this, sp, oldMhz, retune] {
+                if (retune && sp)
+                    sp->setFrequency(oldMhz);
+                if (m_calibrationReseed)
+                    m_calibrationReseed();   // the stored value, and the controls back on
+            };
+            if (!be) {
+                done();
+                setStatus(QStringLiteral("The radio went away."), Tone::Error);
+                return;
+            }
+            constexpr quint64 kCalMeasureIdBase = 0x0600000000000000ull;
+            static quint64 nextMeasureId = kCalMeasureIdBase;
+            const quint64 requestId = nextMeasureId++;
+            auto* guard = new QObject(this);
+            connect(be, &IRadioBackend::extensionResult, guard,
+                    [guard, requestId, done, setStatus](quint64 id, const QVariant& result) {
+                if (id != requestId)
+                    return;
+                guard->deleteLater();
+                done();
+                const QVariantMap m = result.toMap();
+                setStatus(QStringLiteral("Calibrated on %1 MHz: it was %2 Hz off; correction %3 ppb "
+                                         "(was %4). Carrier %5 dBFS, %6 dB above the noise; "
+                                         "check passed.")
+                              .arg(m.value(QStringLiteral("refHz")).toDouble() / 1.0e6, 0, 'f', 6)
+                              .arg(m.value(QStringLiteral("errorHz")).toDouble(), 0, 'f', 2)
+                              .arg(m.value(QStringLiteral("ppb")).toInt())
+                              .arg(m.value(QStringLiteral("oldPpb")).toInt())
+                              .arg(m.value(QStringLiteral("levelDb")).toDouble(), 0, 'f', 1)
+                              .arg(m.value(QStringLiteral("snrDb")).toDouble(), 0, 'f', 1),
+                          Tone::Ok);
+            });
+            connect(be, &IRadioBackend::extensionError, guard,
+                    [guard, requestId, done, setStatus](quint64 id, const QString& reason) {
+                if (id != requestId)
+                    return;
+                guard->deleteLater();
+                done();
+                setStatus(QStringLiteral("Not calibrated: %1").arg(reason), Tone::Error);
+            });
+            m_model->invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("freqcal.measure"),
+                                            requestId,
+                                            QVariant(QVariantMap{{QStringLiteral("refHz"), ref}}));
+        });
     });
 
     gvb->addWidget(readout);
@@ -4069,7 +4096,6 @@ QWidget* RadioSetupDialog::buildCalibrationTab()
     // and the next Trim press would commit that number to whichever radio is
     // connected now.
     QPointer<QSpinBox> spinGuard(ppbSpin);
-    QPointer<QLabel> noRadioGuard(noRadioLbl);
     const QList<QPointer<QWidget>> calControls{
         refCombo, customEdit, ppbSpin, resetBtn, downBtn, upBtn, stepCombo, calBtn};
     // Ask the backend whether this radio is on an external reference, and fold
@@ -4113,7 +4139,7 @@ QWidget* RadioSetupDialog::buildCalibrationTab()
                                         QStringLiteral("freqcal.get"), requestId);
     };
 
-    m_calibrationReseed = [this, spinGuard, noRadioGuard, calControls, refreshReadout,
+    m_calibrationReseed = [this, spinGuard, calControls, refreshReadout,
                            askExternalReference] {
         if (!spinGuard)
             return;
@@ -4174,8 +4200,6 @@ QWidget* RadioSetupDialog::buildCalibrationTab()
                              "reintroduce it.")
                        : QString());
         }
-        if (noRadioGuard)
-            noRadioGuard->setVisible(!haveRadio);
         refreshReadout();
     };
     m_calibrationReseed();

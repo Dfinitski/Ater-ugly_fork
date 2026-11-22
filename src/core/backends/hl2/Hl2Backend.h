@@ -1001,6 +1001,36 @@ private:
     // This radio's calibration and the derived scale. 0 / 1.0 is uncalibrated.
     int m_freqCalPpb = 0;
     double m_freqCalScale = 1.0;
+    // Build 633: automatic frequency calibration ("freqcal.measure", arg
+    // {refHz}), after MicronSDR: the raw IQ of the receiver whose DDC holds the
+    // reference is captured (~1.4 s), the carrier found (AnanFreqCalMeasure.h)
+    // and the clock error computed; then the new correction is applied and a
+    // second capture checks it. GUI thread, except the capture itself: the I/O
+    // thread fills m_fcalBuf while m_fcalArmed (it owns the buffer then).
+    struct FreqCalRun {
+        quint64 requestId = 0;
+        double refHz = 0.0;
+        int rx = -1;
+        double ncoHz = 0.0;      // the receiver's NCO when armed (a retune voids it)
+        double regHz = 0.0;      // its register value then (nominal Hz)
+        double rateHz = 0.0;
+        int oldPpb = 0;
+        int pass = 0;            // 1 = measure, 2 = check with the new correction
+        double ppb1 = 0.0;
+        double offset1 = 0.0, level1 = 0.0, snr1 = 0.0;
+        QElapsedTimer clock;
+    };
+    FreqCalRun m_fcal;
+    bool m_fcalBusy = false;
+    std::vector<std::complex<float>> m_fcalBuf;
+    std::atomic<std::size_t> m_fcalFill{0};
+    std::atomic<int> m_fcalRxIo{-1};
+    std::atomic<bool> m_fcalArmed{false};
+    QTimer* m_fcalPoll = nullptr;
+    void freqCalStart(quint64 requestId, double refHz);
+    void freqCalArm();
+    void freqCalCaptured();
+    void freqCalFinish(bool ok, const QString& text, const QVariantMap& result = {});
     // The connected radio's MAC, so calibration is stored per crystal. Empty until
     // connectRadio().
     QString m_radioSerial;
