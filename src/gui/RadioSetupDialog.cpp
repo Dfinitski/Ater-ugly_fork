@@ -5471,6 +5471,45 @@ QWidget* RadioSetupDialog::buildAudioTab()
         pcLayout->addLayout(boostRow);
     }
 
+#ifdef Q_OS_WIN
+    // ANAN fork build 602 (operator, 21.11: "add to the sound options, where
+    // the sound card is set up, the exclusive mode setting"): the PC output
+    // in WASAPI exclusive mode, as Thetis' VAC offers it.
+    {
+        auto* exRow = new QHBoxLayout;
+        auto* exLabel = new QLabel("Exclusive:");
+        applyLabelStyle(exLabel);
+        exLabel->setFixedWidth(90);
+        const bool exOn = AppSettings::instance().value("AudioRxExclusive", "False").toString() == "True";
+        auto* exBtn = new QPushButton(exOn ? "Enabled" : "Disabled");
+        exBtn->setCheckable(true);
+        exBtn->setChecked(exOn);
+        exBtn->setToolTip("WASAPI exclusive mode for the PC audio output: the sound card is\n"
+                          "driven directly, without the Windows mixer -- lower latency.\n"
+                          "While it is on, no other program (and not the PC CW sidetone\n"
+                          "or Quindar tone on the same card) can play on this card.\n"
+                          "If the card refuses, the normal shared output is used.");
+        auto* exHint = new QLabel("(lower latency; the card is not shared)");
+        setTone(exHint, Tone::Hint);
+        connect(exBtn, &QPushButton::toggled, this, [this, exBtn](bool on) {
+            exBtn->setText(on ? "Enabled" : "Disabled");
+            auto& s = AppSettings::instance();
+            s.setValue("AudioRxExclusive", on ? "True" : "False");
+            s.save();
+            if (m_audio) {
+                QMetaObject::invokeMethod(m_audio, [this, on]() {
+                    m_audio->setRxExclusiveMode(on);
+                }, Qt::QueuedConnection);
+            }
+        });
+        exRow->addWidget(exLabel);
+        exRow->addWidget(exBtn);
+        exRow->addWidget(exHint);
+        exRow->addStretch(1);
+        pcLayout->addLayout(exRow);
+    }
+#endif
+
     // Audio Buffer (ms)
     {
         auto* bufRow = new QHBoxLayout;

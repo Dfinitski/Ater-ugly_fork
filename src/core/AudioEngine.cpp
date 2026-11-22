@@ -33,6 +33,7 @@
 #include "CwSidetonePortAudioSink.h"
 #endif
 #include "LogManager.h"
+#include "RxAudioSink.h"
 #include "OpusCodec.h"
 #include "ReceivePresentationSync.h"
 #include "SpectralNR.h"
@@ -4238,11 +4239,40 @@ bool AudioEngine::openRxSinkDevice(int producerRate)
     m_audioDevice = nullptr;
     QString lastRxError;
     bool triedFloatRung = false;
+#ifdef AETHER_RX_EXCLUSIVE_AVAILABLE
+    // ANAN fork build 602 (operator, 21.11): the card in WASAPI exclusive
+    // mode, as Thetis' VAC can -- no Windows mixer in between. Falls back to
+    // the shared QAudioSink below when the card refuses.
+    if (m_rxExclusive.load()) {
+        QString why;
+        auto ex = PaExclusiveRxSink::open(dev, 48000, &why);
+        if (ex) {
+            ex->setVolume(m_muted.load() ? 0.0f : m_rxVolume.load());
+            QIODevice* io = ex->start();
+            if (io) {
+                const int rate = ex->rate();
+                qCWarning(lcAudio).noquote() << "AudioEngine: RX output" << ex->describe();
+                m_audioSink = ex.release();
+                m_audioDevice = io;
+                setRxDeviceRate(rate);
+            } else {
+                why = QStringLiteral("start failed: %1").arg(ex->lastError());
+            }
+        }
+        if (!m_audioSink) {
+            qCWarning(lcAudio).noquote() << "AudioEngine: WASAPI exclusive RX output unavailable ("
+                                         << why << "), using the shared output";
+            noteRxFallback(QStringLiteral("exclusive mode unavailable -> shared"));
+        }
+    }
+#endif
     for (const QAudioFormat& candidate : rxLadder) {
+        if (m_audioSink)
+            break;   // build 602: exclusive mode is open
         if (candidate.sampleFormat() != QAudioFormat::Float)
             continue;   // RX drain writes Float PCM; Int16 rungs are for other sinks
         noteRxAttempt(candidate);
-        auto* sink = new QAudioSink(dev, candidate, this);
+        auto* sink = new QtRxSink(dev, candidate, this);
         sink->setVolume(m_muted.load() ? 0.0f : m_rxVolume.load());
 #ifdef Q_OS_WIN
         // Constrain the WASAPI shared-mode ring buffer (#3193). Without an explicit
@@ -4302,7 +4332,7 @@ bool AudioEngine::openRxSinkDevice(int producerRate)
     // Guard against the audio backend silently stopping the sink after idle/sleep
     // (#1149 / #1303). IdleState restart removed — it looped on Windows (#1405);
     // the zombie-sink watchdog handles stale WASAPI sessions after idle/sleep.
-    connect(m_audioSink, &QAudioSink::stateChanged, this,
+    m_audioSink->onStateChanged =
             [this, generation = m_rxSinkGeneration](QAudio::State state) {
         if (generation != m_rxSinkGeneration || state != QAudio::StoppedState) {
             return;
@@ -4325,7 +4355,7 @@ bool AudioEngine::openRxSinkDevice(int producerRate)
             stopRxStream();
             startRxStream();
         }, Qt::QueuedConnection);
-    });
+    };
     qCWarning(lcAudio) << "AudioEngine: RX stream started at" << m_rxOutputRate.load() << "Hz"
                        << "device:" << dev.description();
     m_rxBufferSampleRate.store(m_rxOutputRate.load());
@@ -4785,11 +4815,7 @@ void AudioEngine::flushRxDevice()
     // QAudioSink contains an already mixed stream. It cannot retract just one
     // source, so retirement flushes that short device queue as a whole; the
     // other sources' application FIFOs remain intact.
-    {
-        const QSignalBlocker blocker(m_audioSink);
-        m_audioSink->reset();
-        m_audioDevice = m_audioSink->start();
-    }
+    m_audioDevice = m_audioSink->restartQuietly();   // build 602: was a QSignalBlocker
     m_rxPlaybackQueuedMs.store(0);
     if (!m_audioDevice) {
         qCWarning(lcAudio) << "AudioEngine: RX sink restart after PCM retirement failed"
@@ -7836,6 +7862,20 @@ void AudioEngine::setNr2Enabled(bool on)
     emit nr2EnabledChanged(on);
 }
 
+void AudioEngine::setRxExclusiveMode(bool on)
+{
+    // ANAN fork build 602 (operator, 21.11: "add the exclusive mode setting to
+    // the sound card options"). Takes effect at the next open; a running RX
+    // stream is reopened now.
+    if (m_rxExclusive.exchange(on) == on)
+        return;
+    qCWarning(lcAudio) << "AudioEngine: RX output exclusive mode" << (on ? "on" : "off");
+    if (m_audioSink) {
+        stopRxStream();
+        startRxStream();
+    }
+}
+
 void AudioEngine::dropQueuedRxSilence()
 {
     // ANAN fork build 599 (operator, 21.11: "now I hear no extra breaks, but
@@ -7866,10 +7906,14 @@ void AudioEngine::dropQueuedRxSilence()
     }
     // Build 600: qInfo -- lcAudio is filtered at warning level, the 599 line
     // never reached the log.
-    qInfo().nospace() << "AudioEngine: after the transmit hold, queued silence dropped: "
+    qInfo().nospace().noquote() << "AudioEngine: after the transmit hold, queued silence dropped: "
                       << inMs << " ms in, " << outMs << " ms out; the sound device holds "
                       << m_rxPlaybackQueuedMs.load(std::memory_order_relaxed) << " ms (buffer "
-                      << (m_audioSink ? m_audioSink->bufferSize() : 0) << " bytes)";
+                      << (m_audioSink ? m_audioSink->bufferSize() : 0) << " bytes"
+                      << (m_audioSink && m_audioSink->exclusive()
+                              ? QStringLiteral(", exclusive, underruns %1").arg(m_audioSink->underruns())
+                              : QString())
+                      << ")";
     updateRxBufferStats();
 }
 

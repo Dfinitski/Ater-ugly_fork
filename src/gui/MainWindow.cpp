@@ -1251,6 +1251,10 @@ MainWindow::MainWindow(QWidget* parent)
         AppSettings::instance().value("RxOutputTrimDb", "0.0").toFloat());
     m_audio->setRxBufferCapMs(
         AppSettings::instance().value("AudioBufferMs", "100").toInt());
+    // ANAN fork build 602: the PC output in WASAPI exclusive mode (Radio
+    // Setup -> Audio, "Exclusive mode").
+    m_audio->setRxExclusiveMode(
+        AppSettings::instance().value("AudioRxExclusive", "False").toString() == "True");
     m_audio->moveToThread(m_audioThread);
     AetherSDR::startStreamThread(m_audioThread);   // High QoS; see AppActivity.h
     const auto updateAetherDspPolicy = [this](bool) {

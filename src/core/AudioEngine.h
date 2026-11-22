@@ -58,6 +58,7 @@ class DeepFilterFilter;
 class NnrFilter;
 class NvidiaAfxFilter;
 class Resampler;
+class RxSink;
 class TxVoiceProcessor;
 class ClientEq;
 class ClientComp;
@@ -193,6 +194,10 @@ public:
     void setRxPan(int panValue);
     int  rxPan() const { return m_rxPan.load(); }
     void  setRxBufferCapMs(int ms) { m_rxBufferCapMs.store(qBound(50, ms, 1000)); }
+    // ANAN fork build 602: the RX output in WASAPI exclusive mode (Windows,
+    // PortAudio; RxAudioSink.h). Restarts a running RX stream.
+    void  setRxExclusiveMode(bool on);
+    bool  rxExclusiveMode() const { return m_rxExclusive.load(); }
     int   rxBufferCapMs() const { return m_rxBufferCapMs.load(); }
     void setReceivePresentationDelays(
         int flexDelayMs,
@@ -1115,7 +1120,8 @@ private:
 
 
     // RX
-    QAudioSink*   m_audioSink{nullptr};
+    RxSink*       m_audioSink{nullptr};   // build 602: QAudioSink or WASAPI exclusive
+    std::atomic<bool> m_rxExclusive{false};
     QPointer<QIODevice> m_audioDevice;   // sink-owned device, may vanish on hot-unplug
     // A negotiated fallback still satisfies one producer-domain attempt. Keep
     // this separate from m_rxOutputRate so a 48 -> 24 fallback cannot reopen on
