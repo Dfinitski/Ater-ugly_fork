@@ -10854,6 +10854,25 @@ Hl2Backend взводит трассу на 400 мс при смене част�
 
 Проверка: errcheck S = базе для Hl2RxDsp 0. Не проверено на радио, под Windows не собиралось.
 
+## 610. Сборка 630 — сегодняшняя диагностика убрана
+
+Оператор, 22.11: «сегодняшнюю диагностику можешь убрать, мы добились своих целей».
+
+Убраны маркеры 613/615/616 (AnanLatencyMarks): взвод при unkey, все отметки ступеней, профиль по блокам и обе строки отчёта «ANAN unkey timeline» и «ANAN unkey RX DSP guard». Места: P2Transport, Hl2RxDsp, Hl2AudioMixer, AnanCodecFeed, AudioEngine, Hl2Backend. Также убрана трасса перестройки 628 (AnanRetuneTrace) целиком.
+
+AudioEngine.cpp, Hl2AudioMixer.cpp, Hl2Backend.cpp/.h сверены со сборкой 612 — побайтно совпадают.
+
+Остались рабочие изменения:
+- 614: буфер кодека — выброс тишины, запас 15 мс;
+- 616: защита RX DSP по событиям; пики блоков считаются через AnanLatencyMarks::peakOf;
+- 617: FIFO динамика держится на половине;
+- 629: нет провала при перемещении NCO;
+- счётчики в строке ANAN diag — «silence drops», «silent packets left out».
+
+Заголовки AnanLatencyMarks.h (теперь только вспомогательные peakOf/above/kSilent) и AnanRetuneTrace.h (не используется) оставлены в дереве: файлы на машине оператора не удаляются.
+
+Проверка: errcheck S = базам: Hl2RxDsp 0, Hl2Backend 2, Hl2AudioMixer 0, P2Transport 0, AudioEngine 52; доказательство bogusSym1 есть. Не проверено на радио, под Windows не собиралось.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

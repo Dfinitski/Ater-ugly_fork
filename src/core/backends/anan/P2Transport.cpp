@@ -3,7 +3,6 @@
 #include "core/backends/anan/P1Protocol.h"
 #include "core/backends/anan/AnanRoute.h"
 #include "core/backends/anan/AnanCodecFeed.h"
-#include "core/backends/anan/AnanLatencyMarks.h"
 #include "core/AppSettings.h"
 
 #include <QStringList>
@@ -1099,8 +1098,6 @@ void P2Transport::handleBufferStatus(std::span<const std::uint8_t> b)
             }
         }
     }
-    // Build 613: unkey timeline -- what the radio's speaker FIFO held last.
-    AnanLatencyMarks::instance().note(AnanLatencyMarks::SpkStatus, spkLevel, f.flags);
 }
 
 void P2Transport::handleStatus(std::span<const std::uint8_t> b)
@@ -2216,7 +2213,6 @@ void P2Transport::speakerSenderLoop()
     // Windows). Waits for complete 64-frame packets and sends each at once.
     raiseCurrentThreadToTimeCritical();
     std::int16_t buf[2 * kCodecFramesPerPacket];
-    std::size_t queuedAfter = 0;
     for (;;) {
         {
             std::unique_lock<std::mutex> lock(m_spkMutex);
@@ -2232,7 +2228,6 @@ void P2Transport::speakerSenderLoop()
                 v = m_spkQueue.front();
                 m_spkQueue.pop_front();
             }
-            queuedAfter = m_spkQueue.size() / 2;
         }
         if (!m_sessionUp.load(std::memory_order_acquire))
             continue;
@@ -2260,10 +2255,6 @@ void P2Transport::speakerSenderLoop()
         if (sendNative(pkt.data(), pkt.size(), kSpeakerAudioPort) < 0)
             m_nativeSendFails.fetch_add(1, std::memory_order_relaxed);
         m_diagSpkPkts.fetch_add(1, std::memory_order_relaxed);
-        // Build 613: unkey timeline -- the first real audio to the radio.
-        auto& marks = AnanLatencyMarks::instance();
-        if (marks.waiting(AnanLatencyMarks::SpkSent) && AnanLatencyMarks::loud(buf, std::size(buf)))
-            marks.mark(AnanLatencyMarks::SpkSent, static_cast<int>(queuedAfter));
     }
 }
 
@@ -2571,9 +2562,6 @@ void P2Transport::setMox(bool keyed, const TxCoordinator::Operation& operation)
         if (m_psEnabled)
             sendDdcSpecific();
         sendHighPriority(true);
-        // Build 613: unkey timeline -- the packet that tells the radio.
-        if (!keyed)
-            AnanLatencyMarks::instance().note(AnanLatencyMarks::MoxOffSent);
     }
 }
 

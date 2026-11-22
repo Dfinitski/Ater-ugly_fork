@@ -30,7 +30,6 @@
 #include <mutex>
 
 #include "core/backends/anan/AnanLatencyMarks.h"
-#include "core/backends/anan/AnanRetuneTrace.h"
 
 namespace AetherSDR::anan {
 
@@ -71,10 +70,6 @@ public:
         const double step = static_cast<double>(rate) / static_cast<double>(kRate);
         std::lock_guard<std::mutex> lock(m_mutex);
         const bool loudIn = AnanLatencyMarks::above(stereo, 2 * frames, AnanLatencyMarks::kSilent);
-        // Build 613: unkey timeline -- the first real audio in.
-        auto& marks = AnanLatencyMarks::instance();
-        if (marks.waiting(AnanLatencyMarks::FeedPush) && AnanLatencyMarks::loud(stereo, 2 * frames))
-            marks.mark(AnanLatencyMarks::FeedPush, static_cast<int>(m_fifo.size() / 2));
         // ANAN fork build 614 (613 timeline: 2100..2500 frames, 45..55 ms of
         // silence queued ahead of the first sound after an over). OUR ERROR:
         // the mixer's resume cushion (build 597) is meant for the PC sound
@@ -147,7 +142,6 @@ public:
                 return;
             }
             m_primed = true;
-            AnanLatencyMarks::instance().mark(AnanLatencyMarks::FeedPrimed, static_cast<int>(have));
         }
         if (have > kHighFrames + frames) {   // a backlog after a stall: back to the target
             const std::size_t drop = have - kTargetFrames;
@@ -157,8 +151,6 @@ public:
         }
         m_depthMin = std::min(m_depthMin, have);
         m_depthMax = std::max(m_depthMax, have);
-        AnanRetuneTrace::instance().feed(static_cast<int>(m_underruns.load(std::memory_order_relaxed)),
-                                         static_cast<int>(have));   // build 628
         std::size_t f = 0;
         for (; f < frames; ++f) {
             if (m_fifo.size() < 2)
@@ -182,10 +174,6 @@ public:
             m_primed = false;
             m_underruns.fetch_add(1, std::memory_order_relaxed);
         }
-        // Build 613: unkey timeline -- the first real audio out.
-        auto& marks = AnanLatencyMarks::instance();
-        if (marks.waiting(AnanLatencyMarks::FeedTake) && AnanLatencyMarks::loud(out, 2 * f))
-            marks.mark(AnanLatencyMarks::FeedTake, static_cast<int>(have));
     }
 
     // I/O thread, radio PTT press (Hl2Backend's press hook): what is queued

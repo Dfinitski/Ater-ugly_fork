@@ -1,8 +1,6 @@
 #include "AudioEngine.h"
 #include "RxChainRunner.h"
 #include "core/backends/anan/AnanCodecFeed.h"
-#include "core/backends/anan/AnanLatencyMarks.h"
-#include "core/backends/anan/AnanRetuneTrace.h"
 #include "RxClientEffects.h"
 #include <QSignalBlocker>
 #include "core/backends/RadioCapabilities.h"
@@ -2768,9 +2766,6 @@ void AudioEngine::drainRxAudio(qsizetype freeBytes)
             qBound(0, audioBytesToMs(sinkQueuedBytes, sampleRate), 1000);
         m_rxPlaybackQueuedMs.store(playbackQueuedMs,
                                    std::memory_order_relaxed);
-        // Build 628: retune trace -- the PC sink's underruns and least queue.
-        anan::AnanRetuneTrace::instance().pcSink(static_cast<int>(m_audioSink->underruns()),
-                                                 playbackQueuedMs);
     } else {
         m_rxPlaybackQueuedMs.store(0, std::memory_order_relaxed);
     }
@@ -5839,18 +5834,6 @@ void AudioEngine::processMixedRxAudioData(const QByteArray& pcm,
                                static_cast<std::size_t>(output->size())
                                    / (2 * sizeof(float)),
                                scopeSampleRate);
-            }
-            // Build 613: unkey timeline -- the first real post-chain audio;
-            // a = ms queued ahead of it here, b = ms held by the sound device.
-            auto& marks = anan::AnanLatencyMarks::instance();
-            if (marks.waiting(anan::AnanLatencyMarks::EngineSound)
-                && anan::AnanLatencyMarks::loud(reinterpret_cast<const float*>(output->constData()),
-                                                static_cast<std::size_t>(output->size()) / sizeof(float))) {
-                const int rate = std::max(1, scopeSampleRate);
-                const int aheadMs = static_cast<int>((outputBuffer.size() - output->size()) * 1000LL
-                    / (static_cast<qint64>(rate) * 2 * static_cast<qint64>(sizeof(float))));
-                marks.mark(anan::AnanLatencyMarks::EngineSound, std::max(0, aheadMs),
-                           m_rxPlaybackQueuedMs.load(std::memory_order_relaxed));
             }
         }
         if (!externalSource && source == RxDspSource::Main) {

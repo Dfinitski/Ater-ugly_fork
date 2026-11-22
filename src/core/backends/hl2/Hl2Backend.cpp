@@ -30,8 +30,6 @@
 #include "core/backends/anan/AnanForcedModel.h"
 #include "core/backends/anan/P2Transport.h"
 #include "core/backends/anan/AnanCodecFeed.h"
-#include "core/backends/anan/AnanLatencyMarks.h"
-#include "core/backends/anan/AnanRetuneTrace.h"
 #include "core/backends/anan/AnanPureSignal.h"
 #include "core/backends/anan/AnanTxEngine.h"
 #include "core/backends/anan/AnanUiState.h"
@@ -3024,135 +3022,6 @@ void Hl2Backend::spkCapture(float gain)
     m_spkCap.clear();
 }
 
-// ANAN fork build 613: the unkey timeline (AnanLatencyMarks), one line.
-// "heard" adds what is still queued ahead of the first real audio: for the
-// PC the engine's queue and the sound device, for the codec the radio's own
-// speaker FIFO (its last reported level, 48 kHz frames).
-static std::atomic<unsigned> s_ananLatGen{0};
-
-static void ananLatencyReport(const char* why)
-{
-    using M = anan::AnanLatencyMarks;
-    auto& m = M::instance();
-    if (!m.armed())
-        return;
-    m.disarm();
-    auto t = [&](M::Stage s) {
-        const double v = m.ms(s);
-        return std::isnan(v) ? QStringLiteral("--") : QString::number(v, 'f', 1);
-    };
-    QString heardPc = QStringLiteral("--");
-    if (!std::isnan(m.ms(M::EngineSound)))
-        heardPc = QString::number(m.ms(M::EngineSound) + m.a(M::EngineSound) + m.b(M::EngineSound), 'f', 0);
-    QString heardCodec = QStringLiteral("--");
-    if (!std::isnan(m.ms(M::SpkSent)) && !std::isnan(m.ms(M::SpkStatus)))
-        heardCodec = QString::number(m.ms(M::SpkSent) + (m.a(M::SpkSent) + m.a(M::SpkStatus)) / 48.0, 'f', 0);
-    qCInfo(lcHl2).noquote().nospace()
-        << "ANAN unkey timeline (ms from host MOX off" << why << "): MOX-off packet " << t(M::MoxOffSent)
-        << "; RX DSP flushed " << t(M::RxDspFlushed) << ", sound " << t(M::RxDspSound)
-        << "; mixer to PC path " << t(M::MixerLive) << ", sound " << t(M::MixerSound)
-        << "; codec raw mix sound " << t(M::CodecMixSound)
-        << "; engine post-chain sound " << t(M::EngineSound) << " (queued ahead " << m.a(M::EngineSound)
-        << " ms, device " << m.b(M::EngineSound) << " ms)"
-        << "; codec feed push " << t(M::FeedPush) << " (depth " << m.a(M::FeedPush)
-        << "), primed " << t(M::FeedPrimed) << " (" << m.a(M::FeedPrimed)
-        << "), take " << t(M::FeedTake) << " (depth " << m.a(M::FeedTake) << ")"
-        << "; speaker packet " << t(M::SpkSent) << " (host queue " << m.a(M::SpkSent) << " frames)"
-        << "; radio speaker FIFO " << m.a(M::SpkStatus) << " of 2048 (flags " << m.b(M::SpkStatus)
-        << ") at " << t(M::SpkStatus)
-        << " => heard: PC ~" << heardPc << ", codec ~" << heardCodec;
-    // Build 615: the RX DSP guard in detail, per DSP block from its release.
-    auto db = [](float v) {
-        return v <= 0.0f ? QStringLiteral("_") : QString::number(20.0 * std::log10(v), 'f', 0);
-    };
-    QString iq, out;
-    for (int i = 0; i < m.iqCount(); ++i)
-        iq += db(m.iqPeak(i)) + QLatin1Char(' ');
-    for (int i = 0; i < m.outCount(); ++i)
-        out += db(m.outPeak(i)) + QLatin1Char(' ');
-    // Build 616: the first output block after the mute within 10 dB of the
-    // level the receiver settles at (the median of the last 8 blocks).
-    QString fullLevel = QStringLiteral("--");
-    QString pipeline = QStringLiteral("--");
-    {
-        const int n = m.outCount();
-        const double mute = m.ms(M::RxMuteEnd) - m.ms(M::RxDspRelease);
-        const double blk = m.profileBlockUs() / 1000.0;
-        if (n >= 12 && blk > 0.0 && !std::isnan(mute)) {
-            std::vector<float> tail;
-            for (int i = n - 8; i < n; ++i)
-                tail.push_back(m.outPeak(i));
-            std::sort(tail.begin(), tail.end());
-            const float ref = 0.5f * (tail[3] + tail[4]);
-            for (int i = 0; i < n; ++i) {
-                if ((i + 1) * blk < mute)
-                    continue;
-                if (m.outPeak(i) >= ref * 0.316f) {
-                    const double at = m.ms(M::RxDspRelease) + (i + 1) * blk;
-                    fullLevel = QString::number(at, 'f', 1);
-                    if (!std::isnan(m.ms(M::RxDspFlushed)))
-                        pipeline = QString::number(at - m.ms(M::RxDspFlushed), 'f', 1);
-                    break;
-                }
-            }
-        }
-    }
-    qCInfo(lcHl2).noquote().nospace()
-        << "ANAN unkey RX DSP guard: release " << t(M::RxDspRelease) << " ms (max guard "
-        << QString::number(m.a(M::RxDspRelease) / 1000.0, 'f', 1) << " ms, max blank "
-        << QString::number(m.b(M::RxDspRelease) / 1000.0, 'f', 1) << " ms), blank end "
-        << t(M::RxBlankEnd) << (m.a(M::RxBlankEnd) ? " (IQ clean)" : " (timed)")
-        << ", flushed " << t(M::RxDspFlushed) << ", mute end " << t(M::RxMuteEnd)
-        << (m.a(M::RxMuteEnd) ? " (over left the output)" : " (timed)")
-        << ", sound " << t(M::RxDspSound) << ", full level " << fullLevel
-        << " (pipeline from the flush " << pipeline << ")" << "; per block of "
-        << QString::number(m.profileBlockUs() / 1000.0, 'f', 2) << " ms from the release, dBFS -- IQ in: "
-        << iq << "| WDSP out before the mute: " << out;
-}
-
-// ANAN fork build 628: the retune trace (AnanRetuneTrace), one line 400 ms
-// after receiver 1's NCO register or shift changed.
-static std::atomic<unsigned> s_ananRetuneGen{0};
-static QString s_ananRetuneWhat;   // GUI thread only
-
-void Hl2Backend::ananRetuneArm(const QString& what)
-{
-    auto& rt = anan::AnanRetuneTrace::instance();
-    // A step that both shifts and moves the NCO is one retune.
-    if (rt.active() && anan::AnanRetuneTrace::nowUs() - rt.t0() < 100000) {
-        s_ananRetuneWhat += QStringLiteral(" + ") + what;
-        return;
-    }
-    rt.arm();
-    s_ananRetuneWhat = what;
-    const unsigned gen = ++s_ananRetuneGen;
-    QTimer::singleShot(420, this, [gen] {
-        if (gen != s_ananRetuneGen.load())
-            return;
-        auto& t = anan::AnanRetuneTrace::instance();
-        auto ms = [&](std::int64_t at) {
-            return at < 0 ? QStringLiteral("--") : QString::number(t.relMs(at), 'f', 1);
-        };
-        auto db = [](float v) {
-            return v <= 0.0f ? QStringLiteral("_") : QString::number(20.0 * std::log10(v), 'f', 0);
-        };
-        QString out;
-        for (int i = 0; i < t.outCount(); ++i)
-            out += db(t.outPeak(i)) + QLatin1Char(' ');
-        qCInfo(lcHl2).noquote().nospace()
-            << "ANAN retune trace (" << s_ananRetuneWhat << "): setShift at " << ms(t.shiftAtUs())
-            << " ms, longest " << QString::number(t.shiftMaxUs() / 1000.0, 'f', 1)
-            << " ms; NCO move at " << ms(t.ncoAtUs()) << ", dip " << ms(t.dipStartUs()) << ".."
-            << ms(t.dipEndUs()) << "; DSP thread longest gap "
-            << QString::number(t.dspGapMaxUs() / 1000.0, 'f', 1) << " ms, longest block "
-            << QString::number(t.dspCallMaxUs() / 1000.0, 'f', 1) << " ms; mixer longest gap "
-            << QString::number(t.mixGapMaxUs() / 1000.0, 'f', 1) << " ms; PC sink underruns +"
-            << t.pcUnderDelta() << ", least queued " << t.pcQueuedMin() << " ms; codec feed underruns +"
-            << t.feedUnderDelta() << ", least depth " << t.feedDepthMin() * 1000 / 48000
-            << " ms; WDSP out per block dBFS: " << out;
-    });
-}
-
 void Hl2Backend::ananUnkeyEvent(const QString& what)
 {
     if (!m_ukPost)
@@ -5306,8 +5175,6 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
     Receiver* r = rx(ddc);
     if (!r)
         return;   // a slice that is not running: see ddcForSlice
-    if (ddc == 0 && hz != r->sliceFreqHz)   // build 628: retune trace
-        ananRetuneArm(QStringLiteral("tune %1 Hz").arg(hz - r->sliceFreqHz, 0, 'f', 0));
     r->sliceFreqHz = hz;
 
     // Keep the NCO — and therefore the panadapter centre — where it is, and put
@@ -6537,8 +6404,6 @@ void Hl2Backend::moveNcoForView(int ddc, Receiver& r, double newNcoHz, double vi
         rateHz > 0.0 && std::abs(viewCenterHz - r.ncoHz) + panViewHz(r) / 2.0 <= rateHz / 2.0;
     const bool freshStart = std::abs(ncoDeltaHz) > rateHz / 2.0 && !viewWasCaptured;
     panMoveDiagMove(ddc, ncoDeltaHz);   // build 359
-    if (ddc == 0)   // build 628: retune trace
-        ananRetuneArm(QStringLiteral("NCO move %1 Hz").arg(ncoDeltaHz, 0, 'f', 0));
     r.ncoHz = newNcoHz;
     r.viewOffsetHz = viewCenterHz - newNcoHz;
     r.viewForNcoHz = newNcoHz;
@@ -7465,7 +7330,6 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
             connect(m_ukTimer, &QTimer::timeout, this, [this] { ananUnkeyTraceSample(); });
         }
         if (key) {
-            ananLatencyReport(", re-keyed before 2 s");   // build 613
             m_ukKeyed = true;
             m_ukPost = false;
             m_ukRows.clear();
@@ -7482,13 +7346,6 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
                               .arg(m_radioPtt ? QStringLiteral(", radio PTT still on") : QString());
             m_ukIqRate.store(m_sampleRateHz, std::memory_order_relaxed);
             m_ukIqArm.store(true, std::memory_order_release);
-            // Build 613: unkey timeline, reported 2 s later.
-            anan::AnanLatencyMarks::instance().arm();
-            const unsigned gen = ++s_ananLatGen;
-            QTimer::singleShot(2000, this, [gen] {
-                if (gen == s_ananLatGen.load())
-                    ananLatencyReport("");
-            });
         }
     }
     m_keyed = key;
@@ -8407,12 +8264,6 @@ void Hl2Backend::ananIoCodecAudio(const void* dsp, const std::vector<float>& pcm
         const std::size_t b = std::min(m_ioRxBlank, n);
         std::fill(m_ioMixOut.begin(), m_ioMixOut.begin() + static_cast<std::ptrdiff_t>(b), 0.0f);
         m_ioRxBlank -= b;
-    }
-    {   // Build 613: unkey timeline -- the receivers' raw mix on the I/O thread.
-        auto& marks = anan::AnanLatencyMarks::instance();
-        if (marks.waiting(anan::AnanLatencyMarks::CodecMixSound)
-            && anan::AnanLatencyMarks::loud(m_ioMixOut.data(), m_ioMixOut.size()))
-            marks.mark(anan::AnanLatencyMarks::CodecMixSound);
     }
     for (std::size_t f = 0; f < n / 2; ++f) {
         m_ioMixOut[2 * f] += m_ioMonOut[f];
