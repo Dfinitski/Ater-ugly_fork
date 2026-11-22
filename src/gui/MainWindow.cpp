@@ -215,8 +215,6 @@
 #include <QMouseEvent>
 #include <QHelpEvent>
 #include <QWindow>
-#include <QElapsedTimer>
-#include <QSet>
 #include <QPixmap>
 #include <QImage>
 #include <QBuffer>
@@ -3281,79 +3279,8 @@ ClientPuduEditor* MainWindow::ensureClientPuduEditor()
     return m_clientPuduEditor;
 }
 
-namespace {
-// ANAN fork build 621 (operator, 22.11: "a small white window or panel with an
-// icon shows before AetherRX opens -- RX only"). A marker: every top-level
-// window shown in the 1.5 s after AetherRX is created is logged with its
-// class, name, title, geometry and flags, so the one that flashes is named.
-class AetherRxOpenSpy final : public QObject {
-public:
-    explicit AetherRxOpenSpy(QObject* parent) : QObject(parent) { m_clock.start(); }
-protected:
-    bool eventFilter(QObject* obj, QEvent* ev) override
-    {
-        const QEvent::Type t = ev->type();
-        // Build 622: where a widget that was shown as a window of its own ends
-        // up (its parents after the reparent), and what a label said.
-        if (t == QEvent::ParentChange && m_flashed.contains(obj)) {
-            QString chain;
-            for (const QWidget* p = static_cast<QWidget*>(obj)->parentWidget(); p && chain.size() < 600;
-                 p = p->parentWidget())
-                chain += QStringLiteral(" <- %1 '%2'").arg(QLatin1String(p->metaObject()->className()),
-                                                          p->objectName());
-            qInfo().noquote().nospace() << "AetherRX open spy +" << m_clock.elapsed()
-                << " ms: the window above is now a child:" << chain;
-            return false;
-        }
-        if (t != QEvent::Show && t != QEvent::Hide)
-            return false;
-        if (auto* w = qobject_cast<QWidget*>(obj)) {
-            if (!w->isWindow())
-                return false;
-            const QWidget* p = w->parentWidget();
-            if (t == QEvent::Show && !p)
-                m_flashed.insert(obj);
-            QString text;
-            if (auto* lbl = qobject_cast<QLabel*>(w))
-                text = QStringLiteral(" text='%1'").arg(lbl->text().left(120));
-            qInfo().noquote().nospace()
-                << "AetherRX open spy +" << m_clock.elapsed() << " ms: widget "
-                << (t == QEvent::Show ? "SHOW " : "hide ") << w->metaObject()->className()
-                << " name='" << w->objectName() << "' title='" << w->windowTitle()
-                << "' geom=" << w->geometry().x() << "," << w->geometry().y() << " "
-                << w->width() << "x" << w->height()
-                << " flags=0x" << QString::number(static_cast<quint32>(w->windowFlags()), 16)
-                << " parent=" << (p ? p->metaObject()->className() : "none")
-                << (p ? QStringLiteral(" '%1'").arg(p->objectName()) : QString()) << text;
-        } else if (auto* win = qobject_cast<QWindow*>(obj)) {
-            qInfo().noquote().nospace()
-                << "AetherRX open spy +" << m_clock.elapsed() << " ms: window "
-                << (t == QEvent::Show ? "SHOW " : "hide ") << win->metaObject()->className()
-                << " name='" << win->objectName() << "' title='" << win->title()
-                << "' geom=" << win->geometry().x() << "," << win->geometry().y() << " "
-                << win->width() << "x" << win->height()
-                << " flags=0x" << QString::number(static_cast<quint32>(win->flags()), 16);
-        }
-        return false;
-    }
-private:
-    QElapsedTimer m_clock;
-    QSet<QObject*> m_flashed;   // build 622
-};
-} // namespace
-
 AetherRxDialog* MainWindow::ensureAetherRxDialog()
 {
-    // Build 621: name every top-level window shown while AetherRX opens.
-    if (!m_rxDialog && qApp) {
-        auto* spy = new AetherRxOpenSpy(qApp);
-        qApp->installEventFilter(spy);
-        QTimer::singleShot(1500, spy, [spy] {
-            qApp->removeEventFilter(spy);
-            spy->deleteLater();
-        });
-        qInfo() << "AetherRX open spy: started";
-    }
     // A CanonWindow (style guide, RFC #6226): always frameless and not a
     // PersistentDialog, so it's created or raised directly, like Network
     // Diagnostics.

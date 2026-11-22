@@ -58,7 +58,13 @@ ClientEqOutputFader::ClientEqOutputFader(QWidget* parent) : QWidget(parent)
         "Output gain (dB). Drag to set, wheel for fine step,\n"
         "double-click to reset to 0 dB.");
 
-    m_endLabel = new QLabel("OUT");
+    // ANAN fork build 623 (operator, 22.11: a small white window flashed
+    // before AetherRX opened). These three are parented here from the start:
+    // the one not in the layout of the current mode stayed parentless, and
+    // setGainControlEnabled(false) -- AetherRX's EQ shows its strip as a
+    // meter -- made the parentless level label visible, a window of its own
+    // ('-inf', 56 px) until the layout rebuild took it in.
+    m_endLabel = new QLabel(QStringLiteral("OUT"), this);
     m_endLabel->setAlignment(Qt::AlignCenter);
     AetherSDR::ThemeManager::instance().applyStyleSheet(m_endLabel, "QLabel { color: {{color.text.secondary}}; font-size: 10px; font-weight: bold;"
         " background: transparent; border: none; }");
@@ -67,7 +73,7 @@ ClientEqOutputFader::ClientEqOutputFader(QWidget* parent) : QWidget(parent)
     // type a dB value, Enter or focus-out to commit (clamped to range).
     // Looks identical to a label until focused; subtle inset + cyan
     // border on focus indicates edit mode (matches ClientCompKnob).
-    m_valueEdit = new QLineEdit;
+    m_valueEdit = new QLineEdit(this);
     m_valueEdit->setAlignment(Qt::AlignCenter);
     m_valueEdit->setFrame(false);
     AetherSDR::ThemeManager::instance().applyStyleSheet(m_valueEdit, "QLineEdit { color: {{color.text.primary}}; font-size: 10px; font-weight: bold;"
@@ -79,7 +85,7 @@ ClientEqOutputFader::ClientEqOutputFader(QWidget* parent) : QWidget(parent)
 
     // The reading, for strips that report rather than set. Centred in its own
     // cap so the digits sit still as the value changes width.
-    m_levelLabel = new QLabel;
+    m_levelLabel = new QLabel(this);
     m_levelLabel->setAlignment(Qt::AlignCenter);
     AetherSDR::ThemeManager::instance().applyStyleSheet(m_levelLabel,
         "QLabel { color: {{color.text.primary}}; font-size: 10px; font-weight: bold;"
