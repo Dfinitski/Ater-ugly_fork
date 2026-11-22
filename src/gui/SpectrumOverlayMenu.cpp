@@ -449,7 +449,7 @@ SpectrumOverlayMenu::SpectrumOverlayMenu(QWidget* parent)
     m_toggleBtn->setFixedSize(BTN_W, BTN_H);
     AetherSDR::ThemeManager::instance().applyStyleSheet(m_toggleBtn, "QPushButton { background: rgba(20, 30, 45, 240); "
         "border: 1px solid rgba(255, 255, 255, 40); border-radius: 2px; "
-        "color: {{color.text.primary}}; font-size: 13px; font-weight: bold; }"
+        "color: {{color.text.primary}}; font-size: 13px; font-weight: bold; padding: 0px; }"
         "QPushButton:hover { background: rgba(0, 112, 192, 180); "
         "border: 1px solid {{color.accent.dim}}; }");
     connect(m_toggleBtn, &QPushButton::clicked, this, &SpectrumOverlayMenu::toggle);
@@ -1889,6 +1889,18 @@ void SpectrumOverlayMenu::updateLayout()
 
     m_toggleBtn->setText(m_expanded ? QStringLiteral("\u2190") : QStringLiteral("\u2192"));
     m_toggleBtn->move(pad, pad);
+    // ANAN fork build 636 (operator, 22.11: "when the other buttons are
+    // hidden, make the arrow button as small as possible, just the arrow"):
+    // collapsed it is a square of the arrow's size.
+    constexpr int kCollapsedBtn = 18;
+    if (!m_expanded) {
+        m_toggleBtn->setFixedSize(kCollapsedBtn, kCollapsedBtn);
+        setFixedSize(pad + kCollapsedBtn + pad, pad + kCollapsedBtn + pad);
+        for (auto* btn : m_menuBtns)
+            btn->setVisible(false);
+        return;
+    }
+    m_toggleBtn->setFixedSize(BTN_W, BTN_H);
 
     int y = pad + BTN_H + gap;
     int shownBtns = 0;
