@@ -1091,13 +1091,16 @@ void Hl2RxDsp::ncoMoved(double deltaHz, bool holdFrame)
                           std::memory_order_relaxed);
     }
     m_specSkipSamples = m_config.inputSampleRateHz * kNcoMoveSettleMs / 1000;
-    // 3 ms down, silence, 5 ms up: 20 ms in all, from the next output block.
-    m_dipTotalFrames = m_config.audioSampleRateHz * 20 / 1000;
-    m_dipFrames = m_dipTotalFrames;
-    if (!m_isSubDsp) {   // build 628: retune trace
+    // ANAN fork build 629 (operator, 22.11: "the fade happens only without
+    // zoom, when the whole panadapter moves -- the receiver retunes; remove
+    // those 20 ms, I think they are not needed, and we will see"). The audio
+    // dip (3 ms down, silence, 5 ms up, from the next output block) is gone:
+    // it landed at once on the output while the retuned IQ reaches it only
+    // a pipeline later, so it cut the audio after the new sound had started.
+    m_dipTotalFrames = 0;
+    m_dipFrames = 0;
+    if (!m_isSubDsp)   // build 628: retune trace
         anan::AnanRetuneTrace::instance().ncoMoved();
-        anan::AnanRetuneTrace::instance().dipStart();
-    }
 }
 
 void Hl2RxDsp::dropSpectrumAverage()
