@@ -2624,48 +2624,4 @@ void AppletPanel::openFavoritesPicker()
     m_favoritesPicker->activateWindow();
 }
 
-bool AppletPanel::appletWindowOpen(const QString& id) const
-{
-    ContainerWidget* c = m_containerMgr ? m_containerMgr->container(id) : nullptr;
-    return c && c->isFloating() && c->isContainerVisible() && c->window()
-        && c->window()->isVisible();
-}
-
-bool AppletPanel::toggleAppletWindow(const QString& id)
-{
-    // Build 626: see the header.
-    if (!m_containerMgr)
-        return false;
-    ContainerWidget* c = m_containerMgr->container(id);
-    if (!c)
-        return false;
-    QPushButton* btn = nullptr;
-    for (const auto& e : m_appletOrder)
-        if (e.id == id)
-            btn = e.btn;
-    if (appletWindowOpen(id)) {
-        // The bar button's "off" on a floating tile docks it, hides it and
-        // saves that (build 351); without a button, the same by hand.
-        if (btn && btn->isChecked()) {
-            btn->setChecked(false);
-        } else {
-            m_containerMgr->dockContainer(id);
-            c->setContainerVisible(false);
-        }
-        return false;
-    }
-    if (btn && !btn->isChecked())
-        btn->setChecked(true);   // open in its slot, saved as on
-    else
-        c->setContainerVisible(true);
-    if (!c->isFloating())
-        m_containerMgr->floatContainer(id);
-    if (QWidget* w = c->window()) {
-        w->show();
-        w->raise();
-        w->activateWindow();
-    }
-    return true;
-}
-
 } // namespace AetherSDR

@@ -1668,15 +1668,9 @@ void MainWindow::buildMenuBar()
     auto* cwKeyerAction = toolsMenu->addAction("CW Keyer");
     m_cwKeyerAction = cwKeyerAction;
     cwKeyerAction->setCheckable(true);
-    // ANAN fork build 626 (operator, 22.11: "Tools -> CW Keyer does not
-    // work; it must bring the applet's window on screen"). It opened the CWX
-    // panel, and only while the TX mode was CW (disabled otherwise). On the
-    // ANAN the keyer is the CW applet (speed, iambic, sidetone, hang): the
-    // entry now opens that applet as its own window, raised, at any mode, and
-    // closes it again. The CWX text keyer stays on the status bar's CWX.
+    cwKeyerAction->setEnabled(false);
     connect(cwKeyerAction, &QAction::triggered, this, [this] {
-        if (m_appletPanel)
-            m_appletPanel->toggleAppletWindow(QStringLiteral("CW"));
+        toggleCwKeyerPanel();
         updateToolsMenuState();
     });
 
