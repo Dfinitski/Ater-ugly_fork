@@ -8934,8 +8934,12 @@ std::size_t freqCalSamples(double rateHz)
     return n;
 }
 // The carrier is searched within +-1 kHz of where the current correction puts
-// it, wider on the high bands so the whole +-50 ppm range is covered.
-double freqCalWindowHz(double refHz) { return std::max(1000.0, refHz * 52e-6); }
+// it, wider on the high bands so the whole range of the correction is covered
+// (build 635: +-200 ppm, Hl2FreqCal::kMaxPpb).
+double freqCalWindowHz(double refHz)
+{
+    return std::max(1000.0, refHz * (Hl2FreqCal::kMaxPpb + 5'000) * 1e-9);
+}
 } // namespace
 
 void Hl2Backend::freqCalStart(quint64 requestId, double refHz)
@@ -9058,10 +9062,11 @@ void Hl2Backend::freqCalCaptured()
         if (m_fcal.pass == 1) {
             if (std::abs(ppb) > Hl2FreqCal::kMaxPpb) {
                 return freqCalFinish(false,
-                    QStringLiteral("The carrier near %1 is %2 ppm off — more than 50 ppm: "
+                    QStringLiteral("The carrier near %1 is %2 ppm off — more than %3 ppm: "
                                    "probably not the reference signal.")
                         .arg(where)
-                        .arg(ppb / 1000.0, 0, 'f', 2));
+                        .arg(ppb / 1000.0, 0, 'f', 2)
+                        .arg(Hl2FreqCal::kMaxPpb / 1000));
             }
             m_fcal.ppb1 = ppb;
             m_fcal.offset1 = pk.offsetHz;

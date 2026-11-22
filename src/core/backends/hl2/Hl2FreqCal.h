@@ -29,8 +29,10 @@ public:
     // +/- 50 ppm. A stock HL2 lands inside +/- 10 ppm and a good one inside
     // 0.2 ppm; this leaves room for a bad crystal without letting a typo command
     // something absurd.
-    static constexpr int kMinPpb = -50'000;
-    static constexpr int kMaxPpb =  50'000;
+    // ANAN fork build 635 (operator, 22.11: "a user says it is not enough --
+    // his reference oscillator is not stabilised"): +/- 200 ppm.
+    static constexpr int kMinPpb = -200'000;
+    static constexpr int kMaxPpb =  200'000;
 
     // ---- math (pure, no storage — this is the part the tests pin) ----
 
