@@ -61,7 +61,21 @@ void Hl2AudioMixer::setRxNr(int ddc, const RxNrConfig& config)
     m_nrCfg[static_cast<std::size_t>(ddc)] = config;
 }
 
-void Hl2AudioMixer::runRxNr(int slot, int ddc, std::vector<float>& pcm)
+void Hl2AudioMixer::receiverHold(const void* dsp, bool held)
+{
+    auto it = std::find(m_heldDsps.begin(), m_heldDsps.end(), dsp);
+    if (held && it == m_heldDsps.end())
+        m_heldDsps.push_back(dsp);
+    else if (!held && it != m_heldDsps.end())
+        m_heldDsps.erase(it);
+}
+
+bool Hl2AudioMixer::isHeld(const void* dsp) const
+{
+    return dsp && std::find(m_heldDsps.begin(), m_heldDsps.end(), dsp) != m_heldDsps.end();
+}
+
+void Hl2AudioMixer::runRxNr(int slot, int ddc, std::vector<float>& pcm, bool held)
 {
     if (slot < 0 || slot >= kSlots || ddc < 0 || ddc >= kMaxReceivers || pcm.size() < 2)
         return;
@@ -165,6 +179,33 @@ void Hl2AudioMixer::runRxNr(int slot, int ddc, std::vector<float>& pcm)
     if (!st.nnr && !st.dfnr)
         return;   // plays unfiltered (nothing wanted, or still being built)
 
+    // Build 592 (operator, 21.11: "during transmit the processing must be
+    // frozen in every noise reduction and resume after the guard interval,
+    // so the transmission does not get into it and spoil its statistics"):
+    // while the receiver's output is held the filter takes nothing -- its
+    // state stays as it was before the over. On the first block after,
+    // what it still holds from before the over comes out first: that much
+    // is silence, then the audio after the over.
+    if (held) {
+        st.frozen = true;
+        std::fill(pcm.begin(), pcm.end(), 0.0f);
+        return;
+    }
+    if (st.frozen) {
+        st.frozen = false;
+        if (st.nnr) {
+            st.fifo.clear();
+            st.primed = false;
+            st.dropSamples = 2 * static_cast<std::size_t>(std::max(0, st.nnr->delaySamples()));
+        } else if (st.dfnr) {
+#ifdef HAVE_DFNR
+            st.dropSamples = 2 * static_cast<std::size_t>(std::max(0, st.dfnr->delaySamples()));
+#endif
+        }
+        st.sumIn = st.sumOut = 0.0;
+        st.gainSamples = 0;
+    }
+
     // The operator's settings (atomics in the filters, applied on their next block).
     if (!(cfg == st.applied)) {
         if (st.nnr) {
@@ -215,6 +256,13 @@ void Hl2AudioMixer::runRxNr(int slot, int ddc, std::vector<float>& pcm)
         if (st.fifo.size() > kFifoCap)
             st.fifo.erase(st.fifo.begin(), st.fifo.begin()
                           + static_cast<std::ptrdiff_t>((st.fifo.size() - kFifoCap) & ~std::size_t{1}));
+    }
+    // Build 592: the filter's pre-over content, as silence.
+    if (st.dropSamples > 0) {
+        const std::size_t z = std::min(st.dropSamples, n);
+        std::fill(pcm.begin(), pcm.begin() + static_cast<std::ptrdiff_t>(z), 0.0f);
+        st.dropSamples -= z;
+        return;   // no NR GAIN reading from it
     }
 
     // The NR GAIN reading of a main receiver: energy out over energy in,
@@ -349,7 +397,7 @@ void Hl2AudioMixer::receiverAudio(const void* dsp, const std::vector<float>& pcm
     // the audio is held (the block is then dropped by mixIn), so what the
     // filter holds from before an over is not played after it.
     m_nrBuf = pcm;
-    runRxNr(receiver, receiver, m_nrBuf);
+    runRxNr(receiver, receiver, m_nrBuf, isHeld(dsp));
     mixIn(receiver, m_nrBuf, p);
 }
 
@@ -387,7 +435,7 @@ void Hl2AudioMixer::subAudio(const void* ownerDsp, const std::vector<float>& pcm
         }
         if (ownerDdc >= 0) {
             filtered = pcm;
-            runRxNr(slot, ownerDdc, filtered);
+            runRxNr(slot, ownerDdc, filtered, isHeld(ownerDsp));
         }
     }
     const std::vector<float>& subPcm = filtered.empty() ? pcm : filtered;

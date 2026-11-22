@@ -1999,6 +1999,12 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
                 [mixer = m_audioMixer, key = static_cast<const void*>(dsp)](const std::vector<float>& pcm) {
             mixer->receiverAudio(key, pcm);
         });
+        // Build 592: the hold, queued in order with the blocks (same sender
+        // thread, same receiver): the receiver's NNR / DFNR freeze across it.
+        connect(dsp, &Hl2RxDsp::audioHoldChanged, m_audioMixer,
+                [mixer = m_audioMixer, key = static_cast<const void*>(dsp)](bool held) {
+            mixer->receiverHold(key, held);
+        });
         connect(dsp, &Hl2RxDsp::subAudioReady, m_audioMixer,   // build 513
                 [mixer = m_audioMixer, key = static_cast<const void*>(dsp)](const std::vector<float>& pcm) {
             mixer->subAudio(key, pcm);

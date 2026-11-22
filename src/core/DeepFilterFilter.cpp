@@ -245,6 +245,18 @@ void DeepFilterFilter::reset()
     m_paramsDirty.store(true);
 }
 
+int DeepFilterFilter::delaySamples() const
+{
+    const int queued = static_cast<int>(m_outAccum.size() / static_cast<int>(2 * sizeof(float)));
+    // 4 hops of df_get_frame_length() at 48 kHz = 40 ms.
+    int frames = queued + 4 * m_frameSize * m_sampleRate / 48000;
+    if (m_up[0])
+        frames += m_up[0]->groupDelayInputFrames();
+    if (m_down[0])
+        frames += m_down[0]->groupDelayInputFrames() * m_sampleRate / 48000;
+    return frames;
+}
+
 void DeepFilterFilter::setAttenLimit(float db)
 {
     m_attenLimit.store(db);

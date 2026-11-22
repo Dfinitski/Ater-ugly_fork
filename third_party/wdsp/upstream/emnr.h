@@ -202,6 +202,9 @@ typedef struct _emnr
 	// AetherSDR patch 29: amplitude gain of the last block, output spectrum
 	// over input spectrum (after post2), for the host's NR GAIN strip.
 	volatile double aether_gain;
+	// AetherSDR patch 30: frozen -- no input taken, no state changed, the
+	// output silent (the receiver's own transmission kept out).
+	int aether_freeze;
 }emnr, *EMNR;
 
 extern EMNR create_emnr (int run, int position, int size, double* in, double* out, int fsize, int ovrlp, 

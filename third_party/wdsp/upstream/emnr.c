@@ -1226,6 +1226,15 @@ void calc_gain (EMNR a)
 
 void xemnr (EMNR a, int pos)
 {
+	// AetherSDR patch 30: frozen during a transmission -- what our own
+	// transmitter puts into the receiver never reaches the noise estimate,
+	// the gain smoothing or the overlap buffers. The output is silence (it is
+	// muted after the chain anyway).
+	if (a->run && pos == a->position && a->aether_freeze)
+	{
+		memset (a->out, 0, a->bsize * sizeof (complex));
+		return;
+	}
 	if (a->run && pos == a->position)
 	{
 		int i, j, k, sbuff, sbegin;
@@ -1415,4 +1424,13 @@ double GetRXAEMNRGain(int channel)
 	if (!a || !a->run)
 		return -1.0;
 	return a->aether_gain;
+}
+
+// AetherSDR patch 30: freeze / unfreeze the NR2 (EMNR) across a transmission.
+PORT
+void SetRXAEMNRFreeze(int channel, int freeze)
+{
+	EnterCriticalSection (&ch[channel].csDSP);
+	rxa[channel].emnr.p->aether_freeze = freeze ? 1 : 0;
+	LeaveCriticalSection (&ch[channel].csDSP);
 }

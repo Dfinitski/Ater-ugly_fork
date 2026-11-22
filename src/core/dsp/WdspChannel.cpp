@@ -1464,6 +1464,15 @@ double WdspChannel::minimumNotchWidthHz() const noexcept
            * (static_cast<double>(m_config.dspSampleRate) / 48000.0);
 }
 
+bool WdspChannel::setEmnrFreeze(bool freeze) noexcept
+{
+    if (m_config.direction != Direction::Receive || !beginControlOperation(false))
+        return false;
+    SetRXAEMNRFreeze(m_channelId, freeze ? 1 : 0);
+    endControlOperation();
+    return true;
+}
+
 double WdspChannel::emnrGain() const noexcept
 {
     if (m_config.direction != Direction::Receive)

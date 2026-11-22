@@ -1382,3 +1382,15 @@ inverse FFT), and at the end of the block stores `sqrt(out / in)`, capped at
 1, in `aether_gain` (a block with no frame or with silence keeps the previous
 value). `GetRXAEMNRGain(channel)` returns it, or -1 while EMNR is off. The
 processing itself is unchanged.
+
+## Patch 30 — `SetRXAEMNRFreeze()`: NR2 frozen across a transmission
+
+`upstream/emnr.h`, `upstream/emnr.c` (ANAN fork build 592, 21.11.2026). The
+operator: a strong burst of noise from NR2 on the return to receive. The
+receive chain keeps running through an over and hears our own transmitter;
+EMNR took that into its noise estimate, its gain smoothing and its overlap
+buffers. With `aether_freeze` set, `xemnr()` takes no input and changes no
+state, and writes silence (the output is muted after the chain during the
+over anyway). The host sets it at key-down and clears it when the guard
+interval has EMNR's own delay left, so EMNR's pipeline refills with
+post-over audio while the output is still muted.

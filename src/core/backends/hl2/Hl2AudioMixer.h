@@ -148,6 +148,9 @@ public:
 public slots:
     // A block of one receiver's demodulated audio (interleaved stereo, 24 kHz).
     void receiverAudio(const void* dsp, const std::vector<float>& pcm);
+    // Build 592: the receiver's output is held (an over and its guard):
+    // its NNR / DFNR take no audio meanwhile (Hl2RxDsp::audioHoldChanged).
+    void receiverHold(const void* dsp, bool held);
     // Build 513: a block of the sub receiver of the receiver whose chain is
     // ownerDsp; it arrives just ahead of that receiver's own block.
     void subAudio(const void* ownerDsp, const std::vector<float>& pcm);
@@ -186,11 +189,15 @@ private:
         bool failedStereo = false;        //   until the choice changes
         std::deque<float> fifo;           // NNR's output, block for block
         bool primed = false;
+        bool frozen = false;              // build 592: held across an over
+        std::size_t dropSamples = 0;      // build 592: pre-over audio still in the filter
         double sumIn = 0.0, sumOut = 0.0;
         std::size_t gainSamples = 0;
     };
     // Filters this slot's block in place with the configuration of ddc.
-    void runRxNr(int slot, int ddc, std::vector<float>& pcm);
+    void runRxNr(int slot, int ddc, std::vector<float>& pcm, bool held);
+    bool isHeld(const void* dsp) const;
+    std::vector<const void*> m_heldDsps;           // build 592, mixer thread
     std::array<NrStage, kSlots> m_nr;              // mixer thread
     std::mutex m_nrMutex;
     std::array<RxNrConfig, kMaxReceivers> m_nrCfg; // under m_nrMutex

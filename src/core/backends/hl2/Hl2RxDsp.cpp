@@ -602,6 +602,21 @@ void Hl2RxDsp::applyEmnr()
 {
     if (!m_channel->setEmnr(m_emnr))
         qCWarning(lcHl2RxDsp) << "NR2 (WDSP EMNR) refused by the channel; re-applied on the next configure()";
+    // Build 592: a channel made anew during an over is frozen too.
+    if (m_emnrFrozen && !m_channel->setEmnrFreeze(true))
+        m_emnrFrozen = false;   // tried again on the next block of the over
+}
+
+void Hl2RxDsp::setEmnrFrozen(bool frozen)
+{
+    // ANAN fork build 592 (operator, 21.11: "a strong burst of noise from NR2
+    // on the return to receive ... during transmit the processing must be
+    // frozen in every noise reduction and resume after the guard interval,
+    // so the transmission does not get into it and spoil its statistics").
+    if (frozen == m_emnrFrozen || !m_channel)
+        return;
+    if (m_channel->setEmnrFreeze(frozen))
+        m_emnrFrozen = frozen;   // refused (a reconfigure): the next block retries
 }
 
 void Hl2RxDsp::applyAnf()
@@ -854,6 +869,7 @@ void Hl2RxDsp::applyAgcHold()
         m_restorePending = false;
         if (m_spectrum)
             m_spectrum->markOverStart();
+        setEmnrFrozen(true);   // build 592
     } else {
         // Put back when the over has left the chain, not now: the filters
         // ahead of the AGC and the meter still hold it. Build 583: as long
@@ -1461,6 +1477,29 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
         }
         const bool inOver = m_audioMuted || m_agcTxHeld || m_outMuteFrames > 0
                             || m_pressBlankFrames > 0;
+        // Build 592: the hold, for the receiver's NNR / DFNR after the chain.
+        if (static_cast<int>(inOver) != m_audioHeldSent) {
+            m_audioHeldSent = inOver ? 1 : 0;
+            emit audioHoldChanged(inOver);
+        }
+        // Build 592: a freeze the channel refused at key-down, again.
+        if (!m_emnrFrozen && m_agcTxHeld)
+            setEmnrFrozen(true);
+        // Build 592: NR2 unfrozen when the guard has its own delay left --
+        // what enters it then is after the over, and what it holds from
+        // before is played out while the output is still muted.
+        if (m_emnrFrozen) {
+            const int emnrDelayFrames = static_cast<int>(std::ceil(
+                (4096.0 - 1024.0) * m_config.audioSampleRateHz / kWdspDspSampleRateHz));
+            if (!m_agcTxHeld && m_pressBlankFrames == 0 && !m_audioMuted
+                && m_outMuteFrames <= emnrDelayFrames + static_cast<int>(outN)) {
+                setEmnrFrozen(false);
+                // The host's unmute can come after the guard ran out: the
+                // output then stays silent while NR2's pipeline refills.
+                if (!m_emnrFrozen && m_emnr.run)
+                    m_outMuteFrames = std::max(m_outMuteFrames, emnrDelayFrames);
+            }
+        }
         if (inOver) {
             std::fill(m_stereo.begin(), m_stereo.end(), 0.0f);   // the output mute only
             // Build 583: counts down from the AGC release (the unkey), also

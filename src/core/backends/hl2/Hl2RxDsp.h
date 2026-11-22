@@ -692,6 +692,10 @@ signals:
     // Build 590: the NR2 (WDSP EMNR) gain, 0..1, at the S-meter's rate while
     // NR2 runs, for the NR GAIN strip.
     void nr2GainUpdate(float gain);
+    // Build 592: this receiver's output is held (an over and its guard) --
+    // emitted on each change, ahead of the block it applies to. The
+    // per-receiver NNR / DFNR (Hl2AudioMixer) stop taking audio meanwhile.
+    void audioHoldChanged(bool held);
     // Build 472: the SPLIT receiver's S-meter (its own channel, same detector).
     void subMeterUpdate(float dbfs);
 
@@ -820,6 +824,11 @@ private:
     std::array<double, 128> m_agcVoltsRing{};
     std::size_t m_agcVoltsPos{0};
     bool m_agcTxHeld{false};
+    // Build 592: NR2 frozen from key-down until the guard has EMNR's own
+    // delay left (WDSP patch 30); the output hold last published.
+    bool m_emnrFrozen{false};
+    int m_audioHeldSent{-1};   // -1: not yet (the first block says it)
+    void setEmnrFrozen(bool frozen);
     bool m_hostHold{false}, m_pressHold{false};
     int m_pressBlankFrames{0};
     double m_preOverAgcVolts{0.0};

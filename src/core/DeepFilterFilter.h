@@ -38,6 +38,11 @@ public:
     // Returns true if df_create() succeeded for both channels.
     bool isValid() const { return m_states[0] != nullptr && (m_channels == 1 || m_states[1] != nullptr); }
     int channels() const { return m_channels; }
+    // Build 592: how much of what is fed comes out later, in frames at
+    // sampleRate(): what waits in the output queue, the model's 40 ms
+    // (DeepFilterNet: 20 ms window, 10 ms hop, 2 frames look-ahead) and, on
+    // the 24 kHz path, the two resamplers.
+    int delaySamples() const;
 
     int sampleRate() const { return m_sampleRate; }
 
