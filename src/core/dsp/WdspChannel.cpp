@@ -1473,6 +1473,16 @@ bool WdspChannel::setEmnrFreeze(bool freeze) noexcept
     return true;
 }
 
+bool WdspChannel::flushRxFilters() noexcept
+{
+    // Waits out a live filter design (it touches the filter cores).
+    if (m_config.direction != Direction::Receive || !beginControlOperation(true))
+        return false;
+    RXAFlushFilters(m_channelId);
+    endControlOperation();
+    return true;
+}
+
 double WdspChannel::emnrGain() const noexcept
 {
     if (m_config.direction != Direction::Receive)

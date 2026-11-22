@@ -1822,7 +1822,15 @@ private:
     // break-in the hold is skipped only when the hang is shorter than it (#5850);
     // applyKeying()'s cwBreakIn arm holds the predicate. A member so tests can zero it.
     static constexpr int kUnkeyUnmuteHoldMs = 70;
-    int m_unkeyUnmuteHoldMs = kUnkeyUnmuteHoldMs;
+    // ANAN fork build 601 (operator, 21.11: "follow Thetis; at most 50 %
+    // longer"): the 70 ms above is the HL2's measurement and counts its demod
+    // chain. On the ANAN each receiver blanks the over's IQ tail itself, then
+    // empties its filters and keeps its own output muted for that
+    // (Hl2RxDsp::overTailMs, ~48 ms); the host's hold only has to cover the
+    // IQ tail (Hl2RxDsp::kOverInputTailMs). kTxTailHoldMs (band filter, RF
+    // drive) keeps the radio's 70 ms.
+    static constexpr int kAnanUnkeyUnmuteHoldMs = 25;
+    int m_unkeyUnmuteHoldMs = kAnanUnkeyUnmuteHoldMs;
     // Single-shot, owned, on this thread, so applyKeying() cancels it without a lock.
     QTimer* m_unkeyUnmuteTimer = nullptr;
     // How long the band filter and an owed RF drive wait after the MOX-off is

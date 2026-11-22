@@ -637,6 +637,36 @@ void flush_rxa (int channel)
 	flush_resample (rxa[channel].rsmpout.p);
 }
 
+/********************************************************************************************************
+*                                                                                                       *
+*        AetherSDR patch 31: the receive filters emptied at the end of a transmission (ANAN fork 601)    *
+*                                                                                                       *
+********************************************************************************************************/
+
+// Thetis stops and flushes the receiver for a transmission and starts it
+// again at the unkey, so nothing of the over is left in its filters. The
+// ANAN fork keeps the receiver running through the over (full duplex) and
+// used to wait until our own transmitter had left the filters -- their whole
+// length after the IQ was clean again. This empties them instead, once the
+// host has blanked the IQ tail of the over: the FIR stages (nbp0 with the
+// notches, bpsnba, bp1), the input and output resamplers, the ANF / ANR delay
+// lines and the AGC look-ahead ring. AGC level (patch 24), meters and NR2's
+// state (patch 30, frozen) are kept.
+PORT void
+RXAFlushFilters (int channel)
+{
+	EnterCriticalSection (&ch[channel].csDSP);
+	flush_HBResampler (rxa[channel].rsmpin.p);
+	flush_nbp (rxa[channel].nbp0.p);
+	flush_bpsnba (rxa[channel].bpsnba.p);
+	flush_anf (rxa[channel].anf.p);
+	flush_anr (rxa[channel].anr.p);
+	flush_wcpagc (rxa[channel].agc.p);
+	flush_bandpass (rxa[channel].bp1.p);
+	flush_resample (rxa[channel].rsmpout.p);
+	LeaveCriticalSection (&ch[channel].csDSP);
+}
+
 void xrxa (int channel)
 {
 	xshift (rxa[channel].shift.p);

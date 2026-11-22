@@ -1394,3 +1394,17 @@ state, and writes silence (the output is muted after the chain during the
 over anyway). The host sets it at key-down and clears it when the guard
 interval has EMNR's own delay left, so EMNR's pipeline refills with
 post-over audio while the output is still muted.
+
+## Patch 31 — `RXAFlushFilters()`: the receive filters emptied after an over
+
+`upstream/RXA.c`, `include/aether_wdsp.h` (ANAN fork build 601, 21.11.2026).
+The operator: the pause after going to receive must come close to Thetis.
+Thetis stops and flushes the receiver for a transmission (SetChannelState
+with dmode 1) and starts it again at the unkey, so nothing of the over is in
+its filters. The fork's receiver runs through the over (full duplex) and
+waited until our own transmitter had passed through the filters -- their
+whole length after the IQ was clean. Under `csDSP` this flushes the FIR
+stages (`nbp0` with the notches, `bpsnba`, `bp1`), the input and output
+resamplers, the ANF / ANR delay lines and the AGC look-ahead ring; the AGC
+level (patch 24), the meters and NR2 (patch 30, frozen) are kept. The host
+calls it once its blanked IQ tail of the over has been taken in.

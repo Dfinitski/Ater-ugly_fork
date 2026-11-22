@@ -75,6 +75,9 @@ void SetRXAEMNRpost2Rate(int channel, double tc);
 double GetRXAEMNRGain(int channel);
 // AetherSDR patch 30 (ANAN fork build 592): NR2 frozen across a transmission.
 void SetRXAEMNRFreeze(int channel, int freeze);
+// AetherSDR patch 31 (ANAN fork build 601): the receive filters emptied at
+// the end of a transmission (RXA.c).
+void RXAFlushFilters(int channel);
 // Broadcast decoder controls, WDSP Guide section 5.3.10. The local patch
 // applies deemphasis to both live filters; indicator readback is an atomic
 // latest-completed-block observation. The caller must own channel lifetime.

@@ -815,8 +815,11 @@ void Hl2RxDsp::pressBlank()
     applyAgcHold();
 }
 
-double Hl2RxDsp::overTailMs() const
+double Hl2RxDsp::overFilterTailMs() const
 {
+    // What the filters hold of the over: (taps - 1) / 2 at 48 kHz for each
+    // bandpass running, and NR2's overlap-add delay. Used only if the flush
+    // is refused (the old guard, builds 583..600).
     const int taps = m_channel ? m_channel->config().filterTaps : kRxShortFilterTaps;
     const auto mode = m_config.mode;
     // Build 587: WDSP's NR2 (EMNR) runs bp1 too (RXAbp1Check) and adds its
@@ -824,12 +827,33 @@ double Hl2RxDsp::overTailMs() const
     const bool emnr = m_emnr.run;
     const bool bp1 = anfInCircuit() || emnr || mode == WdspChannel::Mode::Am
                      || mode == WdspChannel::Mode::Sam || mode == WdspChannel::Mode::Fm;
-    const double bandpassMs = (bp1 ? 2.0 : 1.0) * (taps - 1) / 2.0 * 1000.0 / kWdspDspSampleRateHz
-                              + (emnr ? (4096.0 - 1024.0) * 1000.0 / kWdspDspSampleRateHz : 0.0);
-    const double agcMs = 4.0;   // RXA AGC: n_tau 4 x tau_attack 1 ms (RXA.c)
+    return (bp1 ? 2.0 : 1.0) * (taps - 1) / 2.0 * 1000.0 / kWdspDspSampleRateHz
+           + (emnr ? (4096.0 - 1024.0) * 1000.0 / kWdspDspSampleRateHz : 0.0) + 30.0;
+}
+
+double Hl2RxDsp::overBlankMs() const
+{
+    // Whole input blocks: kOverInputTailMs, and never fewer than the
+    // exchange queue's blocks.
     const double blockMs = m_config.inputSampleRateHz > 0
         ? 1000.0 * m_config.dspBlockSize / m_config.inputSampleRateHz : 0.0;
-    return bandpassMs + agcMs + blockMs + kOverInputTailMs + kOverMarginMs;
+    if (blockMs <= 0.0)
+        return kOverInputTailMs;
+    const int blocks = std::max(kOverFlushQueueBlocks,
+                                static_cast<int>(std::ceil(kOverInputTailMs / blockMs - 1e-9)));
+    return blocks * blockMs;
+}
+
+double Hl2RxDsp::overTailMs() const
+{
+    // Build 601: the blanked IQ, the blocks still in the exchange (the queue
+    // and the one in flight) and the AGC's look-ahead (n_tau 4 x attack 1 ms,
+    // RXA.c; its ring is emptied too, the output resampler's few samples are
+    // in the margin). NR2 adds its own delay when it is unfrozen (below).
+    const double blockMs = m_config.inputSampleRateHz > 0
+        ? 1000.0 * m_config.dspBlockSize / m_config.inputSampleRateHz : 0.0;
+    const double agcMs = 4.0;
+    return overBlankMs() + (kOverFlushQueueBlocks + 1) * blockMs + agcMs + kOverMarginMs;
 }
 
 void Hl2RxDsp::applyAgcHold()
@@ -870,16 +894,29 @@ void Hl2RxDsp::applyAgcHold()
         if (m_spectrum)
             m_spectrum->markOverStart();
         setEmnrFrozen(true);   // build 592
+        // Build 601: a re-key inside the blanked tail ends it.
+        if (m_overBlankInFrames > 0 || m_overFlushPending)
+            m_channel->setNoiseBlankerHold(false);
+        m_overBlankInFrames = 0;
+        m_overFlushPending = false;
     } else {
         // Put back when the over has left the chain, not now: the filters
         // ahead of the AGC and the meter still hold it. Build 583: as long
         // as the chain in use needs (overTailMs), from here -- the unkey.
+        // Build 601: the IQ tail of the over goes in as zeros, then the
+        // filters are emptied (processIqBlock), as Thetis' flush at the unkey.
         const double tailMs = overTailMs();
+        const double blankMs = overBlankMs();
+        m_overBlankInFrames = static_cast<int>(std::lround(m_config.inputSampleRateHz * blankMs / 1000.0));
+        m_overFlushPending = true;
+        m_overFlushRetries = 0;
+        m_channel->setNoiseBlankerHold(true);   // the blanker does not learn the zeros
         if (tailMs != m_lastOverTailMs) {
             m_lastOverTailMs = tailMs;
-            qCInfo(lcHl2RxDsp).nospace() << "RX over tail " << tailMs << " ms from the unkey ("
+            qCInfo(lcHl2RxDsp).nospace() << "RX over tail " << tailMs << " ms from the unkey: IQ "
+                << blankMs << " ms blanked, then the filters flushed ("
                 << (m_channel ? m_channel->config().filterTaps : 0) << " taps"
-                << (anfInCircuit() ? ", ANF" : "") << (m_emnr.run ? ", NR2" : "") << ")";
+                << (anfInCircuit() ? ", ANF" : "") << (m_emnr.run ? ", NR2 + its delay" : "") << ")";
         }
         m_outMuteFrames = std::max(m_outMuteFrames,
             static_cast<int>(std::ceil(m_config.audioSampleRateHz * tailMs / 1000.0)));
@@ -1415,6 +1452,33 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
         }
         consumed += block;
 
+        // Build 601: the over's IQ tail as zeros, then the filters emptied
+        // before the first real block (see kOverInputTailMs).
+        if (m_overBlankInFrames <= 0 && m_overFlushPending) {
+            if (m_channel->flushRxFilters()) {
+                m_overFlushPending = false;
+                m_channel->setNoiseBlankerHold(false);
+            } else if (++m_overFlushRetries >= kOverFlushMaxRetries) {
+                // Refused for ~a filter length: the zeros have pushed the over
+                // out by now; the old guard covers what is left.
+                qCWarning(lcHl2RxDsp) << "RX filter flush after the over refused"
+                                      << m_overFlushRetries << "times; guard as before";
+                m_overFlushPending = false;
+                m_channel->setNoiseBlankerHold(false);
+                m_outMuteFrames = std::max(m_outMuteFrames, static_cast<int>(std::ceil(
+                    m_config.audioSampleRateHz * overFilterTailMs() / 1000.0)));
+            }
+        }
+        if (m_overBlankInFrames > 0 || m_overFlushPending) {
+            std::fill(m_i.begin(), m_i.begin() + static_cast<std::ptrdiff_t>(block), 0.0f);
+            std::fill(m_q.begin(), m_q.begin() + static_cast<std::ptrdiff_t>(block), 0.0f);
+            m_overBlankInFrames = std::max(0, m_overBlankInFrames - static_cast<int>(block));
+            // A flush refused: the output waits with it.
+            if (m_overFlushPending && m_overFlushRetries > 0)
+                m_outMuteFrames = std::max(m_outMuteFrames, static_cast<int>(std::ceil(
+                    m_config.audioSampleRateHz * overTailMs() / 1000.0)));
+        }
+
         const auto res = m_channel->processIq(m_i, m_q, m_left, m_right);
         // COUNT EVERY OUTCOME, including Ok — the Ok count is the denominator,
         // and "4 engine errors" against "4 engine errors in 5 blocks" are
@@ -1491,7 +1555,10 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
         if (m_emnrFrozen) {
             const int emnrDelayFrames = static_cast<int>(std::ceil(
                 (4096.0 - 1024.0) * m_config.audioSampleRateHz / kWdspDspSampleRateHz));
+            // Build 601: and only once the filters were emptied -- NR2 must
+            // not take in the blanked zeros.
             if (!m_agcTxHeld && m_pressBlankFrames == 0 && !m_audioMuted
+                && !m_overFlushPending && m_overBlankInFrames == 0
                 && m_outMuteFrames <= emnrDelayFrames + static_cast<int>(outN)) {
                 setEmnrFrozen(false);
                 // The host's unmute can come after the guard ran out: the

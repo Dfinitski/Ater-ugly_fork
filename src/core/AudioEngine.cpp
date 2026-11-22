@@ -4728,13 +4728,23 @@ QByteArray AudioEngine::resampleStereo(const QByteArray& pcm,
     if (producerRate == deviceRate) {
         return pcm;
     }
+    // ANAN fork build 601 (operator, 21.11: "follow Thetis; at most 50 %
+    // longer"). OUR ERROR, the same as the receiver NR stage's before build
+    // 596: r8brain's default 2 % transition band is a ~70 ms linear-phase
+    // filter (measured 70.6 ms for 24 -> 48 kHz), and every sound to the PC
+    // AND to the radio speaker (AnanCodecFeed takes this output) waited for
+    // it. Thetis has no such step (WDSP gives 48 kHz). 30 % measured 4.3 ms;
+    // flat to ~8.4 kHz of the 12 kHz audio band -- receive audio is filtered
+    // well below that. The main receive path only.
+    const double transBandPct =
+        (source == RxDspSource::Main && !externalSource) ? 30.0 : 2.0;
     if (!leftResampler || leftResampler->srcRate() != producerRate
         || leftResampler->dstRate() != deviceRate) {
-        leftResampler = std::make_unique<Resampler>(producerRate, deviceRate);
+        leftResampler = std::make_unique<Resampler>(producerRate, deviceRate, 4096, transBandPct);
     }
     if (!rightResampler || rightResampler->srcRate() != producerRate
         || rightResampler->dstRate() != deviceRate) {
-        rightResampler = std::make_unique<Resampler>(producerRate, deviceRate);
+        rightResampler = std::make_unique<Resampler>(producerRate, deviceRate, 4096, transBandPct);
     }
 
     const int frames = pcm.size() / (2 * static_cast<int>(sizeof(float)));

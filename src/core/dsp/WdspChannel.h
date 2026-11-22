@@ -440,6 +440,8 @@ public:
     [[nodiscard]] double emnrGain() const noexcept;
     // Build 592: NR2 frozen across a transmission (WDSP patch 30).
     [[nodiscard]] bool setEmnrFreeze(bool freeze) noexcept;
+    // Build 601: the receive filters emptied after an over (WDSP patch 31).
+    [[nodiscard]] bool flushRxFilters() noexcept;
 
     // Runtime filter length / phase mode without reconfigure() (which would
     // destroy the notch database).

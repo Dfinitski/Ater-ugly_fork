@@ -867,10 +867,30 @@ private:
     // 2048 taps, 192 kHz, nothing else: 81 ms from the unkey (the host's
     // 70 ms hold + 11 ms); notch + ANF: 145 ms. Was a fixed 200 ms after the
     // host's unmute (270 ms from the unkey).
-    static constexpr double kOverInputTailMs = 20.0;
-    static constexpr double kOverMarginMs = 30.0;
+    // ANAN fork build 601 (operator, 21.11: "follow Thetis here; our delay
+    // may be at most 50 % longer"). Thetis stops and flushes the receiver for
+    // the over and starts it again at the unkey: nothing of the over is left
+    // in its filters. Here the receiver runs through the over, so at the
+    // unkey the IQ tail of the over (kOverInputTailMs: log 21.11 22:12, the
+    // DSP input back at the band level in the 25..50 ms row; 31.10 18:17:
+    // clean from the first 20 ms) is fed as zeros, at least
+    // kOverFlushQueueBlocks blocks so the blocks of the over still queued in
+    // WDSP's exchange (DSP_MULT = 2) are processed first; then the filters
+    // are emptied (WDSP patch 31) and the real IQ goes in. The output stays
+    // muted for that, the queue's blocks, the AGC look-ahead and
+    // kOverMarginMs -- no longer the filters' length plus 30 ms (81 ms with
+    // 2048 taps at 192 kHz, 145 ms with notch + ANF; now ~48 ms).
+    static constexpr double kOverInputTailMs = 25.0;
+    static constexpr int kOverFlushQueueBlocks = 2;
+    static constexpr int kOverFlushMaxRetries = 20;
+    static constexpr double kOverMarginMs = 5.0;
     static constexpr double kOverMinAfterUnmuteMs = 5.0;
     [[nodiscard]] double overTailMs() const;
+    [[nodiscard]] double overBlankMs() const;     // build 601: the blanked IQ
+    [[nodiscard]] double overFilterTailMs() const; // the filters' length (no flush)
+    int m_overBlankInFrames{0};    // build 601: input samples still fed as zeros
+    bool m_overFlushPending{false};
+    int m_overFlushRetries{0};
     double m_lastOverTailMs{-1.0};
     std::atomic<bool> m_sMeterPeak {true};
     std::atomic<std::uint64_t> m_unsettled {0};   // build 335: see unsettledBins()
