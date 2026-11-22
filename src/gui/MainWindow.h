@@ -1155,6 +1155,12 @@ private:
     // Build 609: the CW applet (radio keyer) when MIDI's CW controls go to it
     // (an ANAN connected), else nullptr.
     class CwApplet* ananCwAppletForMidi();
+    // Build 610: the RX applet's noise reduction of a receiver (its chosen
+    // method NR2 / NNR / DFNR) from MIDI, shortcuts, CAT, TCI. sliceId < 0:
+    // the selected one.
+    bool ananReceiverNrOn(int sliceId = -1) const;
+    void ananSetReceiverNr(int sliceId, bool on);
+    void ananCycleReceiverNr();   // off -> NR2 -> NNR -> DFNR -> off
     // ANAN fork build 587: NR2 on an ANAN is WDSP's EMNR in each receiver
     // (as Thetis), not the client NR2: pushes every main receiver's state.
     void ananEmnrPushAll();

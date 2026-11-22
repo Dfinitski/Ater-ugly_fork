@@ -1774,6 +1774,9 @@ MainWindow::MainWindow(QWidget* parent)
         ananRxNrApply();
         m_appletPanel->rxApplet()->refreshRxDspButtons();
     });
+    // Build 610: the same from MIDI / shortcuts / CAT / TCI (RadioModel).
+    connect(&m_radioModel, &RadioModel::ananReceiverNrRequested, this,
+            [this](int sliceId, bool on) { ananSetReceiverNr(sliceId, on); });
     connect(m_appletPanel->rxApplet(), &RxApplet::rxNrMethodChosen, this, [this](const QString& method) {
         if (m_activeSliceId < 0)
             return;
@@ -9641,6 +9644,53 @@ void MainWindow::ananEmnrPushAll()
                 {QStringLiteral("post2Rate"), double(cfg.post2DecaySeconds)},
             });
     }
+}
+
+bool MainWindow::ananReceiverNrOn(int sliceId) const
+{
+    const int id = sliceId >= 0 ? sliceId : m_activeSliceId;
+    if (id < 0)
+        return false;
+    return AetherSDR::anan_rxdsp::nrOn(AetherSDR::anan_rxdsp::ownerOf(id));
+}
+
+void MainWindow::ananSetReceiverNr(int sliceId, bool on)
+{
+    const int id = sliceId >= 0 ? sliceId : m_activeSliceId;
+    if (id < 0)
+        return;
+    const int owner = AetherSDR::anan_rxdsp::ownerOf(id);
+    AetherSDR::anan_rxdsp::setNr(owner, on, AetherSDR::anan_rxdsp::nrMethod(owner));
+    // The selected receiver also switches the engine's proxies; every
+    // receiver gets its own stage from the push.
+    if (m_activeSliceId >= 0 && AetherSDR::anan_rxdsp::ownerOf(m_activeSliceId) == owner)
+        ananRxNrApply();
+    else
+        ananEmnrPushAll();
+    if (m_appletPanel && m_appletPanel->rxApplet())
+        m_appletPanel->rxApplet()->refreshRxDspButtons();
+}
+
+void MainWindow::ananCycleReceiverNr()
+{
+    if (m_activeSliceId < 0)
+        return;
+    const int owner = AetherSDR::anan_rxdsp::ownerOf(m_activeSliceId);
+    QStringList methods{QStringLiteral("NR2"), QStringLiteral("NNR")};
+#ifdef HAVE_DFNR
+    methods << QStringLiteral("DFNR");
+#endif
+    const bool on = AetherSDR::anan_rxdsp::nrOn(owner);
+    const int idx = methods.indexOf(AetherSDR::anan_rxdsp::nrMethod(owner));
+    if (!on)
+        AetherSDR::anan_rxdsp::setNr(owner, true, methods.first());
+    else if (idx < 0 || idx + 1 >= methods.size())
+        AetherSDR::anan_rxdsp::setNr(owner, false, AetherSDR::anan_rxdsp::nrMethod(owner));
+    else
+        AetherSDR::anan_rxdsp::setNr(owner, true, methods.at(idx + 1));
+    ananRxNrApply();
+    if (m_appletPanel && m_appletPanel->rxApplet())
+        m_appletPanel->rxApplet()->refreshRxDspButtons();
 }
 
 QString MainWindow::ananRxOwnMethod() const

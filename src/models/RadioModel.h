@@ -1196,6 +1196,9 @@ signals:
     // ANAN fork build 590: a receiver's NR2 (WDSP EMNR) gain, 0..1, for the
     // NR GAIN strip (backend meter id "ANAN:NR2GAIN<slice>").
     void ananNr2Gain(int sliceId, float gain);
+    // Build 610: an NR on / off from MIDI, a shortcut, CAT or TCI for an
+    // ANAN receiver -- MainWindow switches the RX applet's method.
+    void ananReceiverNrRequested(int sliceId, bool on);
     // RFC #5535's visibility condition, republished for the GUI. See
     // core/backends/FrontEndOverload.h.
     void frontEndOverloadChanged(const AetherSDR::FrontEndOverload& state);

@@ -1648,6 +1648,11 @@ void MainWindow::registerShortcutActions()
         QKeySequence(), [this]() {
             auto* s = activeSlice();
             if (!s) return;
+            // ANAN fork build 610: the receiver's own methods (RX applet).
+            if (ananUsesWdspNr2()) {
+                ananCycleReceiverNr();
+                return;
+            }
             if (m_audio->dfnrEnabled()) {
                 // DFNR → off
                 QMetaObject::invokeMethod(m_audio, [this]() { m_audio->setDfnrEnabled(false); });

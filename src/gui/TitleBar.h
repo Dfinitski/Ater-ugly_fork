@@ -143,6 +143,11 @@ public:
     // bar — geometry, brand, tabs, audio cluster, window controls.
     QVariantMap barState() const;
 
+    // ANAN fork build 610: the radio codec's volume from elsewhere (MIDI's
+    // Headphone Volume) -- as if the slider were moved with "Codec" chosen.
+    void setCodecVolume(int pct);
+    int codecVolume() const { return m_codecVolume; }
+
 signals:
     void linkStatusClicked();
     void pcAudioToggled(bool on);

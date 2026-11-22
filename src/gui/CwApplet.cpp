@@ -280,4 +280,14 @@ int CwApplet::hangTimeMs() const
     return m_hang->value();
 }
 
+void CwApplet::setSideToneLevel(int pct)
+{
+    m_stLevel->setValue(std::clamp(pct, 0, 99));
+}
+
+int CwApplet::sideToneLevel() const
+{
+    return m_stLevel->value();
+}
+
 } // namespace AetherSDR

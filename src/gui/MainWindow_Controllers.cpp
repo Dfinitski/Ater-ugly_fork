@@ -2057,15 +2057,26 @@ void MainWindow::registerMidiParams()
     // The RADIO's own NR and ANF, refused where the radio has none (HL2,
     // ANAN, RTL: the VFO hides these buttons). The host modules (NR2, RN2,
     // NR4, DFNR) have their own parameters below.
+    // ANAN fork build 610: on an ANAN "NR" is the RX applet's noise
+    // reduction button of the selected receiver (its method NR2 / NNR / DFNR).
     reg("rx.nrEnable", "Noise Reduction", "RX", P::Toggle, 0, 1,
         [this](float v) {
+            if (ananUsesWdspNr2()) {
+                ananSetReceiverNr(-1, v > 0.5f);
+                return;
+            }
             if (auto* s = activeSlice()) {
                 if (!m_radioModel.requestRadioNoiseReduction(s, v > 0.5f)) {
                     showUnsupportedControlNotice();
                 }
             }
         },
-        [this]() -> float { auto* s = activeSlice(); return s && s->nrOn() ? 1 : 0; });
+        [this]() -> float {
+            if (ananUsesWdspNr2())
+                return ananReceiverNrOn() ? 1 : 0;
+            auto* s = activeSlice();
+            return s && s->nrOn() ? 1 : 0;
+        });
 
     reg("rx.anfEnable", "Auto Notch", "RX", P::Toggle, 0, 1,
         [this](float v) {
@@ -2283,9 +2294,20 @@ void MainWindow::registerMidiParams()
         },
         [this]() -> float { return m_radioModel.transmitModel().amCarrierLevel(); });
 
+    // Build 610 (operator, 22.11: "even what concerns the hardware keyer must
+    // drive the CW applet's parameters"): on an ANAN the speed goes to the
+    // CW applet (the radio keyer, 10..63 WPM) as well, and is read from it.
     reg("cw.speed", "CW Speed", "Phone/CW", P::Slider, 5, 100,
-        [this](float v) { m_radioModel.transmitModel().setCwSpeed(static_cast<int>(v)); },
-        [this]() -> float { return m_radioModel.transmitModel().cwSpeed(); });
+        [this](float v) {
+            m_radioModel.transmitModel().setCwSpeed(static_cast<int>(v));
+            if (CwApplet* cw = ananCwAppletForMidi())
+                cw->setKeyerSpeed(static_cast<int>(v));
+        },
+        [this]() -> float {
+            if (CwApplet* cw = ananCwAppletForMidi())
+                return cw->keyerSpeed();
+            return m_radioModel.transmitModel().cwSpeed();
+        });
 
     // ANAN fork build 609: on an ANAN the CW applet's controls are the radio
     // keyer's (paddles on the radio); the TransmitModel ones belong to the
@@ -2303,9 +2325,31 @@ void MainWindow::registerMidiParams()
             return m_radioModel.transmitModel().cwDelay();
         });
 
+    // Build 610: on an ANAN the radio's side tone (CW applet level): off =
+    // level 0, on = the level it had (AnanSideToneLevelLast, 50 %).
     reg("cw.sidetoneEnable", "CW Sidetone", "Phone/CW", P::Toggle, 0, 1,
-        [this](float v) { m_radioModel.transmitModel().setCwSidetone(v > 0.5f); },
-        [this]() -> float { return m_radioModel.transmitModel().cwSidetone() ? 1 : 0; });
+        [this](float v) {
+            const bool on = v > 0.5f;
+            m_radioModel.transmitModel().setCwSidetone(on);
+            if (CwApplet* cw = ananCwAppletForMidi()) {
+                auto& st = AppSettings::instance();
+                if (on) {
+                    cw->setSideToneLevel(std::clamp(
+                        st.value(QStringLiteral("AnanSideToneLevelLast"), 50).toInt(), 1, 99));
+                } else {
+                    if (cw->sideToneLevel() > 0) {
+                        st.setValue(QStringLiteral("AnanSideToneLevelLast"), cw->sideToneLevel());
+                        st.save();
+                    }
+                    cw->setSideToneLevel(0);
+                }
+            }
+        },
+        [this]() -> float {
+            if (CwApplet* cw = ananCwAppletForMidi())
+                return cw->sideToneLevel() > 0 ? 1 : 0;
+            return m_radioModel.transmitModel().cwSidetone() ? 1 : 0;
+        });
 
     reg("cw.iambicEnable", "CW Iambic", "Phone/CW", P::Toggle, 0, 1,
         [this](float v) {
@@ -2354,6 +2398,21 @@ void MainWindow::registerMidiParams()
     // would tune CWU the wrong way. Refuse before the flip, and say so.
     reg("cw.cwlEnable", "CWL Frequency Offset", "Phone/CW", P::Toggle, 0, 1,
         [this](float v) {
+            // ANAN fork build 610: on an ANAN CWL is the slice mode -- the
+            // toggle switches the selected receiver CW <-> CWL.
+            if (m_radioModel.isConnected() && m_radioModel.isAnanRadio()) {
+                SliceModel* s = activeSlice();
+                if (!s)
+                    return;
+                const QString mode = s->mode().toUpper();
+                if (mode != QLatin1String("CW") && mode != QLatin1String("CWU")
+                    && mode != QLatin1String("CWL"))
+                    return;   // only within CW
+                const bool cwl = v > 0.5f;
+                if (cwl != (mode == QLatin1String("CWL")))
+                    s->setMode(cwl ? QStringLiteral("CWL") : QStringLiteral("CW"));
+                return;
+            }
             if (m_radioModel.isConnected() && !m_radioModel.hasCommandPlane()) {
                 qCWarning(lcDevices) << "cw.cwlEnable refused: this radio takes CWL"
                                      << "as a slice mode, not an offset flag";
@@ -2362,7 +2421,13 @@ void MainWindow::registerMidiParams()
             }
             m_radioModel.transmitModel().setCwlEnabled(v > 0.5f);
         },
-        [this]() -> float { return m_radioModel.transmitModel().cwlEnabled() ? 1 : 0; });
+        [this]() -> float {
+            if (m_radioModel.isConnected() && m_radioModel.isAnanRadio()) {
+                const SliceModel* s = activeSlice();
+                return s && s->mode().toUpper() == QLatin1String("CWL") ? 1 : 0;
+            }
+            return m_radioModel.transmitModel().cwlEnabled() ? 1 : 0;
+        });
 
     reg("cw.breakInEnable", "CW Break-In (QSK)", "Phone/CW", P::Toggle, 0, 1,
         [this](float v) { m_radioModel.transmitModel().setCwBreakIn(v > 0.5f); },
@@ -2477,6 +2542,13 @@ void MainWindow::registerMidiParams()
 
     reg("global.hpVolume", "Headphone Volume", "Global", P::Slider, 0, 100,
         [this](float v) {
+            // ANAN fork build 610: the radio's headphones / speaker are its
+            // codec -- the title bar's "Codec" volume.
+            if (m_radioModel.isConnected() && m_radioModel.isAnanRadio()) {
+                if (m_titleBar)
+                    m_titleBar->setCodecVolume(static_cast<int>(v));
+                return;
+            }
             if (!headphoneControlsAvailable(m_radioModel.isConnected(),
                                             m_radioModel.hasCommandPlane())) {
                 qCWarning(lcDevices) << "global.hpVolume refused:"
@@ -2491,7 +2563,11 @@ void MainWindow::registerMidiParams()
             }
             m_radioModel.requestRadioSetup({RadioSetupField::HeadphoneGain, static_cast<int>(v)});
         },
-        [this]() -> float { return m_radioModel.headphoneGain(); });
+        [this]() -> float {
+            if (m_titleBar && m_radioModel.isConnected() && m_radioModel.isAnanRadio())
+                return m_titleBar->codecVolume();
+            return m_radioModel.headphoneGain();
+        });
 
     reg("global.masterMute", "Master Mute", "Global", P::Toggle, 0, 1,
         [this](float v) { m_audio->setMuted(v > 0.5f); },

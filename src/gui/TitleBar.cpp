@@ -1601,6 +1601,21 @@ void TitleBar::setPcAudioEnabled(bool on)
     Q_UNUSED(on);
 }
 
+void TitleBar::setCodecVolume(int pct)
+{
+    m_codecVolume = std::clamp(pct, 0, 100);
+    auto& ss = AppSettings::instance();
+    ss.setValue("CodecVolume", m_codecVolume);
+    ss.save();
+    if (m_codecTarget && m_masterSlider) {
+        QSignalBlocker b(m_masterSlider);
+        m_masterSlider->setValue(m_codecVolume);
+        if (m_masterLabel)
+            m_masterLabel->setText(QString::number(m_codecVolume));
+    }
+    emit codecVolumeChanged(m_codecVolume);
+}
+
 void TitleBar::applyVolumeTarget()
 {
     if (!m_pcBtn || !m_masterSlider || !m_speakerBtn)

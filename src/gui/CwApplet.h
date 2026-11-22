@@ -39,6 +39,9 @@ public:
     bool paddleSwap() const;
     void setHangTimeMs(int ms);           // 10..1000, 10 ms steps
     int hangTimeMs() const;
+    // Build 610: the radio's side tone level, 0..99 % (0 = off).
+    void setSideToneLevel(int pct);
+    int sideToneLevel() const;
 
 signals:
     void keyerSpeedChanged(int wpm);

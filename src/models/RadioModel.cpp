@@ -4394,6 +4394,14 @@ bool RadioModel::requestRadioNoiseReduction(SliceModel* slice, bool on)
     if (!slice) {
         return false;
     }
+    // ANAN fork build 610 (operator, 22.11: "everything that asks the radio
+    // must be moved to the program's control; NR switches the receiver
+    // applet's current noise reduction"): on an ANAN the NR is the RX
+    // applet's per-receiver method (NR2 / NNR / DFNR, MainWindow).
+    if (!radioSideNoiseReductionAvailable() && isConnected() && isAnanRadio()) {
+        emit ananReceiverNrRequested(slice->sliceId(), on);
+        return true;
+    }
     // OFF is already true where the radio has none, so only ON is refused.
     if (on && !radioSideNoiseReductionAvailable()) {
         qCWarning(lcProtocol) << "RadioModel: radio noise reduction refused:"
