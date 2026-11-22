@@ -731,7 +731,9 @@ bool MainWindow::snapCenterLockForSlice(SliceModel* slice, double mhz, bool send
     if (!centerDeferred && sw && bandwidthMhz > 0.0
         && (!qFuzzyCompare(sw->centerMhz(), targetCenterMhz)
             || !qFuzzyCompare(sw->bandwidthMhz(), bandwidthMhz))) {
-        sw->setFrequencyRangeImmediate(targetCenterMhz, bandwidthMhz);
+        // ANAN fork build 619: a small step glides at the steps' pace (the
+        // locked receiver stays at the centre); a large one snaps as before.
+        sw->glideCenterLockRange(targetCenterMhz, bandwidthMhz);
         changed = true;
     }
 

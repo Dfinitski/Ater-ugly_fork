@@ -172,6 +172,13 @@ public:
     // Same range update, but snaps instead of using the small pan-follow
     // animation. Center Lock uses this so the locked slice stays pinned.
     void setFrequencyRangeImmediate(double centerMhz, double bandwidthMhz);
+    // ANAN fork build 619 (operator, 22.11: "with a 500 Hz step, turned
+    // slowly, it retunes in jumps -- work out the speed needed between steps
+    // and move smoothly"). Center Lock's own move of the view: a small step
+    // glides at the pace the steps come in (the interval between them), at a
+    // constant speed while they keep coming; a large one snaps as before.
+    // The locked receiver stays drawn at the gliding centre.
+    void glideCenterLockRange(double centerMhz, double bandwidthMhz);
     void clearDisplay();  // blank spectrum and waterfall on disconnect
     void resetGpuResources();  // tear down GPU pipelines for reparenting (#1240)
     void prepareForTopLevelChange(); // unregister QRhiWidget from the current backing-store QRhi
@@ -1695,6 +1702,12 @@ private:
     QVariantAnimation* m_panCenterAnim{nullptr};
     double             m_panCenterTarget{14.225};
     double             m_panCenterStart{14.225}; // m_centerMhz at animation start (stale-echo guard)
+    QElapsedTimer      m_glideStepClock;           // build 619: time since the last Center Lock step
+    double             m_glideIntervalMs{0.0};     // build 619: the steps' pace (EMA)
+    // Build 619: the shift (MHz) of content kept in the target frame to the
+    // gliding view, m_panCenterTarget - m_centerMhz while animating, else 0.
+    [[nodiscard]] double glideOffsetMhz() const;
+    [[nodiscard]] QVector<float> glideShiftedBins(const QVector<float>& bins) const;
 
     // Multi-slice overlays (replaces single m_vfoFreqMhz / m_filterLowHz / etc.)
     QVector<SliceOverlay> m_sliceOverlays;

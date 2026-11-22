@@ -8249,6 +8249,99 @@ void SpectrumWidget::setFrequencyRangeImmediate(double centerMhz, double bandwid
     }
 }
 
+double SpectrumWidget::glideOffsetMhz() const
+{
+    if (!m_panCenterAnim || m_panCenterAnim->state() == QAbstractAnimation::Stopped)
+        return 0.0;
+    return m_panCenterTarget - m_centerMhz;
+}
+
+QVector<float> SpectrumWidget::glideShiftedBins(const QVector<float>& bins) const
+{
+    // Build 619: the trace is kept in the target's frame (as the waterfall's
+    // frame is); while the view glides it is drawn shifted to the view, like
+    // the waterfall shader does with m_centerMhz. Edges: the nearest bin.
+    const int n = bins.size();
+    const double off = glideOffsetMhz();
+    if (n < 2 || off == 0.0 || m_bandwidthMhz <= 0.0)
+        return bins;
+    const double d = off / m_bandwidthMhz * n;   // bins
+    QVector<float> out(n);
+    for (int j = 0; j < n; ++j) {
+        const double src = j - d;
+        const int a = std::clamp(static_cast<int>(std::floor(src)), 0, n - 1);
+        const int b = std::min(a + 1, n - 1);
+        const float t = static_cast<float>(std::clamp(src - std::floor(src), 0.0, 1.0));
+        out[j] = (src <= 0.0) ? bins[0] : (src >= n - 1) ? bins[n - 1]
+                                        : bins[a] * (1.0f - t) + bins[b] * t;
+    }
+    return out;
+}
+
+void SpectrumWidget::glideCenterLockRange(double centerMhz, double bandwidthMhz)
+{
+    // The steps' pace: the interval between them, smoothed; a pause (> 600 ms)
+    // starts over. Constant speed (linear) while they keep coming, so each
+    // glide ends as the next step arrives; one step alone eases in ~120 ms.
+    double intervalMs = -1.0;
+    if (m_glideStepClock.isValid())
+        intervalMs = static_cast<double>(m_glideStepClock.restart());
+    else
+        m_glideStepClock.start();
+    const bool continuous = intervalMs > 0.0 && intervalMs < 600.0;
+    if (continuous)
+        m_glideIntervalMs = m_glideIntervalMs > 0.0 ? 0.6 * m_glideIntervalMs + 0.4 * intervalMs
+                                                    : intervalMs;
+    else
+        m_glideIntervalMs = 0.0;
+
+    const bool canGlide = !panGeometryConfirmationRequired() && !m_txZoomActive
+        && m_bandwidthMhz > 0.0 && bandwidthMhz == m_bandwidthMhz
+        && std::abs(centerMhz - (glideOffsetMhz() != 0.0 ? m_panCenterTarget : m_centerMhz))
+               <= bandwidthMhz / 2.0 * 0.25;
+    if (!canGlide) {
+        setFrequencyRangeImmediate(centerMhz, bandwidthMhz);
+        return;
+    }
+    if (centerMhz == m_panCenterTarget && glideOffsetMhz() != 0.0)
+        return;   // already gliding there
+    if (centerMhz == m_centerMhz && glideOffsetMhz() == 0.0)
+        return;
+
+    const double sourceMhz = glideOffsetMhz() != 0.0 ? m_panCenterTarget : m_centerMhz;
+    // Content to the new target at once, in the target frame (as a nudge).
+    handleWaterfallFrequencyFrameChange(sourceMhz, m_bandwidthMhz, centerMhz, m_bandwidthMhz);
+    reprojectSpectrum(sourceMhz, m_bandwidthMhz, centerMhz, m_bandwidthMhz);
+    resetNoiseFloorBaseline();
+    if (glideOffsetMhz() == 0.0)
+        m_panCenterStart = m_centerMhz;
+    m_panCenterTarget = centerMhz;
+
+    if (!m_panCenterAnim) {
+        m_panCenterAnim = new QVariantAnimation(this);
+        connect(m_panCenterAnim, &QVariantAnimation::valueChanged, this,
+            [this](const QVariant& v) {
+                m_centerMhz = v.toDouble();
+                markOverlayDirty();
+            });
+        connect(m_panCenterAnim, &QVariantAnimation::finished, this,
+            [this]() {
+                m_centerMhz = m_panCenterTarget;
+                markOverlayDirty();
+            });
+    }
+    if (m_panCenterAnim->state() != QAbstractAnimation::Stopped)
+        m_panCenterAnim->stop();
+    m_panCenterAnim->setEasingCurve(continuous ? QEasingCurve::Linear : QEasingCurve::OutQuad);
+    m_panCenterAnim->setStartValue(m_centerMhz);
+    m_panCenterAnim->setEndValue(centerMhz);
+    m_panCenterAnim->setDuration(continuous
+        ? static_cast<int>(std::clamp(m_glideIntervalMs, 40.0, 400.0)) : 120);
+    m_panCenterAnim->start();
+    markOverlayDirty();
+    emit frequencyRangeChanged(centerMhz, m_bandwidthMhz);
+}
+
 void SpectrumWidget::setPanGeometryConfirmationRequired(bool required)
 {
     if (m_panGeometryConfirmationRequired == required) { return; }
@@ -8522,6 +8615,7 @@ void SpectrumWidget::setFrequencyRangeInternal(double centerMhz, double bandwidt
     if (m_panCenterAnim->state() != QAbstractAnimation::Stopped) {
         m_panCenterAnim->stop();
     }
+    m_panCenterAnim->setEasingCurve(QEasingCurve::InOutQuad);   // build 619: a glide may have changed it
     m_panCenterAnim->setStartValue(m_centerMhz);
     m_panCenterAnim->setEndValue(centerMhz);
     m_panCenterAnim->setDuration(110);
@@ -17061,8 +17155,9 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
             // bins first: buildFftDisplayTrace()'s existing resample already
             // stretches whatever it's given across `cols`, so feeding it a
             // pre-cropped array is what fills the panel with just that range.
+            // Build 619: shifted to the gliding view (glideShiftedBins).
             const QVector<float> croppedBins =
-                croppedBinsForDisplay(displaySpectrumBins());
+                croppedBinsForDisplay(glideShiftedBins(displaySpectrumBins()));
             const QVector<float>& trace =
                 buildFftDisplayTrace(croppedBins, cols, specContentW);
             const int n = trace.size();
@@ -17779,14 +17874,17 @@ void SpectrumWidget::repositionVfoFlags(const QRect& specRect)
     QVector<VfoPos> vfos;
     for (const SliceOverlay& so : m_sliceOverlays) {
         if (VfoWidget* flag = m_vfoWidgets.value(so.sliceId, nullptr)) {
-            int x = mhzToX(so.freqMhz);
+            // Build 619: the Center Lock receiver's flag stays at the gliding centre.
+            const double f = so.sliceId == m_centerLockSliceId ? so.freqMhz - glideOffsetMhz()
+                                                               : so.freqMhz;
+            int x = mhzToX(f);
             if (drawsRttyToneCues(so.mode)) {
                 const double hiMhz =
-                    so.freqMhz + so.filterHighHz / 1.0e6;
+                    f + so.filterHighHz / 1.0e6;
                 x = mhzToX(hiMhz) + 4;
             }
             if (so.fdvCenterHz != 0)   // build 337: the centre of the filter
-                x = mhzToX(so.freqMhz + so.fdvCenterHz / 1.0e6);
+                x = mhzToX(f + so.fdvCenterHz / 1.0e6);
             vfos.append({so.sliceId, x, flag, so.splitPartnerId, &so});
         }
     }
@@ -17914,7 +18012,8 @@ void SpectrumWidget::drawSpectrum(QPainter& p, const QRect& r)
 {
     // Crop first -- see the matching comment at renderGpuFrame()'s own
     // buildFftDisplayTrace() call.
-    const QVector<float> croppedBins = croppedBinsForDisplay(displaySpectrumBins());
+    const QVector<float> croppedBins =
+        croppedBinsForDisplay(glideShiftedBins(displaySpectrumBins()));   // build 619
     const QVector<float>& fftBins =
         buildFftDisplayTrace(croppedBins,
                              qMax(2, r.width() * kFftDisplayOversample),
@@ -19196,7 +19295,17 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
     const double endMhz   = m_centerMhz + effectiveBandwidthMhz() / 2.0;
 
     // Draw inactive slices first, then active slice on top
-    auto drawOne = [&](const SliceOverlay& so) {
+    // Build 619: while the view glides, the Center Lock receiver is drawn
+    // where the view is gliding it from -- at the centre, not a step ahead.
+    const double glideOff = glideOffsetMhz();
+    auto drawOne = [&](const SliceOverlay& soIn) {
+        SliceOverlay soGlide;
+        const bool glidingLock = glideOff != 0.0 && soIn.sliceId == m_centerLockSliceId;
+        if (glidingLock) {
+            soGlide = soIn;
+            soGlide.freqMhz -= glideOff;
+        }
+        const SliceOverlay& so = glidingLock ? soGlide : soIn;
         if (m_sliceMarkerPass == 1 && so.sliceId == m_centerLockSliceId) return;   // build 370
         if (m_sliceMarkerPass == 2 && so.sliceId != m_centerLockSliceId) return;
         if (so.freqMhz < startMhz || so.freqMhz > endMhz) return;
