@@ -8976,8 +8976,9 @@ void Hl2Backend::freqCalStart(quint64 requestId, double refHz)
     m_fcal.rateHz = rate;
     m_fcal.oldPpb = m_freqCalPpb;
     m_fcal.pass = 1;
-    qCInfo(lcHl2).nospace() << "ANAN: frequency calibration on " << refHz << " Hz, receiver " << rx + 1
-                            << " (NCO " << m_rx[static_cast<std::size_t>(rx)].ncoHz << " Hz, "
+    qCInfo(lcHl2).nospace().noquote() << "ANAN: frequency calibration on " << QString::number(refHz, 'f', 0)
+                            << " Hz, receiver " << rx + 1 << " (NCO "
+                            << QString::number(m_rx[static_cast<std::size_t>(rx)].ncoHz, 'f', 0) << " Hz, "
                             << rate << " Hz), correction now " << m_freqCalPpb << " ppb";
     freqCalArm();
 }
@@ -9048,10 +9049,12 @@ void Hl2Backend::freqCalCaptured()
                     .arg(pk.snrDb, 0, 'f', 1));
         }
         const double ppb = anan::freqCalPpbFrom(m_fcal.refHz, pk.offsetHz, m_fcal.regHz);
-        qCInfo(lcHl2).nospace() << "ANAN: frequency calibration pass " << m_fcal.pass << ": carrier "
-                                << pk.offsetHz << " Hz from the NCO (register " << m_fcal.regHz
-                                << " Hz), " << pk.levelDb << " dBFS, SNR " << pk.snrDb
-                                << " dB -> " << ppb << " ppb";
+        qCInfo(lcHl2).nospace().noquote() << "ANAN: frequency calibration pass " << m_fcal.pass << ": carrier "
+                                << QString::number(pk.offsetHz, 'f', 3) << " Hz from the NCO (register "
+                                << QString::number(m_fcal.regHz, 'f', 0) << " Hz), "
+                                << QString::number(pk.levelDb, 'f', 1) << " dBFS, SNR "
+                                << QString::number(pk.snrDb, 'f', 1) << " dB -> "
+                                << QString::number(ppb, 'f', 1) << " ppb";
         if (m_fcal.pass == 1) {
             if (std::abs(ppb) > Hl2FreqCal::kMaxPpb) {
                 return freqCalFinish(false,

@@ -4108,7 +4108,7 @@ QWidget* RadioSetupDialog::buildCalibrationTab()
     // handler is armed first and why the caller can read the member on the next
     // line. If that ever stops being true the page is one reseed stale rather
     // than wrong, and the live writer below still corrects it.
-    auto askExternalReference = [this] {
+    auto askExternalReference = [this, spinGuard] {
         IRadioBackend* backend = m_model ? m_model->backend() : nullptr;
         if (!backend || !m_model->backendDeclaresExtension(QStringLiteral("hl2"))) {
             return;
@@ -4118,12 +4118,21 @@ QWidget* RadioSetupDialog::buildCalibrationTab()
         const quint64 requestId = nextCalId++;
         auto* guard = new QObject(this);
         connect(backend, &IRadioBackend::extensionResult, guard,
-                [this, guard, requestId](quint64 id, const QVariant& result) {
+                [this, guard, requestId, spinGuard](quint64 id, const QVariant& result) {
             if (id != requestId) {
                 return;
             }
             guard->deleteLater();
             const QVariantMap m = result.toMap();
+            // ANAN fork build 634 (operator, 22.11: "calibrated on 10 MHz, but
+            // Error stayed at 0, and the readout did not change"): the page
+            // read the store of RadioModel's scope (family "anan"), while the
+            // backend stores under "hl2" -- so it always read 0. The backend's
+            // live correction is the truth; it is shown.
+            if (spinGuard && m.contains(QStringLiteral("ppb"))) {
+                QSignalBlocker blocker(spinGuard);
+                spinGuard->setValue(m.value(QStringLiteral("ppb")).toInt());
+            }
             if (m.contains(QStringLiteral("externalReference"))) {
                 m_hl2ExternalRefLocked =
                     m.value(QStringLiteral("externalReference")).toBool();
