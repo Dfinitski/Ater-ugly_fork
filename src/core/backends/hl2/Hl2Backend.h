@@ -1066,6 +1066,13 @@ private:
     float m_ioLastL = 0.0f, m_ioLastR = 0.0f;
     bool m_ioHavePrev = false;
     bool m_ioWasActive = false;
+    // Build 594: the radio speaker stays on the post-AetherRX feed across an
+    // over (the feed has nothing then) instead of falling back to the raw
+    // mix, which played a moment of unprocessed audio at the unkey before
+    // the feed came back and primed. GUI thread writes, I/O thread reads.
+    std::atomic<bool> m_codecRxHeld{false};
+    std::atomic<long long> m_codecRxReleaseMs{0};
+    bool m_ioFeedUsed = false;   // I/O thread
     // ANAN-100D port: receiver audio blanked on the radio speaker after the
     // radio's own PTT press (samples, 24 kHz stereo); I/O thread only.
     std::size_t m_ioRxBlank = 0;

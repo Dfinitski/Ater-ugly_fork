@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 
+#include <chrono>
 #include <cmath>
 #include <limits>
 
@@ -2733,6 +2734,12 @@ void Hl2Backend::applyRxAudioMute(bool muted)
     m_rxAudioMuted = muted;
     if (m_audioMixer)   // build 373: the same hold, on the audio thread, from its next block
         m_audioMixer->setMuted(muted);
+    // Build 594: the radio speaker's path through the over (ananIoCodecAudio).
+    m_codecRxHeld.store(muted, std::memory_order_relaxed);
+    if (!muted)
+        m_codecRxReleaseMs.store(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                     std::chrono::steady_clock::now().time_since_epoch()).count(),
+                                 std::memory_order_relaxed);
     // Record the moment sampling is asked to RESUME at the site that actually
     // asks for it, which since #5497 is HERE and not at the top of
     // applyKeying(): on the unkey edge the request is now made a hold later
@@ -8130,7 +8137,25 @@ void Hl2Backend::ananIoCodecAudio(const void* dsp, const std::vector<float>& pcm
     // "AnanCodecAetherRx" (on by default since build 567) turns it off; the
     // raw receiver mix below then plays -- and also whenever AudioEngine
     // delivers nothing (PC audio disabled).
-    if (auto& feed = anan::AnanCodecFeed::instance(); p.aetherRx && feed.live()) {
+    // ANAN fork build 594 (operator, 21.11: "after going to receive there is
+    // sound for a short time, then a small pause without sound, and then
+    // sound for good -- in all modes, with noise reduction and without").
+    // OUR ERROR since build 567 made this feed the default: through an over
+    // AudioEngine gets nothing (the mix holds a gap), so 300 ms in the feed
+    // stopped being "live" and the radio speaker fell back to the raw mix
+    // below; at the unkey that raw mix played the receiver at once (the short
+    // sound), then the feed came back, had to prime 100 ms (the pause) and
+    // played on. Once the feed is in use it stays in use while the receive
+    // audio is held and for 1.5 s after (its underrun is silence and primes
+    // again); only a feed that does not come back falls back to the raw mix.
+    auto& feed = anan::AnanCodecFeed::instance();
+    const long long nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    const bool overWindow = m_codecRxHeld.load(std::memory_order_relaxed)
+        || nowMs - m_codecRxReleaseMs.load(std::memory_order_relaxed) < 1500;
+    const bool useFeed = p.aetherRx && (feed.live() || (m_ioFeedUsed && overWindow));
+    m_ioFeedUsed = useFeed;
+    if (useFeed) {
         const std::size_t frames24 = n / 2;
         const std::size_t frames48 = frames24 * 2;
         m_ioProcOut.resize(frames48 * 2);
