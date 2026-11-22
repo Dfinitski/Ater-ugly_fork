@@ -20,6 +20,9 @@
 //
 // No Q_OBJECT here (header only, no moc): the state change is a callback.
 
+#include "CwSidetoneGenerator.h"
+#include "ClientQuindarTone.h"
+
 #include <QAudio>
 #include <QAudioDevice>
 #include <QAudioFormat>
@@ -69,6 +72,10 @@ public:
     virtual bool exclusive() const { return false; }
     virtual QString describe() const { return {}; }
     virtual unsigned underruns() const { return 0; }
+    // Build 607: the PC CW sidetone and the Quindar tone mixed into this
+    // output (exclusive mode: the card takes no second stream). Default: not.
+    virtual bool setSideSources(CwSidetoneGenerator*, ClientQuindarTone*) { return false; }
+    virtual void detachSideSources() {}
 
     // reset() + start() without reporting the state changes in between.
     QIODevice* restartQuietly()
@@ -193,6 +200,27 @@ public:
     bool exclusive() const override { return true; }
     QString describe() const override { return m_describe; }
     unsigned underruns() const override { return m_underruns.load(std::memory_order_relaxed); }
+
+    // Build 607 (operator, 21.11: "the sidetone on this same card; the mixing
+    // switchable"). Engine thread. The generator's rate is set to the card's
+    // before it is attached (nothing else renders it then).
+    bool setSideSources(CwSidetoneGenerator* st, ClientQuindarTone* q) override
+    {
+        detachSideSources();
+        if (st)
+            st->setSampleRateHz(m_rate);
+        m_quindar.store(q, std::memory_order_seq_cst);
+        m_sidetone.store(st, std::memory_order_seq_cst);
+        return true;
+    }
+    // Waits out a callback that is mixing, so the caller may reset them.
+    void detachSideSources() override
+    {
+        m_sidetone.store(nullptr, std::memory_order_seq_cst);
+        m_quindar.store(nullptr, std::memory_order_seq_cst);
+        while (m_inSide.load(std::memory_order_seq_cst))
+            QThread::yieldCurrentThread();
+    }
     QString lastError() const { return m_lastError; }
     QString refusedAttempts() const { return m_refused; }
 
@@ -263,6 +291,20 @@ private:
                 o->m_underruns.fetch_add(1, std::memory_order_relaxed);
         }
         o->m_wasFull = (n == frames);
+        // Build 607: the PC CW sidetone and the Quindar tone, after the RX
+        // volume (they have their own levels).
+        o->m_inSide.store(true, std::memory_order_seq_cst);
+        if (CwSidetoneGenerator* st = o->m_sidetone.load(std::memory_order_seq_cst))
+            st->process(out, static_cast<int>(frames));
+        if (ClientQuindarTone* q = o->m_quindar.load(std::memory_order_seq_cst)) {
+            const std::size_t m = std::min<std::size_t>(frames, o->m_sideScratch.size() / 2);
+            std::fill(o->m_sideScratch.begin(), o->m_sideScratch.begin() + 2 * m, 0.0f);
+            q->processSidetone(o->m_sideScratch.data(), static_cast<int>(m),
+                               static_cast<double>(o->m_rate));
+            for (std::size_t i = 0; i < 2 * m; ++i)
+                out[i] += o->m_sideScratch[i];
+        }
+        o->m_inSide.store(false, std::memory_order_seq_cst);
         o->m_consumed.fetch_add(frames, std::memory_order_relaxed);
         return paContinue;
     }
@@ -442,6 +484,10 @@ private:
     std::atomic<unsigned long long> m_consumed{0};
     std::atomic<unsigned> m_underruns{0};
     bool m_wasFull = false;   // callback thread only
+    std::atomic<CwSidetoneGenerator*> m_sidetone{nullptr};   // build 607
+    std::atomic<ClientQuindarTone*> m_quindar{nullptr};
+    std::atomic<bool> m_inSide{false};
+    std::vector<float> m_sideScratch = std::vector<float>(2 * 16384, 0.0f);
     QAudio::State m_state = QAudio::StoppedState;
     QAudio::Error m_error = QAudio::NoError;
     QString m_describe;

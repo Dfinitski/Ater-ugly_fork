@@ -4129,8 +4129,13 @@ bool AudioEngine::startRxStream()
     // disabled (timers write silence to a tiny primed buffer). NOTE: the old
     // Windows branch returned before startQuindarLocalSink(), so the Quindar
     // local monitor never opened on Windows — unifying the path fixes that.
-    startSidetoneStream();
-    startQuindarLocalSink();
+    // Build 607: exclusive mode holds the card -- the sidetone and the
+    // Quindar tone are mixed into the RX output instead of opening their own.
+    // (openRxSink attached them.)
+    if (!m_audioSink || !m_audioSink->exclusive()) {
+        startSidetoneStream();
+        startQuindarLocalSink();
+    }
     emit rxStarted();
     return true;
 }
@@ -4144,6 +4149,9 @@ bool AudioEngine::openRxSink(int producerRate)
     const bool opened = m_rxSinkOpener
         ? m_rxSinkOpener(producerRate) : openRxSinkDevice(producerRate);
     m_rxSinkProducerRate = opened ? producerRate : 0;
+    // Build 607: an exclusive output carries the sidetone / Quindar tone.
+    if (opened && m_audioSink && m_audioSink->exclusive())
+        attachExclusiveSideTones();
     return opened;
 }
 
@@ -4451,6 +4459,10 @@ void AudioEngine::applyPendingRxSinkRate()
 
 void AudioEngine::stopRxStream()
 {
+    // Build 607: an exclusive output mixing the sidetone lets go of it first
+    // (stopSidetoneStream resets the generator, an audio-thread call).
+    if (m_audioSink)
+        m_audioSink->detachSideSources();
     stopSidetoneStream();
     stopQuindarLocalSink();
     resetRxChainStateForSourceSwitch();
@@ -7874,6 +7886,27 @@ void AudioEngine::setRxExclusiveMode(bool on)
         stopRxStream();
         startRxStream();
     }
+}
+
+void AudioEngine::attachExclusiveSideTones()
+{
+    if (!m_audioSink || !m_audioSink->exclusive())
+        return;
+    const bool on = m_sidetoneIntoExclusive.load();
+    if (on)
+        m_audioSink->setSideSources(m_cwSidetone.get(), m_clientQuindarTone.get());
+    else
+        m_audioSink->detachSideSources();
+    qCWarning(lcAudio) << "AudioEngine: PC CW sidetone / Quindar tone"
+                       << (on ? "mixed into the exclusive RX output"
+                              : "off while exclusive mode holds the card");
+}
+
+void AudioEngine::setSidetoneIntoExclusive(bool on)
+{
+    if (m_sidetoneIntoExclusive.exchange(on) == on)
+        return;
+    attachExclusiveSideTones();
 }
 
 void AudioEngine::dropQueuedRxSilence()

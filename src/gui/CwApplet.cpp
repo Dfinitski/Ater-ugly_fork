@@ -31,6 +31,7 @@ constexpr const char* kStLevel   = "AnanSideToneLevelPct"; // 0..99 %, 50
 constexpr const char* kStFreq    = "AnanSideToneFreq";     // 400..1000 Hz, 700
 constexpr const char* kHang      = "AnanHangTime";         // 10..1000 ms, 250
 constexpr const char* kDemo      = "AnanCwDemo";           // True/False
+constexpr const char* kPcStExcl  = "AnanPcSidetoneExclusive"; // True/False, True (build 607)
 
 constexpr int kLabelW = 64;
 constexpr int kValueW = 46;
@@ -169,6 +170,16 @@ CwApplet::CwApplet(QWidget* parent)
     m_stLevel->setToolTip(tr("Side tone level, 0..99 % (0 = off)"));
     m_stFreq = sliderRow(vbox, tr("Frequency:"), 400, 1000, 10, &m_stFreqValue);
     m_stFreq->setToolTip(tr("Side tone frequency, 400..1000 Hz"));
+    // Build 607 (operator, 21.11): with the PC sound card in exclusive mode
+    // (Radio Setup -> Audio) the PC sidetone cannot open its own output on
+    // that card; it is mixed into ours instead -- switchable here.
+    m_pcSidetoneExcl = checkBox(tr("PC sidetone in exclusive mode"));
+    m_pcSidetoneExcl->setToolTip(
+        tr("While the PC sound card is in exclusive mode (Radio Setup -> Audio),\n"
+           "the program's own CW sidetone and Quindar tone are mixed into the\n"
+           "receive audio on that card. Off: they are not heard on the PC then.\n"
+           "(The radio's own side tone above is not affected.)"));
+    vbox->addWidget(m_pcSidetoneExcl);
 
     // ── Load ────────────────────────────────────────────────────────────
     m_loading = true;
@@ -181,6 +192,9 @@ CwApplet::CwApplet(QWidget* parent)
     m_demo->setChecked(flag(kDemo));
     m_stLevel->setValue(intSetting(kStLevel, 50, 0, 99));
     m_stFreq->setValue(intSetting(kStFreq, 700, 400, 1000) / 10 * 10);
+    m_pcSidetoneExcl->setChecked(AppSettings::instance()
+                                     .value(QLatin1String(kPcStExcl), QStringLiteral("True"))
+                                     .toString() == QLatin1String("True"));
     m_loading = false;
 
     auto showValues = [this] {
@@ -222,6 +236,12 @@ CwApplet::CwApplet(QWidget* parent)
     });
     connect(m_demo, &QCheckBox::toggled, this,
             [this](bool on) { if (!m_loading) store(kDemo, tf(on)); });
+    connect(m_pcSidetoneExcl, &QCheckBox::toggled, this, [this](bool on) {
+        if (m_loading)
+            return;
+        store(kPcStExcl, tf(on));
+        emit pcSidetoneExclusiveChanged(on);
+    });
     connect(m_stLevel, &QSlider::valueChanged, this, [this, showValues](int v) {
         showValues();
         if (!m_loading) store(kStLevel, v);

@@ -198,6 +198,10 @@ public:
     // PortAudio; RxAudioSink.h). Restarts a running RX stream.
     void  setRxExclusiveMode(bool on);
     bool  rxExclusiveMode() const { return m_rxExclusive.load(); }
+    // Build 607: the PC CW sidetone and Quindar tone mixed into the exclusive
+    // output (CW applet, "PC sidetone in exclusive mode"); off: not heard on
+    // the PC while exclusive mode holds the card.
+    void  setSidetoneIntoExclusive(bool on);
     int   rxBufferCapMs() const { return m_rxBufferCapMs.load(); }
     void setReceivePresentationDelays(
         int flexDelayMs,
@@ -1122,6 +1126,8 @@ private:
     // RX
     RxSink*       m_audioSink{nullptr};   // build 602: QAudioSink or WASAPI exclusive
     std::atomic<bool> m_rxExclusive{false};
+    std::atomic<bool> m_sidetoneIntoExclusive{true};   // build 607
+    void  attachExclusiveSideTones();
     QPointer<QIODevice> m_audioDevice;   // sink-owned device, may vanish on hot-unplug
     // A negotiated fallback still satisfies one producer-domain attempt. Keep
     // this separate from m_rxOutputRate so a 48 -> 24 fallback cannot reopen on
