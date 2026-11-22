@@ -198,6 +198,16 @@ private:
     void runRxNr(int slot, int ddc, std::vector<float>& pcm, bool held);
     bool isHeld(const void* dsp) const;
     std::vector<const void*> m_heldDsps;           // build 592, mixer thread
+    // Build 595: unkey trace of the first receiver in the mix (diagnostics):
+    // 10 ms rows for 800 ms from the end of the transmit hold.
+    struct UnkeyTrace {
+        static constexpr int kRows = 80;
+        bool prevMuted = false;
+        int frames = -1;   // -1: not running
+        std::array<float, kRows> inPk{}, outPk{};
+        std::array<char, kRows> held{}, drop{}, method{};
+    } m_ukTr;
+    void unkeyTrace(int receiver, const std::vector<float>& in, const std::vector<float>& out, bool held);
     std::array<NrStage, kSlots> m_nr;              // mixer thread
     std::mutex m_nrMutex;
     std::array<RxNrConfig, kMaxReceivers> m_nrCfg; // under m_nrMutex

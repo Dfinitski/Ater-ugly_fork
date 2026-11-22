@@ -397,8 +397,82 @@ void Hl2AudioMixer::receiverAudio(const void* dsp, const std::vector<float>& pcm
     // the audio is held (the block is then dropped by mixIn), so what the
     // filter holds from before an over is not played after it.
     m_nrBuf = pcm;
-    runRxNr(receiver, receiver, m_nrBuf, isHeld(dsp));
+    const bool held = isHeld(dsp);
+    runRxNr(receiver, receiver, m_nrBuf, held);
+    unkeyTrace(receiver, pcm, m_nrBuf, held);   // build 595, diagnostics
     mixIn(receiver, m_nrBuf, p);
+}
+
+void Hl2AudioMixer::unkeyTrace(int receiver, const std::vector<float>& in,
+                               const std::vector<float>& out, bool held)
+{
+    // ANAN fork build 595 (operator, 21.11: after an over "sound for a
+    // moment, a pause, then sound", most of all with DFNR): what this thread
+    // gets and sends on for the first receiver, from the end of the hold.
+    int first = -1;
+    {
+        std::lock_guard<std::mutex> lock(m_paramsMutex);
+        for (int i = 0; i < kMaxReceivers && first < 0; ++i)
+            if (m_params.dsp[static_cast<std::size_t>(i)])
+                first = i;
+    }
+    if (receiver != first)
+        return;
+    auto& t = m_ukTr;
+    const bool muted = m_muted.load(std::memory_order_acquire);
+    if (t.prevMuted && !muted) {
+        t.frames = 0;
+        t.inPk.fill(-1.0f);
+        t.outPk.fill(-1.0f);
+        t.held.fill(' ');
+        t.drop.fill(' ');
+        t.method.fill(' ');
+    }
+    t.prevMuted = muted;
+    if (t.frames < 0)
+        return;
+    const int row = t.frames / 240;   // 10 ms at 24 kHz
+    if (row >= UnkeyTrace::kRows) {
+        auto line = [](const std::array<float, UnkeyTrace::kRows>& a) {
+            QString s;
+            for (float v : a)
+                s += (v < 0.0f ? QStringLiteral("_") : v > 0.0f
+                          ? QString::number(20.0 * std::log10(v), 'f', 0) : QStringLiteral("z"))
+                     + QLatin1Char(' ');
+            return s;
+        };
+        auto flags = [](const std::array<char, UnkeyTrace::kRows>& a) {
+            QString s;
+            for (char c : a)
+                s += QLatin1Char(c);
+            return s;
+        };
+        qCInfo(lcHl2).noquote() << "ANAN unkey test, audio thread, receiver" << receiver
+                                << "10 ms rows from the end of the hold (z = digital silence):";
+        qCInfo(lcHl2).noquote() << "  in pk dBFS:  " << line(t.inPk);
+        qCInfo(lcHl2).noquote() << "  out pk dBFS: " << line(t.outPk);
+        qCInfo(lcHl2).noquote() << "  held:        " << flags(t.held);
+        qCInfo(lcHl2).noquote() << "  NR drop:     " << flags(t.drop);
+        qCInfo(lcHl2).noquote() << "  NR method:   " << flags(t.method);
+        t.frames = -1;
+        return;
+    }
+    float pi = 0.0f, po = 0.0f;
+    for (float v : in)
+        pi = std::max(pi, std::abs(v));
+    for (float v : out)
+        po = std::max(po, std::abs(v));
+    const auto r = static_cast<std::size_t>(row);
+    t.inPk[r] = std::max(t.inPk[r], pi);
+    t.outPk[r] = std::max(t.outPk[r], po);
+    if (held)
+        t.held[r] = 'H';
+    const NrStage& st = m_nr[static_cast<std::size_t>(receiver)];
+    if (st.dropSamples > 0)
+        t.drop[r] = 'D';
+    t.method[r] = st.method == RxNrConfig::Dfnr ? 'F' : st.method == RxNrConfig::Nnr ? 'N'
+                : st.build ? 'b' : '-';
+    t.frames += static_cast<int>(in.size() / 2);
 }
 
 void Hl2AudioMixer::applyFlush()
