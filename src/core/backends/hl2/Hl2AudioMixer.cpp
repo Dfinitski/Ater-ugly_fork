@@ -1,6 +1,7 @@
 #include "core/backends/hl2/Hl2AudioMixer.h"
 
 #include "core/LogManager.h"
+#include "core/backends/anan/AnanLatencyMarks.h"
 #include "core/fdv/FdvEngine.h"
 #include "core/NnrFilter.h"
 #ifdef HAVE_DFNR
@@ -387,6 +388,12 @@ void Hl2AudioMixer::emitOut(const std::vector<float>& pcm, const Params& p)
         }
     }
     if (p.live && m_streaming) {
+        // Build 613: unkey timeline -- the PC path after the hold.
+        auto& marks = anan::AnanLatencyMarks::instance();
+        marks.mark(anan::AnanLatencyMarks::MixerLive);
+        if (marks.waiting(anan::AnanLatencyMarks::MixerSound)
+            && anan::AnanLatencyMarks::loud(pcm.data(), pcm.size()))
+            marks.mark(anan::AnanLatencyMarks::MixerSound);
         QVector<float> samples(static_cast<qsizetype>(pcm.size()));
         std::copy(pcm.begin(), pcm.end(), samples.begin());
         if (const auto frame = m_producer.produce(std::move(samples))) {

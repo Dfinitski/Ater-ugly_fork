@@ -30,6 +30,7 @@
 #include "core/backends/anan/AnanForcedModel.h"
 #include "core/backends/anan/P2Transport.h"
 #include "core/backends/anan/AnanCodecFeed.h"
+#include "core/backends/anan/AnanLatencyMarks.h"
 #include "core/backends/anan/AnanPureSignal.h"
 #include "core/backends/anan/AnanTxEngine.h"
 #include "core/backends/anan/AnanUiState.h"
@@ -3020,6 +3021,45 @@ void Hl2Backend::spkCapture(float gain)
         << QString::number(20.0 * std::log10(std::max(pk, 1e-9f)), 'f', 1) << " dBFS at "
         << QString::number(pkAt / 24.0, 'f', 1) << " ms (before the 250 ms blank)";
     m_spkCap.clear();
+}
+
+// ANAN fork build 613: the unkey timeline (AnanLatencyMarks), one line.
+// "heard" adds what is still queued ahead of the first real audio: for the
+// PC the engine's queue and the sound device, for the codec the radio's own
+// speaker FIFO (its last reported level, 48 kHz frames).
+static std::atomic<unsigned> s_ananLatGen{0};
+
+static void ananLatencyReport(const char* why)
+{
+    using M = anan::AnanLatencyMarks;
+    auto& m = M::instance();
+    if (!m.armed())
+        return;
+    m.disarm();
+    auto t = [&](M::Stage s) {
+        const double v = m.ms(s);
+        return std::isnan(v) ? QStringLiteral("--") : QString::number(v, 'f', 1);
+    };
+    QString heardPc = QStringLiteral("--");
+    if (!std::isnan(m.ms(M::EngineSound)))
+        heardPc = QString::number(m.ms(M::EngineSound) + m.a(M::EngineSound) + m.b(M::EngineSound), 'f', 0);
+    QString heardCodec = QStringLiteral("--");
+    if (!std::isnan(m.ms(M::SpkSent)) && !std::isnan(m.ms(M::SpkStatus)))
+        heardCodec = QString::number(m.ms(M::SpkSent) + (m.a(M::SpkSent) + m.a(M::SpkStatus)) / 48.0, 'f', 0);
+    qCInfo(lcHl2).noquote().nospace()
+        << "ANAN unkey timeline (ms from host MOX off" << why << "): MOX-off packet " << t(M::MoxOffSent)
+        << "; RX DSP flushed " << t(M::RxDspFlushed) << ", sound " << t(M::RxDspSound)
+        << "; mixer to PC path " << t(M::MixerLive) << ", sound " << t(M::MixerSound)
+        << "; codec raw mix sound " << t(M::CodecMixSound)
+        << "; engine post-chain sound " << t(M::EngineSound) << " (queued ahead " << m.a(M::EngineSound)
+        << " ms, device " << m.b(M::EngineSound) << " ms)"
+        << "; codec feed push " << t(M::FeedPush) << " (depth " << m.a(M::FeedPush)
+        << "), primed " << t(M::FeedPrimed) << " (" << m.a(M::FeedPrimed)
+        << "), take " << t(M::FeedTake) << " (depth " << m.a(M::FeedTake) << ")"
+        << "; speaker packet " << t(M::SpkSent) << " (host queue " << m.a(M::SpkSent) << " frames)"
+        << "; radio speaker FIFO " << m.a(M::SpkStatus) << " of 2048 (flags " << m.b(M::SpkStatus)
+        << ") at " << t(M::SpkStatus)
+        << " => heard: PC ~" << heardPc << ", codec ~" << heardCodec;
 }
 
 void Hl2Backend::ananUnkeyEvent(const QString& what)
@@ -7330,6 +7370,7 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
             connect(m_ukTimer, &QTimer::timeout, this, [this] { ananUnkeyTraceSample(); });
         }
         if (key) {
+            ananLatencyReport(", re-keyed before 2 s");   // build 613
             m_ukKeyed = true;
             m_ukPost = false;
             m_ukRows.clear();
@@ -7346,6 +7387,13 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
                               .arg(m_radioPtt ? QStringLiteral(", radio PTT still on") : QString());
             m_ukIqRate.store(m_sampleRateHz, std::memory_order_relaxed);
             m_ukIqArm.store(true, std::memory_order_release);
+            // Build 613: unkey timeline, reported 2 s later.
+            anan::AnanLatencyMarks::instance().arm();
+            const unsigned gen = ++s_ananLatGen;
+            QTimer::singleShot(2000, this, [gen] {
+                if (gen == s_ananLatGen.load())
+                    ananLatencyReport("");
+            });
         }
     }
     m_keyed = key;
@@ -8264,6 +8312,12 @@ void Hl2Backend::ananIoCodecAudio(const void* dsp, const std::vector<float>& pcm
         const std::size_t b = std::min(m_ioRxBlank, n);
         std::fill(m_ioMixOut.begin(), m_ioMixOut.begin() + static_cast<std::ptrdiff_t>(b), 0.0f);
         m_ioRxBlank -= b;
+    }
+    {   // Build 613: unkey timeline -- the receivers' raw mix on the I/O thread.
+        auto& marks = anan::AnanLatencyMarks::instance();
+        if (marks.waiting(anan::AnanLatencyMarks::CodecMixSound)
+            && anan::AnanLatencyMarks::loud(m_ioMixOut.data(), m_ioMixOut.size()))
+            marks.mark(anan::AnanLatencyMarks::CodecMixSound);
     }
     for (std::size_t f = 0; f < n / 2; ++f) {
         m_ioMixOut[2 * f] += m_ioMonOut[f];

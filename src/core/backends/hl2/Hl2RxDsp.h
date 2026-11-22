@@ -703,6 +703,7 @@ private:
     // Build 470: the SPLIT receiver (setSubReceiver).
     void startSubBuild();
     std::unique_ptr<Hl2RxDsp> m_sub;
+    bool m_isSubDsp = false;   // build 613: this is a SPLIT sub receiver
     std::vector<float> m_subPcm;   // its stereo audio not yet sent on
     std::vector<float> m_subOut;   // build 513: the block subAudioReady carries
     double m_subShiftHz = 0.0;

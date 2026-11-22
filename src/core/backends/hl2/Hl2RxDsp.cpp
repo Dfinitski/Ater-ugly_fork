@@ -1,6 +1,7 @@
 #include "core/backends/hl2/Hl2RxDsp.h"
 
 #include "core/backends/hl2/Hl2AdcPairing.h"
+#include "core/backends/anan/AnanLatencyMarks.h"
 #include "aether/DrmEngine.h"
 
 #include <QLoggingCategory>
@@ -1134,6 +1135,7 @@ void Hl2RxDsp::startSubBuild()
     m_sub.reset();
     m_subPcm.clear();
     auto sub = std::make_unique<Hl2RxDsp>(nullptr);
+    sub->m_isSubDsp = true;   // build 613: not marked in the unkey timeline
     connect(sub.get(), &Hl2RxDsp::audioReady, this, [this](const std::vector<float>& pcm) {
         // Same thread, called from inside m_sub->processIqBlock() below.
         m_subPcm.insert(m_subPcm.end(), pcm.begin(), pcm.end());
@@ -1458,6 +1460,8 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
             if (m_channel->flushRxFilters()) {
                 m_overFlushPending = false;
                 m_channel->setNoiseBlankerHold(false);
+                if (!m_isSubDsp)   // build 613: unkey timeline
+                    anan::AnanLatencyMarks::instance().mark(anan::AnanLatencyMarks::RxDspFlushed);
             } else if (++m_overFlushRetries >= kOverFlushMaxRetries) {
                 // Refused for ~a filter length: the zeros have pushed the over
                 // out by now; the old guard covers what is left.
@@ -1614,6 +1618,13 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
                       m_subOut.begin());
             m_subPcm.erase(m_subPcm.begin(), m_subPcm.begin() + static_cast<std::ptrdiff_t>(take));
             emit subAudioReady(m_subOut);
+        }
+        // Build 613: unkey timeline -- the main receiver's first real audio.
+        if (!m_isSubDsp) {
+            auto& marks = anan::AnanLatencyMarks::instance();
+            if (marks.waiting(anan::AnanLatencyMarks::RxDspSound)
+                && anan::AnanLatencyMarks::loud(m_stereo.data(), m_stereo.size()))
+                marks.mark(anan::AnanLatencyMarks::RxDspSound);
         }
         emit audioReady(m_stereo);
         // S-meter from WDSP's average signal meter (xmeter `avg`, an EMA of

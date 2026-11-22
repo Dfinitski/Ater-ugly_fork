@@ -29,6 +29,8 @@
 #include <deque>
 #include <mutex>
 
+#include "core/backends/anan/AnanLatencyMarks.h"
+
 namespace AetherSDR::anan {
 
 class AnanCodecFeed {
@@ -63,6 +65,10 @@ public:
             return;
         const double step = static_cast<double>(rate) / static_cast<double>(kRate);
         std::lock_guard<std::mutex> lock(m_mutex);
+        // Build 613: unkey timeline -- the first real audio in.
+        auto& marks = AnanLatencyMarks::instance();
+        if (marks.waiting(AnanLatencyMarks::FeedPush) && AnanLatencyMarks::loud(stereo, 2 * frames))
+            marks.mark(AnanLatencyMarks::FeedPush, static_cast<int>(m_fifo.size() / 2));
         if (rate != m_lastRate) {
             m_lastRate = rate;
             m_pos = 1.0;
@@ -112,6 +118,7 @@ public:
                 return;
             }
             m_primed = true;
+            AnanLatencyMarks::instance().mark(AnanLatencyMarks::FeedPrimed, static_cast<int>(have));
         }
         if (have > kHighFrames + frames) {   // a backlog after a stall: back to the target
             const std::size_t drop = have - kTargetFrames;
@@ -144,6 +151,10 @@ public:
             m_primed = false;
             m_underruns.fetch_add(1, std::memory_order_relaxed);
         }
+        // Build 613: unkey timeline -- the first real audio out.
+        auto& marks = AnanLatencyMarks::instance();
+        if (marks.waiting(AnanLatencyMarks::FeedTake) && AnanLatencyMarks::loud(out, 2 * f))
+            marks.mark(AnanLatencyMarks::FeedTake, static_cast<int>(have));
     }
 
     // I/O thread, radio PTT press (Hl2Backend's press hook): what is queued
