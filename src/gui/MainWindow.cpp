@@ -6483,6 +6483,61 @@ void MainWindow::buildUI()
     // place, and whenever its font or style changes (MainWindow::eventFilter).
     refitStationLabel();
 
+    // ANAN fork build 606 (operator, 21.11): the RZ3QS branch again (see the
+    // A1 / A2 buttons above). Right of the station name, "AeRX" and "AeTX",
+    // drawn as A1 / A2 but not latching: a click opens / closes AetherRX and
+    // AetherTX exactly as the DSP flag's AetherRX / AetherTX buttons do
+    // (toggleAetherRxDialog, toggleAetherialStrip). Hidden for everybody else.
+    {
+        struct AeButton {
+            const char* text;
+            const char* objectName;
+            const char* tip;
+            bool rx;
+        };
+        static constexpr AeButton kAe[] = {
+            {"AeRX", "rz3qsAeRx", "AeRX -- open AetherRX (the receive chain)", true},
+            {"AeTX", "rz3qsAeTx", "AeTX -- open AetherTX (the transmit chain)", false},
+        };
+        QList<QPushButton*> aeButtons;
+        for (const AeButton& def : kAe) {
+            auto* b = new QPushButton(QString::fromLatin1(def.text));
+            b->setObjectName(QString::fromLatin1(def.objectName));
+            b->setAccessibleName(QString::fromLatin1(def.text));
+            b->setToolTip(QString::fromLatin1(def.tip));
+            b->setCheckable(false);
+            b->setAutoDefault(false);
+            b->setFocusPolicy(Qt::NoFocus);
+            b->setFixedSize(36, 20);
+            AetherSDR::ThemeManager::instance().applyStyleSheet(b,
+                "QPushButton { background: {{color.background.1}}; "
+                "border: 1px solid {{color.background.2}}; "
+                "border-radius: 3px; color: {{color.text.primary}}; "
+                "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
+                "QPushButton:hover { background: {{color.background.2}}; }"
+                "QPushButton:pressed { background: {{color.accent.dim}}; "
+                "border: 1px solid {{color.accent.bright}}; }");
+            b->hide();
+            if (def.rx)
+                connect(b, &QPushButton::clicked, this, [this] { toggleAetherRxDialog(); });
+            else
+                connect(b, &QPushButton::clicked, this, [this] { toggleAetherialStrip(); });
+            hbox->addWidget(b, 0, Qt::AlignVCenter);
+            aeButtons.append(b);
+        }
+        auto* aeTimer = new QTimer(m_statusBarContainer);
+        aeTimer->setInterval(500);
+        auto aeRefresh = [aeButtons] {
+            const bool show = fdv::FdvState::instance().callsign == QLatin1String("RZ3QS");
+            for (QPushButton* b : aeButtons)
+                if (b->isHidden() == show)
+                    b->setVisible(show);
+        };
+        connect(aeTimer, &QTimer::timeout, m_statusBarContainer, aeRefresh);
+        aeTimer->start();
+        aeRefresh();
+    }
+
     hbox->addStretch(1);
 
     // ── Right section ────────────────────────────────────────────────────

@@ -25,7 +25,10 @@
 #include <QAudioFormat>
 #include <QAudioSink>
 #include <QIODevice>
+#include <QHash>
 #include <QList>
+#include <QPair>
+#include <QThread>
 #include <QStringList>
 #include <QObject>
 #include <QString>
@@ -264,6 +267,18 @@ private:
         return paContinue;
     }
 
+    static QHash<QString, QPair<int, double>>& lastGood()
+    {
+        static QHash<QString, QPair<int, double>> cache;   // audio thread only
+        return cache;
+    }
+    static bool lastErrorInUse()
+    {
+        const PaHostErrorInfo* he = Pa_GetLastHostErrorInfo();
+        return he && he->hostApiType == paWASAPI
+               && static_cast<unsigned long>(he->errorCode) == 0x8889000AUL;
+    }
+
     // PortAudio's error and, for WASAPI, the HRESULT behind it (log 21.11
     // 23:07: only "Invalid device", its word for a refused IAudioClient).
     static QString hostReason(PaError e)
@@ -357,30 +372,48 @@ private:
         if (!rates.contains(static_cast<int>(info->defaultSampleRate)))
             rates << static_cast<int>(info->defaultSampleRate);
         const double latencies[2] = {info->defaultLowOutputLatency, 0.010};
+        struct Attempt { int rate; double lat; };
+        QList<Attempt> attempts;
+        for (int r : rates)
+            for (double lat : latencies)
+                attempts.append({r, lat});
+        // Build 606: what this card took last time goes first (log 21.11
+        // 23:21: two refused 48 kHz opens cost ~2 s of the audio thread on
+        // every switch).
+        const QString cardName = QString::fromUtf8(info->name);
+        auto& cache = lastGood();
+        if (const auto it = cache.constFind(cardName); it != cache.constEnd())
+            attempts.prepend({it->first, it->second});
         QStringList refused;
-        for (int r : rates) {
-            for (double lat : latencies) {
-                op.suggestedLatency = lat;
-                m_rate = r;
-                m_capFrames = static_cast<std::size_t>(r) * kRingMs / 1000;
-                m_ring.assign(2 * m_capFrames, 0.0f);
-                PaError e = Pa_OpenStream(&m_stream, nullptr, &op, r,
-                                          paFramesPerBufferUnspecified, paNoFlag,
-                                          &PaExclusiveRxSink::callback, this);
+        for (const Attempt& at : attempts) {
+            op.suggestedLatency = at.lat;
+            m_rate = at.rate;
+            m_capFrames = static_cast<std::size_t>(at.rate) * kRingMs / 1000;
+            m_ring.assign(2 * m_capFrames, 0.0f);
+            PaError e = paNoError;
+            // Build 606: "in use" right after our own shared output closed
+            // (log 23:21:15, the first 44.1 kHz try) -- once more, later.
+            for (int tryNo = 0; tryNo < 2; ++tryNo) {
+                e = Pa_OpenStream(&m_stream, nullptr, &op, at.rate,
+                                  paFramesPerBufferUnspecified, paNoFlag,
+                                  &PaExclusiveRxSink::callback, this);
                 if (e == paNoError) {
                     e = Pa_StartStream(m_stream);
-                    if (e != paNoError) {
+                    if (e != paNoError)
                         Pa_CloseStream(m_stream);
-                    }
                 }
-                if (e == paNoError)
+                if (e == paNoError || tryNo > 0 || !lastErrorInUse())
                     break;
                 m_stream = nullptr;
-                refused << QStringLiteral("%1 Hz / %2 ms: %3").arg(r)
-                               .arg(lat * 1000.0, 0, 'f', 1).arg(hostReason(e));
+                QThread::msleep(150);
             }
-            if (m_stream)
+            if (e == paNoError) {
+                cache.insert(cardName, {at.rate, at.lat});
                 break;
+            }
+            m_stream = nullptr;
+            refused << QStringLiteral("%1 Hz / %2 ms: %3").arg(at.rate)
+                           .arg(at.lat * 1000.0, 0, 'f', 1).arg(hostReason(e));
         }
         if (!refused.isEmpty())
             m_refused = refused.join(QStringLiteral("; "));
