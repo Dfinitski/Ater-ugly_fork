@@ -281,9 +281,10 @@ void CanonWindow::paintEvent(QPaintEvent*)
     }
     QPainter(this).drawPixmap(0, 0, m_ground);
     // Build 620: this frame (the children paint in the same pass) goes to
-    // the screen when this event returns; reveal the window just after it.
+    // the screen when this event returns; reveal the window just after it
+    // (build 624: one display frame later, so the compositor has it).
     if (m_revealPending) {
-        QTimer::singleShot(0, this, [this] {
+        QTimer::singleShot(16, this, [this] {
             if (m_revealPending) {
                 m_revealPending = false;
                 setWindowOpacity(1.0);

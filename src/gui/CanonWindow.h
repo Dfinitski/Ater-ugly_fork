@@ -69,6 +69,10 @@ public:
     // ANAN fork build 620: the window is fully transparent from its first
     // show until its first frame has been painted, so a heavy window does
     // not appear on screen while it is still polishing and laying out.
+    // Build 624 (operator, 22.11: "the top of the top panel flickers, as if
+    // a white canvas showed under it -- in the TX window too, a common
+    // error"): on for every canon window. A translucent frameless window
+    // goes on screen before its first paint, and Windows shows it white.
     void setRevealAfterFirstPaint(bool on) { m_revealAfterPaint = on; }
 
     static constexpr int kRadius = 16;
@@ -92,7 +96,7 @@ private:
 
     bool         m_returnClicksDefault;
     bool         m_ownerPlaced{false};
-    bool         m_revealAfterPaint{false};   // build 620
+    bool         m_revealAfterPaint{true};    // build 620; on by default since 624
     bool         m_revealPending{false};
     QWidget*     m_body{nullptr};
     QToolButton* m_close{nullptr};
