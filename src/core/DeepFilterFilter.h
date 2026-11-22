@@ -25,7 +25,11 @@ public:
     // Unsupported rates leave isValid() false. Recreate for a new rate/source.
     // ANAN fork build 591: channels = 1 runs one model state on the left
     // channel and gives it to both (a receiver's own mono audio).
-    explicit DeepFilterFilter(int sampleRate = 24000, int channels = 2);
+    // Build 596: resampleTransBandPct is the 24 <-> 48 kHz converters'
+    // transition band (Resampler); 2 % costs 2 x 70.6 ms of delay, the
+    // receivers' own filters (Hl2AudioMixer) use 30 % (2 x 4.4 ms).
+    explicit DeepFilterFilter(int sampleRate = 24000, int channels = 2,
+                              double resampleTransBandPct = 2.0);
     ~DeepFilterFilter();
 
     DeepFilterFilter(const DeepFilterFilter&) = delete;
@@ -63,6 +67,7 @@ private:
 
     const int m_sampleRate;
     int m_channels = 2;   // build 591: 1 or 2
+    double m_transBandPct = 2.0;   // build 596
     std::array<DFState*, 2> m_states{};
     int m_frameSize{0};                     // samples per frame (from df_get_frame_length)
     // Per channel, indexed 0 = left, 1 = right.

@@ -28,7 +28,10 @@ public:
     // Unsupported rates leave isValid() false. Recreate for a new rate/source.
     // ANAN fork build 591: channels = 1 runs one instance on the left channel
     // and gives it to both (a receiver's own mono audio: half the CPU).
-    explicit NnrFilter(int sampleRate = 24000, int channels = 2);
+    // Build 596: resampleTransBandPct as DeepFilterFilter's (2 % = 2 x 70.6 ms
+    // of delay on the 24 kHz path; the receivers' own filters use 30 %).
+    explicit NnrFilter(int sampleRate = 24000, int channels = 2,
+                       double resampleTransBandPct = 2.0);
     ~NnrFilter();
 
     NnrFilter(const NnrFilter&) = delete;

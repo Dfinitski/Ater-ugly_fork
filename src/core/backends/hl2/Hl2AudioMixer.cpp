@@ -151,17 +151,27 @@ void Hl2AudioMixer::runRxNr(int slot, int ddc, std::vector<float>& pcm, bool hel
             st.buildStereo = cfg.stereo;
             const int method = cfg.method;
             const int channels = cfg.stereo ? 2 : 1;
-            std::thread([build, method, channels] {
+            // ANAN fork build 596 (operator's log 21:35, the unkey trace of
+            // 595: 190 ms of silence after every over with DFNR). OUR ERROR in
+            // 591: the filters took the default 24 <-> 48 kHz converters, 2 %
+            // transition band = 70.6 ms of delay EACH way (r8brain
+            // getInLenBeforeOutPos, measured: 1694 / 3388 samples) -- with
+            // DFNR's 40 ms the receiver played ~190 ms late, and after an over
+            // that much was the filter's pre-over content, dropped as
+            // silence. Receiver audio needs no more than ~8 kHz: 30 % (8.4 kHz
+            // passband) costs 4.3 + 4.4 ms.
+            constexpr double kRxNrTransBandPct = 30.0;
+            std::thread([build, method, channels, kRxNrTransBandPct] {
                 std::unique_ptr<NnrFilter> nnr;
                 std::unique_ptr<DeepFilterFilter> dfnr;
                 if (method == RxNrConfig::Nnr) {
-                    nnr = std::make_unique<NnrFilter>(24000, channels);
+                    nnr = std::make_unique<NnrFilter>(24000, channels, kRxNrTransBandPct);
                     if (!nnr->isValid())
                         nnr.reset();
                 }
 #ifdef HAVE_DFNR
                 if (method == RxNrConfig::Dfnr) {
-                    dfnr = std::make_unique<DeepFilterFilter>(24000, channels);
+                    dfnr = std::make_unique<DeepFilterFilter>(24000, channels, kRxNrTransBandPct);
                     if (!dfnr->isValid())
                         dfnr.reset();
                 }

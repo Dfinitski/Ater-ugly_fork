@@ -179,10 +179,11 @@ static QByteArray findModelPath()
     return {};
 }
 
-DeepFilterFilter::DeepFilterFilter(int sampleRate, int channels)
+DeepFilterFilter::DeepFilterFilter(int sampleRate, int channels, double resampleTransBandPct)
     : m_sampleRate(sampleRate)
 {
     m_channels = channels == 1 ? 1 : 2;
+    m_transBandPct = resampleTransBandPct;
     if (sampleRate != 24000 && sampleRate != 48000) {
         qWarning() << "DeepFilterFilter: unsupported sample rate" << sampleRate;
         return;
@@ -202,8 +203,8 @@ void DeepFilterFilter::createStates()
 {
     for (int channel = 0; channel < m_channels; ++channel) {
         if (m_sampleRate == 24000) {
-            m_up[channel] = std::make_unique<Resampler>(24000, 48000);
-            m_down[channel] = std::make_unique<Resampler>(48000, 24000);
+            m_up[channel] = std::make_unique<Resampler>(24000, 48000, 4096, m_transBandPct);
+            m_down[channel] = std::make_unique<Resampler>(48000, 24000, 4096, m_transBandPct);
         }
     }
     QByteArray modelPath = findModelPath();

@@ -34,7 +34,7 @@ constexpr int kProcessingRate = 48000;
 
 }  // namespace
 
-NnrFilter::NnrFilter(int sampleRate, int channels)
+NnrFilter::NnrFilter(int sampleRate, int channels, double resampleTransBandPct)
     : m_sampleRate(sampleRate)
     , m_channels(channels == 1 ? 1 : 2)
 {
@@ -46,8 +46,10 @@ NnrFilter::NnrFilter(int sampleRate, int channels)
     m_blockFrames = kBlockFrames;
     for (int channel = 0; channel < m_channels; ++channel) {
         if (sampleRate == 24000) {
-            m_up[channel] = std::make_unique<Resampler>(24000, kProcessingRate);
-            m_down[channel] = std::make_unique<Resampler>(kProcessingRate, 24000);
+            m_up[channel] = std::make_unique<Resampler>(24000, kProcessingRate, 4096,
+                                                        resampleTransBandPct);
+            m_down[channel] = std::make_unique<Resampler>(kProcessingRate, 24000, 4096,
+                                                          resampleTransBandPct);
         }
         m_blockIn[channel].assign(static_cast<std::size_t>(m_blockFrames) * 2, 0.0);
         m_blockOut[channel].assign(static_cast<std::size_t>(m_blockFrames) * 2, 0.0);
