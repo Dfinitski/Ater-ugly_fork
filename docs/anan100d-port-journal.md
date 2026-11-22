@@ -10578,6 +10578,15 @@ Thetis».
 
 Не проверено на радио, не собиралось под Windows.
 
+## 591. Сборка 611 — MIDI: убраны DAX/VOX/AM Carrier/QSK, ATU Start = TUNE
+
+Оператор (22.11): «всё можно удалить, кроме ATU — это наша кнопка Tune в аплете передатчика».
+
+- `MainWindow_Controllers.cpp`: из списка параметров MIDI удалены DAX (`phone.daxEnable`), VOX (`phone.voxEnable`, `phone.voxLevel`), AM Carrier (`phone.amCarrier`), CW Break-In QSK (`cw.breakInEnable`) — у программы для ANAN их нет. Прежние привязки к ним просто не срабатывают.
+- `MidiTxDispatch.h`: «ATU Start (TUNE)» (`tx.atuStart`) на ANAN переключает TUNE — тот же путь, что у кнопки TUNE в аплете передатчика (начать/остановить несущую настройки); на других радио — как прежде ATU.
+
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

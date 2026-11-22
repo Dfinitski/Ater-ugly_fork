@@ -21,8 +21,12 @@ inline bool dispatchMidiTxInput(const QString& id, float value, RadioModel& radi
         || id == QLatin1String("cw.ptt");
     const bool twoTone = id == QLatin1String("global.twoToneTune");
     const bool tune = id == QLatin1String("tx.tune") || twoTone;
-    const bool atu = id == QLatin1String("tx.atuStart");
-    if (!cw && !mox && !tune && !atu) { return false; }
+    // ANAN fork build 611 (operator, 22.11: "ATU -- that is our Tune button
+    // in the TX applet"): an ANAN has no ATU; "ATU Start" toggles TUNE.
+    const bool atuAsTune = id == QLatin1String("tx.atuStart")
+        && radio.isConnected() && radio.isAnanRadio();
+    const bool atu = id == QLatin1String("tx.atuStart") && !atuAsTune;
+    if (!cw && !mox && !tune && !atu && !atuAsTune) { return false; }
     if (!controller || !controller->valid() || !controller->belongsTo(&radio)) { return true; }
     if (cw) {
         if (cwHandler) { cwHandler(id, value > 0.5f, controller); }
@@ -30,8 +34,8 @@ inline bool dispatchMidiTxInput(const QString& id, float value, RadioModel& radi
     }
 
     const TxController::Activity activity = atu ? TxController::Activity::Atu
-        : tune ? TxController::Activity::Tune : TxController::Activity::Mox;
-    const bool on = atu || (twoTone ? !radio.transmitModel().isTuning()
+        : (tune || atuAsTune) ? TxController::Activity::Tune : TxController::Activity::Mox;
+    const bool on = atu || ((twoTone || atuAsTune) ? !radio.transmitModel().isTuning()
         : value == -1.0f
             ? !(tune ? radio.transmitModel().isTuning() : radio.transmitModel().isTransmitting())
             : value > 0.5f);

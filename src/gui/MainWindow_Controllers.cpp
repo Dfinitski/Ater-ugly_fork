@@ -2242,7 +2242,7 @@ void MainWindow::registerMidiParams()
         },
         [this]() -> float { return m_radioModel.transmitModel().isTuning() ? 1 : 0; });
 
-    reg("tx.atuStart", "ATU Start", "TX", P::Trigger, 0, 1,
+    reg("tx.atuStart", "ATU Start (TUNE)", "TX", P::Trigger, 0, 1,
         [this](float) { m_radioModel.transmitModel().atuStart(); });
 
     // ── Phone/CW ────────────────────────────────────────────────────────
@@ -2258,41 +2258,13 @@ void MainWindow::registerMidiParams()
         [this](float v) { m_radioModel.transmitModel().setSpeechProcessorEnable(v > 0.5f); },
         [this]() -> float { return m_radioModel.transmitModel().speechProcessorEnable() ? 1 : 0; });
 
-    // Same refusal as the dax_toggle shortcut (MainWindow_Shortcuts.cpp): on a
-    // radio with no DAX plane the optimistic daxOn() flip would mark the client
-    // TX chain not-ready while the wire text is dropped.
-    reg("phone.daxEnable", "DAX", "Phone/CW", P::Toggle, 0, 1,
-        [this](float v) {
-            if (!m_radioModel.hasDaxStreams()) {
-                qCWarning(lcDevices) << "phone.daxEnable refused: this radio has no DAX plane";
-                showUnsupportedControlNotice();
-                return;
-            }
-            m_radioModel.transmitModel().setDax(v > 0.5f);
-        },
-        [this]() -> float { return m_radioModel.transmitModel().daxOn() ? 1 : 0; });
-
+    // ANAN fork build 611 (operator, 22.11: "all of them may be removed
+    // except ATU -- that is our Tune button in the TX applet"): DAX, VOX
+    // enable / level, AM carrier and CW Break-In (QSK) are gone -- the ANAN
+    // program has none of them. ATU Start keys TUNE (MidiTxDispatch.h).
     reg("phone.monEnable", "Monitor", "Phone/CW", P::Toggle, 0, 1,
         [this](float v) { m_radioModel.transmitModel().setSbMonitor(v > 0.5f); },
         [this]() -> float { return m_radioModel.transmitModel().sbMonitor() ? 1 : 0; });
-
-    reg("phone.voxEnable", "VOX Enable", "Phone/CW", P::Toggle, 0, 1,
-        [this](float v) { m_radioModel.transmitModel().setVoxEnable(v > 0.5f); },
-        [this]() -> float { return m_radioModel.transmitModel().voxEnable() ? 1 : 0; });
-
-    reg("phone.voxLevel", "VOX Level", "Phone/CW", P::Slider, 0, 100,
-        [this](float v) { m_radioModel.transmitModel().setVoxLevel(static_cast<int>(v)); },
-        [this]() -> float { return m_radioModel.transmitModel().voxLevel(); });
-
-    // Gated on the same capability that dims the Phone applet's AM carrier
-    // slider: `transmit set am_carrier=` reaches only a radio that declares it.
-    reg("phone.amCarrier", "AM Carrier", "Phone/CW", P::Slider, 0, 100,
-        [this](float v) {
-            if (!m_radioModel.requestAmCarrierLevel(static_cast<int>(v))) {
-                showUnsupportedControlNotice();
-            }
-        },
-        [this]() -> float { return m_radioModel.transmitModel().amCarrierLevel(); });
 
     // Build 610 (operator, 22.11: "even what concerns the hardware keyer must
     // drive the CW applet's parameters"): on an ANAN the speed goes to the
@@ -2428,10 +2400,6 @@ void MainWindow::registerMidiParams()
             }
             return m_radioModel.transmitModel().cwlEnabled() ? 1 : 0;
         });
-
-    reg("cw.breakInEnable", "CW Break-In (QSK)", "Phone/CW", P::Toggle, 0, 1,
-        [this](float v) { m_radioModel.transmitModel().setCwBreakIn(v > 0.5f); },
-        [this]() -> float { return m_radioModel.transmitModel().cwBreakIn() ? 1 : 0; });
 
     reg(kCwStraightKeyActionId, kCwStraightKeyActionName, "Phone/CW", P::Gate, 0, 1,
         [this](float v) {
