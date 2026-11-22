@@ -3400,6 +3400,43 @@ QWidget* RadioSetupDialog::buildTxTab()
         vbox->addWidget(group);
     }
 
+    // ANAN fork build 631 (operator, 22.11: "in Radio Setup -> Transmit a
+    // group TX Panadapter with three boxes: Zoom for CW, Zoom for SSB -- move
+    // them here from the applets -- and Zoom for FreeDV"). While transmitting
+    // the panadapter zooms onto the transmitted signal; a box off keeps the
+    // receive view for that mode (no zoom, no fixed TX scale). Read at each
+    // key-down (MainWindow, radioTransmittingChanged).
+    {
+        auto* group = new QGroupBox("TX Panadapter");
+        auto* gvb = new QVBoxLayout(group);
+        gvb->setSpacing(6);
+        auto box = [gvb](const QString& text, const QString& key, const QString& tip) {
+            auto* cb = new QCheckBox(text);
+            cb->setToolTip(tip);
+            cb->setChecked(AppSettings::instance().value(key, QStringLiteral("True")).toString()
+                           == QLatin1String("True"));
+            QObject::connect(cb, &QCheckBox::toggled, cb, [key](bool on) {
+                auto& st = AppSettings::instance();
+                st.setValue(key, on ? QStringLiteral("True") : QStringLiteral("False"));
+                st.save();
+            });
+            gvb->addWidget(cb);
+        };
+        box(QStringLiteral("Zoom for CW"), QStringLiteral("AnanTxZoomCw"),
+            QStringLiteral("CW, CWL: the panadapter zooms onto the transmitted signal"));
+        box(QStringLiteral("Zoom for SSB"), QStringLiteral("AnanTxZoomVoice"),
+            QStringLiteral("SSB and every other mode but CW and FreeDV (AM, FM, digital)"));
+        box(QStringLiteral("Zoom for FreeDV"), QStringLiteral("AnanTxZoomFdv"),
+            QStringLiteral("FreeDV / RADE on the transmitting receiver"));
+        auto* hint = new QLabel(
+            "While transmitting, the panadapter zooms onto the transmitted signal. Off, it keeps "
+            "the receive view for that mode. DUP (TX applet) keeps the receive view in every mode.");
+        setTone(hint, Tone::Hint);
+        hint->setWordWrap(true);
+        gvb->addWidget(hint);
+        vbox->addWidget(group);
+    }
+
     // Build 378 (a user in Russia was refused transmit "by the US rules"):
     // the region whose amateur bands the transmitter is allowed in. It is
     // the band plan of View -> Band Plan, which is where it could only be

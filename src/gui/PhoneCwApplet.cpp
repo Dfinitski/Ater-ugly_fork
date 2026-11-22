@@ -13,7 +13,6 @@
 #include <QPushButton>
 #include <QAccessible>
 #include <QStyle>
-#include <QCheckBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QIntValidator>
@@ -774,24 +773,6 @@ void PhoneCwApplet::buildPhonePanel()
             m_model->setTxFilterHigh(std::max(snapped, m_model->txFilterLow()
                                                        + m_model->txFilterMinWidthHz()));
     });
-
-    // ANAN fork build 628: the panadapter's zoom onto the transmitted signal
-    // in every mode but CW (CW has its own box in the CW applet).
-    {
-        auto* zoom = new QCheckBox(QStringLiteral("TX zoom on the panadapter"));
-        zoom->setObjectName(QStringLiteral("ananTxZoomVoice"));
-        zoom->setStyleSheet(QStringLiteral("QCheckBox { color: #c8d8e8; font-size: 10px; }"));
-        zoom->setToolTip(QStringLiteral("While transmitting (voice and digital modes) the panadapter "
-                                        "zooms onto the transmitted signal; off, it keeps the receive view"));
-        zoom->setChecked(AppSettings::instance().value(QStringLiteral("AnanTxZoomVoice"),
-                             QStringLiteral("True")).toString() == QLatin1String("True"));
-        connect(zoom, &QCheckBox::toggled, this, [](bool on) {
-            auto& st = AppSettings::instance();
-            st.setValue(QStringLiteral("AnanTxZoomVoice"), on ? QStringLiteral("True") : QStringLiteral("False"));
-            st.save();
-        });
-        vbox->addWidget(zoom);
-    }
 
     // Build 405: microphone profiles (see PhoneCwApplet.h).
     {

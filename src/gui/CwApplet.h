@@ -57,7 +57,6 @@ private:
     QSlider*   m_hang{nullptr};
     QLabel*    m_hangValue{nullptr};
     QCheckBox* m_demo{nullptr};
-    QCheckBox* m_txZoom{nullptr};   // build 628
     QSlider*   m_stLevel{nullptr};
     QLabel*    m_stLevelValue{nullptr};
     QSlider*   m_stFreq{nullptr};

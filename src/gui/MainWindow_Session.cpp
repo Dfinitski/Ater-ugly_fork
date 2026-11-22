@@ -1977,19 +1977,25 @@ void MainWindow::wireRadioModel()
         }
         // Build 315: in DUP the receiver automatics still hold for the over.
         const bool dupHold = tx && ananDuplex;
-        // ANAN fork build 628 (operator, 22.11: "switching the panadapter's
-        // zoom off while transmitting, separately for CW and for the rest").
-        // "TX zoom on the panadapter": the CW applet's box for CW, the Mic
-        // applet's for every other mode; both on by default (as before). Off,
-        // the over keeps the receive view -- no zoom onto the transmitted
-        // signal and no fixed TX scale.
+        // ANAN fork build 628/631 (operator, 22.11: the panadapter's zoom
+        // while transmitting, on or off per mode): Radio Setup -> Transmit ->
+        // TX Panadapter -- Zoom for CW / for FreeDV / for SSB (every other
+        // mode); all on by default (as before). Off, the over keeps the
+        // receive view -- no zoom onto the transmitted signal, no fixed TX
+        // scale.
         bool txZoomWanted = true;
         if (ananTxScale && panTx) {
             const SliceModel* txs = m_radioModel.txSlice();
             const bool cw = txs && isCwMode(txs->mode());
-            txZoomWanted = AppSettings::instance()
-                .value(cw ? QStringLiteral("AnanTxZoomCw") : QStringLiteral("AnanTxZoomVoice"),
-                       QStringLiteral("True")).toString() == QLatin1String("True");
+            bool fdv = false;
+#ifdef HAVE_RADE
+            fdv = txs && m_radeSliceId >= 0 && m_radeSliceId == txs->sliceId();
+#endif
+            const QString key = cw ? QStringLiteral("AnanTxZoomCw")
+                              : fdv ? QStringLiteral("AnanTxZoomFdv")
+                                    : QStringLiteral("AnanTxZoomVoice");
+            txZoomWanted = AppSettings::instance().value(key, QStringLiteral("True")).toString()
+                           == QLatin1String("True");
         }
         for (auto* pan : m_radioModel.panadapters()) {
             if (auto* sw = m_panStack ? m_panStack->spectrum(pan->panId()) : nullptr) {

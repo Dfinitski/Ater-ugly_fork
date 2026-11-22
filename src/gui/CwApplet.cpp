@@ -31,7 +31,6 @@ constexpr const char* kStLevel   = "AnanSideToneLevelPct"; // 0..99 %, 50
 constexpr const char* kStFreq    = "AnanSideToneFreq";     // 400..1000 Hz, 700
 constexpr const char* kHang      = "AnanHangTime";         // 10..1000 ms, 250
 constexpr const char* kDemo      = "AnanCwDemo";           // True/False
-constexpr const char* kTxZoom    = "AnanTxZoomCw";         // True/False, build 628
 
 constexpr int kLabelW = 64;
 constexpr int kValueW = 46;
@@ -162,11 +161,6 @@ CwApplet::CwApplet(QWidget* parent)
     m_demo = checkBox(tr("CW demo (CW without RF)"));
     m_demo->setToolTip(tr("CW without RF: the relay and the PA stay off"));
     vbox->addWidget(m_demo);
-    // Build 628: the panadapter's zoom onto the transmitted signal, in CW.
-    m_txZoom = checkBox(tr("TX zoom on the panadapter"));
-    m_txZoom->setToolTip(tr("While transmitting CW the panadapter zooms onto the transmitted "
-                            "signal; off, it keeps the receive view"));
-    vbox->addWidget(m_txZoom);
 
     // ── Side tone ───────────────────────────────────────────────────────
     vbox->addSpacing(2);
@@ -185,8 +179,6 @@ CwApplet::CwApplet(QWidget* parent)
     m_autoSpace->setChecked(flag(kAutoSpace));
     m_hang->setValue(intSetting(kHang, 250, 10, 1000) / 10 * 10);
     m_demo->setChecked(flag(kDemo));
-    m_txZoom->setChecked(AppSettings::instance().value(QLatin1String(kTxZoom), QStringLiteral("True"))
-                             .toString() == QLatin1String("True"));
     m_stLevel->setValue(intSetting(kStLevel, 50, 0, 99));
     m_stFreq->setValue(intSetting(kStFreq, 700, 400, 1000) / 10 * 10);
     m_loading = false;
@@ -230,8 +222,6 @@ CwApplet::CwApplet(QWidget* parent)
     });
     connect(m_demo, &QCheckBox::toggled, this,
             [this](bool on) { if (!m_loading) store(kDemo, tf(on)); });
-    connect(m_txZoom, &QCheckBox::toggled, this,
-            [this](bool on) { if (!m_loading) store(kTxZoom, tf(on)); });
     connect(m_stLevel, &QSlider::valueChanged, this, [this, showValues](int v) {
         showValues();
         if (!m_loading) store(kStLevel, v);

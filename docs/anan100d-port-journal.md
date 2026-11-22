@@ -10873,6 +10873,22 @@ AudioEngine.cpp, Hl2AudioMixer.cpp, Hl2Backend.cpp/.h сверены со сбо
 
 Проверка: errcheck S = базам: Hl2RxDsp 0, Hl2Backend 2, Hl2AudioMixer 0, P2Transport 0, AudioEngine 52; доказательство bogusSym1 есть. Не проверено на радио, под Windows не собиралось.
 
+## 611. Сборка 631 — группа «TX Panadapter» в Radio Setup → Transmit
+
+Оператор, 22.11: в Radio Setup → Transmit добавить группу настроек «TX Panadapter» с тремя галками. Две уже есть — Zoom for CW и Zoom for SSB, перенести их сюда из аплетов. Третья — Zoom for FreeDV.
+
+Сделано:
+- Галки из аплетов CW и Mic (сборка 628) убраны. CwApplet.h/.cpp и PhoneCwApplet.cpp возвращены к состоянию сборки 627.
+- В Radio Setup → Transmit, перед «Transmit band limits», новая группа «TX Panadapter» с тремя галками и пояснением:
+  - Zoom for CW (AnanTxZoomCw) — CW, CWL;
+  - Zoom for SSB (AnanTxZoomVoice — ключ прежний) — SSB и все прочие режимы, кроме CW и FreeDV;
+  - Zoom for FreeDV (AnanTxZoomFdv, новый) — FreeDV/RADE на передающем приёмнике.
+  
+  По умолчанию все три включены. Сохраняются сразу.
+- MainWindow_Session (radioTransmittingChanged) выбирает галку. CW — по isCwMode режима TX-слайса. FreeDV — как в профилях Mic (сборка 405): m_radeSliceId == id TX-слайса, под HAVE_RADE. Остальное — Zoom for SSB. Выключенная галка: setTxFixedDbmRange(false), панорама остаётся в виде приёма.
+
+Проверка: errcheck R = S для RadioSetupDialog 23, MainWindow_Session 24, CwApplet 0, PhoneCwApplet 0; доказательство bogusSym1 есть. Не проверено на радио, под Windows не собиралось.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
