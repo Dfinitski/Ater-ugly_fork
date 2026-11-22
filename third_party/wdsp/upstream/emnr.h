@@ -199,6 +199,9 @@ typedef struct _emnr
 		unsigned int rngstate;
 		double olddmag;
 	} post2;
+	// AetherSDR patch 29: amplitude gain of the last block, output spectrum
+	// over input spectrum (after post2), for the host's NR GAIN strip.
+	volatile double aether_gain;
 }emnr, *EMNR;
 
 extern EMNR create_emnr (int run, int position, int size, double* in, double* out, int fsize, int ovrlp, 

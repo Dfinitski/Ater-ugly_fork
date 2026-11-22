@@ -1230,6 +1230,7 @@ void xemnr (EMNR a, int pos)
 	{
 		int i, j, k, sbuff, sbegin;
 		double g1;
+		double pin = 0.0, pout = 0.0;	// AetherSDR patch 29
 		for (i = 0; i < 2 * a->bsize; i += 2)
 		{
 			a->inaccum[a->iainidx] = a->in[i];
@@ -1251,6 +1252,14 @@ void xemnr (EMNR a, int pos)
 				a->revfftin[2 * i + 1] = g1 * a->forfftout[2 * i + 1];
 			}
 			post2(a);
+			// AetherSDR patch 29: spectral power in and out of this frame.
+			for (i = 0; i < a->msize; i++)
+			{
+				pin  += a->forfftout[2 * i + 0] * a->forfftout[2 * i + 0]
+				      + a->forfftout[2 * i + 1] * a->forfftout[2 * i + 1];
+				pout += a->revfftin[2 * i + 0] * a->revfftin[2 * i + 0]
+				      + a->revfftin[2 * i + 1] * a->revfftin[2 * i + 1];
+			}
 			fftw_execute (a->Rrev);
 			for (i = 0; i < a->fsize; i++)
 				a->save[a->saveidx][i] = a->window[i] * a->revfftout[i];
@@ -1274,6 +1283,13 @@ void xemnr (EMNR a, int pos)
 			a->out[2 * i + 0] = a->outaccum[a->oaoutidx];
 			a->out[2 * i + 1] = 0.0;
 			a->oaoutidx = (a->oaoutidx + 1) % a->oasize;
+		}
+		// AetherSDR patch 29: a block with no frame, or silence, keeps the
+		// previous reading.
+		if (pin > 1.0e-30)
+		{
+			double g = sqrt (pout / pin);
+			a->aether_gain = g > 1.0 ? 1.0 : g;
 		}
 	}
 	else if (a->out != a->in)
@@ -1387,4 +1403,16 @@ void SetRXAEMNRtrainT2(int channel, double t2)
 	EnterCriticalSection(&ch[channel].csDSP);
 	rxa[channel].emnr.p->ae.t2 = t2;
 	LeaveCriticalSection(&ch[channel].csDSP);
+}
+
+// AetherSDR patch 29: the NR2 (EMNR) gain of the last processed block,
+// 0..1 (amplitude); -1 while EMNR is not running. A read without the DSP
+// lock: one aligned double, a reading for a meter.
+PORT
+double GetRXAEMNRGain(int channel)
+{
+	EMNR a = rxa[channel].emnr.p;
+	if (!a || !a->run)
+		return -1.0;
+	return a->aether_gain;
 }

@@ -2121,6 +2121,17 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
             emit meterUpdate(sliceMeterName(splitUiOf(ui)), *out);
     });
 
+    // ANAN fork build 590: the NR2 gain of this receiver, for the NR GAIN
+    // strip (RadioModel::ananNr2Gain). Not a MeterModel meter.
+    connect(dsp, &Hl2RxDsp::nr2GainUpdate, this,
+            [this, ui, producer = QPointer<Hl2RxDsp>(dsp)](float gain) {
+        const auto* ids = m_ids.byUi(ui);
+        const Receiver* r = ids ? rx(ids->ddcIndex) : nullptr;
+        if (!producer || !r || r->dsp != producer.data())
+            return;
+        emit meterUpdate(QStringLiteral("ANAN:NR2GAIN%1").arg(ui), gain);
+    });
+
     // The name the lambda above publishes under has to EXIST as a definition or
     // MeterModel has nowhere to put the value. Declared here rather than in
     // defineMeters() because this runs once per receiver, at both connect and

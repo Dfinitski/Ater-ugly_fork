@@ -10336,6 +10336,17 @@ Thetis».
   - Следствие: при значении Suppression по умолчанию 0,50 NR4 теперь давит заметно сильнее, чем раньше (раньше этот ползунок фактически стоял на нуле).
 - Файлы: AudioEngine.h, MainWindow.cpp, SpecbleachFilter.h/.cpp, ForkBuild.h. На радио не проверено, под Windows не собиралось.
 
+## 570. Сборка 590 — окно NR GAIN показывает NR2 приёмника
+
+Оператор (21.11): «У нас в окне NR2 снизу в окошке NR gain нет сигнала. Подключи его».
+
+Причина: полоска NR GAIN показывала отношение RMS после/до клиентского шумодава в AudioEngine; с 587/588 NR2 работает в WDSP приёмника, клиентский метод не включён — движок публиковал «простой».
+
+- **WDSP, патч 29** (`emnr.h/.c`, описан в `third_party/wdsp/AETHERSDR-PATCHES.md`): `xemnr()` суммирует спектральную мощность каждого кадра до усиления (`forfftout`) и после него и post2 (`revfftin`), в конце блока хранит `sqrt(out/in)` (не больше 1) в `aether_gain`; `GetRXAEMNRGain(channel)` отдаёт его (−1, если EMNR выключен). Обработка не изменена.
+- `WdspChannel::emnrGain()`; `Hl2RxDsp` с частотой S-метра и вне передачи шлёт `nr2GainUpdate(gain)`; `Hl2Backend` — как `meterUpdate("ANAN:NR2GAIN<slice>")`; `RadioModel` перехватывает это имя до MeterModel и шлёт `ananNr2Gain(slice, gain)`.
+- `MainWindow`: значение выбранного приёмника (у саба — его основного) → `AudioEngine::setExternalNr2Gain` (только атомики); аудиопуть при NR2-в-радио публикует его вместо «простоя». При включении/выключении NR2 полоска неактивна до первого значения из радио.
+- Файлы: emnr.h/.c, aether_wdsp.h, AETHERSDR-PATCHES.md, WdspChannel.h/.cpp, Hl2RxDsp.h/.cpp, Hl2Backend.cpp, RadioModel.h/.cpp, AudioEngine.h/.cpp, MainWindow.cpp, ForkBuild.h. На радио не проверено, под Windows не собиралось.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

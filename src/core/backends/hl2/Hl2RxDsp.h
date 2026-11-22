@@ -689,6 +689,9 @@ signals:
     void spectrumReady(const std::vector<float>& binsDbfs,
                        const std::vector<float>& rawBinsDbfs);
     void meterUpdate(float dbfs);                           // audio-RMS S-meter
+    // Build 590: the NR2 (WDSP EMNR) gain, 0..1, at the S-meter's rate while
+    // NR2 runs, for the NR GAIN strip.
+    void nr2GainUpdate(float gain);
     // Build 472: the SPLIT receiver's S-meter (its own channel, same detector).
     void subMeterUpdate(float dbfs);
 

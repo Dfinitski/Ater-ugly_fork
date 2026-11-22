@@ -1781,6 +1781,17 @@ MainWindow::MainWindow(QWidget* parent)
         connect(nrSync, &QTimer::timeout, this, &MainWindow::ananRxNrSyncFromEngine);
         nrSync->start();
     }
+    // ANAN fork build 590 (operator, 21.11: "the NR GAIN box at the bottom of
+    // the NR2 window has no signal, connect it"): the NR2 gain measured in
+    // the selected receiver (WDSP patch 29) is the strip's reading.
+    connect(&m_radioModel, &RadioModel::ananNr2Gain, this, [this](int sliceId, float gain) {
+        if (!m_audio || m_activeSliceId < 0
+            || AetherSDR::anan_rxdsp::ownerOf(m_activeSliceId) != sliceId)
+            return;
+        QMetaObject::invokeMethod(m_audio, [audio = m_audio, gain]() {
+            audio->setExternalNr2Gain(gain);
+        });
+    });
     connect(m_appletPanel->rxApplet(), &RxApplet::calibrateAgcTRequested,
             this, &MainWindow::showAgcCalibrationDialog);
     // Sync slice tab capacity after radio info/status reports actual capacity.

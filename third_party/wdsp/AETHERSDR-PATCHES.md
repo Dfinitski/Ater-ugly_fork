@@ -1372,3 +1372,13 @@ mode 1. Why: with the check off (log 18:47) the correction at x = 0.026
 went to -1.4 .. -2.4, was blended into the curves, four AM/AM fits failed
 in a row and the correction was dropped for 17 s.
 
+## Patch 29 — `GetRXAEMNRGain()`: the NR2 gain for the host's meter
+
+`upstream/emnr.h`, `upstream/emnr.c` (ANAN fork build 590, 21.11.2026). The
+operator: the NR GAIN strip of the NR2 page shows nothing since NR2 runs in
+WDSP (build 587). `xemnr()` sums the spectral power of each frame before the
+gain (`forfftout`) and after it and post2 (`revfftin`, what goes to the
+inverse FFT), and at the end of the block stores `sqrt(out / in)`, capped at
+1, in `aether_gain` (a block with no frame or with silence keeps the previous
+value). `GetRXAEMNRGain(channel)` returns it, or -1 while EMNR is off. The
+processing itself is unchanged.

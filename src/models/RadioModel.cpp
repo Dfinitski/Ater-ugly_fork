@@ -1300,6 +1300,14 @@ void RadioModel::setupBackend(const QString& family)
     // reads the lowest one. An id with no digits resolves match-any.
     connect(m_backend.get(), &IRadioBackend::meterUpdate, this,
             [this](const QString& meterId, double value) {
+        // Build 590: the ANAN NR2 gain is no MeterModel meter.
+        if (meterId.startsWith(QLatin1String("ANAN:NR2GAIN"))) {
+            bool ok = false;
+            const int slice = meterId.mid(12).toInt(&ok);
+            if (ok)
+                emit ananNr2Gain(slice, static_cast<float>(value));
+            return;
+        }
         QString source;
         QString name;
         int sourceIndex = -1;

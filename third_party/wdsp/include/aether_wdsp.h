@@ -70,6 +70,9 @@ void SetRXAEMNRpost2Factor(int channel, double factor);
 void SetRXAEMNRpost2Nlevel(int channel, double nlevel);
 void SetRXAEMNRpost2Taper(int channel, int taper);
 void SetRXAEMNRpost2Rate(int channel, double tc);
+// AetherSDR patch 29 (ANAN fork build 590): the NR2 gain of the last block,
+// 0..1 amplitude, -1 while NR2 is off.
+double GetRXAEMNRGain(int channel);
 // Broadcast decoder controls, WDSP Guide section 5.3.10. The local patch
 // applies deemphasis to both live filters; indicator readback is an atomic
 // latest-completed-block observation. The caller must own channel lifetime.

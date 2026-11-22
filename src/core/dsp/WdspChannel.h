@@ -435,6 +435,9 @@ public:
     };
     bool setEmnr(const EmnrSettings& settings) noexcept;
     [[nodiscard]] const EmnrSettings& emnr() const noexcept { return m_emnr; }
+    // Build 590: the NR2 gain of the last block, 0..1 amplitude; -1 while it
+    // is off (WDSP patch 29).
+    [[nodiscard]] double emnrGain() const noexcept;
 
     // Runtime filter length / phase mode without reconfigure() (which would
     // destroy the notch database).

@@ -1464,6 +1464,13 @@ double WdspChannel::minimumNotchWidthHz() const noexcept
            * (static_cast<double>(m_config.dspSampleRate) / 48000.0);
 }
 
+double WdspChannel::emnrGain() const noexcept
+{
+    if (m_config.direction != Direction::Receive)
+        return -1.0;
+    return GetRXAEMNRGain(m_channelId);
+}
+
 double WdspChannel::meter(Meter which) const noexcept
 {
     if (m_config.direction != Direction::Receive)

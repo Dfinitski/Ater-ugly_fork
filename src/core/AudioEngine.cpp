@@ -5874,7 +5874,12 @@ void AudioEngine::processMixedRxAudioData(const QByteArray& pcm,
     // from a method that is passing everything through.
     const auto writeAudioNrIdle = [this, publishNrGain, &writeAudioAndLevel](
                                       const QByteArray& data) {
-        if (publishNrGain) {
+        // Build 590: with the radio's NR2 on, its reading (setExternalNr2Gain)
+        // is published here, on the audio path, instead of "idle".
+        if (publishNrGain && m_nr2Proxy.load(std::memory_order_relaxed)) {
+            publishNrGainIfChanged(m_nrGain.load(std::memory_order_relaxed),
+                                   m_nrGainActive.load(std::memory_order_relaxed));
+        } else if (publishNrGain) {
             m_nrGainActive.store(false, std::memory_order_relaxed);
             publishNrGainIfChanged(1.0f, false);
         }
@@ -7725,6 +7730,8 @@ void AudioEngine::setNr2Enabled(bool on)
         if (m_nr2Proxy == on)
             return;
         m_nr2Proxy = on;
+        // Build 590: no reading until the radio sends one.
+        m_nrGainActive.store(false, std::memory_order_relaxed);
         if (on) {   // mutually exclusive, as the client NR2 is
             if (m_rn2Enabled)  setRn2Enabled(false);
             if (m_nr4Enabled)  setNr4Enabled(false);
@@ -7815,6 +7822,15 @@ void AudioEngine::setNr2Enabled(bool on)
     }
     qCDebug(lcAudio) << "AudioEngine: NR2" << (on ? "enabled" : "disabled");
     emit nr2EnabledChanged(on);
+}
+
+void AudioEngine::setExternalNr2Gain(float gain)
+{
+    // Atomics only: the audio path publishes them (writeAudioNrIdle).
+    if (!m_nr2Proxy.load() || !std::isfinite(gain))
+        return;
+    m_nrGain.store(std::clamp(gain, 0.0f, 1.0f), std::memory_order_relaxed);
+    m_nrGainActive.store(true, std::memory_order_relaxed);
 }
 
 void AudioEngine::setNr2External(bool on)

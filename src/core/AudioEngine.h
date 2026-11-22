@@ -350,6 +350,9 @@ public:
     // that state.
     bool nr2Enabled() const { return m_nr2Enabled.load() || m_nr2Proxy.load(); }
     Q_INVOKABLE void setNr2External(bool on);
+    // Build 590: the NR2 gain measured in the radio (the selected receiver),
+    // published as the NR GAIN reading while that NR2 is on.
+    Q_INVOKABLE void setExternalNr2Gain(float gain);
     bool nr2External() const { return m_nr2External.load(); }
     // NR2 user-adjustable parameters (thread-safe via atomic in SpectralNR)
     void setNr2GainMax(float v);

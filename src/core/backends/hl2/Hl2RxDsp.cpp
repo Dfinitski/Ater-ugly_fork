@@ -1526,6 +1526,12 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
                 m_smPos = (m_smPos + 1) % m_smRing.size();
                 emit meterUpdate(static_cast<float>(sm));
             }
+            // Build 590: the NR2 strip, at the same rate.
+            if (m_emnr.run && !inOver) {
+                const double g = m_channel->emnrGain();
+                if (g >= 0.0)
+                    emit nr2GainUpdate(static_cast<float>(g));
+            }
         }
         // Post-DDC half of §13 item 16's ADC pairing: adcmeter just ran on this
         // block's input. Stored for Hl2Backend::healthSnapshot() to poll. Not
