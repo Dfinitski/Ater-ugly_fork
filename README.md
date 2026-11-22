@@ -75,24 +75,23 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 572
+## Build 636
 
-Full notes: [docs/release-notes-build-572.md](docs/release-notes-build-572.md).
+Full notes: [docs/release-notes-build-636.md](docs/release-notes-build-636.md).
 
-- **Fixed (Windows):** with a COM port open in Serial & Controllers the program could stay
-  running after it was closed and keep the COM port and the MIDI controller busy until the
-  cable was pulled.
-- **Noise reduction on the radio's own speaker:** it now plays the audio after NR2 / NR4 /
-  DFNR / RN2 and the rest of the client receive chain.
-- **RX applet:** NB and noise reduction buttons on the receiver row, kept per receiver.
-- **Pulled-out panadapter** is an independent window, with **Always on top**.
-- **Zoom indicator and bandwidth buttons** hide while a flag covers them.
-- **S-meter detector** is Average by default; the SmartMTR numbers follow the main S-meter.
-- **Full ATT RX1 when TX.**
-- **Status bar:** TX after the antennas, UTC Time at the right end.
-- **RtMidi 6.1.0** — untested on all three systems; report a MIDI controller that stops working.
+- **Receive audio after transmit comes back much sooner**, on the computer and on the radio's
+  speaker (Thetis-style end of over, 2048-tap receive filters, smaller buffers; Odyssey: its
+  speaker buffer held half full).
+- **Exclusive sound output** (Windows), Radio Setup → Audio.
+- **NR2 is WDSP EMNR in each receiver, as in Thetis;** NR2 / NNR / DFNR per receiver; NR4 fixed.
+- **Guard gap before the relays** at the end of an over: RF down, receive RF Delay ms later.
+- **TX Panadapter** (Radio Setup → Transmit): zoom on transmit for CW / SSB / FreeDV.
+- **Automatic frequency calibration** (Radio Setup → Calibration), range ±200 ppm.
+- **Center Lock** panadapter moves smoothly; the dropout after a retune is fixed.
+- **Odyssey-3** model; cross-needle meter with automatic ×1 … ×1000 ranges; SmartMTR on the flag.
+- **CW macros** (CWX) through the program's own keyer; ANF from MIDI / CAT fixed.
 
-Earlier notes: [build 557](docs/release-notes-build-557.md), [build 533](docs/release-notes-build-533.md), [build 494](docs/release-notes-build-494.md), [build 468](docs/release-notes-build-468.md), [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 572](docs/release-notes-build-572.md), [build 557](docs/release-notes-build-557.md), [build 533](docs/release-notes-build-533.md), [build 494](docs/release-notes-build-494.md), [build 468](docs/release-notes-build-468.md), [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Downloads
 
