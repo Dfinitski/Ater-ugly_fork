@@ -10889,6 +10889,21 @@ AudioEngine.cpp, Hl2AudioMixer.cpp, Hl2Backend.cpp/.h сверены со сбо
 
 Проверка: errcheck R = S для RadioSetupDialog 23, MainWindow_Session 24, CwApplet 0, PhoneCwApplet 0; доказательство bogusSym1 есть. Не проверено на радио, под Windows не собиралось.
 
+## 612. Сборка 632 — защитный зазор RF Delay при отпускании (SSB, TUNE)
+
+Оператор, 22.11: пользователь сообщает, что в SSB передача заканчивается одновременно с отключением реле — защитного зазора нет; «я бы использовал значение RF Delay, это понятно и управляемо».
+
+Было: при отпускании `P2Transport::setMox(false)` сразу останавливал DUC-поток и отправлял High Priority с MOX off — последний голосовой ВЧ шёл в радио вплоть до переключения реле.
+
+Сделано:
+- `P2Transport::setMox`: при отпускании голоса/TUNE (не host CW, не CW-кейер радио, RF Delay > 0) включается «хвост»: ВЧ линейно спадает за 2 мс (`fillTxPacket` — обёртка над прежним телом `fillTxPacketSource`), затем идут нули, а настоящий MOX off (`applyMox`) отправляется через RF Delay мс (`QTimer::singleShot`, PreciseTimer, с поколением). Нажатие внутри хвоста отменяет его — передача продолжается, MOX не падал. Остановка сессии и потеря связи хвост сбрасывают. Нули хвоста не считаются «host zero run».
+- `Hl2Backend::applyKeying`: для таких отпусканий `m_unkeyRfTailMs` = RF Delay (`m_ananRfDelayMs`, берётся в `ananPushCwKeyer`); отпускание приёмников (`setAgcTxHold(false)`, с него начинается их защита после передачи) откладывается на это время, удержание mute и хвост полосового фильтра удлиняются на столько же. CW (break-in, host CW, кейер радио) — без изменений.
+- Новой настройки нет: используется «RF Delay» TX-аплета (по умолчанию 25 мс).
+
+Лог: «ANAN P2 transport: unkey -- RF down in 2 ms, MOX off in N ms (RF Delay)».
+
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

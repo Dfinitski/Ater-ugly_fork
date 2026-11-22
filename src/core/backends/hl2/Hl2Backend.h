@@ -1852,6 +1852,13 @@ private:
     // drive) keeps the radio's 70 ms.
     static constexpr int kAnanUnkeyUnmuteHoldMs = 25;
     int m_unkeyUnmuteHoldMs = kAnanUnkeyUnmuteHoldMs;
+    // Build 632: at a voice / TUNE unkey P2Transport sends zeros and drops
+    // MOX RF Delay ms later (the guard gap before the relays). The receivers'
+    // release (AGC hold off -- their unkey guard starts there), the unmute
+    // hold and the band-filter tail start that much later. CW: 0.
+    int m_ananRfDelayMs = 25;     // AnanRfDelayMs, as pushed to the transport
+    int m_unkeyRfTailMs = 0;      // this unkey's RF tail, ms
+    quint32 m_rxReleaseGen = 0;   // a key cancels a pending receiver release
     // Single-shot, owned, on this thread, so applyKeying() cancels it without a lock.
     QTimer* m_unkeyUnmuteTimer = nullptr;
     // How long the band filter and an owed RF drive wait after the MOX-off is

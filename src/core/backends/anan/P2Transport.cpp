@@ -723,6 +723,8 @@ void P2Transport::stopSession(bool toPowerOnState)
         m_mox = false;
         m_moxAtomic.store(false, std::memory_order_relaxed);
         m_txQueue.clear();
+        m_unkeyTail = false;   // build 632
+        ++m_unkeyTailGen;
     }
     if (m_sock) {
         if (m_configured && m_p1) {
@@ -2505,8 +2507,42 @@ void P2Transport::setMox(bool keyed, const TxCoordinator::Operation& operation)
     if (keyed && !transmitEnabled())
         keyed = false;
     std::unique_lock<std::mutex> txLock(m_txMutex);
+    // Build 632: the RF tail of an unkey -- a key continues the over (MOX
+    // never dropped), a second unkey changes nothing.
+    if (m_unkeyTail) {
+        if (keyed) {
+            m_unkeyTail = false;
+            ++m_unkeyTailGen;
+            qCInfo(lcAnanP2T) << "ANAN P2 transport: keyed again within the RF Delay tail -- the over goes on";
+        }
+        return;
+    }
     if (keyed == m_mox)
         return;
+    const int tailMs = std::max(0, m_rfDelayMs.load(std::memory_order_relaxed));
+    if (!keyed && !m_cwMode && !m_cwKeyer.enabled && tailMs > 0 && m_run && m_configured) {
+        m_unkeyTail = true;
+        m_unkeyFadeLeft = kUnkeyFadeSamples;
+        const quint32 gen = ++m_unkeyTailGen;
+        qCInfo(lcAnanP2T).nospace() << "ANAN P2 transport: unkey -- RF down in 2 ms, MOX off in "
+                                    << tailMs << " ms (RF Delay)";
+        txLock.unlock();
+        QTimer::singleShot(tailMs, Qt::PreciseTimer, this, [this, gen] {
+            std::unique_lock<std::mutex> lock(m_txMutex);
+            if (!m_unkeyTail || gen != m_unkeyTailGen)
+                return;
+            m_unkeyTail = false;
+            if (!m_mox)
+                return;
+            applyMox(false, lock);
+        });
+        return;
+    }
+    applyMox(keyed, txLock);
+}
+
+void P2Transport::applyMox(bool keyed, std::unique_lock<std::mutex>& txLock)
+{
     m_mox = keyed;
     m_moxAtomic.store(keyed, std::memory_order_relaxed);
     if (keyed && m_tlPressMs >= 0 && m_tlMoxMs < 0)
@@ -2578,6 +2614,8 @@ void P2Transport::unkeyOnLinkLoss()
     }
     m_mox = false;
     m_moxAtomic.store(false, std::memory_order_relaxed);
+    m_unkeyTail = false;   // build 632
+    ++m_unkeyTailGen;
     m_psReleaseUntilMs.store(TxCoordinator::monotonicMs() + kPsReleaseMs,
                              std::memory_order_relaxed);   // build 466
     qCWarning(lcAnanP2T).nospace() << "ANAN P2 transport: MOX off -- the link to the radio was lost while "
@@ -2662,6 +2700,23 @@ static_assert(kDucSampleRateHz == anan::TxScope::kSampleRateHz,
               "TxScope's frequency axis assumes the DUC rate");
 
 void P2Transport::fillTxPacket(std::complex<float>* out, int n)
+{
+    fillTxPacketSource(out, n);
+    // Build 632: the RF tail of a voice / TUNE unkey -- a 2 ms linear fall,
+    // then zeros until MOX drops.
+    if (!m_unkeyTail)
+        return;
+    for (int i = 0; i < n; ++i) {
+        if (m_unkeyFadeLeft > 0) {
+            out[i] *= static_cast<float>(m_unkeyFadeLeft) / static_cast<float>(kUnkeyFadeSamples);
+            --m_unkeyFadeLeft;
+        } else {
+            out[i] = {};
+        }
+    }
+}
+
+void P2Transport::fillTxPacketSource(std::complex<float>* out, int n)
 {
     constexpr double fs = kDucSampleRateHz;
     if (m_toneAmp > 0.0) {
@@ -2863,7 +2918,8 @@ void P2Transport::accountTxSamples(const std::complex<float>* buf, int n)
     const std::uint64_t liveFrom = static_cast<std::uint64_t>(
         std::max(0, m_rfDelayMs.load(std::memory_order_relaxed))) * kDucSampleRateHz / 1000
         + kDucSampleRateHz / 40;
-    const bool live = m_txPrimed && m_txSamplesOut > liveFrom && !m_cwMode && m_toneAmp <= 0.0;
+    const bool live = m_txPrimed && m_txSamplesOut > liveFrom && !m_cwMode && m_toneAmp <= 0.0
+        && !m_unkeyTail;   // build 632: the unkey tail is silent by design
     for (int k = 0; k < n; ++k) {
         const auto& v = buf[k];
         const double p = double(v.real()) * v.real() + double(v.imag()) * v.imag();

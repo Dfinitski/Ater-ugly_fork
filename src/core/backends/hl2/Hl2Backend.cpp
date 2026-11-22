@@ -2814,7 +2814,7 @@ void Hl2Backend::releaseRxAudioMuteAfterHold()
     // behaviour a second unkey inside the window wants: that unkey has its own
     // T/R turnaround to cover and inherits none of the elapsed time of the
     // first. The bench build this fix comes from did not coalesce them.
-    m_unkeyUnmuteTimer->start(m_unkeyUnmuteHoldMs);
+    m_unkeyUnmuteTimer->start(m_unkeyUnmuteHoldMs + m_unkeyRfTailMs);   // build 632: + the RF tail
 }
 
 void Hl2Backend::ananApplyCodecSettings()
@@ -3203,6 +3203,7 @@ void Hl2Backend::ananPushCwKeyer()
     // TX applet "RF Delay", 25 ms by default; the voice start follows it too
     // (P2Transport::fillTxPacket).
     k.rfDelayMs = std::clamp(st.value(QStringLiteral("AnanRfDelayMs"), 25).toInt(), 1, 255);
+    m_ananRfDelayMs = k.rfDelayMs;   // build 632: the unkey's RF tail
     const QByteArray sig = QByteArray::number(k.enabled) + ',' + QByteArray::number(k.mode) + ','
         + QByteArray::number(k.speedWpm) + ',' + QByteArray::number(k.weight) + ','
         + QByteArray::number(k.paddleSwap) + ',' + QByteArray::number(k.strictSpacing) + ','
@@ -7372,10 +7373,26 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
         }
         if (m_ps)   // PureSignal: SetPSMox and the feedback gate follow the key
             m_ps->setKeyed(key, m_ananCwTxSilent.load(std::memory_order_relaxed));
-        for (const Receiver& r : m_rx) {   // full duplex: AGC held, all else runs
-            if (r.dsp)
-                QMetaObject::invokeMethod(r.dsp, "setAgcTxHold", Qt::QueuedConnection,
-                                          Q_ARG(bool, key));
+        // Build 632: a voice / TUNE unkey keeps MOX for the RF Delay tail
+        // (P2Transport::setMox), so the receivers are released when MOX
+        // actually drops. CW (break-in, host CW, the radio's keyer) at once.
+        m_unkeyRfTailMs = (!key && !cwBreakIn && !m_ananCwTxSilent.load(std::memory_order_relaxed))
+            ? std::max(0, m_ananRfDelayMs) : 0;
+        const quint32 relGen = ++m_rxReleaseGen;
+        auto agcHold = [this, key] {
+            for (const Receiver& r : m_rx) {   // full duplex: AGC held, all else runs
+                if (r.dsp)
+                    QMetaObject::invokeMethod(r.dsp, "setAgcTxHold", Qt::QueuedConnection,
+                                              Q_ARG(bool, key));
+            }
+        };
+        if (m_unkeyRfTailMs > 0) {
+            QTimer::singleShot(m_unkeyRfTailMs, Qt::PreciseTimer, this, [this, relGen, agcHold] {
+                if (relGen == m_rxReleaseGen && !m_keyed)
+                    agcHold();
+            });
+        } else {
+            agcHold();
         }
         // ANAN-100D port (operator, 31.10): the FFT history is never dropped
         // at a key edge -- a restarted average has to accumulate again and
@@ -9195,7 +9212,7 @@ void Hl2Backend::beginTxTail()
         return;
     }
     if (!m_txTailTimer->isActive()) {
-        m_txTailTimer->start(m_txTailHoldMs);
+        m_txTailTimer->start(m_txTailHoldMs + m_unkeyRfTailMs);   // build 632: MOX drops after the RF tail
     }
 }
 

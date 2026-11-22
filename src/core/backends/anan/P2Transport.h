@@ -480,6 +480,11 @@ private:
     void sendTransmitSpecific();
     void beginTxStream();
     void fillTxPacket(std::complex<float>* out, int n = kDucSamplesPerPacket);
+    void fillTxPacketSource(std::complex<float>* out, int n);
+    // Build 632: MOX itself (relays) changes here; setMox checks the command
+    // and may defer an unkey behind the RF tail. txLock holds m_txMutex and
+    // is released inside.
+    void applyMox(bool keyed, std::unique_lock<std::mutex>& txLock);
     // Level statistics, the DUC snapshot and the TX panorama for n samples
     // just filled at 192 ksps (both protocols). m_txMutex held.
     void accountTxSamples(const std::complex<float>* buf, int n);
@@ -702,6 +707,15 @@ private:
     bool m_cwMode = false;
     bool m_cwDown = false;
     double m_cwEnv = 0.0;
+    // Build 632 (operator, 22.11: "a user says in SSB the transmission ends
+    // together with the relays -- there is no guard gap; use RF Delay"). At a
+    // voice / TUNE unkey the RF ramps to zero in 2 ms and zeros go out; MOX
+    // (the relays) drops RF Delay ms later. A key in between continues the
+    // over. m_txMutex.
+    bool m_unkeyTail = false;
+    int m_unkeyFadeLeft = 0;
+    quint32 m_unkeyTailGen = 0;
+    static constexpr int kUnkeyFadeSamples = kDucSampleRateHz / 500;   // 2 ms
     // Spectrum of what is actually sent (txScopeFrameReady).
     TxScope m_txScope;
     // Build 432: the frame out, its envelope peak on the scale before the CFIR.
