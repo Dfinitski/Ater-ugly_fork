@@ -31,6 +31,7 @@
 #include "core/backends/anan/P2Transport.h"
 #include "core/backends/anan/AnanCodecFeed.h"
 #include "core/backends/anan/AnanLatencyMarks.h"
+#include "core/backends/anan/AnanRetuneTrace.h"
 #include "core/backends/anan/AnanPureSignal.h"
 #include "core/backends/anan/AnanTxEngine.h"
 #include "core/backends/anan/AnanUiState.h"
@@ -3109,6 +3110,49 @@ static void ananLatencyReport(const char* why)
         << iq << "| WDSP out before the mute: " << out;
 }
 
+// ANAN fork build 628: the retune trace (AnanRetuneTrace), one line 400 ms
+// after receiver 1's NCO register or shift changed.
+static std::atomic<unsigned> s_ananRetuneGen{0};
+static QString s_ananRetuneWhat;   // GUI thread only
+
+void Hl2Backend::ananRetuneArm(const QString& what)
+{
+    auto& rt = anan::AnanRetuneTrace::instance();
+    // A step that both shifts and moves the NCO is one retune.
+    if (rt.active() && anan::AnanRetuneTrace::nowUs() - rt.t0() < 100000) {
+        s_ananRetuneWhat += QStringLiteral(" + ") + what;
+        return;
+    }
+    rt.arm();
+    s_ananRetuneWhat = what;
+    const unsigned gen = ++s_ananRetuneGen;
+    QTimer::singleShot(420, this, [gen] {
+        if (gen != s_ananRetuneGen.load())
+            return;
+        auto& t = anan::AnanRetuneTrace::instance();
+        auto ms = [&](std::int64_t at) {
+            return at < 0 ? QStringLiteral("--") : QString::number(t.relMs(at), 'f', 1);
+        };
+        auto db = [](float v) {
+            return v <= 0.0f ? QStringLiteral("_") : QString::number(20.0 * std::log10(v), 'f', 0);
+        };
+        QString out;
+        for (int i = 0; i < t.outCount(); ++i)
+            out += db(t.outPeak(i)) + QLatin1Char(' ');
+        qCInfo(lcHl2).noquote().nospace()
+            << "ANAN retune trace (" << s_ananRetuneWhat << "): setShift at " << ms(t.shiftAtUs())
+            << " ms, longest " << QString::number(t.shiftMaxUs() / 1000.0, 'f', 1)
+            << " ms; NCO move at " << ms(t.ncoAtUs()) << ", dip " << ms(t.dipStartUs()) << ".."
+            << ms(t.dipEndUs()) << "; DSP thread longest gap "
+            << QString::number(t.dspGapMaxUs() / 1000.0, 'f', 1) << " ms, longest block "
+            << QString::number(t.dspCallMaxUs() / 1000.0, 'f', 1) << " ms; mixer longest gap "
+            << QString::number(t.mixGapMaxUs() / 1000.0, 'f', 1) << " ms; PC sink underruns +"
+            << t.pcUnderDelta() << ", least queued " << t.pcQueuedMin() << " ms; codec feed underruns +"
+            << t.feedUnderDelta() << ", least depth " << t.feedDepthMin() * 1000 / 48000
+            << " ms; WDSP out per block dBFS: " << out;
+    });
+}
+
 void Hl2Backend::ananUnkeyEvent(const QString& what)
 {
     if (!m_ukPost)
@@ -5262,6 +5306,8 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
     Receiver* r = rx(ddc);
     if (!r)
         return;   // a slice that is not running: see ddcForSlice
+    if (ddc == 0 && hz != r->sliceFreqHz)   // build 628: retune trace
+        ananRetuneArm(QStringLiteral("tune %1 Hz").arg(hz - r->sliceFreqHz, 0, 'f', 0));
     r->sliceFreqHz = hz;
 
     // Keep the NCO — and therefore the panadapter centre — where it is, and put
@@ -6491,6 +6537,8 @@ void Hl2Backend::moveNcoForView(int ddc, Receiver& r, double newNcoHz, double vi
         rateHz > 0.0 && std::abs(viewCenterHz - r.ncoHz) + panViewHz(r) / 2.0 <= rateHz / 2.0;
     const bool freshStart = std::abs(ncoDeltaHz) > rateHz / 2.0 && !viewWasCaptured;
     panMoveDiagMove(ddc, ncoDeltaHz);   // build 359
+    if (ddc == 0)   // build 628: retune trace
+        ananRetuneArm(QStringLiteral("NCO move %1 Hz").arg(ncoDeltaHz, 0, 'f', 0));
     r.ncoHz = newNcoHz;
     r.viewOffsetHz = viewCenterHz - newNcoHz;
     r.viewForNcoHz = newNcoHz;

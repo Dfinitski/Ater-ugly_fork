@@ -2,6 +2,7 @@
 #include "RxChainRunner.h"
 #include "core/backends/anan/AnanCodecFeed.h"
 #include "core/backends/anan/AnanLatencyMarks.h"
+#include "core/backends/anan/AnanRetuneTrace.h"
 #include "RxClientEffects.h"
 #include <QSignalBlocker>
 #include "core/backends/RadioCapabilities.h"
@@ -2767,6 +2768,9 @@ void AudioEngine::drainRxAudio(qsizetype freeBytes)
             qBound(0, audioBytesToMs(sinkQueuedBytes, sampleRate), 1000);
         m_rxPlaybackQueuedMs.store(playbackQueuedMs,
                                    std::memory_order_relaxed);
+        // Build 628: retune trace -- the PC sink's underruns and least queue.
+        anan::AnanRetuneTrace::instance().pcSink(static_cast<int>(m_audioSink->underruns()),
+                                                 playbackQueuedMs);
     } else {
         m_rxPlaybackQueuedMs.store(0, std::memory_order_relaxed);
     }

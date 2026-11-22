@@ -784,6 +784,7 @@ private:
     // DSP in/out; every backend command in that window; RX1 IQ -0.5..+3 s
     // into logs/rxcap-unkey-iq.wav.
     void ananUnkeyEvent(const QString& what);
+    void ananRetuneArm(const QString& what);   // build 628
     void ananUnkeyTraceSample();
     void ananUnkeyTraceDump();
     void ananUnkeyIqFeed(const std::vector<std::complex<float>>& iq);   // I/O thread

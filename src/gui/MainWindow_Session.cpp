@@ -79,6 +79,7 @@
 #include "core/LogManager.h"
 #include "models/RadioModel.h"
 #include "models/SliceModel.h"
+#include "models/ModeVocabulary.h"
 
 #include <QMessageBox>
 #include <QAbstractButton>
@@ -1976,17 +1977,31 @@ void MainWindow::wireRadioModel()
         }
         // Build 315: in DUP the receiver automatics still hold for the over.
         const bool dupHold = tx && ananDuplex;
+        // ANAN fork build 628 (operator, 22.11: "switching the panadapter's
+        // zoom off while transmitting, separately for CW and for the rest").
+        // "TX zoom on the panadapter": the CW applet's box for CW, the Mic
+        // applet's for every other mode; both on by default (as before). Off,
+        // the over keeps the receive view -- no zoom onto the transmitted
+        // signal and no fixed TX scale.
+        bool txZoomWanted = true;
+        if (ananTxScale && panTx) {
+            const SliceModel* txs = m_radioModel.txSlice();
+            const bool cw = txs && isCwMode(txs->mode());
+            txZoomWanted = AppSettings::instance()
+                .value(cw ? QStringLiteral("AnanTxZoomCw") : QStringLiteral("AnanTxZoomVoice"),
+                       QStringLiteral("True")).toString() == QLatin1String("True");
+        }
         for (auto* pan : m_radioModel.panadapters()) {
             if (auto* sw = m_panStack ? m_panStack->spectrum(pan->panId()) : nullptr) {
                 if (panTx)
-                    sw->setTxFixedDbmRange(ananTxScale);
+                    sw->setTxFixedDbmRange(ananTxScale && txZoomWanted);
                 sw->setTransmitting(panTx);
                 sw->setDuplexTxHold(dupHold);
             }
         }
         if (!m_panStack && m_panApplet) {
             if (panTx)
-                m_panApplet->spectrumWidget()->setTxFixedDbmRange(ananTxScale);
+                m_panApplet->spectrumWidget()->setTxFixedDbmRange(ananTxScale && txZoomWanted);
             m_panApplet->spectrumWidget()->setTransmitting(panTx);
             m_panApplet->spectrumWidget()->setDuplexTxHold(dupHold);
         }

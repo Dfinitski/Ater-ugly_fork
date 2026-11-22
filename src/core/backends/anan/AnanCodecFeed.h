@@ -30,6 +30,7 @@
 #include <mutex>
 
 #include "core/backends/anan/AnanLatencyMarks.h"
+#include "core/backends/anan/AnanRetuneTrace.h"
 
 namespace AetherSDR::anan {
 
@@ -156,6 +157,8 @@ public:
         }
         m_depthMin = std::min(m_depthMin, have);
         m_depthMax = std::max(m_depthMax, have);
+        AnanRetuneTrace::instance().feed(static_cast<int>(m_underruns.load(std::memory_order_relaxed)),
+                                         static_cast<int>(have));   // build 628
         std::size_t f = 0;
         for (; f < frames; ++f) {
             if (m_fifo.size() < 2)

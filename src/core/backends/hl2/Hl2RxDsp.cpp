@@ -2,6 +2,7 @@
 
 #include "core/backends/hl2/Hl2AdcPairing.h"
 #include "core/backends/anan/AnanLatencyMarks.h"
+#include "core/backends/anan/AnanRetuneTrace.h"
 #include "aether/DrmEngine.h"
 
 #include <QLoggingCategory>
@@ -1093,6 +1094,10 @@ void Hl2RxDsp::ncoMoved(double deltaHz, bool holdFrame)
     // 3 ms down, silence, 5 ms up: 20 ms in all, from the next output block.
     m_dipTotalFrames = m_config.audioSampleRateHz * 20 / 1000;
     m_dipFrames = m_dipTotalFrames;
+    if (!m_isSubDsp) {   // build 628: retune trace
+        anan::AnanRetuneTrace::instance().ncoMoved();
+        anan::AnanRetuneTrace::instance().dipStart();
+    }
 }
 
 void Hl2RxDsp::dropSpectrumAverage()
@@ -1229,7 +1234,12 @@ void Hl2RxDsp::setShift(double shiftHz)
         return;
     if (m_channel.get() == m_shiftPushedChannel && shiftHz == m_shiftPushedHz)
         return;
-    if (m_channel->setShift(shiftHz)) {
+    const std::int64_t rtStart = anan::AnanRetuneTrace::nowUs();   // build 628
+    const bool shiftOk = m_channel->setShift(shiftHz);
+    if (!m_isSubDsp)
+        anan::AnanRetuneTrace::instance().shiftCall(
+            static_cast<int>(anan::AnanRetuneTrace::nowUs() - rtStart));
+    if (shiftOk) {
         m_shiftPushedChannel = m_channel.get();
         m_shiftPushedHz = shiftHz;
     } else {
@@ -1377,6 +1387,24 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
 {
     if (!m_channel)
         return;
+    // Build 628: retune trace -- this thread's gaps between calls and its
+    // longest call (a stall here is a gap in the audio).
+    struct RetuneCallTimer {
+        std::int64_t& last;
+        const bool on;
+        const std::int64_t start;
+        RetuneCallTimer(std::int64_t& l, bool o)
+            : last(l), on(o), start(anan::AnanRetuneTrace::nowUs()) {}
+        ~RetuneCallTimer()
+        {
+            if (!on) return;
+            const std::int64_t end = anan::AnanRetuneTrace::nowUs();
+            if (last > 0)
+                anan::AnanRetuneTrace::instance().dspCall(static_cast<int>(start - last),
+                                                          static_cast<int>(end - start));
+            last = end;
+        }
+    } retuneTimer(m_rtLastCallUs, !m_isSubDsp);
     // Build 470: the SPLIT receiver hears the same I/Q (its audio is queued
     // by its audioReady and sent on with ours below, as its own stream).
     if (m_sub)
@@ -1628,6 +1656,8 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
         // block, and the end of the mute.
         if (profiling)
             anan::AnanLatencyMarks::instance().profileOut(outPk);
+        if (!m_isSubDsp)   // build 628: retune trace, WDSP output per block
+            anan::AnanRetuneTrace::instance().outBlock(outPk);
         if (!inOver && !m_isSubDsp)
             anan::AnanLatencyMarks::instance().mark(anan::AnanLatencyMarks::RxMuteEnd,
                                                     m_overDropSeen ? 1 : 0);
@@ -1668,6 +1698,8 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
                 m_stereo[2 * k] *= g;
                 m_stereo[2 * k + 1] *= g;
             }
+            if (m_dipFrames == 0 && !m_isSubDsp)   // build 628: retune trace
+                anan::AnanRetuneTrace::instance().dipEnd();
         }
         if (m_sub) {
             // Build 513: the sub receiver's audio is NOT added to ours any
