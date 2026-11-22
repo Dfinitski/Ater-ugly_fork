@@ -624,8 +624,17 @@ void CrossNeedleMeterWidget::drawFace(QPainter &painter) const {
         const double lineHeight = QFontMetricsF(painter.font()).height();
         const double firstCenterY = m_geometry.rangeLabelCenter.y()
             - lineHeight * (double(lines.size()) - 1.0) / 2.0;
+        // Build 593 (operator, 21.11: "the multiplier still looks without
+        // contrast -- let the active one look like FORWARD, same colour and
+        // transparency"): the active line is drawn exactly as the side titles
+        // (colors.text, opaque, bold). The themes' secondary text is within a
+        // few steps of it (light 54,61,66 against 35,42,46), so the other
+        // multipliers are drawn at 40 % of it; the "RANGE" heading as before.
+        QColor inactive = colors.secondaryText;
+        inactive.setAlphaF(inactive.alphaF() * 0.4);
         for (int i = 0; i < lines.size(); ++i) {
-            painter.setPen(i == active ? colors.text : colors.secondaryText);
+            painter.setPen(i == active ? colors.text
+                                       : (i == 0 ? colors.secondaryText : inactive));
             drawCenteredText(painter,
                              QPointF(m_geometry.rangeLabelCenter.x(), firstCenterY + i * lineHeight),
                              lines[i]);
