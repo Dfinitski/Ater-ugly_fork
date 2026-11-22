@@ -25,6 +25,7 @@
 #include <QAudioFormat>
 #include <QAudioSink>
 #include <QIODevice>
+#include <QList>
 #include <QObject>
 #include <QString>
 
@@ -36,10 +37,12 @@
 #include <vector>
 
 #if defined(Q_OS_WIN) && defined(HAVE_PORTAUDIO)
+// Build 602 fix (MSVC log 21.11 22:58): no <windows.h> here -- through
+// <mmdeviceapi.h> its min / max (and other) macros broke AudioEngine.cpp.
+// PortAudio's own WASAPI header needs none of it; the endpoint is matched by
+// its name.
 #  include <portaudio.h>
 #  include <pa_win_wasapi.h>
-#  include <mmdeviceapi.h>
-#  include <combaseapi.h>
 #  define AETHER_RX_EXCLUSIVE_AVAILABLE 1
 #endif
 
@@ -260,21 +263,6 @@ private:
         return paContinue;
     }
 
-    static QString endpointId(PaDeviceIndex idx)
-    {
-        void* raw = nullptr;
-        if (PaWasapi_GetIMMDevice(idx, &raw) != paNoError || !raw)
-            return {};
-        auto* d = static_cast<IMMDevice*>(raw);   // borrowed
-        LPWSTR id = nullptr;
-        QString out;
-        if (SUCCEEDED(d->GetId(&id)) && id) {
-            out = QString::fromWCharArray(id);
-            CoTaskMemFree(id);
-        }
-        return out;
-    }
-
     bool openStream(const QAudioDevice& dev, int rate, QString* why)
     {
         const auto fail = [why](const QString& w) {
@@ -288,17 +276,10 @@ private:
         const PaHostApiIndex api = Pa_HostApiTypeIdToHostApiIndex(paWASAPI);
         if (api < 0)
             return fail(QStringLiteral("no WASAPI host API in PortAudio"));
-        // The WASAPI endpoint the operator chose: by endpoint ID (Qt's id),
-        // then by name among WASAPI outputs.
-        const QString qtId = QString::fromUtf8(dev.id()).toCaseFolded();
+        // The WASAPI endpoint the operator chose, by its friendly name (the
+        // same string Qt shows), among WASAPI outputs.
         PaDeviceIndex pick = paNoDevice;
         const PaDeviceIndex count = Pa_GetDeviceCount();
-        for (PaDeviceIndex i = 0; i < count && pick == paNoDevice; ++i) {
-            const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
-            if (info && info->hostApi == api && info->maxOutputChannels >= 2
-                && !qtId.isEmpty() && endpointId(i).toCaseFolded() == qtId)
-                pick = i;
-        }
         for (PaDeviceIndex i = 0; i < count && pick == paNoDevice; ++i) {
             const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
             if (info && info->hostApi == api && info->maxOutputChannels >= 2 && info->name
