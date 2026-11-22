@@ -233,6 +233,12 @@ private:
     std::vector<float> m_accum;
     PcmProducer m_producer;
     bool m_streaming = false;
+    // Build 597: after the transmit hold the sound device restarts from
+    // empty; it gets at least kResumeCushionFrames of silence before the
+    // first sound (mixer thread).
+    static constexpr std::size_t kResumeCushionFrames = 1200;   // 50 ms at 24 kHz
+    bool m_resumePending = false;
+    std::size_t m_resumeSilentFrames = 0;
 
     // Diagnostics: one log line every 5 s. "longest gap" is the longest time
     // between two frames handed to the engine -- the figure this thread

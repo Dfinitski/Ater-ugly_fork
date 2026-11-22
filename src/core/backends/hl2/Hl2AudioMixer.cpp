@@ -341,6 +341,36 @@ void Hl2AudioMixer::emitOut(const std::vector<float>& pcm, const Params& p)
 {
     if (pcm.empty())
         return;
+    // ANAN fork build 597 (operator, 21.11: with DFNR the return to receive
+    // is good now, without noise reduction the pause is clearer; heard in
+    // the computer's headphones). The 596 traces: with DFNR the engine gets
+    // ~50 ms of silence after the hold, then sound -- good; without, sound
+    // from the very first block. Through the over the engine gets nothing
+    // (the hold is a gap), its sound device runs dry, and it restarts on
+    // the first block with nothing in hand: a moment of sound, a dropout
+    // while the next blocks catch up, then sound. The first sound after the
+    // hold now always has 50 ms of silence before it (less what the chain
+    // already gave, e.g. DFNR's) -- the case heard as good.
+    if (m_resumePending && p.live && m_streaming && !m_muted.load(std::memory_order_acquire)) {
+        bool silent = true;
+        for (float v : pcm) {
+            if (v != 0.0f) {
+                silent = false;
+                break;
+            }
+        }
+        if (silent) {
+            m_resumeSilentFrames += pcm.size() / 2;
+        } else {
+            m_resumePending = false;
+            if (m_resumeSilentFrames < kResumeCushionFrames) {
+                QVector<float> cushion(
+                    static_cast<qsizetype>(2 * (kResumeCushionFrames - m_resumeSilentFrames)), 0.0f);
+                if (const auto frame = m_producer.produce(std::move(cushion)))
+                    emit speakerFrameReady(*frame);
+            }
+        }
+    }
     if (p.live && m_streaming) {
         QVector<float> samples(static_cast<qsizetype>(pcm.size()));
         std::copy(pcm.begin(), pcm.end(), samples.begin());
@@ -595,6 +625,8 @@ void Hl2AudioMixer::mixIn(int receiver, const std::vector<float>& pcm, const Par
     // the unkey timing rely on that), and blocks in flight at key-down are
     // dropped.
     if (muted) {
+        m_resumePending = true;   // build 597
+        m_resumeSilentFrames = 0;
         // Build 513: a sub receiver's block queued just ahead of this one
         // goes with it, or it would stay one block behind from here on.
         for (int i = kMaxReceivers; i < kSlots; ++i)
