@@ -66,6 +66,11 @@ public:
     // anchored above the status bar), so the first show does not centre it.
     void setOwnerPlaced(bool on) { m_ownerPlaced = on; }
 
+    // ANAN fork build 620: the window is fully transparent from its first
+    // show until its first frame has been painted, so a heavy window does
+    // not appear on screen while it is still polishing and laying out.
+    void setRevealAfterFirstPaint(bool on) { m_revealAfterPaint = on; }
+
     static constexpr int kRadius = 16;
     static constexpr int kInset = 1;   // hairline border; the body sits inside it
 
@@ -87,6 +92,8 @@ private:
 
     bool         m_returnClicksDefault;
     bool         m_ownerPlaced{false};
+    bool         m_revealAfterPaint{false};   // build 620
+    bool         m_revealPending{false};
     QWidget*     m_body{nullptr};
     QToolButton* m_close{nullptr};
     bool         m_placed{false};

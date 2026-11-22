@@ -112,6 +112,7 @@ AetherRxDialog::AetherRxDialog(AudioEngine* audio, QWidget* parent)
     // the size back to the operator, drop this; the geometry key underneath
     // has been recording it all along.
     setLaunchSize(kLaunchSize);
+    setRevealAfterFirstPaint(true);   // build 620: see CanonWindow
     FramelessResizer::install(this);
     AetherSDR::ThemeManager::instance().applyStyleSheet(bodyWidget(), canonBodyStyleSheet());
 

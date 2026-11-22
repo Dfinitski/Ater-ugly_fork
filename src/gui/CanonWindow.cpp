@@ -190,6 +190,18 @@ void CanonWindow::setLaunchSize(const QSize& size)
 
 void CanonWindow::showEvent(QShowEvent* event)
 {
+    // Build 620: hidden until the first frame is painted (paintEvent), with
+    // a fallback in case no paint comes.
+    if (m_revealAfterPaint && !m_revealPending && windowOpacity() > 0.0) {
+        m_revealPending = true;
+        setWindowOpacity(0.0);
+        QTimer::singleShot(400, this, [this] {
+            if (m_revealPending) {
+                m_revealPending = false;
+                setWindowOpacity(1.0);
+            }
+        });
+    }
     // A saved geometry is applied before QDialog::showEvent(), as
     // PersistentDialog does, so the window maps at its saved size.
     Restored restored = Restored::Nothing;
@@ -268,6 +280,16 @@ void CanonWindow::paintEvent(QPaintEvent*)
         paintCanonGround(p, this, size(), kRadius);
     }
     QPainter(this).drawPixmap(0, 0, m_ground);
+    // Build 620: this frame (the children paint in the same pass) goes to
+    // the screen when this event returns; reveal the window just after it.
+    if (m_revealPending) {
+        QTimer::singleShot(0, this, [this] {
+            if (m_revealPending) {
+                m_revealPending = false;
+                setWindowOpacity(1.0);
+            }
+        });
+    }
 }
 
 void paintCanonGround(QPainter& p, const QWidget* scope, const QSize& size, qreal radius)

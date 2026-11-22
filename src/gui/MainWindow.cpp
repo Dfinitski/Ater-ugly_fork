@@ -3290,9 +3290,13 @@ AetherRxDialog* MainWindow::ensureAetherRxDialog()
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         m_rxDialog = dlg;
     }
-    m_rxDialog->show();
-    m_rxDialog->raise();
-    m_rxDialog->activateWindow();
+    // ANAN fork build 620 (operator, 22.11: "when AetherRX opens, by any
+    // route, some small window and a frame show for a split second, vanish,
+    // and then the window opens"). The window was shown first and wired
+    // after, so it went on screen half-built and changed under the eye. A
+    // fresh window is now wired completely and shown at the end, and it
+    // stays transparent until its first frame is painted
+    // (CanonWindow::setRevealAfterFirstPaint).
     if (wasFresh) {
         if (auto* w = m_rxDialog->widget()) wireAetherDspWidget(w);
         // The EQ page's width buttons: turn a labelled width into the passband
@@ -3407,6 +3411,9 @@ AetherRxDialog* MainWindow::ensureAetherRxDialog()
         // than leaving it blank until the next slice change pushes one.
         pushRxFilterCutoffsToEq();
     }
+    m_rxDialog->show();
+    m_rxDialog->raise();
+    m_rxDialog->activateWindow();
     return m_rxDialog.data();
 }
 
