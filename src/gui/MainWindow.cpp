@@ -216,6 +216,7 @@
 #include <QHelpEvent>
 #include <QWindow>
 #include <QElapsedTimer>
+#include <QSet>
 #include <QPixmap>
 #include <QImage>
 #include <QBuffer>
@@ -3292,12 +3293,29 @@ protected:
     bool eventFilter(QObject* obj, QEvent* ev) override
     {
         const QEvent::Type t = ev->type();
+        // Build 622: where a widget that was shown as a window of its own ends
+        // up (its parents after the reparent), and what a label said.
+        if (t == QEvent::ParentChange && m_flashed.contains(obj)) {
+            QString chain;
+            for (const QWidget* p = static_cast<QWidget*>(obj)->parentWidget(); p && chain.size() < 600;
+                 p = p->parentWidget())
+                chain += QStringLiteral(" <- %1 '%2'").arg(QLatin1String(p->metaObject()->className()),
+                                                          p->objectName());
+            qInfo().noquote().nospace() << "AetherRX open spy +" << m_clock.elapsed()
+                << " ms: the window above is now a child:" << chain;
+            return false;
+        }
         if (t != QEvent::Show && t != QEvent::Hide)
             return false;
         if (auto* w = qobject_cast<QWidget*>(obj)) {
             if (!w->isWindow())
                 return false;
             const QWidget* p = w->parentWidget();
+            if (t == QEvent::Show && !p)
+                m_flashed.insert(obj);
+            QString text;
+            if (auto* lbl = qobject_cast<QLabel*>(w))
+                text = QStringLiteral(" text='%1'").arg(lbl->text().left(120));
             qInfo().noquote().nospace()
                 << "AetherRX open spy +" << m_clock.elapsed() << " ms: widget "
                 << (t == QEvent::Show ? "SHOW " : "hide ") << w->metaObject()->className()
@@ -3306,7 +3324,7 @@ protected:
                 << w->width() << "x" << w->height()
                 << " flags=0x" << QString::number(static_cast<quint32>(w->windowFlags()), 16)
                 << " parent=" << (p ? p->metaObject()->className() : "none")
-                << (p ? QStringLiteral(" '%1'").arg(p->objectName()) : QString());
+                << (p ? QStringLiteral(" '%1'").arg(p->objectName()) : QString()) << text;
         } else if (auto* win = qobject_cast<QWindow*>(obj)) {
             qInfo().noquote().nospace()
                 << "AetherRX open spy +" << m_clock.elapsed() << " ms: window "
@@ -3320,6 +3338,7 @@ protected:
     }
 private:
     QElapsedTimer m_clock;
+    QSet<QObject*> m_flashed;   // build 622
 };
 } // namespace
 
