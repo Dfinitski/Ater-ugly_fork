@@ -26,6 +26,7 @@
 #include <QAudioSink>
 #include <QIODevice>
 #include <QList>
+#include <QStringList>
 #include <QObject>
 #include <QString>
 
@@ -190,6 +191,7 @@ public:
     QString describe() const override { return m_describe; }
     unsigned underruns() const override { return m_underruns.load(std::memory_order_relaxed); }
     QString lastError() const { return m_lastError; }
+    QString refusedAttempts() const { return m_refused; }
 
 private:
     static constexpr qsizetype kFrameBytes = 2 * static_cast<qsizetype>(sizeof(float));
@@ -262,6 +264,36 @@ private:
         return paContinue;
     }
 
+    // PortAudio's error and, for WASAPI, the HRESULT behind it (log 21.11
+    // 23:07: only "Invalid device", its word for a refused IAudioClient).
+    static QString hostReason(PaError e)
+    {
+        QString out = QString::fromUtf8(Pa_GetErrorText(e));
+        const PaHostErrorInfo* he = Pa_GetLastHostErrorInfo();
+        if (!he || he->hostApiType != paWASAPI || he->errorCode == 0)
+            return out;
+        const auto hr = static_cast<unsigned long>(he->errorCode);
+        QString what;
+        if (hr == 0x8889000AUL)
+            what = QStringLiteral("the card is in use by another program");
+        else if (hr == 0x8889000EUL)
+            what = QStringLiteral("Windows does not allow exclusive mode on this card "
+                                  "(Sound -> device -> Properties -> Advanced)");
+        else if (hr == 0x88890008UL)
+            what = QStringLiteral("format not supported exclusively");
+        else if (hr == 0x88890019UL)
+            what = QStringLiteral("buffer size not aligned");
+        else if (hr == 0x88890020UL)
+            what = QStringLiteral("buffer size error");
+        out += QStringLiteral(" [WASAPI 0x%1").arg(hr, 8, 16, QLatin1Char('0'));
+        if (he->errorText && *he->errorText)
+            out += QStringLiteral(" ") + QString::fromUtf8(he->errorText).trimmed();
+        if (!what.isEmpty())
+            out += QStringLiteral(": ") + what;
+        out += QStringLiteral("]");
+        return out;
+    }
+
     bool openStream(const QAudioDevice& dev, int rate, QString* why)
     {
         const auto fail = [why](const QString& w) {
@@ -310,50 +342,49 @@ private:
         op.suggestedLatency = info->defaultLowOutputLatency;
         op.hostApiSpecificStreamInfo = &wi;
 
-        // The rate the drain produces first, then the card's own.
+        // Build 605, as MicronSDR's pa19 does it (operator, 21.11: "I met
+        // this problem in MicronSDR, see how the output is done there"): a
+        // card can take 48 kHz shared (through the Windows mixer) and refuse
+        // it exclusively -- many USB headsets run 44.1 kHz natively. So 48 kHz,
+        // then 44.1 kHz (AudioEngine resamples to whatever rate the card
+        // runs at), each actually opened AND started, not only asked
+        // (Pa_IsFormatSupported passed 48 kHz and the open still failed, log
+        // 21.11 23:07), with the card's own low latency and then one 10 ms
+        // period.
         QList<int> rates{rate};
-        if (static_cast<int>(info->defaultSampleRate) != rate)
+        if (!rates.contains(44100))
+            rates << 44100;
+        if (!rates.contains(static_cast<int>(info->defaultSampleRate)))
             rates << static_cast<int>(info->defaultSampleRate);
-        if (!rates.contains(48000))
-            rates << 48000;
-        QString lastErr;
+        const double latencies[2] = {info->defaultLowOutputLatency, 0.010};
+        QStringList refused;
         for (int r : rates) {
-            if (Pa_IsFormatSupported(nullptr, &op, r) != paFormatIsSupported) {
-                lastErr = QStringLiteral("%1 Hz not supported exclusively").arg(r);
-                continue;
+            for (double lat : latencies) {
+                op.suggestedLatency = lat;
+                m_rate = r;
+                m_capFrames = static_cast<std::size_t>(r) * kRingMs / 1000;
+                m_ring.assign(2 * m_capFrames, 0.0f);
+                PaError e = Pa_OpenStream(&m_stream, nullptr, &op, r,
+                                          paFramesPerBufferUnspecified, paNoFlag,
+                                          &PaExclusiveRxSink::callback, this);
+                if (e == paNoError) {
+                    e = Pa_StartStream(m_stream);
+                    if (e != paNoError) {
+                        Pa_CloseStream(m_stream);
+                    }
+                }
+                if (e == paNoError)
+                    break;
+                m_stream = nullptr;
+                refused << QStringLiteral("%1 Hz / %2 ms: %3").arg(r)
+                               .arg(lat * 1000.0, 0, 'f', 1).arg(hostReason(e));
             }
-            m_rate = r;
-            m_capFrames = static_cast<std::size_t>(r) * kRingMs / 1000;
-            m_ring.assign(2 * m_capFrames, 0.0f);
-            const PaError e = Pa_OpenStream(&m_stream, nullptr, &op, r,
-                                            paFramesPerBufferUnspecified, paNoFlag,
-                                            &PaExclusiveRxSink::callback, this);
-            if (e == paNoError)
+            if (m_stream)
                 break;
-            m_stream = nullptr;
-            lastErr = QString::fromUtf8(Pa_GetErrorText(e));
-            // Build 604: the WASAPI reason (log 21.11 23:07: only "Invalid
-            // device", PortAudio's word for a refused IAudioClient).
-            if (const PaHostErrorInfo* he = Pa_GetLastHostErrorInfo();
-                he && he->hostApiType == paWASAPI && he->errorCode != 0) {
-                const auto hr = static_cast<unsigned long>(he->errorCode);
-                QString what;
-                if (hr == 0x8889000AUL)
-                    what = QStringLiteral("the card is in use by another program "
-                                          "(close the other programs playing on it)");
-                else if (hr == 0x8889000EUL)
-                    what = QStringLiteral("Windows does not allow exclusive mode on this card "
-                                          "(Sound settings -> device -> Properties -> Advanced: "
-                                          "\"Allow applications to take exclusive control\")");
-                else if (hr == 0x88890008UL)
-                    what = QStringLiteral("format not supported exclusively");
-                lastErr += QStringLiteral(" [WASAPI 0x%1%2%3]")
-                               .arg(hr, 8, 16, QLatin1Char('0'))
-                               .arg(he->errorText ? QStringLiteral(" ") + QString::fromUtf8(he->errorText).trimmed()
-                                                  : QString())
-                               .arg(what.isEmpty() ? QString() : QStringLiteral(": ") + what);
-            }
         }
+        if (!refused.isEmpty())
+            m_refused = refused.join(QStringLiteral("; "));
+        const QString lastErr = m_refused;
         if (!m_stream)
             return fail(QStringLiteral("\"%1\": %2").arg(QString::fromUtf8(info->name), lastErr));
         const PaStreamInfo* si = Pa_GetStreamInfo(m_stream);
@@ -362,6 +393,8 @@ private:
                          .arg(m_rate)
                          .arg(si ? si->outputLatency * 1000.0 : -1.0, 0, 'f', 1)
                          .arg(kRingMs);
+        if (!m_refused.isEmpty())
+            m_describe += QStringLiteral(" (refused before: %1)").arg(m_refused);
         return true;
     }
 
@@ -380,6 +413,7 @@ private:
     QAudio::Error m_error = QAudio::NoError;
     QString m_describe;
     QString m_lastError;
+    QString m_refused;   // build 605: the attempts the card refused
     Writer m_writer;
 };
 
