@@ -31,6 +31,15 @@ public:
     void setKeyerSpeed(int wpm);
     int keyerSpeed() const;
 
+    // ANAN fork build 609: MIDI's CW controls drive the radio keyer here (as
+    // if the widgets were used: stored and sent to the radio).
+    void setKeyerMode(int mode);          // 0 straight, 1 iambic A, 2 iambic B
+    int keyerMode() const;
+    void setPaddleSwap(bool on);
+    bool paddleSwap() const;
+    void setHangTimeMs(int ms);           // 10..1000, 10 ms steps
+    int hangTimeMs() const;
+
 signals:
     void keyerSpeedChanged(int wpm);
 

@@ -21,6 +21,7 @@
 #include "core/UlanziDialBackend.h"
 #include "core/UlanziDialMappings.h"
 #include "AppletPanel.h"
+#include "CwApplet.h"
 #include "core/IambicKeyer.h"
 #include "PanadapterApplet.h"
 #include "PanadapterStack.h"
@@ -2286,25 +2287,65 @@ void MainWindow::registerMidiParams()
         [this](float v) { m_radioModel.transmitModel().setCwSpeed(static_cast<int>(v)); },
         [this]() -> float { return m_radioModel.transmitModel().cwSpeed(); });
 
+    // ANAN fork build 609: on an ANAN the CW applet's controls are the radio
+    // keyer's (paddles on the radio); the TransmitModel ones belong to the
+    // program's own keyer (MIDI paddles, keyboard, CWX), whose page is
+    // hidden. MIDI sets both, and its toggles read the CW applet.
     reg("cw.delayMs", "CW Break-In Delay", "Phone/CW", P::Slider, 0, 2000,
-        [this](float v) { m_radioModel.transmitModel().setCwDelay(static_cast<int>(v)); },
-        [this]() -> float { return m_radioModel.transmitModel().cwDelay(); });
+        [this](float v) {
+            m_radioModel.transmitModel().setCwDelay(static_cast<int>(v));
+            if (CwApplet* cw = ananCwAppletForMidi())
+                cw->setHangTimeMs(static_cast<int>(v));
+        },
+        [this]() -> float {
+            if (CwApplet* cw = ananCwAppletForMidi())
+                return cw->hangTimeMs();
+            return m_radioModel.transmitModel().cwDelay();
+        });
 
     reg("cw.sidetoneEnable", "CW Sidetone", "Phone/CW", P::Toggle, 0, 1,
         [this](float v) { m_radioModel.transmitModel().setCwSidetone(v > 0.5f); },
         [this]() -> float { return m_radioModel.transmitModel().cwSidetone() ? 1 : 0; });
 
     reg("cw.iambicEnable", "CW Iambic", "Phone/CW", P::Toggle, 0, 1,
-        [this](float v) { m_radioModel.transmitModel().setCwIambic(v > 0.5f); },
-        [this]() -> float { return m_radioModel.transmitModel().cwIambic() ? 1 : 0; });
+        [this](float v) {
+            const bool on = v > 0.5f;
+            m_radioModel.transmitModel().setCwIambic(on);
+            if (CwApplet* cw = ananCwAppletForMidi()) {
+                // Iambic: the A / B chosen for the program's keyer; off: straight key.
+                cw->setKeyerMode(on ? (m_radioModel.transmitModel().cwIambicMode() ? 2 : 1) : 0);
+            }
+        },
+        [this]() -> float {
+            if (CwApplet* cw = ananCwAppletForMidi())
+                return cw->keyerMode() != 0 ? 1 : 0;
+            return m_radioModel.transmitModel().cwIambic() ? 1 : 0;
+        });
 
     reg("cw.iambicMode", "CW Iambic Mode (0=A, 1=B)", "Phone/CW", P::Toggle, 0, 1,
-        [this](float v) { m_radioModel.transmitModel().setCwIambicMode(v > 0.5f ? 1 : 0); },
-        [this]() -> float { return m_radioModel.transmitModel().cwIambicMode() ? 1 : 0; });
+        [this](float v) {
+            const bool b = v > 0.5f;
+            m_radioModel.transmitModel().setCwIambicMode(b ? 1 : 0);
+            if (CwApplet* cw = ananCwAppletForMidi())
+                cw->setKeyerMode(b ? 2 : 1);
+        },
+        [this]() -> float {
+            if (CwApplet* cw = ananCwAppletForMidi())
+                return cw->keyerMode() == 2 ? 1 : 0;
+            return m_radioModel.transmitModel().cwIambicMode() ? 1 : 0;
+        });
 
     reg("cw.swapPaddles", "CW Swap Paddles", "Phone/CW", P::Toggle, 0, 1,
-        [this](float v) { m_radioModel.transmitModel().setCwSwapPaddles(v > 0.5f); },
-        [this]() -> float { return m_radioModel.transmitModel().cwSwapPaddles() ? 1 : 0; });
+        [this](float v) {
+            m_radioModel.transmitModel().setCwSwapPaddles(v > 0.5f);
+            if (CwApplet* cw = ananCwAppletForMidi())
+                cw->setPaddleSwap(v > 0.5f);
+        },
+        [this]() -> float {
+            if (CwApplet* cw = ananCwAppletForMidi())
+                return cw->paddleSwap() ? 1 : 0;
+            return m_radioModel.transmitModel().cwSwapPaddles() ? 1 : 0;
+        });
 
     // `cw cwl_enabled` is Flex wire text; a radio without a command plane
     // expresses CWL as the slice MODE instead (HL2, Icom, sim). There the
@@ -2682,6 +2723,14 @@ void MainWindow::registerMidiParams()
         });
 }
 #endif
+
+// ANAN fork build 609: see the declaration.
+CwApplet* MainWindow::ananCwAppletForMidi()
+{
+    if (!m_appletPanel || !m_radioModel.isConnected() || !m_radioModel.isAnanRadio())
+        return nullptr;
+    return m_appletPanel->cwApplet();
+}
 
 // ─── One-shot controller wiring (#3351 Phase 2a) ────────────────────────────
 //

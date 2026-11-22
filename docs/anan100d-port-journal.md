@@ -10550,6 +10550,20 @@ Thetis».
 
 Не проверено на радио, не собиралось под Windows.
 
+## 589. Сборка 609 — MIDI: ANF только выключался; проверка всех кнопок MIDI
+
+Оператор (22.11): «пользователь жалуется, что ANF в MIDI на кнопку позволяет только отключать, но не включать. Если подтвердится — проверить все кнопки MIDI».
+
+Подтвердилось. НАША ОШИБКА: `rx.anfEnable` (и горячая клавиша ANF, rigctl `U ANF`, TCI, SmartCAT, сервер автоматизации) спрашивали `RadioModel::radioSideAutoNotchAvailable()` — «есть ли ANF в радио»; у ANAN это ложь, и каждое ВКЛ отклонялось (выключение разрешено всегда). А ANF у ANAN — WDSP в каждом приёмнике (`hasHostAutoNotch`), кнопка ANF на VFO включает его напрямую. Исправлено в одном месте: функция учитывает `hasHostAutoNotch`.
+
+Проверка остальных параметров MIDI для ANAN:
+- Работают как кнопки интерфейса (тот же путь): AF Gain, Squelch, AGC, Pan, NB, Adaptive Filter, Squelch Enable, Mute, Lock, Center Lock, RIT/XIT, NR2/RN2/NR4/DFNR (NR2/DFNR — у выбранного приёмника, хранилище подхватывает за 0,5 с), шаг, ручки VFO A/B, RF/Tune Power, MOX, TUNE, Mic, Monitor, PROC, VOX, EQ, Master Volume/Mute, TX, FDV, TNF, полосы/режимы/фильтры/зум/срезы, QSO record/play, ключ и манипулятор MIDI, CW Speed (синхронизирован с аплетом CW).
+- Честно отклоняются (у ANAN этого нет): NR (радио), DAX, AM Carrier (если не заявлен), CWL Offset, Headphone Volume, ATU.
+- ИСПРАВЛЕНО: CW Iambic, CW Iambic Mode (A/B), CW Swap Paddles, CW Break-In Delay меняли только настройки собственного кейера программы (его страница скрыта), а не кейера радио из аплета CW. Теперь на ANAN они меняют и аплет CW (режим прямой ключ / ямбик A / B, смена манипулятора, время удержания 10…1000 мс), а их переключатели читают аплет CW. `CwApplet::setKeyerMode/setPaddleSwap/setHangTimeMs`, `MainWindow::ananCwAppletForMidi()`.
+- Без аналога у ANAN (оставлены как есть, влияют только на собственный кейер программы): CW Sidetone, CW Break-In (QSK).
+
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

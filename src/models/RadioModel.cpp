@@ -4380,7 +4380,13 @@ bool RadioModel::radioSideNoiseReductionAvailable() const
 bool RadioModel::radioSideAutoNotchAvailable() const
 {
     // Flex and radio-side DSP use their backend ANF adapters.
-    return hasCommandPlane() || radioSideNoiseReductionAvailable();
+    // ANAN fork build 609 (operator, 22.11: "a user says ANF on a MIDI button
+    // only switches it off, never on"): OUR ERROR -- on an ANAN the ANF is
+    // WDSP's in each receiver (hasHostAutoNotch), the VFO's ANF button drives
+    // it, but MIDI, the keyboard shortcut, rigctl, TCI, SmartCAT and the
+    // automation server asked this and refused every ON.
+    return hasCommandPlane() || radioSideNoiseReductionAvailable()
+        || (m_backend && backendCapabilities().hasHostAutoNotch);
 }
 
 bool RadioModel::requestRadioNoiseReduction(SliceModel* slice, bool on)

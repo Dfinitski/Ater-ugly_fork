@@ -250,4 +250,34 @@ int CwApplet::keyerSpeed() const
     return m_speed->value();
 }
 
+void CwApplet::setKeyerMode(int mode)
+{
+    m_mode->setCurrentIndex(std::clamp(mode, 0, 2));
+}
+
+int CwApplet::keyerMode() const
+{
+    return m_mode->currentIndex();
+}
+
+void CwApplet::setPaddleSwap(bool on)
+{
+    m_swap->setChecked(on);
+}
+
+bool CwApplet::paddleSwap() const
+{
+    return m_swap->isChecked();
+}
+
+void CwApplet::setHangTimeMs(int ms)
+{
+    m_hang->setValue((std::clamp(ms, 10, 1000) + 5) / 10 * 10);
+}
+
+int CwApplet::hangTimeMs() const
+{
+    return m_hang->value();
+}
+
 } // namespace AetherSDR
