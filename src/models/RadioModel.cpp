@@ -6942,7 +6942,24 @@ void RadioModel::onBackendSpectrumFrame(int panId, const QByteArray& frame,
     // production at the source (IRadioBackend::setPanFrameRate), where a frame
     // that is not due costs nothing instead of being computed and discarded.
     // So this is a straight pass-through.
-    emit panFeedSpectrumReady(streamId, bins, nowNs);
+    // ANAN fork build 618 (operator, 22.11: under Center Lock a fast MIDI
+    // retune in small steps jerks the panadapter with a varying lag, while
+    // the waterfall moves perfectly). The waterfall row below carries the
+    // frame it was computed in (the backend's pan geometry) and the widget
+    // places it by that frame; the trace carried none and was drawn in the
+    // view's frame, which moves at once with every step -- each frame still
+    // computed at the old centre then sat one step off. The trace frame now
+    // carries the same frame as the row.
+    SpectrumDecodeScale frameScale;
+    {
+        const double bw = m_backendPanBandwidthMhz.value(panId, 0.0);
+        const double centre = m_backendPanCenterMhz.value(panId, 0.0);
+        if (bw > 0.0 && centre > 0.0) {
+            frameScale.frameCenterMhz = centre;
+            frameScale.frameBandwidthMhz = bw;
+        }
+    }
+    emit panFeedSpectrumReady(streamId, bins, nowNs, frameScale);
     if (generation != m_backendReceiverGeneration || session != m_sessionGeneration) { return; }
 
     // Same-observation coverage supplies the wider capture and RF bounds;

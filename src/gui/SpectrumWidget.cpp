@@ -8493,6 +8493,9 @@ void SpectrumWidget::setFrequencyRangeInternal(double centerMhz, double bandwidt
                                         m_bandwidthMhz,
                                         centerMhz,
                                         m_bandwidthMhz);
+    // ANAN fork build 618: the trace moves with the waterfall, at once, in
+    // the same frame (the target's); updateSpectrum() places the frames.
+    reprojectSpectrum(waterfallSourceCenterMhz, m_bandwidthMhz, centerMhz, m_bandwidthMhz);
 
     m_panCenterTarget = centerMhz;
 
@@ -9411,6 +9414,46 @@ void SpectrumWidget::ananTraceFrame(const QVector<float>& in)
 
 void SpectrumWidget::updateSpectrum(const QVector<float>& binsDbm, const SpectrumDecodeScale& decodeScale)
 {
+    // ANAN fork build 618: a frame computed in another frequency frame than
+    // the view's (a retune still in flight) is put where it belongs, as the
+    // waterfall rows are: its bins are moved by the frequency difference and
+    // only the bins it does not cover keep the trace they had. Then it goes
+    // through as a frame of the view.
+    if (decodeScale.hasFrame() && !binsDbm.isEmpty() && m_bandwidthMhz > 0.0) {
+        const bool animating = m_panCenterAnim
+            && m_panCenterAnim->state() != QAbstractAnimation::Stopped;
+        const double viewCenter = animating ? m_panCenterTarget : m_centerMhz;
+        const double viewBw = m_bandwidthMhz;
+        const int n = binsDbm.size();
+        const double binMhz = viewBw / n;
+        if (std::abs(decodeScale.frameCenterMhz - viewCenter) > 0.25 * binMhz
+            || std::abs(decodeScale.frameBandwidthMhz - viewBw) > 0.25 * binMhz) {
+            const double fLo = decodeScale.frameCenterMhz - decodeScale.frameBandwidthMhz / 2.0;
+            const double fBw = decodeScale.frameBandwidthMhz;
+            const double vLo = viewCenter - viewBw / 2.0;
+            const bool havePrev = m_bins.size() == n;
+            QVector<float> framed(n);
+            for (int dst = 0; dst < n; ++dst) {
+                const double freq = vLo + (dst + 0.5) / n * viewBw;
+                const double srcPos = (freq - fLo) / fBw * n - 0.5;
+                if (srcPos < -0.5 || srcPos > n - 0.5) {
+                    // Not in this frame: the trace already there (it was moved
+                    // with the view by reprojectSpectrum), else the nearest edge.
+                    framed[dst] = havePrev ? m_bins[dst]
+                                           : binsDbm[std::clamp(static_cast<int>(std::lround(srcPos)), 0, n - 1)];
+                    continue;
+                }
+                const int a = std::clamp(static_cast<int>(std::floor(srcPos)), 0, n - 1);
+                const int b = std::min(a + 1, n - 1);
+                const float t = static_cast<float>(std::clamp(srcPos - a, 0.0, 1.0));
+                framed[dst] = binsDbm[a] * (1.0f - t) + binsDbm[b] * t;
+            }
+            SpectrumDecodeScale inView = decodeScale;
+            inView.frameCenterMhz = inView.frameBandwidthMhz = 0.0;
+            updateSpectrum(framed, inView);
+            return;
+        }
+    }
     // ANAN-100D port: under the TX zoom the trace is the transmitted IQ only
     // (setTxScopeFrame); a receiver frame spans another axis.
     if (m_txZoomActive && !m_txZoomFeeding) {
