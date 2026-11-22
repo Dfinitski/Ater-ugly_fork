@@ -40,8 +40,16 @@ public:
     }
 
     static constexpr std::size_t kRate = 48000;
-    static constexpr std::size_t kTargetFrames = 4800;   // 100 ms prime
-    static constexpr std::size_t kHighFrames = 12000;    // 250 ms: trim back to the target
+    // ANAN fork build 600 (operator, 21.11: "on the device speaker the delay
+    // is large too and too noticeable"). The 100 ms prime / 250 ms trim were
+    // sized for the former GUI-thread delivery; AudioEngine now pushes from
+    // its 10 ms precise drain timer, and the mixer's longest gap measured is
+    // 11 ms (log 21.11 22:12, "longest gap 11 ms"). 40 ms is four pushes of
+    // cushion; a backlog past 100 ms (a stall that came back in a burst) is
+    // trimmed back to it. The radio's own 2048-frame FIFO (~42 ms) comes after
+    // this one and is the firmware's. depth/underruns go to the ANAN diag.
+    static constexpr std::size_t kTargetFrames = 1920;   // 40 ms prime
+    static constexpr std::size_t kHighFrames = 4800;     // 100 ms: trim back to the target
     static constexpr std::size_t kMaxFrames = 24000;     // 500 ms cap
 
     // Hl2Backend: the codec mixer is running (else AudioEngine skips the copy).
@@ -109,7 +117,10 @@ public:
             const std::size_t drop = have - kTargetFrames;
             m_fifo.erase(m_fifo.begin(), m_fifo.begin() + static_cast<std::ptrdiff_t>(2 * drop));
             have -= drop;
+            m_trims.fetch_add(1, std::memory_order_relaxed);
         }
+        m_depthMin = std::min(m_depthMin, have);
+        m_depthMax = std::max(m_depthMax, have);
         std::size_t f = 0;
         for (; f < frames; ++f) {
             if (m_fifo.size() < 2)
@@ -152,6 +163,21 @@ public:
     }
     unsigned underruns() const { return m_underruns.load(std::memory_order_relaxed); }
 
+    // Diagnostics (build 600): depth range seen by take() since the last
+    // call, in frames; false when take() did not run since then.
+    bool takeDepthRange(std::size_t& minFrames, std::size_t& maxFrames)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_depthMin > m_depthMax)
+            return false;
+        minFrames = m_depthMin;
+        maxFrames = m_depthMax;
+        m_depthMin = static_cast<std::size_t>(-1);
+        m_depthMax = 0;
+        return true;
+    }
+    unsigned trims() const { return m_trims.load(std::memory_order_relaxed); }
+
 private:
     static long long nowMs()
     {
@@ -171,6 +197,9 @@ private:
     std::atomic<bool> m_wanted{false};
     std::atomic<long long> m_lastPush{0};
     std::atomic<unsigned> m_underruns{0};
+    std::atomic<unsigned> m_trims{0};
+    std::size_t m_depthMin = static_cast<std::size_t>(-1);
+    std::size_t m_depthMax = 0;
 };
 
 } // namespace AetherSDR::anan

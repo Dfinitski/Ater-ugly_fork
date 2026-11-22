@@ -4251,7 +4251,11 @@ bool AudioEngine::openRxSinkDevice(int producerRate)
         // app-side m_rxBufferCapMs cap and produces 300-500 ms+ speaker latency.
         // A 50 ms device buffer is comfortably fed by the 10 ms RX drain timer and
         // mirrors the explicit buffers already used for the sidetone/Quindar sinks.
-        constexpr int kWinRxDeviceBufferMs = 50;
+        // ANAN fork build 600 (operator, 21.11: "let us reduce the card's
+        // buffer to the size of the delay"): 50 -> 30 ms. The drain timer is a
+        // 10 ms PreciseTimer, so 30 ms keeps two drain periods queued in the
+        // device beyond the one being played.
+        constexpr int kWinRxDeviceBufferMs = 30;
         const qint64 winRxBufBytes = candidate.bytesForDuration(kWinRxDeviceBufferMs * 1000LL);
         if (winRxBufBytes > 0)
             sink->setBufferSize(static_cast<qsizetype>(winRxBufBytes));
@@ -7850,9 +7854,12 @@ void AudioEngine::dropQueuedRxSilence()
         outMs = static_cast<int>(m_rxOutputBuffer.size() / frameBytes * 1000 / outRate);
         m_rxOutputBuffer.clear();
     }
-    qCInfo(lcAudio).nospace() << "AudioEngine: after the transmit hold, queued silence dropped: "
-                              << inMs << " ms in, " << outMs << " ms out; the sound device holds "
-                              << m_rxPlaybackQueuedMs.load(std::memory_order_relaxed) << " ms";
+    // Build 600: qInfo -- lcAudio is filtered at warning level, the 599 line
+    // never reached the log.
+    qInfo().nospace() << "AudioEngine: after the transmit hold, queued silence dropped: "
+                      << inMs << " ms in, " << outMs << " ms out; the sound device holds "
+                      << m_rxPlaybackQueuedMs.load(std::memory_order_relaxed) << " ms (buffer "
+                      << (m_audioSink ? m_audioSink->bufferSize() : 0) << " bytes)";
     updateRxBufferStats();
 }
 

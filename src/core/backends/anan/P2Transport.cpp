@@ -2,6 +2,7 @@
 #include "core/backends/anan/AnanNativeUdp.h"
 #include "core/backends/anan/P1Protocol.h"
 #include "core/backends/anan/AnanRoute.h"
+#include "core/backends/anan/AnanCodecFeed.h"
 #include "core/AppSettings.h"
 
 #include <QStringList>
@@ -1620,6 +1621,18 @@ void P2Transport::diagTick()
                return m_spkQueue.size();
            }()
         << ", read loop yields " << std::exchange(m_diagReadYields, 0)
+        // Build 600: the AetherRX feed in front of the radio speaker.
+        << [] {
+               auto& feed = AnanCodecFeed::instance();
+               std::size_t lo = 0, hi = 0;
+               if (!feed.wanted() || !feed.takeDepthRange(lo, hi))
+                   return QString();
+               return QStringLiteral("; AetherRX feed %1..%2 ms, underruns %3, trims %4")
+                   .arg(lo * 1000 / AnanCodecFeed::kRate)
+                   .arg(hi * 1000 / AnanCodecFeed::kRate)
+                   .arg(feed.underruns())
+                   .arg(feed.trims());
+           }()
         << (m_wb.enableMask || m_diagWbPkts[0] || m_diagWbPkts[1] || m_diagWbOther
                 ? QStringLiteral("; wideband mask %1: port 1027 (ADC1) %2 pkts / %3 frames, "
                                  "port 1028 (ADC2) %4 pkts / %5 frames, other ports %6 (last %7)")
