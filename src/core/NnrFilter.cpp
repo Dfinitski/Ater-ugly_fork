@@ -34,8 +34,9 @@ constexpr int kProcessingRate = 48000;
 
 }  // namespace
 
-NnrFilter::NnrFilter(int sampleRate)
+NnrFilter::NnrFilter(int sampleRate, int channels)
     : m_sampleRate(sampleRate)
+    , m_channels(channels == 1 ? 1 : 2)
 {
     if (sampleRate != 24000 && sampleRate != 48000) {
         qWarning() << "NnrFilter: unsupported sample rate" << sampleRate;
@@ -43,7 +44,7 @@ NnrFilter::NnrFilter(int sampleRate)
     }
 
     m_blockFrames = kBlockFrames;
-    for (int channel = 0; channel < 2; ++channel) {
+    for (int channel = 0; channel < m_channels; ++channel) {
         if (sampleRate == 24000) {
             m_up[channel] = std::make_unique<Resampler>(24000, kProcessingRate);
             m_down[channel] = std::make_unique<Resampler>(kProcessingRate, 24000);
@@ -65,7 +66,7 @@ NnrFilter::NnrFilter(int sampleRate)
     bool created = true;
     {
         auto lock = fftwPlannerLock();
-        for (int channel = 0; channel < 2 && created; ++channel) {
+        for (int channel = 0; channel < m_channels && created; ++channel) {
             m_nnr[channel] = create_nnr(1, 0, m_blockFrames, m_blockIn[channel].data(),
                                         m_blockOut[channel].data(), kProcessingRate,
                                         kNetworkRate, kFftSize, kOverlap, kLookahead,
@@ -103,7 +104,7 @@ NnrFilter::~NnrFilter()
 
 void NnrFilter::reset()
 {
-    for (int channel = 0; channel < 2; ++channel) {
+    for (int channel = 0; channel < m_channels; ++channel) {
         if (m_nnr[channel]) {
             flush_nnr(static_cast<NNR>(m_nnr[channel]));
         }
@@ -188,6 +189,8 @@ void NnrFilter::applyPendingParameters()
     const int requested = m_requestedModel.load();
     const bool switchModel = requested != m_appliedModel.load();
     for (void* instance : m_nnr) {
+        if (!instance)
+            continue;   // build 591: the mono filter's unused channel
         auto nnr = static_cast<NNR>(instance);
         setMaskFloor_nnr(nnr, Nnr::maskFloorForStrength(m_strength.load()));
         setAlpha_nnr(nnr, m_alpha.load());
@@ -220,7 +223,7 @@ QByteArray NnrFilter::process(const QByteArray& pcmStereo)
     // instances advance in lockstep.
     int completeBlocks = std::numeric_limits<int>::max();
     std::array<int, 2> totalAccumSamples{0, 0};
-    for (int channel = 0; channel < 2; ++channel) {
+    for (int channel = 0; channel < m_channels; ++channel) {
         // 1. Split out this channel, then resample up for the 24 kHz path only.
         auto& channelInput = m_channelInput[channel];
         channelInput.resize(stereoFrames);
@@ -248,7 +251,7 @@ QByteArray NnrFilter::process(const QByteArray& pcmStereo)
 
     const int consumedSamples = completeBlocks * m_blockFrames;
     int outputFrames = std::numeric_limits<int>::max();
-    for (int channel = 0; channel < 2; ++channel) {
+    for (int channel = 0; channel < m_channels; ++channel) {
         const auto* accumData = reinterpret_cast<const float*>(m_inAccum[channel].constData());
         auto& processed = m_processed48k[channel];
         processed.resize(static_cast<std::size_t>(consumedSamples));
@@ -283,6 +286,9 @@ QByteArray NnrFilter::process(const QByteArray& pcmStereo)
     // Identical resamplers fed identical counts stay in lockstep, so the min
     // above never drops a sample. A mismatch would be a silent, cumulative L/R
     // skew: log it once in release, abort in debug.
+    // Build 591: a mono filter gives its one channel to both.
+    if (m_channels == 1)
+        m_channelOutput[1] = m_channelOutput[0];
     if (m_channelOutput[0].size() != m_channelOutput[1].size() && !m_lockstepWarned) {
         m_lockstepWarned = true;
         qWarning() << "NnrFilter: L/R output lengths diverged"

@@ -2,12 +2,29 @@
 
 #include "core/LogManager.h"
 #include "core/fdv/FdvEngine.h"
+#include "core/NnrFilter.h"
+#ifdef HAVE_DFNR
+#include "core/DeepFilterFilter.h"
+#else
+namespace AetherSDR {
+// Build 591: a build without DeepFilterNet -- the stage never makes one.
+class DeepFilterFilter {
+public:
+    QByteArray process(const QByteArray& pcm) { return pcm; }
+    void setAttenLimit(float) {}
+    void setPostFilterBeta(float) {}
+};
+}
+#endif
 
+#include <QByteArray>
 #include <QVector>
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
+#include <thread>
 
 namespace AetherSDR::hl2 {
 
@@ -21,6 +38,201 @@ void Hl2AudioMixer::setParams(const Params& params)
 {
     std::lock_guard<std::mutex> lock(m_paramsMutex);
     m_params = params;
+}
+
+// ── Build 591: per-receiver NNR / DFNR ─────────────────────────────────────
+
+// A filter built on a thread of its own and collected by the mixer thread on
+// a later block. Shared by the two, so neither outlives the other's data.
+struct Hl2AudioMixer::NrBuild {
+    std::mutex mutex;
+    bool done = false;
+    std::unique_ptr<NnrFilter> nnr;
+    std::unique_ptr<DeepFilterFilter> dfnr;
+};
+
+Hl2AudioMixer::~Hl2AudioMixer() = default;
+
+void Hl2AudioMixer::setRxNr(int ddc, const RxNrConfig& config)
+{
+    if (ddc < 0 || ddc >= kMaxReceivers)
+        return;
+    std::lock_guard<std::mutex> lock(m_nrMutex);
+    m_nrCfg[static_cast<std::size_t>(ddc)] = config;
+}
+
+void Hl2AudioMixer::runRxNr(int slot, int ddc, std::vector<float>& pcm)
+{
+    if (slot < 0 || slot >= kSlots || ddc < 0 || ddc >= kMaxReceivers || pcm.size() < 2)
+        return;
+    RxNrConfig cfg;
+    {
+        std::lock_guard<std::mutex> lock(m_nrMutex);
+        cfg = m_nrCfg[static_cast<std::size_t>(ddc)];
+    }
+#ifndef HAVE_DFNR
+    if (cfg.method == RxNrConfig::Dfnr)
+        cfg.method = RxNrConfig::None;
+#endif
+    NrStage& st = m_nr[static_cast<std::size_t>(slot)];
+
+    // A finished build: take it if it is still what is wanted.
+    if (st.build) {
+        std::unique_ptr<NnrFilter> nnr;
+        std::unique_ptr<DeepFilterFilter> dfnr;
+        bool done = false;
+        {
+            std::lock_guard<std::mutex> lock(st.build->mutex);
+            done = st.build->done;
+            if (done) {
+                nnr = std::move(st.build->nnr);
+                dfnr = std::move(st.build->dfnr);
+            }
+        }
+        if (done) {
+            if (st.buildMethod == cfg.method && st.buildStereo == cfg.stereo) {
+                st.nnr = std::move(nnr);
+                st.dfnr = std::move(dfnr);
+                st.method = (st.nnr || st.dfnr) ? st.buildMethod : RxNrConfig::None;
+                st.stereo = st.buildStereo;
+                st.applied = RxNrConfig{};
+                st.applied.method = -1;   // the parameters go to it below
+                st.fifo.clear();
+                st.primed = false;
+                if (!st.nnr && !st.dfnr) {
+                    st.failedMethod = st.buildMethod;
+                    st.failedStereo = st.buildStereo;
+                }
+                if (!st.nnr && !st.dfnr)
+                    qCWarning(lcHl2) << "ANAN: the receiver's"
+                                     << (st.buildMethod == RxNrConfig::Nnr ? "NNR" : "DFNR")
+                                     << "could not be made (slot" << slot << ")";
+                else
+                    qCInfo(lcHl2) << "ANAN: receiver audio slot" << slot << "runs"
+                                  << (st.method == RxNrConfig::Nnr ? "NNR" : "DFNR")
+                                  << (st.stereo ? "(stereo)" : "(mono)");
+            }
+            st.build.reset();   // a stale one is dropped (and freed) here
+        }
+    }
+
+    // A change: the old filter goes now, a new one is built off this thread.
+    if (cfg.method != st.method || (cfg.method != RxNrConfig::None && cfg.stereo != st.stereo)) {
+        if (st.nnr || st.dfnr) {
+            st.nnr.reset();
+            st.dfnr.reset();
+            st.method = RxNrConfig::None;
+            st.fifo.clear();
+            st.primed = false;
+        }
+        const bool building = st.build && st.buildMethod == cfg.method
+                              && st.buildStereo == cfg.stereo;
+        const bool failed = st.failedMethod == cfg.method && st.failedStereo == cfg.stereo;
+        if (!failed)
+            st.failedMethod = -1;
+        if (cfg.method != RxNrConfig::None && !building && !failed) {
+            auto build = std::make_shared<NrBuild>();
+            st.build = build;
+            st.buildMethod = cfg.method;
+            st.buildStereo = cfg.stereo;
+            const int method = cfg.method;
+            const int channels = cfg.stereo ? 2 : 1;
+            std::thread([build, method, channels] {
+                std::unique_ptr<NnrFilter> nnr;
+                std::unique_ptr<DeepFilterFilter> dfnr;
+                if (method == RxNrConfig::Nnr) {
+                    nnr = std::make_unique<NnrFilter>(24000, channels);
+                    if (!nnr->isValid())
+                        nnr.reset();
+                }
+#ifdef HAVE_DFNR
+                if (method == RxNrConfig::Dfnr) {
+                    dfnr = std::make_unique<DeepFilterFilter>(24000, channels);
+                    if (!dfnr->isValid())
+                        dfnr.reset();
+                }
+#endif
+                std::lock_guard<std::mutex> lock(build->mutex);
+                build->nnr = std::move(nnr);
+                build->dfnr = std::move(dfnr);
+                build->done = true;
+            }).detach();
+        } else if (cfg.method == RxNrConfig::None) {
+            st.build.reset();
+            st.buildMethod = RxNrConfig::None;
+        }
+    }
+    if (!st.nnr && !st.dfnr)
+        return;   // plays unfiltered (nothing wanted, or still being built)
+
+    // The operator's settings (atomics in the filters, applied on their next block).
+    if (!(cfg == st.applied)) {
+        if (st.nnr) {
+            st.nnr->setStrength(cfg.nnrStrength);
+            st.nnr->setModel(cfg.nnrModel);
+            st.nnr->setAlpha(cfg.nnrAlpha);
+            st.nnr->setAlphaKnee(cfg.nnrKnee);
+            st.nnr->setTau(cfg.nnrTau);
+            st.nnr->setMaxGain(cfg.nnrMaxGain);
+            st.nnr->setSmoothing(cfg.nnrAttackMs, cfg.nnrReleaseMs);
+        }
+        if (st.dfnr) {
+            st.dfnr->setAttenLimit(cfg.dfnrAttenDb);
+            st.dfnr->setPostFilterBeta(cfg.dfnrBeta);
+        }
+        st.applied = cfg;
+    }
+
+    const std::size_t n = pcm.size() & ~std::size_t{1};
+    double eIn = 0.0;
+    for (std::size_t k = 0; k < n; ++k)
+        eIn += double(pcm[k]) * double(pcm[k]);
+    const QByteArray in(reinterpret_cast<const char*>(pcm.data()),
+                        static_cast<qsizetype>(n * sizeof(float)));
+    if (st.dfnr) {
+        // DeepFilterFilter returns as much as it was given (silence while it fills).
+        const QByteArray out = st.dfnr->process(in);
+        if (out.size() == in.size())
+            std::memcpy(pcm.data(), out.constData(), static_cast<std::size_t>(out.size()));
+    } else {
+        // NnrFilter returns whole NNR blocks: queued here and played block
+        // for block, with one NNR block (128 frames at 24 kHz) and a margin
+        // in hand so the queue never runs dry between them.
+        constexpr std::size_t kMarginSamples = 2 * 256;   // stereo floats
+        const QByteArray out = st.nnr->process(in);
+        const auto* f = reinterpret_cast<const float*>(out.constData());
+        st.fifo.insert(st.fifo.end(), f, f + out.size() / static_cast<qsizetype>(sizeof(float)));
+        if (!st.primed && st.fifo.size() >= n + kMarginSamples)
+            st.primed = true;
+        if (st.primed && st.fifo.size() >= n) {
+            std::copy(st.fifo.begin(), st.fifo.begin() + static_cast<std::ptrdiff_t>(n), pcm.begin());
+            st.fifo.erase(st.fifo.begin(), st.fifo.begin() + static_cast<std::ptrdiff_t>(n));
+        } else {
+            std::fill(pcm.begin(), pcm.begin() + static_cast<std::ptrdiff_t>(n), 0.0f);
+            st.primed = false;   // filled again before it plays on
+        }
+        constexpr std::size_t kFifoCap = 24000;   // 0.5 s: a stalled reader
+        if (st.fifo.size() > kFifoCap)
+            st.fifo.erase(st.fifo.begin(), st.fifo.begin()
+                          + static_cast<std::ptrdiff_t>((st.fifo.size() - kFifoCap) & ~std::size_t{1}));
+    }
+
+    // The NR GAIN reading of a main receiver: energy out over energy in,
+    // over about 50 ms.
+    if (slot < kMaxReceivers) {
+        double eOut = 0.0;
+        for (std::size_t k = 0; k < n; ++k)
+            eOut += double(pcm[k]) * double(pcm[k]);
+        st.sumIn += eIn;
+        st.sumOut += eOut;
+        st.gainSamples += n / 2;
+        if (st.gainSamples >= 1200) {
+            if (st.sumIn > 1.0e-12)
+                emit rxNrGain(ddc, static_cast<float>(std::min(1.0, std::sqrt(st.sumOut / st.sumIn))));
+            st.sumIn = st.sumOut = 0.0;
+            st.gainSamples = 0;
+        }
+    }
 }
 
 void Hl2AudioMixer::startStream()
@@ -133,7 +345,12 @@ void Hl2AudioMixer::receiverAudio(const void* dsp, const std::vector<float>& pcm
         mixIn(receiver, m_speech, p);
         return;
     }
-    mixIn(receiver, pcm, p);
+    // Build 591: the receiver's own NNR / DFNR, before the mix -- also while
+    // the audio is held (the block is then dropped by mixIn), so what the
+    // filter holds from before an over is not played after it.
+    m_nrBuf = pcm;
+    runRxNr(receiver, receiver, m_nrBuf);
+    mixIn(receiver, m_nrBuf, p);
 }
 
 void Hl2AudioMixer::applyFlush()
@@ -160,12 +377,26 @@ void Hl2AudioMixer::subAudio(const void* ownerDsp, const std::vector<float>& pcm
     }
     if (slot < 0)
         return;   // not in the mix: switched off, or its receiver is muted
+    // Build 591: the sub receiver takes its receiver's NNR / DFNR (own filter).
+    std::vector<float> filtered;
+    {
+        int ownerDdc = -1;
+        for (int i = 0; i < kMaxReceivers; ++i) {
+            if (p.dsp[static_cast<std::size_t>(i)] == ownerDsp)
+                ownerDdc = i;
+        }
+        if (ownerDdc >= 0) {
+            filtered = pcm;
+            runRxNr(slot, ownerDdc, filtered);
+        }
+    }
+    const std::vector<float>& subPcm = filtered.empty() ? pcm : filtered;
     applyFlush();
     // The hold is a gap for the sub receiver as for its receiver (mixIn).
     if (m_muted.load(std::memory_order_acquire))
         return;
     auto& q = m_pending[static_cast<std::size_t>(slot)];
-    q.insert(q.end(), pcm.begin(), pcm.end() - static_cast<std::ptrdiff_t>(pcm.size() & 1));
+    q.insert(q.end(), subPcm.begin(), subPcm.end() - static_cast<std::ptrdiff_t>(subPcm.size() & 1));
     // Only queued: mixIn() takes it when the receiver's own block arrives.
     // It cannot get further ahead than that receiver's queue does; the cap
     // is for a receiver whose blocks have stopped.

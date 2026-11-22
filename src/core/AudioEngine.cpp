@@ -5876,7 +5876,7 @@ void AudioEngine::processMixedRxAudioData(const QByteArray& pcm,
                                       const QByteArray& data) {
         // Build 590: with the radio's NR2 on, its reading (setExternalNr2Gain)
         // is published here, on the audio path, instead of "idle".
-        if (publishNrGain && m_nr2Proxy.load(std::memory_order_relaxed)) {
+        if (publishNrGain && rxOwnNrEnabled()) {   // build 591: any of the three
             publishNrGainIfChanged(m_nrGain.load(std::memory_order_relaxed),
                                    m_nrGainActive.load(std::memory_order_relaxed));
         } else if (publishNrGain) {
@@ -7732,13 +7732,11 @@ void AudioEngine::setNr2Enabled(bool on)
         m_nr2Proxy = on;
         // Build 590: no reading until the radio sends one.
         m_nrGainActive.store(false, std::memory_order_relaxed);
-        if (on) {   // mutually exclusive, as the client NR2 is
-            if (m_rn2Enabled)  setRn2Enabled(false);
-            if (m_nr4Enabled)  setNr4Enabled(false);
-            if (m_dfnrEnabled) setDfnrEnabled(false);
-            if (m_nvAfxEnabled) setNvAfxEnabled(false);
-            if (m_nnrEnabled)  setNnrEnabled(false);
-            if (m_mnrEnabled)  setMnrEnabled(false);
+        if (on) {
+            // Build 591: one method per receiver -- the receiver's own
+            // methods exclude each other; the post-processing ones stay.
+            if (m_nnrProxy)  setNnrEnabled(false);
+            if (m_dfnrProxy) setDfnrEnabled(false);
         }
         qCDebug(lcAudio) << "AudioEngine: NR2 (in the radio)" << (on ? "on" : "off");
         emit nr2EnabledChanged(on);
@@ -7827,7 +7825,10 @@ void AudioEngine::setNr2Enabled(bool on)
 void AudioEngine::setExternalNr2Gain(float gain)
 {
     // Atomics only: the audio path publishes them (writeAudioNrIdle).
-    if (!m_nr2Proxy.load() || !std::isfinite(gain))
+    // Build 591: NR2, NNR or DFNR of the receiver; while a post-processing
+    // method runs, the strip shows that one (writeNrAudioAndLevel).
+    if (!rxOwnNrEnabled() || !std::isfinite(gain)
+        || m_rn2Enabled || m_nr4Enabled || m_nvAfxEnabled || m_mnrEnabled)
         return;
     m_nrGain.store(std::clamp(gain, 0.0f, 1.0f), std::memory_order_relaxed);
     m_nrGainActive.store(true, std::memory_order_relaxed);
@@ -8031,7 +8032,7 @@ void AudioEngine::setNr4Enabled(bool on)
     std::unique_lock<std::recursive_mutex> lock(m_dspMutex);
     ++m_dspConfigurationGeneration;
     if (on) {
-        if (nr2Enabled())  setNr2Enabled(false);   // build 588: the radio's NR2 too
+        if (m_nr2Enabled)  setNr2Enabled(false);   // build 591: the client's only (never, on ANAN)
         if (m_rn2Enabled)  setRn2Enabled(false);
         if (m_dfnrEnabled) setDfnrEnabled(false);
         if (m_nvAfxEnabled) setNvAfxEnabled(false);
@@ -8192,7 +8193,7 @@ void AudioEngine::setMnrEnabled(bool on)
 #ifdef __APPLE__
     if (on) {
         // Disable all other noise-reduction modes — they're mutually exclusive
-        if (nr2Enabled())  setNr2Enabled(false);   // build 588: the radio's NR2 too
+        if (m_nr2Enabled)  setNr2Enabled(false);   // build 591: the client's only (never, on ANAN)
         if (m_rn2Enabled)  setRn2Enabled(false);
         if (m_nr4Enabled)  setNr4Enabled(false);
         if (m_dfnrEnabled) setDfnrEnabled(false);
@@ -8263,7 +8264,7 @@ void AudioEngine::setRn2Enabled(bool on)
     ++m_dspConfigurationGeneration;
     if (on) {
         // Disable all other NR modes — they're mutually exclusive
-        if (nr2Enabled())  setNr2Enabled(false);   // build 588: the radio's NR2 too
+        if (m_nr2Enabled)  setNr2Enabled(false);   // build 591: the client's only (never, on ANAN)
         if (m_nr4Enabled)  setNr4Enabled(false);
         if (m_dfnrEnabled) setDfnrEnabled(false);
         if (m_nvAfxEnabled) setNvAfxEnabled(false);
@@ -8306,12 +8307,27 @@ void AudioEngine::setNnrEnabled(bool on)
         emit nnrEnabledChanged(false);
         return;
     }
+    // Build 591: NNR is the selected receiver's own (Hl2AudioMixer) -- only
+    // its state is kept here, the client filter is not made.
+    if (m_nr2External.load() && !m_nnrEnabled) {
+        if (m_nnrProxy == on)
+            return;
+        m_nnrProxy = on;
+        m_nrGainActive.store(false, std::memory_order_relaxed);
+        if (on) {
+            if (m_nr2Proxy)  setNr2Enabled(false);
+            if (m_dfnrProxy) setDfnrEnabled(false);
+        }
+        qCDebug(lcAudio) << "AudioEngine: NNR (the receiver's)" << (on ? "on" : "off");
+        emit nnrEnabledChanged(on);
+        return;
+    }
     if (m_nnrEnabled == on) return;
     std::unique_lock<std::recursive_mutex> lock(m_dspMutex);
     ++m_dspConfigurationGeneration;
     if (on) {
         // Disable all other NR modes — they're mutually exclusive
-        if (nr2Enabled())  setNr2Enabled(false);   // build 588: the radio's NR2 too
+        if (m_nr2Enabled)  setNr2Enabled(false);   // build 591: the client's only (never, on ANAN)
         if (m_rn2Enabled)  setRn2Enabled(false);
         if (m_nr4Enabled)  setNr4Enabled(false);
         if (m_dfnrEnabled) setDfnrEnabled(false);
@@ -8487,12 +8503,27 @@ void AudioEngine::setDfnrEnabled(bool on)
         emit dfnrEnabledChanged(false);
         return;
     }
+    // Build 591: DFNR is the selected receiver's own (Hl2AudioMixer) -- only
+    // its state is kept here, the client filter is not made.
+    if (m_nr2External.load() && !m_dfnrEnabled) {
+        if (m_dfnrProxy == on)
+            return;
+        m_dfnrProxy = on;
+        m_nrGainActive.store(false, std::memory_order_relaxed);
+        if (on) {
+            if (m_nr2Proxy) setNr2Enabled(false);
+            if (m_nnrProxy) setNnrEnabled(false);
+        }
+        qCDebug(lcAudio) << "AudioEngine: DFNR (the receiver's)" << (on ? "on" : "off");
+        emit dfnrEnabledChanged(on);
+        return;
+    }
     if (m_dfnrEnabled == on) return;
     std::unique_lock<std::recursive_mutex> lock(m_dspMutex);
     ++m_dspConfigurationGeneration;
     if (on) {
         // Mutual exclusion with all other NR modes
-        if (nr2Enabled())  setNr2Enabled(false);   // build 588: the radio's NR2 too
+        if (m_nr2Enabled)  setNr2Enabled(false);   // build 591: the client's only (never, on ANAN)
         if (m_rn2Enabled)  setRn2Enabled(false);
         if (m_nr4Enabled)  setNr4Enabled(false);
         if (m_mnrEnabled)  setMnrEnabled(false);
@@ -8584,7 +8615,7 @@ void AudioEngine::setNvAfxEnabled(bool on)
     ++m_dspConfigurationGeneration;
     if (on) {
         // Mutual exclusion with all other NR modes
-        if (nr2Enabled())  setNr2Enabled(false);   // build 588: the radio's NR2 too
+        if (m_nr2Enabled)  setNr2Enabled(false);   // build 591: the client's only (never, on ANAN)
         if (m_rn2Enabled)  setRn2Enabled(false);
         if (m_nr4Enabled)  setNr4Enabled(false);
         if (m_dfnrEnabled) setDfnrEnabled(false);

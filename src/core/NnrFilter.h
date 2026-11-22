@@ -26,7 +26,9 @@ class Resampler;
 class NnrFilter {
 public:
     // Unsupported rates leave isValid() false. Recreate for a new rate/source.
-    explicit NnrFilter(int sampleRate = 24000);
+    // ANAN fork build 591: channels = 1 runs one instance on the left channel
+    // and gives it to both (a receiver's own mono audio: half the CPU).
+    explicit NnrFilter(int sampleRate = 24000, int channels = 2);
     ~NnrFilter();
 
     NnrFilter(const NnrFilter&) = delete;
@@ -38,7 +40,8 @@ public:
     // block is still filling.
     QByteArray process(const QByteArray& pcmStereo);
 
-    bool isValid() const { return m_nnr[0] != nullptr && m_nnr[1] != nullptr; }
+    bool isValid() const { return m_nnr[0] != nullptr && (m_channels == 1 || m_nnr[1] != nullptr); }
+    int channels() const { return m_channels; }
     int sampleRate() const { return m_sampleRate; }
 
     // Clears the FIFO, overlap-add state and the network's recurrent state.
@@ -75,6 +78,7 @@ private:
     int totalLatencyFrames() const;
 
     const int m_sampleRate;
+    const int m_channels;   // build 591: 1 or 2
     // Everything below is per channel, indexed 0 = left, 1 = right.
     std::array<void*, 2> m_nnr{};           // NNR, opaque to keep WDSP out of this header
 

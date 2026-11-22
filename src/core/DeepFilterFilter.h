@@ -23,7 +23,9 @@ class Resampler;
 class DeepFilterFilter {
 public:
     // Unsupported rates leave isValid() false. Recreate for a new rate/source.
-    explicit DeepFilterFilter(int sampleRate = 24000);
+    // ANAN fork build 591: channels = 1 runs one model state on the left
+    // channel and gives it to both (a receiver's own mono audio).
+    explicit DeepFilterFilter(int sampleRate = 24000, int channels = 2);
     ~DeepFilterFilter();
 
     DeepFilterFilter(const DeepFilterFilter&) = delete;
@@ -34,7 +36,8 @@ public:
     QByteArray process(const QByteArray& pcmStereo);
 
     // Returns true if df_create() succeeded for both channels.
-    bool isValid() const { return m_states[0] != nullptr && m_states[1] != nullptr; }
+    bool isValid() const { return m_states[0] != nullptr && (m_channels == 1 || m_states[1] != nullptr); }
+    int channels() const { return m_channels; }
 
     int sampleRate() const { return m_sampleRate; }
 
@@ -54,6 +57,7 @@ private:
     void freeStates();
 
     const int m_sampleRate;
+    int m_channels = 2;   // build 591: 1 or 2
     std::array<DFState*, 2> m_states{};
     int m_frameSize{0};                     // samples per frame (from df_get_frame_length)
     // Per channel, indexed 0 = left, 1 = right.

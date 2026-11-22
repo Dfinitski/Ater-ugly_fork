@@ -9,9 +9,11 @@
 //   - which blanker the NB button means, NB or NB2 -- also while it is off
 //     (whether it is on travels with the receiver's session snapshot);
 //   - whether the noise reduction is on and which method.
-// The noise reduction engine itself is one for the whole program (it works on
-// the mixed audio), so it is set to the SELECTED receiver's choice
-// (MainWindow::ananRxNrApply).
+// Build 591: the methods kept here -- NR2, NNR, DFNR -- run in each receiver's
+// own audio (NR2 in its WDSP chain, NNR / DFNR in Hl2AudioMixer), every
+// receiver with its own; the engine's switches stand for the SELECTED
+// receiver's (MainWindow::ananRxNrApply). NR4, RN2, BNR and MNR are the
+// post-processing of the mixed audio and are not kept per receiver.
 
 #include "core/AppSettings.h"
 #include "core/backends/NoiseBlankerKind.h"
@@ -50,11 +52,21 @@ inline QString nrOnRaw(int owner)
 
 inline bool nrOn(int owner) { return nrOnRaw(owner) == QLatin1String("True"); }
 
+// Build 591: a receiver's own method; anything else (an older choice) is NR2.
+inline bool isRxOwnMethod(const QString& m)
+{
+#ifdef HAVE_DFNR
+    if (m == QLatin1String("DFNR"))
+        return true;
+#endif
+    return m == QLatin1String("NR2") || m == QLatin1String("NNR");
+}
+
 inline QString nrMethod(int owner)
 {
     const QString m = AppSettings::instance()
         .value(key("NrMethod", owner), QStringLiteral("NR2")).toString();
-    return m.isEmpty() ? QStringLiteral("NR2") : m;
+    return isRxOwnMethod(m) ? m : QStringLiteral("NR2");
 }
 
 inline void setNr(int owner, bool on, const QString& method)

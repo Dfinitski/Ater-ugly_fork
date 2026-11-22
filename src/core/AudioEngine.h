@@ -407,7 +407,8 @@ public:
 
     // Client-side DFNR (DeepFilterNet3 neural noise reduction)
     Q_INVOKABLE void setDfnrEnabled(bool on);
-    bool dfnrEnabled() const { return m_dfnrEnabled.load(); }
+    // Build 591: also the selected receiver's own DFNR (Hl2AudioMixer).
+    bool dfnrEnabled() const { return m_dfnrEnabled.load() || m_dfnrProxy.load(); }
     void setDfnrAttenLimit(float db);
     float dfnrAttenLimit() const;
     void setDfnrPostFilterBeta(float beta);
@@ -416,7 +417,12 @@ public:
     // Unconditional, unlike DFNR/MNR/BNR: the models are compiled into the
     // vendored WDSP, so there is no library to find and no GPU to require.
     Q_INVOKABLE void setNnrEnabled(bool on);
-    bool nnrEnabled() const { return m_nnrEnabled.load(); }
+    // Build 591: also the selected receiver's own NNR (Hl2AudioMixer).
+    bool nnrEnabled() const { return m_nnrEnabled.load() || m_nnrProxy.load(); }
+    // Build 591: NR2, NNR and DFNR are the receivers' (each its own); NR4,
+    // RN2, BNR and MNR process the program's mixed audio after them.
+    bool rxOwnNrEnabled() const
+    { return m_nr2Proxy.load() || m_nnrProxy.load() || m_dfnrProxy.load(); }
     // 0..100, mapped to WDSP's mask floor (-10..-50 dB). Higher is more
     // suppression; see src/core/NnrControls.h.
     void setNnrStrength(int strength);
@@ -1359,6 +1365,11 @@ private:
     // radio's from the start, the client SpectralNR is never made.
     std::atomic<bool> m_nr2External{true};
     std::atomic<bool> m_nr2Proxy{false};      // build 588: "NR2 on", run by the radio
+    // Build 591: "NNR on" / "DFNR on" for the selected receiver, run in its
+    // own audio (Hl2AudioMixer). Exclusive with each other and NR2's proxy,
+    // not with the post-processing methods (NR4, RN2, BNR, MNR).
+    std::atomic<bool> m_nnrProxy{false};
+    std::atomic<bool> m_dfnrProxy{false};
     // ANAN-100D port, unkey test: PC speaker output 0..6 s after the unkey,
     // 100 ms rows (audio thread), logged once.
     std::atomic<qint64> m_ukStartMs{-1};

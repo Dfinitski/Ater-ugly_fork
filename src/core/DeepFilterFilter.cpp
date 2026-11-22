@@ -179,9 +179,10 @@ static QByteArray findModelPath()
     return {};
 }
 
-DeepFilterFilter::DeepFilterFilter(int sampleRate)
+DeepFilterFilter::DeepFilterFilter(int sampleRate, int channels)
     : m_sampleRate(sampleRate)
 {
+    m_channels = channels == 1 ? 1 : 2;
     if (sampleRate != 24000 && sampleRate != 48000) {
         qWarning() << "DeepFilterFilter: unsupported sample rate" << sampleRate;
         return;
@@ -199,7 +200,7 @@ DeepFilterFilter::~DeepFilterFilter()
 
 void DeepFilterFilter::createStates()
 {
-    for (int channel = 0; channel < 2; ++channel) {
+    for (int channel = 0; channel < m_channels; ++channel) {
         if (m_sampleRate == 24000) {
             m_up[channel] = std::make_unique<Resampler>(24000, 48000);
             m_down[channel] = std::make_unique<Resampler>(48000, 24000);
@@ -210,9 +211,8 @@ void DeepFilterFilter::createStates()
         return;
     }
     qDebug() << "DeepFilterFilter: loading model from" << modelPath;
-    for (auto& state : m_states) {
-        state = df_create(modelPath.constData(), m_attenLimit.load(), nullptr);
-    }
+    for (int channel = 0; channel < m_channels; ++channel)   // build 591
+        m_states[channel] = df_create(modelPath.constData(), m_attenLimit.load(), nullptr);
     if (!isValid()) {
         qWarning() << "DeepFilterFilter: df_create() failed!";
         freeStates();
@@ -266,6 +266,8 @@ QByteArray DeepFilterFilter::process(const QByteArray& pcmStereo)
     // Apply any pending parameter changes (main thread writes atomic, audio thread reads here)
     if (m_paramsDirty.exchange(false)) {
         for (auto state : m_states) {
+            if (!state)
+                continue;   // build 591: the mono filter's unused channel
             df_set_atten_lim(state, m_attenLimit.load());
             df_set_post_filter_beta(state, m_postFilterBeta.load());
         }
@@ -279,7 +281,7 @@ QByteArray DeepFilterFilter::process(const QByteArray& pcmStereo)
     // DeepFilterNet states advance in lockstep.
     int completeFrames = std::numeric_limits<int>::max();
     std::array<int, 2> totalAccumSamples{0, 0};
-    for (int channel = 0; channel < 2; ++channel) {
+    for (int channel = 0; channel < m_channels; ++channel) {
         // 1. Split out this channel, then upsample legacy24 or pass native48
         //    directly to the model.
         auto& channelInput = m_channelInput[channel];
@@ -305,7 +307,7 @@ QByteArray DeepFilterFilter::process(const QByteArray& pcmStereo)
     if (completeFrames > 0) {
         const int consumedSamples = completeFrames * m_frameSize;
         int outputFrames = std::numeric_limits<int>::max();
-        for (int channel = 0; channel < 2; ++channel) {
+        for (int channel = 0; channel < m_channels; ++channel) {
             auto* accumData = reinterpret_cast<float*>(m_inAccum[channel].data());
             auto& processed = m_processed48k[channel];
             processed.resize(static_cast<std::size_t>(consumedSamples));
@@ -333,6 +335,9 @@ QByteArray DeepFilterFilter::process(const QByteArray& pcmStereo)
         // Identical resamplers fed identical counts stay in lockstep, so the
         // min above never drops a sample. A mismatch would be a silent,
         // cumulative L/R skew: log it once in release, abort in debug.
+        // Build 591: a mono filter gives its one channel to both.
+        if (m_channels == 1)
+            m_channelOutput[1] = m_channelOutput[0];
         if (m_channelOutput[0].size() != m_channelOutput[1].size()
             && !m_lockstepWarned) {
             m_lockstepWarned = true;

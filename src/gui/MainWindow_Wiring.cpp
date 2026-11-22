@@ -1584,6 +1584,13 @@ void MainWindow::wireAetherDspWidget(AetherDspWidget* w)
     connect(w, &AetherDspWidget::dfnrPostFilterBetaChanged, this, [this](float v) {
         QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setDfnrPostFilterBeta(v); });
     });
+    // ANAN fork build 591: NNR and DFNR run in each receiver's own audio --
+    // their settings go to the receivers at once (otherwise on the next
+    // half-second push).
+    connect(w, &AetherDspWidget::dfnrAttenLimitChanged, this, [this](float) { ananEmnrPushAll(); });
+    connect(w, &AetherDspWidget::dfnrPostFilterBetaChanged, this, [this](float) { ananEmnrPushAll(); });
+    connect(w, &AetherDspWidget::nnrStrengthChanged, this, [this](int) { ananEmnrPushAll(); });
+    connect(w, &AetherDspWidget::nnrModelChanged, this, [this](int) { ananEmnrPushAll(); });
     // MNR
     connect(w, &AetherDspWidget::mnrStrengthChanged, this, [this](float v) {
         QMetaObject::invokeMethod(m_audio, [this, v]() { m_audio->setMnrStrength(v); });

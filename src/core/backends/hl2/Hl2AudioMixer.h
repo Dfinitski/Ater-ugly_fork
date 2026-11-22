@@ -50,11 +50,16 @@
 #include <cstddef>
 #include <deque>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <vector>
 
 namespace AetherSDR::fdv {
 class FdvEngine;
+}
+namespace AetherSDR {
+class NnrFilter;
+class DeepFilterFilter;
 }
 
 namespace AetherSDR::hl2 {
@@ -96,6 +101,7 @@ public:
     };
 
     explicit Hl2AudioMixer(QObject* parent = nullptr);
+    ~Hl2AudioMixer() override;   // build 591: the NR filters are complete types there
 
     // The FreeDV engine (thread-safe), set once before the thread starts and
     // outliving it. Without one the modem blocks go to the owner (fdvInput)
@@ -106,6 +112,32 @@ public:
     // Set once before the thread starts.
     void setCodecSink(std::function<void(const std::vector<float>&)> sink) { m_codecSink = std::move(sink); }
     void setParams(const Params& params);
+
+    // ANAN fork build 591 (operator, 21.11: "NNR, NR2 and DFNR on each
+    // receiver's own audio, independent for each receiver"). NR2 runs in the
+    // receiver's WDSP chain (build 587); NNR and DFNR run HERE, on the
+    // receiver's own block before it is mixed -- one filter per receiver and
+    // per sub receiver (which takes its receiver's choice). Mono unless the
+    // receiver is binaural. The filters are built off this thread (a model
+    // load, FFTW planning), the receiver plays unfiltered meanwhile.
+    struct RxNrConfig {
+        enum Method { None = 0, Nnr = 1, Dfnr = 2 };
+        int method = None;
+        bool stereo = false;   // the receiver's BIN
+        int nnrStrength = 50;
+        int nnrModel = 0;
+        double nnrAlpha = 1.0;
+        double nnrKnee = 10.0;
+        double nnrTau = 2.0;
+        double nnrMaxGain = 12.0;
+        double nnrAttackMs = 0.0;
+        double nnrReleaseMs = 0.0;
+        float dfnrAttenDb = 100.0f;
+        float dfnrBeta = 0.0f;
+        bool operator==(const RxNrConfig&) const = default;
+    };
+    // Any thread. ddc: the receiver (0 .. kMaxReceivers - 1).
+    void setRxNr(int ddc, const RxNrConfig& config);
     // The receive-audio hold (transmit, the hold after it). Takes effect on
     // the next block: an atomic, not a queued call.
     void setMuted(bool muted) noexcept { m_muted.store(muted, std::memory_order_release); }
@@ -134,6 +166,35 @@ signals:
     // A copy of what went to the loudspeaker, for the owner's other consumers.
     void mixedBlockReady(const std::vector<float>& pcm);
     void fdvInput(int receiver, const std::vector<float>& pcm);
+    // Build 591: a receiver's NNR / DFNR gain (0..1, output over input,
+    // amplitude), about 20 times a second while it runs.
+    void rxNrGain(int receiver, float gain);
+
+private:
+    // Build 591: the per-receiver NNR / DFNR stage (mixer thread).
+    struct NrBuild;   // a filter being built off this thread
+    struct NrStage {
+        int method = RxNrConfig::None;   // what the filter below is
+        bool stereo = false;
+        std::unique_ptr<NnrFilter> nnr;
+        std::unique_ptr<DeepFilterFilter> dfnr;
+        RxNrConfig applied;               // the parameters it was given
+        std::shared_ptr<NrBuild> build;   // in flight, or null
+        int buildMethod = RxNrConfig::None;
+        bool buildStereo = false;
+        int failedMethod = -1;            // could not be made: not retried
+        bool failedStereo = false;        //   until the choice changes
+        std::deque<float> fifo;           // NNR's output, block for block
+        bool primed = false;
+        double sumIn = 0.0, sumOut = 0.0;
+        std::size_t gainSamples = 0;
+    };
+    // Filters this slot's block in place with the configuration of ddc.
+    void runRxNr(int slot, int ddc, std::vector<float>& pcm);
+    std::array<NrStage, kSlots> m_nr;              // mixer thread
+    std::mutex m_nrMutex;
+    std::array<RxNrConfig, kMaxReceivers> m_nrCfg; // under m_nrMutex
+    std::vector<float> m_nrBuf;                    // mixer thread
 
 private:
     void mixIn(int receiver, const std::vector<float>& pcm, const Params& p);

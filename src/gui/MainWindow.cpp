@@ -4418,8 +4418,10 @@ void MainWindow::closeEvent(QCloseEvent* event)
     // audible CW/digital slice is present does not erase the user's selection.
     // A manual button override clears the remembered method, so actual visible
     // state remains authoritative in that case.
+    // ANAN fork build 591: NR2 / NNR / DFNR are kept per receiver
+    // (AnanRxDspStore); what is kept here is the post-processing method.
     const QString persistedAetherDspMethod =
-        m_aetherDspModePolicy.methodForPersistence(activeAetherDspMethod());
+        m_aetherDspModePolicy.methodForPersistence(ananPostProcessingMethod());
     Nr2SettingsModel::instance().setEnabled(
         persistedAetherDspMethod == QStringLiteral("NR2"));
     s.setValue("ClientRn2Enabled",
@@ -9520,12 +9522,39 @@ void MainWindow::ananEmnrPushAll()
     const Nr2SettingsModel::Config cfg = Nr2SettingsModel::instance().config();
     const int position = std::clamp(
         AppSettings::instance().value(QStringLiteral("AnanNr2Position"), 0).toInt(), 0, 1);
+    // Build 591: NNR and DFNR of each receiver too, in its own audio
+    // (Hl2AudioMixer), with the AetherRX settings of the two.
+    const QVariantMap rxNrCommon{
+        {QStringLiteral("nnrStrength"), NnrSettings::strength()},
+        {QStringLiteral("nnrModel"), NnrSettings::model()},
+        {QStringLiteral("nnrAlpha"), NnrSettings::alpha()},
+        {QStringLiteral("nnrKnee"), NnrSettings::alphaKnee()},
+        {QStringLiteral("nnrTau"), NnrSettings::tau()},
+        {QStringLiteral("nnrMaxGain"), NnrSettings::maxGain()},
+        {QStringLiteral("nnrAttackMs"), NnrSettings::smoothAttackMs()},
+        {QStringLiteral("nnrReleaseMs"), NnrSettings::smoothReleaseMs()},
+        {QStringLiteral("dfnrAttenDb"),
+         AppSettings::instance().value(QStringLiteral("DfnrAttenLimit"), QStringLiteral("100")).toFloat()},
+        {QStringLiteral("dfnrBeta"),
+         AppSettings::instance().value(QStringLiteral("DfnrPostFilterBeta"), QStringLiteral("0.0")).toFloat()},
+    };
     for (const SliceModel* s : m_radioModel.slices()) {
         if (!s || s->sliceId() < 0 || s->sliceId() > 3)
             continue;   // main receivers only (the subs are their clones)
         const int owner = s->sliceId();
-        const bool on = AetherSDR::anan_rxdsp::nrOn(owner)
-            && AetherSDR::anan_rxdsp::nrMethod(owner) == QLatin1String("NR2");
+        // Not in CW or a digital mode of this receiver (as the post-processing
+        // is not in such a mix -- AetherDspModePolicy); the choice is kept.
+        const QString method = AetherSDR::anan_rxdsp::nrOn(owner)
+                && !aetherDspModeRequiresDisable(s->mode())
+            ? AetherSDR::anan_rxdsp::nrMethod(owner) : QString();
+        {
+            QVariantMap rxNr = rxNrCommon;
+            rxNr.insert(QStringLiteral("slice"), owner);
+            rxNr.insert(QStringLiteral("method"),
+                        method == QLatin1String("NR2") ? QString() : method);
+            m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.rxnr"), 0, rxNr);
+        }
+        const bool on = method == QLatin1String("NR2");
         m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.emnr"), 0,
             QVariantMap{
                 {QStringLiteral("slice"), owner},
@@ -9547,13 +9576,43 @@ void MainWindow::ananEmnrPushAll()
     }
 }
 
+QString MainWindow::ananRxOwnMethod() const
+{
+    if (!m_audio)
+        return {};
+    if (m_audio->nr2Enabled())
+        return QStringLiteral("NR2");
+    if (m_audio->nnrEnabled())
+        return QStringLiteral("NNR");
+    if (m_audio->dfnrEnabled())
+        return QStringLiteral("DFNR");
+    return {};
+}
+
+QString MainWindow::ananPostProcessingMethod() const
+{
+    if (!m_audio)
+        return {};
+    if (m_audio->nr4Enabled())
+        return QStringLiteral("NR4");
+    if (m_audio->mnrEnabled())
+        return QStringLiteral("MNR");
+    if (m_audio->rn2Enabled())
+        return QStringLiteral("RN2");
+    if (m_audio->nvAfxEnabled())
+        return QStringLiteral("BNR");
+    return {};
+}
+
 void MainWindow::ananRxNrApply()
 {
     if (!m_audio || m_activeSliceId < 0 || !m_radioModel.isConnected()
         || m_radioModel.usesFlexCommandPlane())
         return;
     const int owner = AetherSDR::anan_rxdsp::ownerOf(m_activeSliceId);
-    const QString current = activeAetherDspMethod();
+    // Build 591: the receiver's own methods only -- the post-processing one
+    // (NR4 / RN2 / BNR / MNR) is the program's and is left as it is.
+    const QString current = ananRxOwnMethod();
     if (AetherSDR::anan_rxdsp::nrOnRaw(owner).isEmpty()) {
         // Never set for this receiver: it starts with what is running.
         AetherSDR::anan_rxdsp::setNr(owner, !current.isEmpty(), current);
@@ -9598,7 +9657,7 @@ void MainWindow::ananRxNrSyncFromEngine()
     const int owner = AetherSDR::anan_rxdsp::ownerOf(m_activeSliceId);
     if (AetherSDR::anan_rxdsp::nrOnRaw(owner).isEmpty())
         return;   // ananRxNrApply() has not seen this receiver yet
-    const QString current = activeAetherDspMethod();
+    const QString current = ananRxOwnMethod();   // build 591
     // Build 587: a receiver whose DSP was made anew gets its NR2 again.
     ananEmnrPushAll();
     const bool on = AetherSDR::anan_rxdsp::nrOn(owner);

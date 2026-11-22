@@ -1155,6 +1155,11 @@ private:
     // ANAN fork build 587: NR2 on an ANAN is WDSP's EMNR in each receiver
     // (as Thetis), not the client NR2: pushes every main receiver's state.
     void ananEmnrPushAll();
+    // Build 591: the selected receiver's own method as the engine's switches
+    // say (NR2 / NNR / DFNR, or empty), and the post-processing method that
+    // runs on the mixed audio (NR4 / MNR / RN2 / BNR, or empty).
+    [[nodiscard]] QString ananRxOwnMethod() const;
+    [[nodiscard]] QString ananPostProcessingMethod() const;
     [[nodiscard]] bool ananUsesWdspNr2() const;
     qint64 m_ananRxNrGuardUntilMs{0};
     void ananBandMemTick();

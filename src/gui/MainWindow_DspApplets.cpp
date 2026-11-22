@@ -228,8 +228,12 @@ void MainWindow::updateAetherDspModePolicy()
     }
 
     const bool restricted = aetherDspMixRequiresDisable(sliceStates);
+    // ANAN fork build 591: the mix rule is for the post-processing method of
+    // the mixed audio; NR2 / NNR / DFNR are each receiver's and stop on that
+    // receiver's own CW / digital mode (ananEmnrPushAll), not on another's.
     const AetherDspModePolicy::Action action =
-        m_aetherDspModePolicy.update(restricted, activeAetherDspMethod());
+        m_aetherDspModePolicy.update(restricted,
+            m_audio->nr2External() ? ananPostProcessingMethod() : activeAetherDspMethod());
     if (action.kind == AetherDspModePolicy::ActionKind::Disable) {
         qCInfo(lcAudio).noquote()
             << "AetherDSP: disabling" << action.method

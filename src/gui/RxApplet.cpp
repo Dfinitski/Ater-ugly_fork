@@ -425,22 +425,13 @@ void RxApplet::buildUI()
                     return;
                 const QString cur = AetherSDR::anan_rxdsp::nrMethod(
                     AetherSDR::anan_rxdsp::ownerOf(m_slice->sliceId()));
-                // The methods this build has (as the AetherRX selector gates them).
-                QStringList methods{QStringLiteral("NR2")};
-#ifdef HAVE_SPECBLEACH
-                methods << QStringLiteral("NR4");
-#endif
-#ifdef Q_OS_MACOS
-                methods << QStringLiteral("MNR");
-#endif
+                // ANAN fork build 591 (operator, 21.11): the methods that run
+                // in the receiver's own audio -- each receiver its own. NR4,
+                // RN2, BNR and MNR are the program's post-processing (AetherRX).
+                QStringList methods{QStringLiteral("NR2"), QStringLiteral("NNR")};
 #ifdef HAVE_DFNR
                 methods << QStringLiteral("DFNR");
 #endif
-                methods << QStringLiteral("RN2");
-#ifdef HAVE_NVIDIA_AFX
-                methods << QStringLiteral("BNR");
-#endif
-                methods << QStringLiteral("NNR");
                 QMenu menu(m_rxNrBtn);
                 for (const QString& m : std::as_const(methods)) {
                     QAction* a = menu.addAction(m);

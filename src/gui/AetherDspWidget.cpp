@@ -229,6 +229,21 @@ static QPushButton* makeResetIconButton()
     return new ResetIconButton;
 }
 
+// ANAN fork build 591 (operator, 21.11): NR2, NNR and DFNR run in each
+// receiver's own audio; the other methods are the post-processing of the
+// program's mixed audio -- said on their pages.
+static QLabel* postProcessingNote(QWidget* parent)
+{
+    auto* note = new QLabel(QStringLiteral(
+        "* This noise reduction is part of the post-processing of the program's "
+        "common audio (all receivers mixed), not of one receiver."), parent);
+    note->setObjectName(QStringLiteral("postProcessingNote"));
+    note->setWordWrap(true);
+    AetherSDR::ThemeManager::instance().applyStyleSheet(note,
+        QStringLiteral("QLabel { color: {{color.accent.warning}}; font-size: 11px; }"));
+    return note;
+}
+
 } // namespace
 
 AetherDspWidget::AetherDspWidget(AudioEngine* audio, QWidget* parent)
@@ -1263,6 +1278,7 @@ QWidget* AetherDspWidget::buildNr4Page()
     auto* vbox = new QVBoxLayout(page);
     vbox->setContentsMargins(0, 0, 0, 0);
     vbox->setSpacing(6);
+    vbox->addWidget(postProcessingNote(page));   // build 591
 
     auto labelStyle = QStringLiteral("QLabel { color: {{color.text.secondary}}; font-size: 11px; }");
     auto valStyle   = QStringLiteral("QLabel { color: {{color.text.primary}}; font-size: 11px; min-width: 40px; }");
@@ -1485,6 +1501,7 @@ QWidget* AetherDspWidget::buildMnrPage()
     auto* vbox = new QVBoxLayout(page);
     vbox->setContentsMargins(0, 0, 0, 0);
     vbox->setSpacing(6);
+    vbox->addWidget(postProcessingNote(page));   // build 591
     auto* frame = controlsFrame(page);
     vbox->addWidget(frame);
     auto* body = new QVBoxLayout(frame);
@@ -1560,6 +1577,7 @@ QWidget* AetherDspWidget::buildRn2Page()
     auto* vbox = new QVBoxLayout(page);
     vbox->setContentsMargins(0, 0, 0, 0);
     vbox->setSpacing(6);
+    vbox->addWidget(postProcessingNote(page));   // build 591
     auto* frame = controlsFrame(page);
     vbox->addWidget(frame);
     auto* body = new QVBoxLayout(frame);
@@ -1775,6 +1793,7 @@ QWidget* AetherDspWidget::buildBnrPage()
     auto* vbox = new QVBoxLayout(page);
     vbox->setContentsMargins(0, 0, 0, 0);
     vbox->setSpacing(6);
+    vbox->addWidget(postProcessingNote(page));   // build 591
     auto* frame = controlsFrame(page);
     vbox->addWidget(frame);
     auto* body = new QVBoxLayout(frame);

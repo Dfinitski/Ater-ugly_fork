@@ -1041,6 +1041,16 @@ Hl2Backend::Hl2Backend(QObject* parent)
     });
     connect(m_audioMixer, &Hl2AudioMixer::fdvInput, this,
             [this](int ddc, const std::vector<float>& pcm) { fdvDecodeForMixer(ddc, pcm); });
+    // ANAN fork build 591: a receiver's NNR / DFNR gain, for the NR GAIN
+    // strip -- the same way as its NR2's (build 590).
+    connect(m_audioMixer, &Hl2AudioMixer::rxNrGain, this, [this](int ddc, float gain) {
+        for (int ui = 0; ui < 8; ++ui) {
+            if (ddcForSlice(ui) == ddc) {
+                emit meterUpdate(QStringLiteral("ANAN:NR2GAIN%1").arg(ui), gain);
+                return;
+            }
+        }
+    });
     // After IRadioBackend's own handler (connected in its constructor, so it
     // runs first and m_pcmLive is already set).
     connect(this, &IRadioBackend::connected, this, [this] {
@@ -9629,6 +9639,38 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
                 QMetaObject::invokeMethod(r->dsp, "setEmnr", Qt::QueuedConnection, Q_ARG(QVariantMap, m));
             if (requestId != 0) {
                 if (r)
+                    emit extensionResult(requestId, QVariant(true));
+                else
+                    emit extensionError(requestId, QStringLiteral("no such receiver"));
+            }
+            return;
+        }
+        // ANAN fork build 591: a receiver's own NNR / DFNR (Hl2AudioMixer).
+        // arg: {slice, method "NNR" / "DFNR" / "", nnr*, dfnr*}.
+        if (verb == QLatin1String("anan.rxnr")) {
+            const QVariantMap m = arg.toMap();
+            const int ddc = ddcForSlice(m.value(QStringLiteral("slice")).toInt());
+            if (ddc >= 0 && ddc < Hl2AudioMixer::kMaxReceivers && m_audioMixer) {
+                Hl2AudioMixer::RxNrConfig c;
+                const QString method = m.value(QStringLiteral("method")).toString();
+                c.method = method == QLatin1String("NNR")    ? Hl2AudioMixer::RxNrConfig::Nnr
+                         : method == QLatin1String("DFNR")   ? Hl2AudioMixer::RxNrConfig::Dfnr
+                                                             : Hl2AudioMixer::RxNrConfig::None;
+                c.stereo = ddc < 6 && anan::AnanUiState::instance().binaural[ddc];
+                c.nnrStrength = m.value(QStringLiteral("nnrStrength"), c.nnrStrength).toInt();
+                c.nnrModel = m.value(QStringLiteral("nnrModel"), c.nnrModel).toInt();
+                c.nnrAlpha = m.value(QStringLiteral("nnrAlpha"), c.nnrAlpha).toDouble();
+                c.nnrKnee = m.value(QStringLiteral("nnrKnee"), c.nnrKnee).toDouble();
+                c.nnrTau = m.value(QStringLiteral("nnrTau"), c.nnrTau).toDouble();
+                c.nnrMaxGain = m.value(QStringLiteral("nnrMaxGain"), c.nnrMaxGain).toDouble();
+                c.nnrAttackMs = m.value(QStringLiteral("nnrAttackMs"), c.nnrAttackMs).toDouble();
+                c.nnrReleaseMs = m.value(QStringLiteral("nnrReleaseMs"), c.nnrReleaseMs).toDouble();
+                c.dfnrAttenDb = m.value(QStringLiteral("dfnrAttenDb"), c.dfnrAttenDb).toFloat();
+                c.dfnrBeta = m.value(QStringLiteral("dfnrBeta"), c.dfnrBeta).toFloat();
+                m_audioMixer->setRxNr(ddc, c);
+            }
+            if (requestId != 0) {
+                if (ddc >= 0)
                     emit extensionResult(requestId, QVariant(true));
                 else
                     emit extensionError(requestId, QStringLiteral("no such receiver"));
