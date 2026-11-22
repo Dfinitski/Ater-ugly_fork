@@ -171,6 +171,13 @@ public:
     MqttApplet*   mqttApplet()   { return m_mqttApplet; }
 #endif
     CwApplet*     cwApplet()     { return m_cwApplet; }
+    // ANAN fork build 626 (operator, 22.11: "Tools -> CW Keyer does not
+    // work; it should bring the applet's window on screen"). Opens applet
+    // <id> as its own floating window and raises it, or, when that window is
+    // open, closes it back into its panel slot (as its bar button does).
+    // Returns whether the window is open afterwards.
+    bool toggleAppletWindow(const QString& id);
+    [[nodiscard]] bool appletWindowOpen(const QString& id) const;
     PsApplet*     psApplet()     { return m_psApplet; }
 
     // Show/hide the TUNE button and applet based on tuner presence.

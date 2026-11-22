@@ -11230,9 +11230,11 @@ void MainWindow::updateToolsMenuState()
             && m_aetherialStrip->isVisible());
     }
     if (m_cwKeyerAction) {
-        m_cwKeyerAction->setVisible(!connected || caps.hasRadioSideCwKeyer);
-        m_cwKeyerAction->setEnabled(m_cwxIndicator && m_cwxIndicator->isEnabled());
-        m_cwKeyerAction->setChecked(m_cwxPanel && m_cwxPanel->isVisible());
+        // Build 626: the CW applet's window (see the Tools menu).
+        m_cwKeyerAction->setVisible(true);
+        m_cwKeyerAction->setEnabled(m_appletPanel != nullptr);
+        m_cwKeyerAction->setChecked(m_appletPanel
+            && m_appletPanel->appletWindowOpen(QStringLiteral("CW")));
     }
 #ifdef AETHER_ASR_ENABLED
     if (m_copyAssistAction) {
