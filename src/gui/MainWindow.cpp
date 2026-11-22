@@ -1255,9 +1255,9 @@ MainWindow::MainWindow(QWidget* parent)
     // Setup -> Audio, "Exclusive mode").
     m_audio->setRxExclusiveMode(
         AppSettings::instance().value("AudioRxExclusive", "False").toString() == "True");
-    // Build 607: the CW applet's "PC sidetone in exclusive mode".
-    m_audio->setSidetoneIntoExclusive(
-        AppSettings::instance().value("AnanPcSidetoneExclusive", "True").toString() == "True");
+    // Build 607/608: the PC sidetone / Quindar tone always go into an
+    // exclusive output (the CW applet's checkbox of 607 removed, operator
+    // 21.11: "too many buttons"; CWX has its own "PC sidetone for CWX").
     m_audio->moveToThread(m_audioThread);
     AetherSDR::startStreamThread(m_audioThread);   // High QoS; see AppActivity.h
     const auto updateAetherDspPolicy = [this](bool) {
@@ -6019,13 +6019,6 @@ void MainWindow::buildUI()
                 [cw](int wpm) {
             if (wpm >= 10 && wpm <= 63 && cw->keyerSpeed() != wpm)
                 cw->setKeyerSpeed(wpm);
-        });
-        // Build 607: the PC sidetone into the exclusive sound card output.
-        connect(cw, &CwApplet::pcSidetoneExclusiveChanged, this, [this](bool on) {
-            if (m_audio)
-                QMetaObject::invokeMethod(m_audio, [this, on] {
-                    m_audio->setSidetoneIntoExclusive(on);
-                }, Qt::QueuedConnection);
         });
     }
     // ANAN-100D port: PureSignal tile; 2 TONE keys through the TX tile's MOX.

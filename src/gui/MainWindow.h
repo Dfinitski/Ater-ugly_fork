@@ -2116,6 +2116,7 @@ private:
     QTimer* m_bsAutoSaveTimer{nullptr};  // band-stack dwell auto-save (single-shot per dwell window)
     QTimer* m_agManualConnectTimer{nullptr}; // deferred AG manual connect — cancelled on disconnect
     std::unique_ptr<class CwxLocalKeyer> m_cwxLocalKeyer;  // local Morse keyer for CWX sidetone (own worker thread)
+    std::atomic<bool> m_cwxPcSidetoneActive{false};   // build 608: CWX heard on the PC now
     std::unique_ptr<class IambicKeyer> m_iambicKeyer;  // local iambic state machine for paddle sidetone
     std::atomic<quint64> m_lastCwPaddleTraceId{0};
     std::atomic<quint64> m_lastCwPaddleSourceMs{0};

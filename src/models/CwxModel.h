@@ -84,6 +84,8 @@ public:
     void sendMacro(int idx);             // 1-based (1=F1, 12=F12)
     void sendMacro(int idx, const TransmissionRoute& route);
     void saveMacro(int idx, const QString& text); // 0-based
+    // ANAN fork build 608: a macro kept by the program (no radio store).
+    void setLocalMacro(int idx, const QString& text); // 0-based
     void erase(int numChars);
     void clearBuffer();
     // Abort any in-flight queue-drain watch and bump the epoch so replies for
@@ -140,6 +142,7 @@ signals:
     void charSent(int index);           // character at index was keyed
     void erased(int start, int stop);
     void macroChanged(int idx, const QString& text);  // 0-based
+    void macroSaved(int idx, const QString& text);    // build 608: raw text, 0-based
     void liveChanged(bool on);
     // Emitted whenever new text is sent to the radio's keyer — used by
     // CwxLocalKeyer to drive a sidetone-matching local Morse stream.

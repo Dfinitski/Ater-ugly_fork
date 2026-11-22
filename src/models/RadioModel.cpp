@@ -2644,8 +2644,25 @@ RadioModel::RadioModel(QObject* parent)
         }
     });
     m_cwxModel.setTextSender([this](const QString& text, int wpm) {
-        Q_UNUSED(wpm);
+        // ANAN fork build 608: the program's text keyer takes each segment's
+        // speed (+/- modifiers included) before its text.
+        if (m_backend && !usesFlexCommandPlane())
+            m_backend->setCwSpeed(wpm);
         return dispatchCwxText(text, m_cwxCommandOperation);
+    });
+    // Build 608: without a radio-side store the F1-F12 macros are kept here.
+    for (int i = 0; i < 12; ++i) {
+        const QString t = AppSettings::instance()
+                              .value(QStringLiteral("AnanCwxMacro%1").arg(i + 1)).toString();
+        if (!t.isEmpty())
+            m_cwxModel.setLocalMacro(i, t);
+    }
+    connect(&m_cwxModel, &CwxModel::macroSaved, this, [this](int idx, const QString& text) {
+        if (usesFlexCommandPlane())
+            return;
+        auto& st = AppSettings::instance();
+        st.setValue(QStringLiteral("AnanCwxMacro%1").arg(idx + 1), text);
+        st.save();
     });
     connect(&m_cwxModel, &CwxModel::transmissionCancelled, this, [this] {
         const TxCoordinator::Intent intent = m_cwxCommandIntent;

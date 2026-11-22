@@ -2,6 +2,7 @@
 
 #include "core/backends/AutoRfGainControl.h"
 #include "core/backends/IRadioBackend.h"
+#include "core/CwxLocalKeyer.h"
 #include "core/dsp/WdspChannel.h"
 #include "core/dsp/WdspSMeter.h"
 
@@ -208,6 +209,16 @@ public:
     void setNotchesEnabled(bool on) override;
     void setKeying(bool key, const AetherSDR::TxCoordinator::Operation& operation, const AetherSDR::TxCoordinator::Completion& completion = {}) override;
     void setCwKeying(bool down, bool breakIn, int breakInDelayMs, const AetherSDR::TxCoordinator::Operation& operation, const AetherSDR::TxCoordinator::Completion& completion = {}) override;
+    // ANAN fork build 608 (operator, 21.11: "make the macro window; macros or
+    // keying may also come from TCI"): a text keyer in the program -- the
+    // radio has none -- so CWX text, its F1-F12 macros and TCI cw_msg /
+    // cw_macros are keyed here: Morse timing on CwxLocalKeyer's thread, each
+    // edge straight to the radio link (the host CW carrier, as a key on the
+    // serial port or keyboard), MOX raised as break-in does and dropped after
+    // the CW hang time (AnanHangTime, the CW applet).
+    QString sendCwText(const QString& text, const AetherSDR::TxCoordinator::Operation& operation, const AetherSDR::TxCoordinator::Completion& completion = {}) override;
+    void abortCwText(const AetherSDR::TxCoordinator::Operation& operation, const AetherSDR::TxCoordinator::Completion& completion = {}) override;
+    void setCwSpeed(int wpm) override;
     void submitTxAudio(const QByteArray& int16Stereo, int sampleRateHz,
                        TxAudioSource source,
                        const TxCoordinator::Context& context) override;
@@ -1809,6 +1820,16 @@ private:
     TxCoordinator::Operation m_cwHangOperation;
     TxCoordinator::Operation m_lastTxOperation;
     TxCoordinator::Completion m_cwHangCompletion;
+    // Build 608: the text keyer (see sendCwText).
+    std::unique_ptr<AetherSDR::CwxLocalKeyer> m_cwTextKeyer;
+    std::atomic<int> m_cwTextWpm{20};
+    std::atomic<quint64> m_cwTextGen{0};
+    TxCoordinator::Operation m_cwTextOperation;   // under m_cwTextOpMutex (keyer thread reads it)
+    std::mutex m_cwTextOpMutex;
+    std::vector<TxCoordinator::Completion> m_cwTextCompletions;
+    bool m_cwTextActive = false;
+    void cwTextIdle(quint64 gen);
+    void finishCwTextCompletions();
     bool m_txMonitor = false;
     // The receive-audio hold flag, read by mixReceiverAudio() and mirrored to every
     // Hl2RxDsp by applyRxAudioMute(). Not (m_keyed && !m_txMonitor): on key-up it

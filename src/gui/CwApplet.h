@@ -6,7 +6,6 @@
 //                 weight 33..66 (50 = normal), paddle swap, auto letter spacing
 //   Transmit:     hang time 10..1000 ms, CW demo (CW without RF)
 //   Side tone:    level 0..99 %, frequency 400..1000 Hz
-//                 + (build 607) the PC sidetone into the exclusive PC output
 //
 // The keyer values are stored in AppSettings (Anan* keys); Hl2Backend reads
 // them every 300 ms and sends them to the radio in the Transmitter Specific
@@ -34,8 +33,6 @@ public:
 
 signals:
     void keyerSpeedChanged(int wpm);
-    // Build 607: "PC sidetone in exclusive mode" toggled.
-    void pcSidetoneExclusiveChanged(bool on);
 
 private:
     QComboBox* m_mode{nullptr};
@@ -52,7 +49,6 @@ private:
     QLabel*    m_stLevelValue{nullptr};
     QSlider*   m_stFreq{nullptr};
     QLabel*    m_stFreqValue{nullptr};
-    QCheckBox* m_pcSidetoneExcl{nullptr};   // build 607
     bool m_loading{false};
 };
 

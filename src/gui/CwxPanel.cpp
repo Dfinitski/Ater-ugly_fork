@@ -4,6 +4,7 @@
 #include "core/TxKeyingMarker.h"
 #include "models/CwxModel.h"
 
+#include <QCheckBox>
 #include <QContextMenuEvent>
 #include <QDateTime>
 #include <QFont>
@@ -268,6 +269,35 @@ CwxPanel::CwxPanel(CwxModel* model, QWidget* parent)
 
     vbox->addWidget(bar);
 
+    // ANAN fork build 608 (operator, 21.11: "add a checkbox: voice the macros
+    // in the PC sidetone"): CWX text and macros also heard on the PC (the
+    // program's sidetone, at the CW applet's side tone level and frequency).
+    // The radio's own side tone is not affected. AppSettings AnanCwxPcSidetone.
+    {
+        auto* stRow = new QWidget;
+        auto* stLayout = new QHBoxLayout(stRow);
+        stLayout->setContentsMargins(6, 0, 4, 4);
+        auto* st = new QCheckBox(tr("PC sidetone for CWX"));
+        st->setObjectName(QStringLiteral("cwxPcSidetone"));
+        st->setToolTip(tr("Hear the CWX text and F1-F12 macros on the PC as they are keyed\n"
+                          "(the CW applet's side tone level and frequency).\n"
+                          "The radio's own side tone is not affected."));
+        AetherSDR::ThemeManager::instance().applyStyleSheet(
+            st, "QCheckBox { color: {{color.text.secondary}}; font-size: 11px; }");
+        st->setChecked(AppSettings::instance()
+                           .value(QStringLiteral("AnanCwxPcSidetone"), QStringLiteral("True"))
+                           .toString() == QLatin1String("True"));
+        connect(st, &QCheckBox::toggled, this, [](bool on) {
+            auto& s = AppSettings::instance();
+            s.setValue(QStringLiteral("AnanCwxPcSidetone"), on ? QStringLiteral("True")
+                                                               : QStringLiteral("False"));
+            s.save();
+        });
+        stLayout->addWidget(st);
+        stLayout->addStretch(1);
+        vbox->addWidget(stRow);
+    }
+
     // ── Connections ─────────────────────────────────────────────
 
     // Send submits the buffer when Live is off.  If Live is on, it first
@@ -429,6 +459,14 @@ void CwxPanel::setModel(CwxModel* model)
             m_macroEdits[idx]->setPlainText(text);
         }
     });
+    // ANAN fork build 608: macros the program keeps (AppSettings) are in
+    // the model before this panel exists -- show them now.
+    for (int i = 0; i < 12; ++i) {
+        if (m_macroEdits[i] && !m_model->macro(i).isEmpty()) {
+            QSignalBlocker b(m_macroEdits[i]);
+            m_macroEdits[i]->setPlainText(m_model->macro(i));
+        }
+    }
     connect(m_model, &CwxModel::delayChanged, this, [this](int ms) {
         if (m_delaySpin) {
             QSignalBlocker b(m_delaySpin);

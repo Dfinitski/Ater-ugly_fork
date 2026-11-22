@@ -3808,6 +3808,9 @@ void Hl2Backend::publishIoDspList(std::vector<Hl2RxDsp*> next)
 
 Hl2Backend::~Hl2Backend()
 {
+    // Build 608: the text keyer's thread stops first (its last key-up posts
+    // to the radio link, which still exists here).
+    m_cwTextKeyer.reset();
     // Join the build thread before the I/O thread it posts to, so finished
     // channels are installed or destroyed by their owning thread. Blocks for
     // an in-flight OpenChannel (WDSP opens cannot be cancelled).
@@ -4193,7 +4196,17 @@ RadioCapabilities Hl2Backend::buildCapabilities(const CapsInputs& in)
     // out. The host-side equivalents are untouched: this radio still transmits
     // CW, and this client's own noise modules are the only DSP it has. TNF is
     // deliberately NOT gated — see the note in RadioCapabilities.h.
-    c.hasRadioSideCwKeyer = false;
+    // ANAN fork build 608: the program's own text keyer stands in for the
+    // radio's (sendCwText) -- CWX window, F1-F12 macros (kept here, in
+    // AppSettings), TCI cw_msg / cw_macros. No character progress from it.
+    c.hasRadioSideCwKeyer = true;
+    c.cwTextKeyerName = QStringLiteral("CWX");
+    c.cwTextMinWpm = 5;
+    c.cwTextMaxWpm = 60;
+    c.cwTextHasProgress = false;
+    c.cwTextHasStoredMacros = true;
+    c.cwTextSupportsLive = true;
+    c.cwTextSupportsSpeedModifiers = true;
     c.hasVoiceKeyer = false;
     c.hasFullDuplex = false;
     c.hasWaveforms = false;             // no installable plugin surface
@@ -7621,6 +7634,132 @@ void Hl2Backend::setCwKeying(bool down, bool breakIn, int breakInDelayMs, const 
             }
         }, Qt::QueuedConnection);
     }
+}
+
+// ANAN fork build 608: the program's text keyer (see the header).
+QString Hl2Backend::sendCwText(const QString& text, const TxCoordinator::Operation& operation,
+                               const TxCoordinator::Completion& completion)
+{
+    if (text.trimmed().isEmpty()) {
+        completion.finish();
+        return {};
+    }
+    if (!m_txAllowed)
+        return QStringLiteral("transmit is not allowed");
+    const Receiver* txReceiver = rx(m_txDdc);
+    const QString mode = txReceiver ? txReceiver->mode.toUpper() : QString();
+    if (mode != QLatin1String("CW") && mode != QLatin1String("CWU")
+        && mode != QLatin1String("CWL"))
+        return QStringLiteral("the transmit slice is not in CW");
+    if (!TxCoordinator::Command{operation, true}.permitsDispatch(TxCoordinator::monotonicMs()))
+        return QStringLiteral("the transmit operation has ended");
+    if (!m_metis)
+        return QStringLiteral("the radio is not connected");
+
+    if (!m_cwTextKeyer) {
+        m_cwTextKeyer = std::make_unique<CwxLocalKeyer>();
+        // Worker thread: each edge straight to the radio link's thread, not
+        // through this (GUI) thread, so the element timing holds.
+        m_cwTextKeyer->setOnKeyDownChange([this](bool down, std::chrono::steady_clock::time_point) {
+            if (auto* metis = m_metis) {
+                TxCoordinator::Operation op;
+                {
+                    std::lock_guard<std::mutex> lock(m_cwTextOpMutex);
+                    op = m_cwTextOperation;
+                }
+                QMetaObject::invokeMethod(metis, [metis, down, op] {
+                    metis->setCwKeyDown(down, op);
+                }, Qt::QueuedConnection);
+            }
+        });
+        m_cwTextKeyer->setOnIdle([this] {
+            const quint64 gen = m_cwTextGen.load(std::memory_order_acquire);
+            QMetaObject::invokeMethod(this, [this, gen] { cwTextIdle(gen); }, Qt::QueuedConnection);
+        });
+    }
+
+    // MOX as break-in raises it for the first element; a hang still running
+    // from the last text or element is cancelled -- the carrier continues.
+    if (m_cwHangTimer)
+        m_cwHangTimer->stop();
+    const bool raiseMox = !m_keyed;
+    if (raiseMox) {
+        applyKeying(true, operation, {}, /*cwBreakIn=*/true);
+        m_cwAutoKeyed = true;
+    }
+    {
+        std::lock_guard<std::mutex> lock(m_cwTextOpMutex);
+        m_cwTextOperation = operation;
+    }
+    m_cwTextActive = true;
+    m_cwTextCompletions.push_back(completion);
+    const int wpm = std::clamp(m_cwTextWpm.load(std::memory_order_relaxed), 5, 60);
+    qCInfo(lcHl2).nospace() << "ANAN CW text keyer: \"" << text << "\" at " << wpm << " WPM"
+                            << (raiseMox ? ", MOX raised" : "");
+    // As the break-in path does: the first element goes with the MOX (the
+    // radio's TX/RX switching is in its own firmware timing).
+    m_cwTextKeyer->start(text, wpm);
+    return {};
+}
+
+void Hl2Backend::finishCwTextCompletions()
+{
+    auto done = std::exchange(m_cwTextCompletions, {});
+    for (const TxCoordinator::Completion& c : done)
+        c.finish();
+}
+
+void Hl2Backend::cwTextIdle(quint64 gen)
+{
+    if (gen != m_cwTextGen.load(std::memory_order_acquire) || !m_cwTextActive)
+        return;
+    m_cwTextActive = false;
+    // The text is out: MOX falls after the CW hang time (the CW applet's
+    // "Hang time", the radio keyer's too), as after the last paddle element;
+    // the deliveries complete with that unkey, as break-in's key-up does.
+    if (m_cwAutoKeyed && m_cwHangTimer) {
+        const int hangMs = std::clamp(AppSettings::instance()
+                                          .value(QStringLiteral("AnanHangTime"), 250).toInt(), 10, 1000);
+        auto pending = std::make_shared<std::vector<TxCoordinator::Completion>>(
+            std::exchange(m_cwTextCompletions, {}));
+        {
+            std::lock_guard<std::mutex> lock(m_cwTextOpMutex);
+            m_cwHangOperation = m_cwTextOperation;
+        }
+        m_cwHangCompletion = TxCoordinator::Completion([pending] {
+            for (const TxCoordinator::Completion& c : *pending)
+                c.finish();
+        });
+        m_cwHangTimer->start(hangMs);
+    } else {
+        finishCwTextCompletions();
+    }
+}
+
+void Hl2Backend::abortCwText(const TxCoordinator::Operation& operation,
+                             const TxCoordinator::Completion& completion)
+{
+    m_cwTextGen.fetch_add(1, std::memory_order_acq_rel);   // a pending start or idle is void
+    if (m_cwTextKeyer)
+        m_cwTextKeyer->stop();
+    if (m_metis) {
+        QMetaObject::invokeMethod(m_metis, [metis = m_metis, operation] {
+            metis->setCwKeyDown(false, operation);
+        }, Qt::QueuedConnection);
+    }
+    const bool wasActive = std::exchange(m_cwTextActive, false);
+    finishCwTextCompletions();
+    if (wasActive && m_cwAutoKeyed && m_cwHangTimer) {
+        m_cwHangOperation = operation.permitsCleanup() ? operation : m_cwTextOperation;
+        m_cwHangCompletion = {};
+        m_cwHangTimer->start(6);   // the 5 ms fall of the carrier, then MOX off
+    }
+    completion.finish();
+}
+
+void Hl2Backend::setCwSpeed(int wpm)
+{
+    m_cwTextWpm.store(std::clamp(wpm, 5, 60), std::memory_order_relaxed);
 }
 
 // Build 223: the RF span of the transmission at `hz` in the TX receiver's mode.

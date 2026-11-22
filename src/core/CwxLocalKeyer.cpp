@@ -297,6 +297,9 @@ void CwxLocalKeyer::workerLoop()
         }
         if (m_shutdown.load(std::memory_order_acquire))
             break;
+        // Build 608: drained or stopped -- the key is up.
+        if (m_onIdle)
+            m_onIdle();
     }
     keyUpIfDown();
 }

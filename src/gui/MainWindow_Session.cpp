@@ -1708,7 +1708,9 @@ void MainWindow::wireRadioModel()
             if (!m_audio || !m_audio->cwSidetone()) return;
             auto& tx = m_radioModel.transmitModel();
             auto* gen = m_audio->cwSidetone();
-            gen->setEnabled(false);   // ANAN-100D port: no local CW sidetone
+            // ANAN-100D port: no local CW sidetone -- except, build 608,
+            // while CWX text plays with "PC sidetone for CWX" on.
+            gen->setEnabled(m_cwxPcSidetoneActive.load(std::memory_order_relaxed));
             gen->setVolume(tx.monGainCw() / 100.0f);
             gen->setPitchHz(static_cast<float>(tx.cwPitch()));
             gen->setPan(tx.monPanCw() / 100.0f);
@@ -1722,6 +1724,13 @@ void MainWindow::wireRadioModel()
         // its own worker thread against steady_clock, not QTimer, so GUI-loop
         // load cannot gap them (#3623).
         m_cwxLocalKeyer = std::make_unique<CwxLocalKeyer>();
+        // Build 608: the PC sidetone for CWX ends with the text (keyer thread;
+        // the generator's enable is an atomic).
+        m_cwxLocalKeyer->setOnIdle([this] {
+            m_cwxPcSidetoneActive.store(false, std::memory_order_relaxed);
+            if (m_audio && m_audio->cwSidetone())
+                m_audio->cwSidetone()->setEnabled(false);
+        });
         m_cwxLocalKeyer->setOnKeyDownChange([this](bool down,
                                                    std::chrono::steady_clock::time_point when) {
             // Lock-free atomic gate; safe to call directly from the keyer
@@ -1744,6 +1753,23 @@ void MainWindow::wireRadioModel()
             // override when the over ends.
             if (m_audio) {
                 m_audio->noteCwOverSpeed(wpm);
+            }
+            // ANAN fork build 608: CWX heard on the PC if asked (the CWX
+            // window's "PC sidetone for CWX"), at the CW applet's side tone
+            // level and frequency; off again when the keyer is idle.
+            if (m_audio && m_audio->cwSidetone()) {
+                auto& st = AppSettings::instance();
+                const bool pc = st.value(QStringLiteral("AnanCwxPcSidetone"), QStringLiteral("True"))
+                                    .toString() == QLatin1String("True");
+                auto* gen = m_audio->cwSidetone();
+                if (pc) {
+                    gen->setPitchHz(static_cast<float>(std::clamp(
+                        st.value(QStringLiteral("AnanSideToneFreq"), 700).toInt(), 400, 1000)));
+                    gen->setVolume(std::clamp(
+                        st.value(QStringLiteral("AnanSideToneLevelPct"), 50).toInt(), 0, 99) / 100.0f);
+                }
+                m_cwxPcSidetoneActive.store(pc, std::memory_order_relaxed);
+                gen->setEnabled(pc);
             }
             if (m_cwxLocalKeyer) m_cwxLocalKeyer->start(text, wpm);
         });

@@ -337,6 +337,7 @@ void CwxModel::saveMacro(int idx, const QString& text)
 {
     if (idx < 0 || idx >= 12) return;
     m_macros[idx] = text;   // keep the raw +/- text for our own client-side expansion
+    emit macroSaved(idx, text);   // build 608: the program keeps it (no radio store)
     // Strip the client-only +/- speed-modifier prefixes before writing to the
     // radio's shared macro store. The +/- syntax is an AetherSDR extension; a
     // Multi-Flex peer (SmartSDR/Maestro) that plays this stored slot would key a
@@ -350,6 +351,13 @@ void CwxModel::saveMacro(int idx, const QString& text)
         plain += seg.text;
     const QString encoded = encodeCwxText(plain);
     emit commandReady(QString("cwx macro save %1 \"%2\"").arg(idx + 1).arg(encoded));
+}
+
+void CwxModel::setLocalMacro(int idx, const QString& text)
+{
+    if (idx < 0 || idx >= 12) return;
+    m_macros[idx] = text;
+    emit macroChanged(idx, text);
 }
 
 void CwxModel::erase(int numChars)

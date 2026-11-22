@@ -37,6 +37,10 @@ public:
     // Install before start().  Called on the worker thread — the receiver must
     // be lock-free.
     void setOnKeyDownChange(KeyDownCallback cb);
+    // ANAN fork build 608: called on the worker thread each time the keyer
+    // runs out of text or is stopped (after the final key-up). Set before
+    // the first start().
+    void setOnIdle(std::function<void()> cb) { m_onIdle = std::move(cb); }
 
     // Append a transmission segment.  Spawns the worker thread on first use; if
     // a segment is already playing, the new text is queued and plays when the
@@ -97,6 +101,7 @@ private:
     int           m_nextWaitMs{0};   // last wait armTimer() recorded
 
     KeyDownCallback m_onKeyDownChange;
+    std::function<void()> m_onIdle;   // build 608
     bool            m_lastEmittedKeyDown{false};
 
     // Cross-thread control.  m_queue is guarded by m_mu; the flags are atomic.
