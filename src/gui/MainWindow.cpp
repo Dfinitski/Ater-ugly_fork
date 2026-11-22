@@ -6390,6 +6390,21 @@ void MainWindow::buildUI()
     applyStatusBarCompactLabelStyle(m_statusMessageLabel, QStringLiteral("{{color.text.primary}}"));
     hbox->addWidget(m_statusMessageLabel, 1);
 
+    // ANAN fork build 612 (operator, 22.11: "make the RZ3QS branch's buttons on
+    // the bottom bar muted in colour, as the antenna indicator or the time
+    // text are"): the status bar's secondary text colour, no fill, a faint
+    // frame; hover brings the text up; on / pressed is a dim accent frame.
+    static const char* const kRz3qsMutedButtonStyle =
+        "QPushButton { background: transparent; "
+        "border: 1px solid {{color.background.2}}; "
+        "border-radius: 3px; color: {{color.text.secondary}}; "
+        "font-size: 10px; font-weight: normal; padding: 1px 2px; }"
+        "QPushButton:hover { color: {{color.text.primary}}; }"
+        "QPushButton:checked { background: transparent; "
+        "color: {{color.text.primary}}; "
+        "border: 1px solid {{color.accent.dim}}; }"
+        "QPushButton:pressed { border: 1px solid {{color.accent.dim}}; }";
+
     // ANAN fork build 572 (operator, 21.11): a branch for one user. While the
     // FreeDV text field (FdvState::callsign) reads RZ3QS, two buttons stand
     // left of the station name -- "A1" and "A2", drawn as the RX applet's
@@ -6418,16 +6433,10 @@ void MainWindow::buildUI()
             b->setAutoDefault(false);
             b->setFocusPolicy(Qt::NoFocus);
             b->setFixedSize(26, 20);
-            // The RX applet's kButtonBase() + kBlueActive().
-            AetherSDR::ThemeManager::instance().applyStyleSheet(b,
-                "QPushButton { background: {{color.background.1}}; "
-                "border: 1px solid {{color.background.2}}; "
-                "border-radius: 3px; color: {{color.text.primary}}; "
-                "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
-                "QPushButton:hover { background: {{color.background.2}}; }"
-                "QPushButton:checked { background: {{color.accent.dim}}; "
-                "color: {{color.text.primary}}; "
-                "border: 1px solid {{color.accent.bright}}; }");
+            // Build 612 (operator, 22.11): muted like the status bar's
+            // antenna indicator and time text (color.text.secondary, no
+            // fill); "on" is a dim accent frame, not the bright blue.
+            AetherSDR::ThemeManager::instance().applyStyleSheet(b, kRz3qsMutedButtonStyle);
             b->hide();
             const QString key = QString::fromLatin1(def.key);
             b->setProperty("rz3qsKey", key);
@@ -6515,14 +6524,7 @@ void MainWindow::buildUI()
             b->setAutoDefault(false);
             b->setFocusPolicy(Qt::NoFocus);
             b->setFixedSize(36, 20);
-            AetherSDR::ThemeManager::instance().applyStyleSheet(b,
-                "QPushButton { background: {{color.background.1}}; "
-                "border: 1px solid {{color.background.2}}; "
-                "border-radius: 3px; color: {{color.text.primary}}; "
-                "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
-                "QPushButton:hover { background: {{color.background.2}}; }"
-                "QPushButton:pressed { background: {{color.accent.dim}}; "
-                "border: 1px solid {{color.accent.bright}}; }");
+            AetherSDR::ThemeManager::instance().applyStyleSheet(b, kRz3qsMutedButtonStyle);   // build 612
             b->hide();
             if (def.rx)
                 connect(b, &QPushButton::clicked, this, [this] { toggleAetherRxDialog(); });
