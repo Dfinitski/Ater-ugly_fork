@@ -50,7 +50,11 @@ public:
     // cushion; a backlog past 100 ms (a stall that came back in a burst) is
     // trimmed back to it. The radio's own 2048-frame FIFO (~42 ms) comes after
     // this one and is the firmware's. depth/underruns go to the ANAN diag.
-    static constexpr std::size_t kTargetFrames = 1920;   // 40 ms prime
+    // ANAN fork build 614 (operator, 22.11, after the 613 unkey timeline:
+    // the feed held 2000..3000 frames, 40..60 ms, on receive): the prime is
+    // 15 ms -- the longest push gap measured is 11 ms. Underruns are counted
+    // in the ANAN diag; if they appear, this is the number to raise.
+    static constexpr std::size_t kTargetFrames = 720;    // 15 ms prime
     static constexpr std::size_t kHighFrames = 4800;     // 100 ms: trim back to the target
     static constexpr std::size_t kMaxFrames = 24000;     // 500 ms cap
 
@@ -65,10 +69,34 @@ public:
             return;
         const double step = static_cast<double>(rate) / static_cast<double>(kRate);
         std::lock_guard<std::mutex> lock(m_mutex);
+        const bool loudIn = AnanLatencyMarks::loud(stereo, 2 * frames);
         // Build 613: unkey timeline -- the first real audio in.
         auto& marks = AnanLatencyMarks::instance();
-        if (marks.waiting(AnanLatencyMarks::FeedPush) && AnanLatencyMarks::loud(stereo, 2 * frames))
+        if (loudIn && marks.waiting(AnanLatencyMarks::FeedPush))
             marks.mark(AnanLatencyMarks::FeedPush, static_cast<int>(m_fifo.size() / 2));
+        // ANAN fork build 614 (613 timeline: 2100..2500 frames, 45..55 ms of
+        // silence queued ahead of the first sound after an over). OUR ERROR:
+        // the mixer's resume cushion (build 597) is meant for the PC sound
+        // device, and AudioEngine drops what it has queued of it (build 599),
+        // but here it stayed and the radio speaker played it first. Now the
+        // first real audio after a silence drops the queued silence down to
+        // the prime -- only when ALL of it is silent, so no audio is lost.
+        if (loudIn && !m_lastPushLoud && m_fifo.size() > 2 * kTargetFrames) {
+            bool silent = true;
+            for (float v : m_fifo) {
+                if (std::abs(v) > AnanLatencyMarks::kLoud) {
+                    silent = false;
+                    break;
+                }
+            }
+            if (silent) {
+                const std::size_t drop = m_fifo.size() - 2 * kTargetFrames;
+                m_fifo.erase(m_fifo.begin(), m_fifo.begin() + static_cast<std::ptrdiff_t>(drop));
+                m_silenceDrops.fetch_add(1, std::memory_order_relaxed);
+                m_silenceDroppedFrames.store(static_cast<unsigned>(drop / 2), std::memory_order_relaxed);
+            }
+        }
+        m_lastPushLoud = loudIn;
         if (rate != m_lastRate) {
             m_lastRate = rate;
             m_pos = 1.0;
@@ -188,6 +216,9 @@ public:
         return true;
     }
     unsigned trims() const { return m_trims.load(std::memory_order_relaxed); }
+    // Build 614: silence dropped ahead of the first sound (count, last frames).
+    unsigned silenceDrops() const { return m_silenceDrops.load(std::memory_order_relaxed); }
+    unsigned lastSilenceDropFrames() const { return m_silenceDroppedFrames.load(std::memory_order_relaxed); }
 
 private:
     static long long nowMs()
@@ -209,6 +240,9 @@ private:
     std::atomic<long long> m_lastPush{0};
     std::atomic<unsigned> m_underruns{0};
     std::atomic<unsigned> m_trims{0};
+    std::atomic<unsigned> m_silenceDrops{0};
+    std::atomic<unsigned> m_silenceDroppedFrames{0};
+    bool m_lastPushLoud = false;
     std::size_t m_depthMin = static_cast<std::size_t>(-1);
     std::size_t m_depthMax = 0;
 };

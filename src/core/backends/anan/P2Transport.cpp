@@ -1630,11 +1630,14 @@ void P2Transport::diagTick()
                std::size_t lo = 0, hi = 0;
                if (!feed.wanted() || !feed.takeDepthRange(lo, hi))
                    return QString();
-               return QStringLiteral("; AetherRX feed %1..%2 ms, underruns %3, trims %4")
+               return QStringLiteral("; AetherRX feed %1..%2 ms, underruns %3, trims %4, "
+                                     "silence drops %5 (last %6 ms)")
                    .arg(lo * 1000 / AnanCodecFeed::kRate)
                    .arg(hi * 1000 / AnanCodecFeed::kRate)
                    .arg(feed.underruns())
-                   .arg(feed.trims());
+                   .arg(feed.trims())
+                   .arg(feed.silenceDrops())
+                   .arg(feed.lastSilenceDropFrames() * 1000 / AnanCodecFeed::kRate);
            }()
         << (m_wb.enableMask || m_diagWbPkts[0] || m_diagWbPkts[1] || m_diagWbOther
                 ? QStringLiteral("; wideband mask %1: port 1027 (ADC1) %2 pkts / %3 frames, "
