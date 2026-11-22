@@ -138,8 +138,7 @@ public:
             Pa_CloseStream(m_stream);
             m_stream = nullptr;
         }
-        if (m_paInit)
-            Pa_Terminate();
+        // PortAudio stays initialised (see openStream).
     }
 
     int rate() const { return m_rate; }
@@ -270,9 +269,12 @@ private:
                 *why = w;
             return false;
         };
-        if (Pa_Initialize() != paNoError)
+        // Build 604: initialised once and kept -- Pa_Initialize enumerates
+        // every host API and took 2.5 s on the audio thread (log 21.11
+        // 23:07:02 -> 05), each time the output was reopened.
+        static const bool paReady = (Pa_Initialize() == paNoError);
+        if (!paReady)
             return fail(QStringLiteral("Pa_Initialize failed"));
-        m_paInit = true;
         const PaHostApiIndex api = Pa_HostApiTypeIdToHostApiIndex(paWASAPI);
         if (api < 0)
             return fail(QStringLiteral("no WASAPI host API in PortAudio"));
@@ -330,6 +332,27 @@ private:
                 break;
             m_stream = nullptr;
             lastErr = QString::fromUtf8(Pa_GetErrorText(e));
+            // Build 604: the WASAPI reason (log 21.11 23:07: only "Invalid
+            // device", PortAudio's word for a refused IAudioClient).
+            if (const PaHostErrorInfo* he = Pa_GetLastHostErrorInfo();
+                he && he->hostApiType == paWASAPI && he->errorCode != 0) {
+                const auto hr = static_cast<unsigned long>(he->errorCode);
+                QString what;
+                if (hr == 0x8889000AUL)
+                    what = QStringLiteral("the card is in use by another program "
+                                          "(close the other programs playing on it)");
+                else if (hr == 0x8889000EUL)
+                    what = QStringLiteral("Windows does not allow exclusive mode on this card "
+                                          "(Sound settings -> device -> Properties -> Advanced: "
+                                          "\"Allow applications to take exclusive control\")");
+                else if (hr == 0x88890008UL)
+                    what = QStringLiteral("format not supported exclusively");
+                lastErr += QStringLiteral(" [WASAPI 0x%1%2%3]")
+                               .arg(hr, 8, 16, QLatin1Char('0'))
+                               .arg(he->errorText ? QStringLiteral(" ") + QString::fromUtf8(he->errorText).trimmed()
+                                                  : QString())
+                               .arg(what.isEmpty() ? QString() : QStringLiteral(": ") + what);
+            }
         }
         if (!m_stream)
             return fail(QStringLiteral("\"%1\": %2").arg(QString::fromUtf8(info->name), lastErr));
@@ -343,7 +366,6 @@ private:
     }
 
     PaStream* m_stream = nullptr;
-    bool m_paInit = false;
     int m_rate = 0;
     std::size_t m_capFrames = 0;
     std::vector<float> m_ring;
