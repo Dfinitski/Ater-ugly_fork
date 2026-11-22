@@ -313,6 +313,7 @@ void Hl2RxDsp::installChannel(RebuildResult result)
     applyAgcOffLevel();
     applyApf();
     applyAnf();
+    applyEmnr();   // build 587: a fresh channel opens with NR2 off
     // A rebuild (rate change) creates a fresh channel; restore the operator's
     // current slice offset rather than silently snapping the slice to centre.
     if (m_shiftHz != 0.0)
@@ -571,6 +572,38 @@ void Hl2RxDsp::setAnf(bool on, int level)
         applyAnf();
 }
 
+void Hl2RxDsp::setEmnr(const QVariantMap& m)
+{
+    if (m_sub)   // the SPLIT receiver is a clone of this one
+        m_sub->setEmnr(m);
+    WdspChannel::EmnrSettings s;
+    s.run = m.value(QStringLiteral("on")).toBool();
+    s.gainMethod = m.value(QStringLiteral("gainMethod"), 2).toInt();
+    s.npeMethod = m.value(QStringLiteral("npeMethod"), 0).toInt();
+    s.aeRun = m.value(QStringLiteral("ae"), true).toBool();
+    s.position = m.value(QStringLiteral("position"), 0).toInt();
+    s.post2Run = m.value(QStringLiteral("post2Run"), false).toBool();
+    s.post2Factor = m.value(QStringLiteral("post2Factor"), 15.0).toDouble();
+    s.post2Nlevel = m.value(QStringLiteral("post2Nlevel"), 15.0).toDouble();
+    s.post2Taper = m.value(QStringLiteral("post2Taper"), 12).toInt();
+    s.post2Rate = m.value(QStringLiteral("post2Rate"), 5.0).toDouble();
+    if (s == m_emnr)
+        return;
+    if (s.run != m_emnr.run)
+        qCInfo(lcHl2RxDsp) << "NR2 (WDSP EMNR)" << (s.run ? "on" : "off") << "gain method" << s.gainMethod
+                           << "NPE" << s.npeMethod << "AE" << s.aeRun
+                           << (s.position == 0 ? "before the AGC" : "after the AGC");
+    m_emnr = s;
+    if (canPushToChannel())
+        applyEmnr();
+}
+
+void Hl2RxDsp::applyEmnr()
+{
+    if (!m_channel->setEmnr(m_emnr))
+        qCWarning(lcHl2RxDsp) << "NR2 (WDSP EMNR) refused by the channel; re-applied on the next configure()";
+}
+
 void Hl2RxDsp::applyAnf()
 {
     const bool run = anfInCircuit();
@@ -771,9 +804,13 @@ double Hl2RxDsp::overTailMs() const
 {
     const int taps = m_channel ? m_channel->config().filterTaps : kRxShortFilterTaps;
     const auto mode = m_config.mode;
-    const bool bp1 = m_anfOn || mode == WdspChannel::Mode::Am || mode == WdspChannel::Mode::Sam
-                     || mode == WdspChannel::Mode::Fm;
-    const double bandpassMs = (bp1 ? 2.0 : 1.0) * (taps - 1) / 2.0 * 1000.0 / kWdspDspSampleRateHz;
+    // Build 587: WDSP's NR2 (EMNR) runs bp1 too (RXAbp1Check) and adds its
+    // overlap-add delay, fsize - fsize / ovrlp = 4096 - 1024 at 48 kHz.
+    const bool emnr = m_emnr.run;
+    const bool bp1 = anfInCircuit() || emnr || mode == WdspChannel::Mode::Am
+                     || mode == WdspChannel::Mode::Sam || mode == WdspChannel::Mode::Fm;
+    const double bandpassMs = (bp1 ? 2.0 : 1.0) * (taps - 1) / 2.0 * 1000.0 / kWdspDspSampleRateHz
+                              + (emnr ? (4096.0 - 1024.0) * 1000.0 / kWdspDspSampleRateHz : 0.0);
     const double agcMs = 4.0;   // RXA AGC: n_tau 4 x tau_attack 1 ms (RXA.c)
     const double blockMs = m_config.inputSampleRateHz > 0
         ? 1000.0 * m_config.dspBlockSize / m_config.inputSampleRateHz : 0.0;
@@ -826,7 +863,7 @@ void Hl2RxDsp::applyAgcHold()
             m_lastOverTailMs = tailMs;
             qCInfo(lcHl2RxDsp).nospace() << "RX over tail " << tailMs << " ms from the unkey ("
                 << (m_channel ? m_channel->config().filterTaps : 0) << " taps"
-                << (m_anfOn ? ", ANF" : "") << ")";
+                << (anfInCircuit() ? ", ANF" : "") << (m_emnr.run ? ", NR2" : "") << ")";
         }
         m_outMuteFrames = std::max(m_outMuteFrames,
             static_cast<int>(std::ceil(m_config.audioSampleRateHz * tailMs / 1000.0)));
@@ -1065,6 +1102,11 @@ void Hl2RxDsp::startSubBuild()
     sub->setAgcOffLevel(m_agcOffLevel);
     sub->setApf(m_apfOn, m_apfLevel, m_apfCenterHz);
     sub->setAnf(m_anfOn, m_anfLevel);
+    {   // build 587
+        sub->m_emnr = m_emnr;
+        if (sub->canPushToChannel())
+            sub->applyEmnr();
+    }
     sub->setLinearPhaseWanted(m_linearWanted);
     sub->setBinaural(m_binaural);
     sub->setAudioMuted(m_audioMuted);

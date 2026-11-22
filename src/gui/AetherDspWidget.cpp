@@ -736,6 +736,19 @@ void AetherDspWidget::selectTab(const QString& name)
 
 // ── NR2 Tab ──────────────────────────────────────────────────────────────────
 
+void AetherDspWidget::setWdspNr2Mode(bool on)
+{
+    for (QWidget* w : std::as_const(m_nr2MaskOnly))
+        if (w)
+            w->setVisible(!on);
+    if (m_nr2AfterAgcCheck) {
+        const QSignalBlocker blocker(m_nr2AfterAgcCheck);
+        m_nr2AfterAgcCheck->setChecked(
+            AppSettings::instance().value(QStringLiteral("AnanNr2Position"), 0).toInt() == 1);
+        m_nr2AfterAgcCheck->setVisible(on);
+    }
+}
+
 QWidget* AetherDspWidget::buildNr2Page()
 {
     auto* page = new QWidget;
@@ -921,6 +934,22 @@ QWidget* AetherDspWidget::buildNr2Page()
         row->setSpacing(20);
         row->addWidget(m_nr2AeCheck);
         row->addWidget(m_nr2Post2Check);
+        // Build 587: the ANAN receiver's NR2 position (WDSP EMNR position 0 /
+        // 1, as Thetis' pre / post AGC). Shown only on an ANAN.
+        m_nr2AfterAgcCheck = new QCheckBox(QStringLiteral("After AGC"));
+        m_nr2AfterAgcCheck->setObjectName(QStringLiteral("nr2AfterAgcCheck"));
+        m_nr2AfterAgcCheck->setToolTip(QStringLiteral(
+            "ANAN: the receiver's NR2 runs after the AGC instead of before it (as in Thetis)."));
+        m_nr2AfterAgcCheck->setChecked(
+            AppSettings::instance().value(QStringLiteral("AnanNr2Position"), 0).toInt() == 1);
+        m_nr2AfterAgcCheck->setStyleSheet(m_nr2Post2Check->styleSheet());
+        m_nr2AfterAgcCheck->hide();
+        connect(m_nr2AfterAgcCheck, &QCheckBox::toggled, this, [](bool on) {
+            auto& st = AppSettings::instance();
+            st.setValue(QStringLiteral("AnanNr2Position"), on ? 1 : 0);
+            st.save();
+        });
+        row->addWidget(m_nr2AfterAgcCheck);
         row->addStretch(1);
         postBox->addLayout(row);
         vbox->addWidget(postFrame);
@@ -942,6 +971,7 @@ QWidget* AetherDspWidget::buildNr2Page()
     // Gain Max (reduction depth)
     {
         auto* lbl = new QLabel("Reduction:");
+        m_nr2MaskOnly << lbl;   // build 587
         styled(lbl, labelStyle);
         sliderGrid->addWidget(lbl, row, 0);
         m_nr2GainMaxSlider = new GuardedSlider(Qt::Horizontal);
@@ -961,6 +991,7 @@ QWidget* AetherDspWidget::buildNr2Page()
             "higher values retain more of the input level.");
         sliderGrid->addWidget(m_nr2GainMaxSlider, row, 1);
         m_nr2GainMaxLabel = new QLabel("1.00");
+        m_nr2MaskOnly << m_nr2GainMaxSlider << m_nr2GainMaxLabel;   // build 587
         styled(m_nr2GainMaxLabel, valStyle);
         m_nr2GainMaxLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         sliderGrid->addWidget(m_nr2GainMaxLabel, row, 2);
@@ -976,6 +1007,7 @@ QWidget* AetherDspWidget::buildNr2Page()
     // Gain floor (naturalness / musical-noise tradeoff)
     {
         auto* lbl = new QLabel("Naturalness:");
+        m_nr2MaskOnly << lbl;   // build 587
         styled(lbl, labelStyle);
         sliderGrid->addWidget(lbl, row, 0);
         m_nr2GainFloorSlider = new GuardedSlider(Qt::Horizontal);
@@ -1000,6 +1032,7 @@ QWidget* AetherDspWidget::buildNr2Page()
             "metallic or musical artifacts.");
         sliderGrid->addWidget(m_nr2GainFloorSlider, row, 1);
         m_nr2GainFloorLabel = new QLabel("0.00");
+        m_nr2MaskOnly << m_nr2GainFloorSlider << m_nr2GainFloorLabel;   // build 587
         styled(m_nr2GainFloorLabel, valStyle);
         m_nr2GainFloorLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         sliderGrid->addWidget(m_nr2GainFloorLabel, row, 2);
@@ -1017,6 +1050,7 @@ QWidget* AetherDspWidget::buildNr2Page()
     // Gain Smooth
     {
         auto* lbl = new QLabel("Smoothing:");
+        m_nr2MaskOnly << lbl;   // build 587
         styled(lbl, labelStyle);
         sliderGrid->addWidget(lbl, row, 0);
         m_nr2SmoothSlider = new GuardedSlider(Qt::Horizontal);
@@ -1036,6 +1070,7 @@ QWidget* AetherDspWidget::buildNr2Page()
             "change more slowly and can reduce musical artifacts.");
         sliderGrid->addWidget(m_nr2SmoothSlider, row, 1);
         m_nr2SmoothLabel = new QLabel("0.85");
+        m_nr2MaskOnly << m_nr2SmoothSlider << m_nr2SmoothLabel;   // build 587
         styled(m_nr2SmoothLabel, valStyle);
         m_nr2SmoothLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         sliderGrid->addWidget(m_nr2SmoothLabel, row, 2);
@@ -1051,6 +1086,7 @@ QWidget* AetherDspWidget::buildNr2Page()
     // Q_SPP (voice threshold)
     {
         m_nr2QsppTitleLabel = new QLabel("Threshold:");
+        m_nr2MaskOnly << m_nr2QsppTitleLabel;   // build 587
         styled(m_nr2QsppTitleLabel, labelStyle);
         sliderGrid->addWidget(m_nr2QsppTitleLabel, row, 0);
         m_nr2QsppSlider = new GuardedSlider(Qt::Horizontal);
@@ -1071,6 +1107,7 @@ QWidget* AetherDspWidget::buildNr2Page()
             "noise.");
         sliderGrid->addWidget(m_nr2QsppSlider, row, 1);
         m_nr2QsppLabel = new QLabel("0.20");
+        m_nr2MaskOnly << m_nr2QsppSlider << m_nr2QsppLabel;   // build 587
         styled(m_nr2QsppLabel, valStyle);
         m_nr2QsppLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         sliderGrid->addWidget(m_nr2QsppLabel, row, 2);

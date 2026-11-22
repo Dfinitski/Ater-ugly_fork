@@ -411,6 +411,31 @@ public:
     // Stored in Config so open() re-applies it.
     bool setAnf(bool enabled, double gain) noexcept;
 
+    // ANAN fork build 587 (operator, 21.11: "NR2 works badly, do it as
+    // Thetis does"): WDSP's own NR2 (emnr.c) in this receive channel, the
+    // stage Thetis' NR2 is -- 4096-point FFT at the 48 kHz DSP rate, overlap
+    // 4, ahead of or after the AGC. The controls are Thetis': gain method
+    // (0 linear, 1 log, 2 gamma, 3 trained), noise estimator (0 OSMS, 1 MMSE,
+    // 2 NSTAT), AE filter, position (0 before the AGC, 1 after) and the post2
+    // noise fill (factor / nlevel in percent, taper in percent of the band,
+    // decay in seconds). Receive only. NOT stored in Config: a rebuilt
+    // channel opens with it off and the owner (Hl2RxDsp) applies it again.
+    struct EmnrSettings {
+        bool run = false;
+        int gainMethod = 2;
+        int npeMethod = 0;
+        bool aeRun = true;
+        int position = 0;
+        bool post2Run = false;
+        double post2Factor = 15.0;
+        double post2Nlevel = 15.0;
+        int post2Taper = 12;
+        double post2Rate = 5.0;
+        bool operator==(const EmnrSettings&) const = default;
+    };
+    bool setEmnr(const EmnrSettings& settings) noexcept;
+    [[nodiscard]] const EmnrSettings& emnr() const noexcept { return m_emnr; }
+
     // Runtime filter length / phase mode without reconfigure() (which would
     // destroy the notch database).
     // setFilterTaps(): notch width floor 200 Hz at 2048 taps, 50 Hz at 8192
@@ -661,6 +686,8 @@ private:
     std::optional<AetherSDR::WfmReceptionDiagnostics> m_wbfmReception;
     int m_channelId = -1;
     Config m_config;
+    EmnrSettings m_emnr;          // build 587: what WDSP's NR2 runs with
+    bool m_emnrApplied = false;   // build 587: m_emnr reached WDSP once
     // Fixed for a given Config; cached at open()/reconfigure() so the real-time
     // processIq() buffer-size check does not repeat a divide every block.
     std::size_t m_outputBlockSize = 0;

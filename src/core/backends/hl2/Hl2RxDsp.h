@@ -4,6 +4,7 @@
 
 #include <QElapsedTimer>
 #include <QObject>
+#include <QVariantMap>
 
 #include <algorithm>
 #include <array>
@@ -452,6 +453,10 @@ public:
             || mode == WdspChannel::Mode::Sam;
     }
     Q_INVOKABLE void setAnf(bool on, int level);
+    // ANAN fork build 587: WDSP's NR2 (EMNR) for this receiver, as Thetis
+    // runs it (WdspChannel::setEmnr). Keys: on, gainMethod, npeMethod, ae,
+    // position, post2Run, post2Factor, post2Nlevel, post2Taper, post2Rate.
+    Q_INVOKABLE void setEmnr(const QVariantMap& settings);
 
     // ANAN port: DRM. With an engine set, the channel's output -- in DRM mode
     // the band-pass-filtered I/Q around the slice frequency, since WDSP runs
@@ -718,6 +723,8 @@ private:
     // kept, so the next install re-applies it.
     void applyApf();
     void applyAnf();
+    void applyEmnr();                        // build 587
+    WdspChannel::EmnrSettings m_emnr;        // build 587: the operator's NR2
     void applyAgcOffLevel();
     // True when the next panadapter frame may be computed. Stays true until one
     // actually completes, since a frame spans several EP6 blocks.

@@ -59,6 +59,17 @@ void SetRXAANRRun(int channel, int run);
 void SetRXAANRVals(int channel, int taps, int delay, double gain, double leakage);
 void SetRXAANFRun(int channel, int run);
 void SetRXAANFVals(int channel, int taps, int delay, double gain, double leakage);
+// ANAN fork build 587: WDSP's own NR2 (emnr.c), as Thetis runs it.
+void SetRXAEMNRRun(int channel, int run);
+void SetRXAEMNRgainMethod(int channel, int method);
+void SetRXAEMNRnpeMethod(int channel, int method);
+void SetRXAEMNRaeRun(int channel, int run);
+void SetRXAEMNRPosition(int channel, int position);
+void SetRXAEMNRpost2Run(int channel, int run);
+void SetRXAEMNRpost2Factor(int channel, double factor);
+void SetRXAEMNRpost2Nlevel(int channel, double nlevel);
+void SetRXAEMNRpost2Taper(int channel, int taper);
+void SetRXAEMNRpost2Rate(int channel, double tc);
 // Broadcast decoder controls, WDSP Guide section 5.3.10. The local patch
 // applies deemphasis to both live filters; indicator readback is an atomic
 // latest-completed-block observation. The caller must own channel lifetime.

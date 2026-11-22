@@ -9488,6 +9488,54 @@ void MainWindow::setActiveSliceInternal(int sliceId, bool revealOffscreen)
 // audio engine on the mixed sound -- one for the whole program. Each receiver
 // keeps its own "on / off" and method; the engine is set to those of the
 // receiver that is selected (a sub receiver: its owner's).
+bool MainWindow::ananUsesWdspNr2() const
+{
+    return m_radioModel.isConnected() && !m_radioModel.usesFlexCommandPlane()
+        && m_radioModel.isAnanRadio();
+}
+
+void MainWindow::ananEmnrPushAll()
+{
+    // ANAN fork build 587 (operator, 21.11: "users say NR2 works badly, the
+    // AetherRX sliders seem to regulate nothing -- look how Thetis does it,
+    // it works well there"; chosen: "as in Thetis"). Thetis' NR2 is WDSP's
+    // EMNR inside each receiver: 48 kHz, 4096-point FFT, before (or after)
+    // the AGC. Here the same stage, per receiver A ... D, from the RX
+    // applet's store; a sub receiver follows its main one. The settings are
+    // the AetherRX NR2 ones Thetis has too (gain method, NPE, AE, the post2
+    // noise fill) plus the position (AppSettings "AnanNr2Position").
+    if (!ananUsesWdspNr2())
+        return;
+    const Nr2SettingsModel::Config cfg = Nr2SettingsModel::instance().config();
+    const int position = std::clamp(
+        AppSettings::instance().value(QStringLiteral("AnanNr2Position"), 0).toInt(), 0, 1);
+    for (const SliceModel* s : m_radioModel.slices()) {
+        if (!s || s->sliceId() < 0 || s->sliceId() > 3)
+            continue;   // main receivers only (the subs are their clones)
+        const int owner = s->sliceId();
+        const bool on = AetherSDR::anan_rxdsp::nrOn(owner)
+            && AetherSDR::anan_rxdsp::nrMethod(owner) == QLatin1String("NR2");
+        m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.emnr"), 0,
+            QVariantMap{
+                {QStringLiteral("slice"), owner},
+                {QStringLiteral("on"), on},
+                {QStringLiteral("gainMethod"), cfg.gainMethod},
+                {QStringLiteral("npeMethod"), cfg.npeMethod},
+                {QStringLiteral("ae"), cfg.aeFilter},
+                {QStringLiteral("position"), position},
+                {QStringLiteral("post2Run"), cfg.post2Run},
+                // WDSP takes percent; the model keeps fractions.
+                {QStringLiteral("post2Factor"), double(cfg.post2Factor) * 100.0},
+                {QStringLiteral("post2Nlevel"), double(cfg.post2Nlevel) * 100.0},
+                // WDSP's taper is a fraction (percent) of the 24 kHz band at
+                // its 48 kHz rate; the model keeps the frequency.
+                {QStringLiteral("post2Taper"),
+                 int(std::lround(100.0 * double(cfg.post2TaperHz) / 24000.0))},
+                {QStringLiteral("post2Rate"), double(cfg.post2DecaySeconds)},
+            });
+    }
+}
+
 void MainWindow::ananRxNrApply()
 {
     if (!m_audio || m_activeSliceId < 0 || !m_radioModel.isConnected()
@@ -9500,10 +9548,19 @@ void MainWindow::ananRxNrApply()
         AetherSDR::anan_rxdsp::setNr(owner, !current.isEmpty(), current);
         if (m_appletPanel && m_appletPanel->rxApplet())
             m_appletPanel->rxApplet()->refreshRxDspButtons();
-        return;
+        if (!ananUsesWdspNr2() || current != QLatin1String("NR2"))
+            return;
+        // Build 587: a client NR2 that was running becomes this receiver's
+        // WDSP NR2 below.
     }
-    const QString wanted = AetherSDR::anan_rxdsp::nrOn(owner)
+    QString wanted = AetherSDR::anan_rxdsp::nrOn(owner)
         ? AetherSDR::anan_rxdsp::nrMethod(owner) : QString();
+    // Build 587: on an ANAN, NR2 is not the client's (ananEmnrPushAll).
+    if (ananUsesWdspNr2()) {
+        ananEmnrPushAll();
+        if (wanted == QLatin1String("NR2"))
+            wanted.clear();
+    }
     if (wanted == current)
         return;
     // The engine switches on its own thread: the store is not corrected from
@@ -9520,6 +9577,13 @@ void MainWindow::ananRxNrApply()
 // say what actually runs, and its button with it.
 void MainWindow::ananRxNrSyncFromEngine()
 {
+    // Build 587: the AetherRX NR2 page shows Thetis' controls on an ANAN
+    // (a dialog made later is caught on the next tick).
+    {
+        const bool wdsp = ananUsesWdspNr2();
+        for (AetherDspWidget* w : findChildren<AetherDspWidget*>())
+            w->setWdspNr2Mode(wdsp);
+    }
     if (!m_audio || m_activeSliceId < 0 || !m_radioModel.isConnected()
         || m_radioModel.usesFlexCommandPlane()
         || QDateTime::currentMSecsSinceEpoch() < m_ananRxNrGuardUntilMs)
@@ -9528,6 +9592,24 @@ void MainWindow::ananRxNrSyncFromEngine()
     if (AetherSDR::anan_rxdsp::nrOnRaw(owner).isEmpty())
         return;   // ananRxNrApply() has not seen this receiver yet
     const QString current = activeAetherDspMethod();
+    if (ananUsesWdspNr2()) {
+        // Build 587: the client NR2 switched on elsewhere (AetherRX, the
+        // flag) is this receiver's WDSP NR2 on an ANAN; a receiver running
+        // WDSP NR2 has the client off -- that is consistent.
+        if (current == QLatin1String("NR2")) {
+            AetherSDR::anan_rxdsp::setNr(owner, true, QStringLiteral("NR2"));
+            if (m_appletPanel && m_appletPanel->rxApplet())
+                m_appletPanel->rxApplet()->refreshRxDspButtons();
+            ananRxNrApply();
+            return;
+        }
+        if (current.isEmpty() && AetherSDR::anan_rxdsp::nrOn(owner)
+            && AetherSDR::anan_rxdsp::nrMethod(owner) == QLatin1String("NR2")) {
+            ananEmnrPushAll();   // a receiver whose DSP was made anew
+            return;
+        }
+        ananEmnrPushAll();
+    }
     const bool on = AetherSDR::anan_rxdsp::nrOn(owner);
     if (on == !current.isEmpty() && (!on || current == AetherSDR::anan_rxdsp::nrMethod(owner)))
         return;
@@ -11345,6 +11427,18 @@ void MainWindow::showNr2ParamPopup(const QPoint& globalPos)
             : QStringLiteral(
                 "Voice Threshold does not affect the selected gain method."));
 
+    // ANAN fork build 587: on an ANAN NR2 is WDSP's EMNR in the receiver, as
+    // in Thetis -- these four AetherSDR-only controls do not reach it.
+    const bool wdspNr2 = ananUsesWdspNr2();
+    if (wdspNr2) {
+        const QString why = QStringLiteral(
+            "ANAN: NR2 runs in the receiver as in Thetis; this control is not used.");
+        for (const DspParamPopup::SliderControl& c : {reduction, naturalness, smoothing, threshold}) {
+            c.setEnabled(false);
+            c.setToolTip(why);
+        }
+    }
+
     QCheckBox* aeFilter = popup->addCheckbox("AE Filter", initial.aeFilter,
         [this](bool on) {
             Nr2SettingsModel::instance().setAeFilter(on);
@@ -11352,7 +11446,7 @@ void MainWindow::showNr2ParamPopup(const QPoint& globalPos)
         });
 
     connect(&model, &Nr2SettingsModel::configChanged, popup,
-            [reduction, naturalness, smoothing, threshold, aeFilter]() {
+            [reduction, naturalness, smoothing, threshold, aeFilter, wdspNr2]() {
         const Nr2SettingsModel::Config config =
             Nr2SettingsModel::instance().config();
         reduction.slider->setValue(static_cast<int>(
@@ -11367,6 +11461,8 @@ void MainWindow::showNr2ParamPopup(const QPoint& globalPos)
 
         const bool available = config.gainMethod == 0
             || config.gainMethod == 2;
+        if (wdspNr2)   // build 587
+            return;
         threshold.setEnabled(available);
         threshold.setToolTip(available
             ? QStringLiteral(

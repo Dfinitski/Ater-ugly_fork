@@ -1152,6 +1152,47 @@ bool WdspChannel::setAnf(bool enabled, double gain) noexcept
     return true;
 }
 
+bool WdspChannel::setEmnr(const EmnrSettings& in) noexcept
+{
+    if (m_config.direction != Direction::Receive)
+        return false;
+    EmnrSettings s = in;
+    s.gainMethod = std::clamp(s.gainMethod, 0, 3);
+    s.npeMethod = std::clamp(s.npeMethod, 0, 2);
+    s.position = std::clamp(s.position, 0, 1);
+    s.post2Factor = std::isfinite(s.post2Factor) ? std::clamp(s.post2Factor, 0.0, 100.0) : 15.0;
+    s.post2Nlevel = std::isfinite(s.post2Nlevel) ? std::clamp(s.post2Nlevel, 0.0, 100.0) : 15.0;
+    s.post2Taper = std::clamp(s.post2Taper, 1, 100);
+    s.post2Rate = std::isfinite(s.post2Rate) ? std::clamp(s.post2Rate, 0.2, 60.0) : 5.0;
+    // Unchanged: no handshake (see setApf()). Off and staying off -- the
+    // parameters do not matter.
+    if (m_emnrApplied && (s == m_emnr || (!s.run && !m_emnr.run))) {
+        m_emnr = s;
+        return true;
+    }
+    if (!beginControlOperation())
+        return false;
+    {
+        const ControlSetupLock setupLock;
+        // The parameters before the run, as Thetis sets them.
+        SetRXAEMNRgainMethod(m_channelId, s.gainMethod);
+        SetRXAEMNRnpeMethod(m_channelId, s.npeMethod);
+        SetRXAEMNRaeRun(m_channelId, s.aeRun ? 1 : 0);
+        if (!m_emnrApplied || s.position != m_emnr.position)
+            SetRXAEMNRPosition(m_channelId, s.position);
+        SetRXAEMNRpost2Factor(m_channelId, s.post2Factor);
+        SetRXAEMNRpost2Nlevel(m_channelId, s.post2Nlevel);
+        SetRXAEMNRpost2Taper(m_channelId, s.post2Taper);
+        SetRXAEMNRpost2Rate(m_channelId, s.post2Rate);
+        SetRXAEMNRpost2Run(m_channelId, s.post2Run ? 1 : 0);
+        SetRXAEMNRRun(m_channelId, s.run ? 1 : 0);
+    }
+    m_emnr = s;
+    m_emnrApplied = true;
+    endControlOperation();
+    return true;
+}
+
 bool WdspChannel::setApf(bool enabled, double centerHz, double bandwidthHz,
                          double gain) noexcept
 {

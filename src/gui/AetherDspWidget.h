@@ -69,6 +69,11 @@ public:
     // Disable the NR2 selector button when compressed (Opus / SmartLink)
     // audio is active — NR2 amplifies codec artifacts (#1597).
     void setNr2Available(bool available, const QString& tooltip);
+    // ANAN fork build 587: on an ANAN, NR2 is WDSP's EMNR in the receiver
+    // (as Thetis). Its controls are Thetis' -- the AetherSDR-only mask
+    // sliders (Reduction, Naturalness, Smoothing, Threshold) are hidden and
+    // the position (before / after the AGC) is shown.
+    void setWdspNr2Mode(bool on);
 
 signals:
     // Explicit operator action, emitted before the engine request. Mode-based
@@ -188,6 +193,8 @@ private:
     QButtonGroup* m_nr2NpeGroup{nullptr};
     QCheckBox*    m_nr2AeCheck{nullptr};
     QCheckBox*    m_nr2Post2Check{nullptr};
+    QCheckBox*    m_nr2AfterAgcCheck{nullptr};   // build 587
+    QList<QWidget*> m_nr2MaskOnly;               // build 587
     QSlider*      m_nr2Post2NlevelSlider{nullptr};
     QLabel*       m_nr2Post2NlevelLabel{nullptr};
     QSlider*      m_nr2Post2FactorSlider{nullptr};

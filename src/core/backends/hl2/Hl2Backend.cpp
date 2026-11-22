@@ -9606,6 +9606,24 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
                 emit extensionResult(requestId, QVariant(m_splits[0].on || m_splits[1].on));
             return;
         }
+        // ANAN fork build 587: WDSP's NR2 (EMNR) of one receiver, as Thetis
+        // runs it. arg: {slice, on, gainMethod, npeMethod, ae, position,
+        // post2Run, post2Factor, post2Nlevel, post2Taper, post2Rate}. A sub
+        // receiver follows its main one (Hl2RxDsp::setEmnr).
+        if (verb == QLatin1String("anan.emnr")) {
+            const QVariantMap m = arg.toMap();
+            const int ddc = ddcForSlice(m.value(QStringLiteral("slice")).toInt());
+            Receiver* r = rx(ddc);
+            if (r && r->dsp)
+                QMetaObject::invokeMethod(r->dsp, "setEmnr", Qt::QueuedConnection, Q_ARG(QVariantMap, m));
+            if (requestId != 0) {
+                if (r)
+                    emit extensionResult(requestId, QVariant(true));
+                else
+                    emit extensionError(requestId, QStringLiteral("no such receiver"));
+            }
+            return;
+        }
         // Build 326: CTUN OFF for one receiver (TCI "Center Lock when I/Q").
         if (verb == QLatin1String("anan.ctun")) {
             const QVariantMap m = arg.toMap();

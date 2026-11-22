@@ -1152,6 +1152,10 @@ private:
     // choice (AnanRxDspStore.h), and the store kept true to the engine.
     void ananRxNrApply();
     void ananRxNrSyncFromEngine();
+    // ANAN fork build 587: NR2 on an ANAN is WDSP's EMNR in each receiver
+    // (as Thetis), not the client NR2: pushes every main receiver's state.
+    void ananEmnrPushAll();
+    [[nodiscard]] bool ananUsesWdspNr2() const;
     qint64 m_ananRxNrGuardUntilMs{0};
     void ananBandMemTick();
     void ananBandMemFlush();                // store every receiver's current band
