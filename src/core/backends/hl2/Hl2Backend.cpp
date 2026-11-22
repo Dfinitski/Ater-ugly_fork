@@ -3069,12 +3069,42 @@ static void ananLatencyReport(const char* why)
         iq += db(m.iqPeak(i)) + QLatin1Char(' ');
     for (int i = 0; i < m.outCount(); ++i)
         out += db(m.outPeak(i)) + QLatin1Char(' ');
+    // Build 616: the first output block after the mute within 10 dB of the
+    // level the receiver settles at (the median of the last 8 blocks).
+    QString fullLevel = QStringLiteral("--");
+    QString pipeline = QStringLiteral("--");
+    {
+        const int n = m.outCount();
+        const double mute = m.ms(M::RxMuteEnd) - m.ms(M::RxDspRelease);
+        const double blk = m.profileBlockUs() / 1000.0;
+        if (n >= 12 && blk > 0.0 && !std::isnan(mute)) {
+            std::vector<float> tail;
+            for (int i = n - 8; i < n; ++i)
+                tail.push_back(m.outPeak(i));
+            std::sort(tail.begin(), tail.end());
+            const float ref = 0.5f * (tail[3] + tail[4]);
+            for (int i = 0; i < n; ++i) {
+                if ((i + 1) * blk < mute)
+                    continue;
+                if (m.outPeak(i) >= ref * 0.316f) {
+                    const double at = m.ms(M::RxDspRelease) + (i + 1) * blk;
+                    fullLevel = QString::number(at, 'f', 1);
+                    if (!std::isnan(m.ms(M::RxDspFlushed)))
+                        pipeline = QString::number(at - m.ms(M::RxDspFlushed), 'f', 1);
+                    break;
+                }
+            }
+        }
+    }
     qCInfo(lcHl2).noquote().nospace()
-        << "ANAN unkey RX DSP guard: release " << t(M::RxDspRelease) << " ms (guard "
-        << QString::number(m.a(M::RxDspRelease) / 1000.0, 'f', 1) << " ms, blank "
+        << "ANAN unkey RX DSP guard: release " << t(M::RxDspRelease) << " ms (max guard "
+        << QString::number(m.a(M::RxDspRelease) / 1000.0, 'f', 1) << " ms, max blank "
         << QString::number(m.b(M::RxDspRelease) / 1000.0, 'f', 1) << " ms), blank end "
-        << t(M::RxBlankEnd) << ", flushed " << t(M::RxDspFlushed) << ", mute end " << t(M::RxMuteEnd)
-        << ", sound " << t(M::RxDspSound) << "; per block of "
+        << t(M::RxBlankEnd) << (m.a(M::RxBlankEnd) ? " (IQ clean)" : " (timed)")
+        << ", flushed " << t(M::RxDspFlushed) << ", mute end " << t(M::RxMuteEnd)
+        << (m.a(M::RxMuteEnd) ? " (over left the output)" : " (timed)")
+        << ", sound " << t(M::RxDspSound) << ", full level " << fullLevel
+        << " (pipeline from the flush " << pipeline << ")" << "; per block of "
         << QString::number(m.profileBlockUs() / 1000.0, 'f', 2) << " ms from the release, dBFS -- IQ in: "
         << iq << "| WDSP out before the mute: " << out;
 }

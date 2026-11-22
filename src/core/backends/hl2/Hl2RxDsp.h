@@ -892,6 +892,30 @@ private:
     int m_overBlankInFrames{0};    // build 601: input samples still fed as zeros
     bool m_overFlushPending{false};
     int m_overFlushRetries{0};
+    // ANAN fork build 616 (operator, 22.11: "markers, so we do not wait for
+    // what we need not wait for"). The 615 profiles (log 12:18): the IQ is
+    // back at the band level from the first block after the unkey, only
+    // 1..2 blocks a few dB high; the WDSP output holds the over for ~7 blocks
+    // (its pipeline), then the blanked zeros arrive as a drop of >= 25 dB.
+    // So the guard follows what happens instead of fixed times:
+    //  - the blank ends with the first block, after the exchange queue's
+    //    kOverFlushQueueBlocks, whose IQ peak is within kOverIqCleanRatio of
+    //    the band level before the over (m_preOverIqPk); at the latest after
+    //    overBlankMs() as before;
+    //  - the output mute ends when the blanked zeros reach the output (the
+    //    over has left the pipeline: a block kOverOutDropRatio below the
+    //    loudest held block and below kOverOutDropAbs) and the flush is
+    //    done; at the latest after
+    //    overTailMs() as before. NR2's own delay is added as before.
+    static constexpr float kOverIqCleanRatio = 2.0f;    // +6 dB
+    static constexpr float kOverOutDropRatio = 0.1f;    // -20 dB (615: drops of 22..37 dB)
+    static constexpr float kOverOutDropAbs = 0.0316f;   // -30 dBFS
+    float m_iqPkEma{0.0f};          // band level: IQ block peak, EMA ~100 ms
+    float m_preOverIqPk{0.0f};      // ... frozen at the over's start
+    int m_overBlankedFrames{0};     // input frames blanked since the unkey
+    bool m_overWatch{false};        // the unkey's guard is running
+    float m_overOutPkMax{0.0f};     // loudest output block held since the unkey
+    bool m_overDropSeen{false};     // the blanked zeros reached the output
     double m_lastOverTailMs{-1.0};
     std::atomic<bool> m_sMeterPeak {true};
     std::atomic<std::uint64_t> m_unsettled {0};   // build 335: see unsettledBins()

@@ -870,6 +870,8 @@ void Hl2RxDsp::applyAgcHold()
     if (on == m_agcTxHeld || !m_channel)
         return;
     if (on) {
+        m_preOverIqPk = m_iqPkEma;   // build 616
+        m_overWatch = false;
         double v = 0.0;
         const std::size_t n = m_agcVoltsRing.size();
         for (std::size_t k = 1; k <= 75 && k <= n; ++k) {
@@ -911,6 +913,10 @@ void Hl2RxDsp::applyAgcHold()
         m_overBlankInFrames = static_cast<int>(std::lround(m_config.inputSampleRateHz * blankMs / 1000.0));
         m_overFlushPending = true;
         m_overFlushRetries = 0;
+        m_overBlankedFrames = 0;      // build 616: the guard follows the markers
+        m_overWatch = true;
+        m_overOutPkMax = 0.0f;
+        m_overDropSeen = false;
         m_channel->setNoiseBlankerHold(true);   // the blanker does not learn the zeros
         if (tailMs != m_lastOverTailMs) {
             m_lastOverTailMs = tailMs;
@@ -1462,11 +1468,24 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
         }
         consumed += block;
         // Build 615: unkey timeline -- the IQ as it arrives, per block.
+        const float iqPk = std::max(anan::AnanLatencyMarks::peakOf(m_i.data(), block),
+                                    anan::AnanLatencyMarks::peakOf(m_q.data(), block));
         const bool profiling = !m_isSubDsp && anan::AnanLatencyMarks::instance().profiling();
         if (profiling)
-            anan::AnanLatencyMarks::instance().profileIq(std::max(
-                anan::AnanLatencyMarks::peakOf(m_i.data(), block),
-                anan::AnanLatencyMarks::peakOf(m_q.data(), block)));
+            anan::AnanLatencyMarks::instance().profileIq(iqPk);
+        // Build 616: the band level, learnt only on clean receive.
+        if (!m_agcTxHeld && !m_audioMuted && m_outMuteFrames == 0 && m_overBlankInFrames == 0
+            && !m_overFlushPending && m_pressBlankFrames == 0)
+            m_iqPkEma = m_iqPkEma > 0.0f ? 0.95f * m_iqPkEma + 0.05f * iqPk : iqPk;
+        // Build 616: the blank ends as soon as the IQ is back at the band level
+        // (after the exchange queue's blocks), not after a fixed time.
+        if (m_overBlankInFrames > 0 && m_overWatch && m_preOverIqPk > 0.0f
+            && m_overBlankedFrames >= kOverFlushQueueBlocks * static_cast<int>(block)
+            && iqPk <= m_preOverIqPk * kOverIqCleanRatio) {
+            m_overBlankInFrames = 0;
+            if (!m_isSubDsp)
+                anan::AnanLatencyMarks::instance().mark(anan::AnanLatencyMarks::RxBlankEnd, 1);
+        }
 
         // Build 601: the over's IQ tail as zeros, then the filters emptied
         // before the first real block (see kOverInputTailMs).
@@ -1491,8 +1510,9 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
             std::fill(m_i.begin(), m_i.begin() + static_cast<std::ptrdiff_t>(block), 0.0f);
             std::fill(m_q.begin(), m_q.begin() + static_cast<std::ptrdiff_t>(block), 0.0f);
             m_overBlankInFrames = std::max(0, m_overBlankInFrames - static_cast<int>(block));
-            if (m_overBlankInFrames == 0 && !m_isSubDsp)   // build 615: unkey timeline
-                anan::AnanLatencyMarks::instance().mark(anan::AnanLatencyMarks::RxBlankEnd);
+            m_overBlankedFrames += static_cast<int>(block);
+            if (m_overBlankInFrames == 0 && !m_isSubDsp)   // build 615: unkey timeline (timed end)
+                anan::AnanLatencyMarks::instance().mark(anan::AnanLatencyMarks::RxBlankEnd, 0);
             // A flush refused: the output waits with it.
             if (m_overFlushPending && m_overFlushRetries > 0)
                 m_outMuteFrames = std::max(m_outMuteFrames, static_cast<int>(std::ceil(
@@ -1559,6 +1579,23 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
                 applyAgcHold();
             }
         }
+        // Build 616: the mute ends when the blanked zeros reach the output --
+        // the over has left the pipeline -- and the filters were flushed.
+        const float outPk = anan::AnanLatencyMarks::peakOf(m_stereo.data(), m_stereo.size());
+        if (m_overWatch && !m_agcTxHeld && !m_audioMuted && m_pressBlankFrames == 0
+            && m_outMuteFrames > 0) {
+            if (!m_overDropSeen) {
+                if (m_overOutPkMax > 1e-3f && outPk < m_overOutPkMax * kOverOutDropRatio
+                    && outPk < kOverOutDropAbs)
+                    m_overDropSeen = true;
+                else
+                    m_overOutPkMax = std::max(m_overOutPkMax, outPk);
+            }
+            if (m_overDropSeen && !m_overFlushPending && m_overBlankInFrames == 0) {
+                m_outMuteFrames = std::min(m_outMuteFrames, static_cast<int>(outN));
+                m_overWatch = false;
+            }
+        }
         const bool inOver = m_audioMuted || m_agcTxHeld || m_outMuteFrames > 0
                             || m_pressBlankFrames > 0;
         // Build 592: the hold, for the receiver's NNR / DFNR after the chain.
@@ -1590,10 +1627,12 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
         // Build 615: unkey timeline -- WDSP's output before the mute, per
         // block, and the end of the mute.
         if (profiling)
-            anan::AnanLatencyMarks::instance().profileOut(
-                anan::AnanLatencyMarks::peakOf(m_stereo.data(), m_stereo.size()));
+            anan::AnanLatencyMarks::instance().profileOut(outPk);
         if (!inOver && !m_isSubDsp)
-            anan::AnanLatencyMarks::instance().mark(anan::AnanLatencyMarks::RxMuteEnd);
+            anan::AnanLatencyMarks::instance().mark(anan::AnanLatencyMarks::RxMuteEnd,
+                                                    m_overDropSeen ? 1 : 0);
+        if (!inOver)
+            m_overWatch = false;
         if (inOver) {
             std::fill(m_stereo.begin(), m_stereo.end(), 0.0f);   // the output mute only
             // Build 583: counts down from the AGC release (the unkey), also

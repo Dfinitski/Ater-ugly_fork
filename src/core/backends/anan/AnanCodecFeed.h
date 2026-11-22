@@ -69,10 +69,10 @@ public:
             return;
         const double step = static_cast<double>(rate) / static_cast<double>(kRate);
         std::lock_guard<std::mutex> lock(m_mutex);
-        const bool loudIn = AnanLatencyMarks::loud(stereo, 2 * frames);
+        const bool loudIn = AnanLatencyMarks::above(stereo, 2 * frames, AnanLatencyMarks::kSilent);
         // Build 613: unkey timeline -- the first real audio in.
         auto& marks = AnanLatencyMarks::instance();
-        if (loudIn && marks.waiting(AnanLatencyMarks::FeedPush))
+        if (marks.waiting(AnanLatencyMarks::FeedPush) && AnanLatencyMarks::loud(stereo, 2 * frames))
             marks.mark(AnanLatencyMarks::FeedPush, static_cast<int>(m_fifo.size() / 2));
         // ANAN fork build 614 (613 timeline: 2100..2500 frames, 45..55 ms of
         // silence queued ahead of the first sound after an over). OUR ERROR:
@@ -84,7 +84,7 @@ public:
         if (loudIn && !m_lastPushLoud && m_fifo.size() > 2 * kTargetFrames) {
             bool silent = true;
             for (float v : m_fifo) {
-                if (std::abs(v) > AnanLatencyMarks::kLoud) {
+                if (std::abs(v) > AnanLatencyMarks::kSilent) {
                     silent = false;
                     break;
                 }

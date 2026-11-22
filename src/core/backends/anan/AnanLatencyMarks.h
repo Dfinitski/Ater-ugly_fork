@@ -79,7 +79,7 @@ public:
     // Build 615: per-block peaks of the main receiver's DSP from its release
     // (RxDspRelease) -- the IQ as it arrives (before the blank) and the WDSP
     // output before the mute. One writer: the receiver's DSP thread.
-    static constexpr int kProfLen = 24;
+    static constexpr int kProfLen = 32;
     void profileIq(float peak) { profAdd(m_iqPk, m_iqN, peak); }
     void profileOut(float peak) { profAdd(m_outPk, m_outN, peak); }
     bool profiling() const
@@ -141,19 +141,24 @@ public:
     int a(Stage s) const { return m_a[static_cast<std::size_t>(s)].load(std::memory_order_relaxed); }
     int b(Stage s) const { return m_b[static_cast<std::size_t>(s)].load(std::memory_order_relaxed); }
 
-    // Real audio: anything above -80 dBFS.
-    static constexpr float kLoud = 1e-4f;
-    static bool loud(const float* p, std::size_t n)
+    // Real audio for the marks: above -40 dBFS. Build 615 used -80 dBFS and
+    // marked the quiet ramp after the flush (-55 dBFS) as "sound"; the band
+    // at the receive gain is -25..-5 dBFS (615 profiles).
+    static constexpr float kLoud = 1e-2f;
+    // Silence (the codec feed's drop of queued silence): -80 dBFS.
+    static constexpr float kSilent = 1e-4f;
+    static bool above(const float* p, std::size_t n, float level)
     {
         for (std::size_t i = 0; i < n; ++i)
-            if (std::abs(p[i]) > kLoud)
+            if (std::abs(p[i]) > level)
                 return true;
         return false;
     }
+    static bool loud(const float* p, std::size_t n) { return above(p, n, kLoud); }
     static bool loud(const std::int16_t* p, std::size_t n)
     {
         for (std::size_t i = 0; i < n; ++i)
-            if (p[i] > 3 || p[i] < -3)
+            if (p[i] > 327 || p[i] < -327)
                 return true;
         return false;
     }
