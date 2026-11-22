@@ -3954,6 +3954,19 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
         *result = frameHitCode(WindowChrome::expandedFrameHit(point, rect, borderX, borderY));
         return true;
     }
+    // ANAN fork build 625 (operator, 22.11: "the top part of the main
+    // window's top panel blinks, as if a white canvas showed under it, when
+    // AetherRX / AetherTX opens"). Opening a window deactivates this one, and
+    // WM_NCACTIVATE's default handling repaints the non-client caption strip
+    // for the new active/inactive state -- under the expanded client area
+    // that strip is where the top panel is drawn, so Windows' caption colour
+    // flashed over it until Qt painted again. Let Windows update the state but
+    // not paint: lParam -1 tells DefWindowProc to skip the non-client repaint.
+    if (msg && result && msg->message == WM_NCACTIVATE
+        && windowFlags().testFlag(Qt::ExpandedClientAreaHint)) {
+        *result = DefWindowProc(msg->hwnd, WM_NCACTIVATE, msg->wParam, -1);
+        return true;
+    }
     // The whole window is client area, inset only while maximized so nothing
     // sits past the screen edge; the WM_NCHITTEST above keeps the edges resizable.
     if (msg && result && msg->message == WM_NCCALCSIZE && msg->wParam
