@@ -1079,6 +1079,25 @@ void P2Transport::handleBufferStatus(std::span<const std::uint8_t> b)
     if (f.flags & 0x02) {   // speaker playing
         f.spkMin = std::min(f.spkMin, spkLevel);
         f.spkMax = std::max(f.spkMax, spkLevel);
+        // Build 617: hold the speaker FIFO at kSpkFifoTarget (see the header).
+        const qint64 now = TxCoordinator::monotonicMs();
+        m_spkLvlWinMin = std::min(m_spkLvlWinMin, spkLevel);
+        if (m_spkLvlWinStartMs == 0)
+            m_spkLvlWinStartMs = now;
+        if (now - m_spkLvlWinStartMs >= 250) {
+            const int base = m_spkLvlWinMin;
+            m_spkLvlWinMin = 1 << 30;
+            m_spkLvlWinStartMs = now;
+            if (m_spkTrimFrames.load(std::memory_order_acquire) == 0
+                && now - m_spkTrimDoneMs.load(std::memory_order_relaxed) >= 300
+                && base > kSpkFifoTarget + kSpkFifoSlack && base <= 2048) {
+                const int excess = base - kSpkFifoTarget;
+                m_spkTrimFrames.store(excess, std::memory_order_release);
+                qCInfo(lcAnanP2T).nospace() << "ANAN P2 transport: radio speaker FIFO at " << base
+                    << " of 2048 frames, leaving out " << excess << " frames ("
+                    << excess * 1000 / 48000 << " ms) of silence -> " << kSpkFifoTarget;
+            }
+        }
     }
     // Build 613: unkey timeline -- what the radio's speaker FIFO held last.
     AnanLatencyMarks::instance().note(AnanLatencyMarks::SpkStatus, spkLevel, f.flags);
@@ -1661,6 +1680,8 @@ void P2Transport::diagTick()
             << " of 8192, ran empty " << f.dTxEmpty << ", overflow " << f.dTxOvf << " samples; speaker "
             << (f.spkMax >= 0 ? QStringLiteral("%1..%2").arg(f.spkMin).arg(f.spkMax) : QStringLiteral("idle"))
             << " of 2048, fades " << f.dSpkFade << ", empty reads " << f.dSpkEmptyRd << ", overflow " << f.dSpkOvf
+            << ", silent packets left out " << m_spkTrimmedPkts.exchange(0, std::memory_order_relaxed)
+            << " (held at " << kSpkFifoTarget << ")"
             << (f.linkBase ? QStringLiteral("; link: commands not applied %1, audio dropped %2, I/Q dropped %3, "
                                             "bad FCS %4, PHY RXER %5")
                                  .arg(f.dLink[0]).arg(f.dLink[1]).arg(f.dLink[2]).arg(f.dLink[3]).arg(f.dLink[4])
@@ -2215,6 +2236,26 @@ void P2Transport::speakerSenderLoop()
         }
         if (!m_sessionUp.load(std::memory_order_acquire))
             continue;
+        // Build 617: a trim of the radio's speaker FIFO leaves out whole
+        // silent packets only (see kSpkFifoTarget).
+        if (m_spkTrimFrames.load(std::memory_order_acquire) >= kCodecFramesPerPacket) {
+            bool silent = true;
+            for (auto v : buf) {
+                if (v > 2 || v < -2) {
+                    silent = false;
+                    break;
+                }
+            }
+            if (silent) {
+                m_spkTrimmedPkts.fetch_add(1, std::memory_order_relaxed);
+                if (m_spkTrimFrames.fetch_sub(kCodecFramesPerPacket, std::memory_order_acq_rel)
+                        - kCodecFramesPerPacket < kCodecFramesPerPacket) {
+                    m_spkTrimFrames.store(0, std::memory_order_release);
+                    m_spkTrimDoneMs.store(TxCoordinator::monotonicMs(), std::memory_order_relaxed);
+                }
+                continue;
+            }
+        }
         const auto pkt = buildSpeakerAudio(m_spkSeq++, std::span<const std::int16_t>(buf, std::size(buf)));
         if (sendNative(pkt.data(), pkt.size(), kSpeakerAudioPort) < 0)
             m_nativeSendFails.fetch_add(1, std::memory_order_relaxed);

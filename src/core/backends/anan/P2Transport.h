@@ -740,6 +740,24 @@ private:
     bool m_spkQuit = false;                // under m_spkMutex
     QThread* m_spkThread = nullptr;
     std::deque<std::int16_t> m_spkQueue;   // under m_spkMutex
+    // ANAN fork build 617 (operator, 22.11: "keep the radio's speaker FIFO at
+    // half"). The 613..616 unkey timelines: the Odyssey speaker FIFO stood at
+    // 1740..2030 of 2048 frames (36..42 ms) all the time -- what we had sent
+    // ahead of it at the start (overflow 2577 in the first diag), kept for
+    // good because we send exactly at the radio's rate. OUR excess, not the
+    // firmware's. With the Odyssey's buffer status (only it reports the
+    // level) the FIFO is held at kSpkFifoTarget: when its lowest level in a
+    // 250 ms window is more than kSpkFifoSlack above it, the speaker sender
+    // leaves out that many frames -- only whole SILENT packets (receive audio
+    // muted, the over), so nothing audible is cut. Never below the target,
+    // so the FIFO never runs empty. Other radios: no status, nothing done.
+    static constexpr int kSpkFifoTarget = 1024;   // frames, half of 2048
+    static constexpr int kSpkFifoSlack = 192;     // ~4 ms; the level swings ~300 with the packet bursts
+    std::atomic<int> m_spkTrimFrames{0};          // frames still to leave out (status -> sender)
+    std::atomic<qint64> m_spkTrimDoneMs{0};       // when the last trim was finished
+    std::atomic<unsigned> m_spkTrimmedPkts{0};    // silent packets left out (diag)
+    int m_spkLvlWinMin = 1 << 30;                 // status thread only
+    qint64 m_spkLvlWinStartMs = 0;
     bool m_spkPrimed = false;
     // Speaker packets follow the radio's own clock: one per mic packet it
     // sends (both 64 frames at 48 kHz). The wall-clock pacer only covers a
