@@ -16,6 +16,7 @@
 // "note" stages (MOX off sent, the radio's speaker FIFO status) keep their
 // LAST time instead, and may lie before the unkey (negative in the report).
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -30,7 +31,10 @@ public:
     enum Stage : int {
         MoxOffSent = 0,  // note: P2 high-priority packet with MOX cleared sent
         SpkStatus,       // note: last radio status with the speaker FIFO level (a = frames)
+        RxDspRelease,    // RX DSP: the unkey reached the DSP thread (AGC hold off; a = guard us)
+        RxBlankEnd,      // RX DSP: the last blanked (zero) IQ block went in
         RxDspFlushed,    // RX DSP: over tail blanked, WDSP filters flushed
+        RxMuteEnd,       // RX DSP: the output mute (guard) ended
         RxDspSound,      // RX DSP (main receiver): first non-silent output block
         MixerLive,       // Hl2AudioMixer: first block to the PC path after the hold (any)
         MixerSound,      // Hl2AudioMixer: first non-silent block to the PC path
@@ -66,8 +70,36 @@ public:
             m_a[static_cast<std::size_t>(i)].store(0, std::memory_order_relaxed);
             m_b[static_cast<std::size_t>(i)].store(0, std::memory_order_relaxed);
         }
+        m_iqN.store(0, std::memory_order_relaxed);
+        m_outN.store(0, std::memory_order_relaxed);
         m_t0.store(nowUs(), std::memory_order_relaxed);
         m_armed.store(true, std::memory_order_release);
+    }
+
+    // Build 615: per-block peaks of the main receiver's DSP from its release
+    // (RxDspRelease) -- the IQ as it arrives (before the blank) and the WDSP
+    // output before the mute. One writer: the receiver's DSP thread.
+    static constexpr int kProfLen = 24;
+    void profileIq(float peak) { profAdd(m_iqPk, m_iqN, peak); }
+    void profileOut(float peak) { profAdd(m_outPk, m_outN, peak); }
+    bool profiling() const
+    {
+        return armed() && m_t[static_cast<std::size_t>(RxDspRelease)].load(std::memory_order_relaxed) != kUnset
+            && (m_iqN.load(std::memory_order_relaxed) < kProfLen
+                || m_outN.load(std::memory_order_relaxed) < kProfLen);
+    }
+    void setProfileBlockUs(int us) { m_profBlockUs.store(us, std::memory_order_relaxed); }
+    int profileBlockUs() const { return m_profBlockUs.load(std::memory_order_relaxed); }
+    int iqCount() const { return m_iqN.load(std::memory_order_acquire); }
+    int outCount() const { return m_outN.load(std::memory_order_acquire); }
+    float iqPeak(int i) const { return m_iqPk[static_cast<std::size_t>(i)].load(std::memory_order_relaxed); }
+    float outPeak(int i) const { return m_outPk[static_cast<std::size_t>(i)].load(std::memory_order_relaxed); }
+    static float peakOf(const float* p, std::size_t n)
+    {
+        float pk = 0.0f;
+        for (std::size_t i = 0; i < n; ++i)
+            pk = std::max(pk, std::abs(p[i]));
+        return pk;
     }
     void disarm() { m_armed.store(false, std::memory_order_release); }
     bool armed() const { return m_armed.load(std::memory_order_acquire); }
@@ -128,6 +160,14 @@ public:
 
 private:
     static constexpr std::int64_t kUnset = INT64_MIN;
+    static void profAdd(std::array<std::atomic<float>, kProfLen>& a, std::atomic<int>& n, float v)
+    {
+        const int i = n.load(std::memory_order_relaxed);
+        if (i >= kProfLen)
+            return;
+        a[static_cast<std::size_t>(i)].store(v, std::memory_order_relaxed);
+        n.store(i + 1, std::memory_order_release);
+    }
     static bool isNote(int i) { return i == MoxOffSent || i == SpkStatus; }
 
     AnanLatencyMarks()
@@ -141,6 +181,9 @@ private:
     std::array<std::atomic<std::int64_t>, kCount> m_t{};
     std::array<std::atomic<int>, kCount> m_a{};
     std::array<std::atomic<int>, kCount> m_b{};
+    std::array<std::atomic<float>, kProfLen> m_iqPk{};
+    std::array<std::atomic<float>, kProfLen> m_outPk{};
+    std::atomic<int> m_iqN{0}, m_outN{0}, m_profBlockUs{0};
 };
 
 } // namespace AetherSDR::anan

@@ -3060,6 +3060,23 @@ static void ananLatencyReport(const char* why)
         << "; radio speaker FIFO " << m.a(M::SpkStatus) << " of 2048 (flags " << m.b(M::SpkStatus)
         << ") at " << t(M::SpkStatus)
         << " => heard: PC ~" << heardPc << ", codec ~" << heardCodec;
+    // Build 615: the RX DSP guard in detail, per DSP block from its release.
+    auto db = [](float v) {
+        return v <= 0.0f ? QStringLiteral("_") : QString::number(20.0 * std::log10(v), 'f', 0);
+    };
+    QString iq, out;
+    for (int i = 0; i < m.iqCount(); ++i)
+        iq += db(m.iqPeak(i)) + QLatin1Char(' ');
+    for (int i = 0; i < m.outCount(); ++i)
+        out += db(m.outPeak(i)) + QLatin1Char(' ');
+    qCInfo(lcHl2).noquote().nospace()
+        << "ANAN unkey RX DSP guard: release " << t(M::RxDspRelease) << " ms (guard "
+        << QString::number(m.a(M::RxDspRelease) / 1000.0, 'f', 1) << " ms, blank "
+        << QString::number(m.b(M::RxDspRelease) / 1000.0, 'f', 1) << " ms), blank end "
+        << t(M::RxBlankEnd) << ", flushed " << t(M::RxDspFlushed) << ", mute end " << t(M::RxMuteEnd)
+        << ", sound " << t(M::RxDspSound) << "; per block of "
+        << QString::number(m.profileBlockUs() / 1000.0, 'f', 2) << " ms from the release, dBFS -- IQ in: "
+        << iq << "| WDSP out before the mute: " << out;
 }
 
 void Hl2Backend::ananUnkeyEvent(const QString& what)

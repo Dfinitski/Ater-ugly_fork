@@ -922,6 +922,14 @@ void Hl2RxDsp::applyAgcHold()
         m_outMuteFrames = std::max(m_outMuteFrames,
             static_cast<int>(std::ceil(m_config.audioSampleRateHz * tailMs / 1000.0)));
         m_restorePending = true;
+        if (!m_isSubDsp) {   // build 615: unkey timeline, the DSP's own release
+            auto& marks = anan::AnanLatencyMarks::instance();
+            if (m_config.inputSampleRateHz > 0)
+                marks.setProfileBlockUs(static_cast<int>(
+                    1e6 * m_config.dspBlockSize / m_config.inputSampleRateHz));
+            marks.mark(anan::AnanLatencyMarks::RxDspRelease, static_cast<int>(tailMs * 1000.0),
+                       static_cast<int>(blankMs * 1000.0));
+        }
         // The panadapter's FFT sees the IQ undelayed: its average goes back
         // 60 ms of IQ after the release (MOX off reaching the radio and its
         // DUC FIFO draining), not with the AGC.
@@ -1453,6 +1461,12 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
             m_q[n] = m_iqBuffer[consumed + n].imag();
         }
         consumed += block;
+        // Build 615: unkey timeline -- the IQ as it arrives, per block.
+        const bool profiling = !m_isSubDsp && anan::AnanLatencyMarks::instance().profiling();
+        if (profiling)
+            anan::AnanLatencyMarks::instance().profileIq(std::max(
+                anan::AnanLatencyMarks::peakOf(m_i.data(), block),
+                anan::AnanLatencyMarks::peakOf(m_q.data(), block)));
 
         // Build 601: the over's IQ tail as zeros, then the filters emptied
         // before the first real block (see kOverInputTailMs).
@@ -1477,6 +1491,8 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
             std::fill(m_i.begin(), m_i.begin() + static_cast<std::ptrdiff_t>(block), 0.0f);
             std::fill(m_q.begin(), m_q.begin() + static_cast<std::ptrdiff_t>(block), 0.0f);
             m_overBlankInFrames = std::max(0, m_overBlankInFrames - static_cast<int>(block));
+            if (m_overBlankInFrames == 0 && !m_isSubDsp)   // build 615: unkey timeline
+                anan::AnanLatencyMarks::instance().mark(anan::AnanLatencyMarks::RxBlankEnd);
             // A flush refused: the output waits with it.
             if (m_overFlushPending && m_overFlushRetries > 0)
                 m_outMuteFrames = std::max(m_outMuteFrames, static_cast<int>(std::ceil(
@@ -1571,6 +1587,13 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
                     m_outMuteFrames = std::max(m_outMuteFrames, emnrDelayFrames);
             }
         }
+        // Build 615: unkey timeline -- WDSP's output before the mute, per
+        // block, and the end of the mute.
+        if (profiling)
+            anan::AnanLatencyMarks::instance().profileOut(
+                anan::AnanLatencyMarks::peakOf(m_stereo.data(), m_stereo.size()));
+        if (!inOver && !m_isSubDsp)
+            anan::AnanLatencyMarks::instance().mark(anan::AnanLatencyMarks::RxMuteEnd);
         if (inOver) {
             std::fill(m_stereo.begin(), m_stereo.end(), 0.0f);   // the output mute only
             // Build 583: counts down from the AGC release (the unkey), also
