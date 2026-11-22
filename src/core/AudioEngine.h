@@ -353,6 +353,11 @@ public:
     // Build 590: the NR2 gain measured in the radio (the selected receiver),
     // published as the NR GAIN reading while that NR2 is on.
     Q_INVOKABLE void setExternalNr2Gain(float gain);
+    // ANAN fork build 599: after a transmit hold filled with silence
+    // (Hl2AudioMixer, 598), what the RX queues hold ahead of the first sound
+    // is that silence: dropped, so the sound plays at once on the running
+    // device instead of behind ~0.1 s of queued zeros. Only silence goes.
+    void dropQueuedRxSilence();
     bool nr2External() const { return m_nr2External.load(); }
     // NR2 user-adjustable parameters (thread-safe via atomic in SpectralNR)
     void setNr2GainMax(float v);

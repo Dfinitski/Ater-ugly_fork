@@ -351,6 +351,21 @@ void Hl2AudioMixer::emitOut(const std::vector<float>& pcm, const Params& p)
     // while the next blocks catch up, then sound. The first sound after the
     // hold now always has 50 ms of silence before it (less what the chain
     // already gave, e.g. DFNR's) -- the case heard as good.
+    // Build 599: the first sound after a silence-filled hold -- the engine
+    // drops the silence it still has queued ahead of it.
+    if (m_resumeFlushPending && p.live && m_streaming && !m_muted.load(std::memory_order_acquire)) {
+        bool silent = true;
+        for (float v : pcm) {
+            if (v != 0.0f) {
+                silent = false;
+                break;
+            }
+        }
+        if (!silent) {
+            m_resumeFlushPending = false;
+            emit rxResumeFromHold();
+        }
+    }
     if (m_resumePending && p.live && m_streaming && !m_muted.load(std::memory_order_acquire)) {
         bool silent = true;
         for (float v : pcm) {
@@ -658,6 +673,7 @@ void Hl2AudioMixer::mixIn(int receiver, const std::vector<float>& pcm, const Par
                 }
             }
             m_resumePending = false;   // the device is running: no cushion
+            m_resumeFlushPending = true;   // build 599
         } else {
             m_resumePending = true;    // build 597
             m_resumeSilentFrames = 0;

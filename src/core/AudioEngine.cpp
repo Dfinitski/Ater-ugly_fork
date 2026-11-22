@@ -7822,6 +7822,40 @@ void AudioEngine::setNr2Enabled(bool on)
     emit nr2EnabledChanged(on);
 }
 
+void AudioEngine::dropQueuedRxSilence()
+{
+    // ANAN fork build 599 (operator, 21.11: "now I hear no extra breaks, but
+    // the pause after going to receive became too long -- critical, reduce it
+    // to the minimum"). Log 21:54 (598): the mixer sends sound from ~80 ms
+    // after the unkey, the engine processes it ~200 ms after -- the ~0.1 s
+    // of silence queued through the over in front of it.
+    std::lock_guard<std::recursive_mutex> lock(m_dspMutex);
+    const auto silent = [](const QByteArray& b) {
+        const auto* f = reinterpret_cast<const float*>(b.constData());
+        const qsizetype n = b.size() / static_cast<qsizetype>(sizeof(float));
+        for (qsizetype i = 0; i < n; ++i)
+            if (std::abs(f[i]) > 1.0e-6f)
+                return false;
+        return true;
+    };
+    const int inRate = std::max(1, m_rxProducerRate.load());
+    const int outRate = std::max(1, m_rxOutputRate.load());
+    const qsizetype frameBytes = 2 * static_cast<qsizetype>(sizeof(float));
+    int inMs = 0, outMs = 0;
+    if (!m_rxBuffer.isEmpty() && silent(m_rxBuffer)) {
+        inMs = static_cast<int>(m_rxBuffer.size() / frameBytes * 1000 / inRate);
+        m_rxBuffer.clear();
+    }
+    if (!m_rxOutputBuffer.isEmpty() && silent(m_rxOutputBuffer)) {
+        outMs = static_cast<int>(m_rxOutputBuffer.size() / frameBytes * 1000 / outRate);
+        m_rxOutputBuffer.clear();
+    }
+    qCInfo(lcAudio).nospace() << "AudioEngine: after the transmit hold, queued silence dropped: "
+                              << inMs << " ms in, " << outMs << " ms out; the sound device holds "
+                              << m_rxPlaybackQueuedMs.load(std::memory_order_relaxed) << " ms";
+    updateRxBufferStats();
+}
+
 void AudioEngine::setExternalNr2Gain(float gain)
 {
     // Atomics only: the audio path publishes them (writeAudioNrIdle).

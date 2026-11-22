@@ -8005,6 +8005,11 @@ void MainWindow::wireBackendSeam(IRadioBackend* backend)
                 if (m_rxMutedForPlayback) return;   // as the relay: playback mute
                 m_audio->feedPcmFrame(pcm);
             });
+            // ANAN fork build 599: queued in order with the frames (same
+            // sender thread, same context object).
+            disconnect(mixer, &hl2::Hl2AudioMixer::rxResumeFromHold, m_audio, nullptr);
+            connect(mixer, &hl2::Hl2AudioMixer::rxResumeFromHold, m_audio,
+                    [this] { m_audio->dropQueuedRxSilence(); });
             m_directSpeakerFeed.store(true, std::memory_order_release);
             // Build 374: and the other direction. The transmit audio of the
             // computer (microphone, DAX, TCI) went AudioEngine -> this thread
