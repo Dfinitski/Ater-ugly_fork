@@ -343,7 +343,14 @@ public:
     // Client-side NR2 (spectral noise reduction)
     // Q_INVOKABLE: called from main thread, runs on audio worker thread (#502)
     Q_INVOKABLE void setNr2Enabled(bool on);
-    bool nr2Enabled() const { return m_nr2Enabled.load(); }
+    // ANAN fork build 588: with the NR2 handed to the radio (ANAN: WDSP's
+    // EMNR in each receiver, build 587) NR2 is still switched and shown here
+    // -- every button and shortcut keeps working -- but the client filter
+    // does not run. setNr2External(true) turns a running client NR2 into
+    // that state.
+    bool nr2Enabled() const { return m_nr2Enabled.load() || m_nr2Proxy.load(); }
+    Q_INVOKABLE void setNr2External(bool on);
+    bool nr2External() const { return m_nr2External.load(); }
     // NR2 user-adjustable parameters (thread-safe via atomic in SpectralNR)
     void setNr2GainMax(float v);
     void setNr2GainFloor(float v);
@@ -1345,6 +1352,8 @@ private:
     std::unique_ptr<SpectralNR> m_nr2;
     std::unique_ptr<SpectralNR> m_kiwiSdrNr2;
     std::atomic<bool> m_nr2Enabled{false};
+    std::atomic<bool> m_nr2External{false};   // build 588
+    std::atomic<bool> m_nr2Proxy{false};      // build 588: "NR2 on", run by the radio
     // ANAN-100D port, unkey test: PC speaker output 0..6 s after the unkey,
     // 100 ms rows (audio thread), logged once.
     std::atomic<qint64> m_ukStartMs{-1};

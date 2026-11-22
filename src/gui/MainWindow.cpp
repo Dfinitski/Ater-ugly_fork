@@ -9548,19 +9548,14 @@ void MainWindow::ananRxNrApply()
         AetherSDR::anan_rxdsp::setNr(owner, !current.isEmpty(), current);
         if (m_appletPanel && m_appletPanel->rxApplet())
             m_appletPanel->rxApplet()->refreshRxDspButtons();
-        if (!ananUsesWdspNr2() || current != QLatin1String("NR2"))
-            return;
-        // Build 587: a client NR2 that was running becomes this receiver's
-        // WDSP NR2 below.
-    }
-    QString wanted = AetherSDR::anan_rxdsp::nrOn(owner)
-        ? AetherSDR::anan_rxdsp::nrMethod(owner) : QString();
-    // Build 587: on an ANAN, NR2 is not the client's (ananEmnrPushAll).
-    if (ananUsesWdspNr2()) {
         ananEmnrPushAll();
-        if (wanted == QLatin1String("NR2"))
-            wanted.clear();
+        return;
     }
+    const QString wanted = AetherSDR::anan_rxdsp::nrOn(owner)
+        ? AetherSDR::anan_rxdsp::nrMethod(owner) : QString();
+    // Build 587/588: on an ANAN the NR2 runs in each receiver
+    // (ananEmnrPushAll); the engine's NR2 is only its switch (build 588).
+    ananEmnrPushAll();
     if (wanted == current)
         return;
     // The engine switches on its own thread: the store is not corrected from
@@ -9583,6 +9578,12 @@ void MainWindow::ananRxNrSyncFromEngine()
         const bool wdsp = ananUsesWdspNr2();
         for (AetherDspWidget* w : findChildren<AetherDspWidget*>())
             w->setWdspNr2Mode(wdsp);
+        // Build 588: the engine's NR2 is a switch only while it runs in the
+        // radio (a running client NR2 becomes the radio's).
+        if (m_audio && m_audio->nr2External() != wdsp)
+            QMetaObject::invokeMethod(m_audio, [audio = m_audio, wdsp]() {
+                audio->setNr2External(wdsp);
+            });
     }
     if (!m_audio || m_activeSliceId < 0 || !m_radioModel.isConnected()
         || m_radioModel.usesFlexCommandPlane()
@@ -9592,24 +9593,8 @@ void MainWindow::ananRxNrSyncFromEngine()
     if (AetherSDR::anan_rxdsp::nrOnRaw(owner).isEmpty())
         return;   // ananRxNrApply() has not seen this receiver yet
     const QString current = activeAetherDspMethod();
-    if (ananUsesWdspNr2()) {
-        // Build 587: the client NR2 switched on elsewhere (AetherRX, the
-        // flag) is this receiver's WDSP NR2 on an ANAN; a receiver running
-        // WDSP NR2 has the client off -- that is consistent.
-        if (current == QLatin1String("NR2")) {
-            AetherSDR::anan_rxdsp::setNr(owner, true, QStringLiteral("NR2"));
-            if (m_appletPanel && m_appletPanel->rxApplet())
-                m_appletPanel->rxApplet()->refreshRxDspButtons();
-            ananRxNrApply();
-            return;
-        }
-        if (current.isEmpty() && AetherSDR::anan_rxdsp::nrOn(owner)
-            && AetherSDR::anan_rxdsp::nrMethod(owner) == QLatin1String("NR2")) {
-            ananEmnrPushAll();   // a receiver whose DSP was made anew
-            return;
-        }
-        ananEmnrPushAll();
-    }
+    // Build 587: a receiver whose DSP was made anew gets its NR2 again.
+    ananEmnrPushAll();
     const bool on = AetherSDR::anan_rxdsp::nrOn(owner);
     if (on == !current.isEmpty() && (!on || current == AetherSDR::anan_rxdsp::nrMethod(owner)))
         return;
@@ -10278,6 +10263,17 @@ void MainWindow::updateNr2Availability()
 
 void MainWindow::enableNr2WithWisdom()
 {
+    // ANAN fork build 588 (operator, 21.11: "boldly turn the old NR2 off,
+    // and let the buttons switch the new one"): on an ANAN every NR2 button
+    // and shortcut comes here -- the NR2 is the radio's WDSP EMNR (build
+    // 587), the client one with its FFTW wisdom is not used.
+    if (m_audio && ananUsesWdspNr2()) {
+        QMetaObject::invokeMethod(m_audio, [audio = m_audio]() {
+            audio->setNr2External(true);
+            audio->setNr2Enabled(true);
+        });
+        return;
+    }
     // Single-session guard for all NR2 entry points: a second request
     // mid-generation would start a second generateWisdom() worker racing on
     // the wisdom files (SpectralNR.cpp). Not cleared on cancel, which takes
