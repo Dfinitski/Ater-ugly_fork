@@ -9575,15 +9575,10 @@ void MainWindow::ananRxNrSyncFromEngine()
     // Build 587: the AetherRX NR2 page shows Thetis' controls on an ANAN
     // (a dialog made later is caught on the next tick).
     {
-        const bool wdsp = ananUsesWdspNr2();
+        // Build 589: always (ANAN radios only), connected or not; the
+        // engine's NR2 is the radio's from the start (AudioEngine).
         for (AetherDspWidget* w : findChildren<AetherDspWidget*>())
-            w->setWdspNr2Mode(wdsp);
-        // Build 588: the engine's NR2 is a switch only while it runs in the
-        // radio (a running client NR2 becomes the radio's).
-        if (m_audio && m_audio->nr2External() != wdsp)
-            QMetaObject::invokeMethod(m_audio, [audio = m_audio, wdsp]() {
-                audio->setNr2External(wdsp);
-            });
+            w->setWdspNr2Mode(true);
     }
     if (!m_audio || m_activeSliceId < 0 || !m_radioModel.isConnected()
         || m_radioModel.usesFlexCommandPlane()
@@ -10267,7 +10262,9 @@ void MainWindow::enableNr2WithWisdom()
     // and let the buttons switch the new one"): on an ANAN every NR2 button
     // and shortcut comes here -- the NR2 is the radio's WDSP EMNR (build
     // 587), the client one with its FFTW wisdom is not used.
-    if (m_audio && ananUsesWdspNr2()) {
+    // Build 589: always -- the fork drives ANAN radios only, so with no
+    // radio connected yet the button keeps its state for the receivers.
+    if (m_audio) {
         QMetaObject::invokeMethod(m_audio, [audio = m_audio]() {
             audio->setNr2External(true);
             audio->setNr2Enabled(true);
@@ -11425,7 +11422,8 @@ void MainWindow::showNr2ParamPopup(const QPoint& globalPos)
 
     // ANAN fork build 587: on an ANAN NR2 is WDSP's EMNR in the receiver, as
     // in Thetis -- these four AetherSDR-only controls do not reach it.
-    const bool wdspNr2 = ananUsesWdspNr2();
+    // Build 589: always (ANAN radios only).
+    const bool wdspNr2 = true;
     if (wdspNr2) {
         const QString why = QStringLiteral(
             "ANAN: NR2 runs in the receiver as in Thetis; this control is not used.");

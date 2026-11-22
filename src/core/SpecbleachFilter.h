@@ -72,6 +72,9 @@ private:
     // unprocessed during the first ~1 second to avoid silence (#827)
     int m_frameCount{0};
     static constexpr int kLearningFrames = 25;  // ~1 sec at 40ms/frame
+    // Build 589: the manual (non-adaptive) profile is learned in that period.
+    bool m_learning{false};               // audio thread
+    std::atomic<bool> m_relearn{false};   // set by setAdaptiveNoise(false)
 
     // De-interleaved per-channel buffers
     std::array<std::vector<float>, 2> m_channelIn;

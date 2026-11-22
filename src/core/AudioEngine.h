@@ -1352,7 +1352,9 @@ private:
     std::unique_ptr<SpectralNR> m_nr2;
     std::unique_ptr<SpectralNR> m_kiwiSdrNr2;
     std::atomic<bool> m_nr2Enabled{false};
-    std::atomic<bool> m_nr2External{false};   // build 588
+    // Build 588/589: this fork drives ANAN radios only -- the NR2 is the
+    // radio's from the start, the client SpectralNR is never made.
+    std::atomic<bool> m_nr2External{true};
     std::atomic<bool> m_nr2Proxy{false};      // build 588: "NR2 on", run by the radio
     // ANAN-100D port, unkey test: PC speaker output 0..6 s after the unkey,
     // 100 ms rows (audio thread), logged once.

@@ -57,8 +57,16 @@ void SpecbleachFilter::applyParams()
 {
     if (!isValid()) return;
 
+    // ANAN fork build 589: without adaptive estimation libspecbleach reduces
+    // against a LEARNED profile, and nothing ever set learn_noise -- the
+    // profile stayed empty and NR4 with "Adaptive" off did nothing. It now
+    // learns during the first second, the pass-through period (#827) that
+    // was meant for it; the library finalizes the profile when learning
+    // stops.
+    const bool learn = !m_adaptive.load() && m_frameCount < kLearningFrames;
+    m_learning = learn;
     SpectralBleachDenoiserParameters params{};
-    params.learn_noise = 0;
+    params.learn_noise = learn ? 1 : 0;
     params.residual_listen = false;
     params.reduction_amount = m_reduction.load();
     params.smoothing_factor = m_smoothing.load();
@@ -66,7 +74,10 @@ void SpecbleachFilter::applyParams()
     params.adaptive_noise = m_adaptive.load() ? 1 : 0;
     params.noise_estimation_method = m_noiseMethod.load();
     params.masking_depth = m_maskingDepth.load();
-    params.suppression_strength = m_suppression.load();
+    // Build 589: specbleach_load_parameters() divides this one by 100 (its
+    // header says 0..1, its code takes percent): 0..1 here reached the
+    // Berouti factor as 0..0.01, and the Suppression slider did nothing.
+    params.suppression_strength = m_suppression.load() * 100.0f;
     params.aggressiveness = 0.0f;
     params.tonal_reduction = 0.0f;
 
@@ -81,8 +92,13 @@ QByteArray SpecbleachFilter::process(const QByteArray& pcmStereo)
     if (!isValid())
         return pcmStereo;
 
-    // Apply parameter changes if dirty
-    if (m_paramsDirty.load())
+    // Build 589: "Adaptive" switched off -- learn a profile anew.
+    if (m_relearn.exchange(false))
+        reset();
+    // Apply parameter changes if dirty, and when the learning period
+    // starts or ends (build 589).
+    if (m_paramsDirty.load()
+        || m_learning != (!m_adaptive.load() && m_frameCount < kLearningFrames))
         applyParams();
 
     const int totalFloats = pcmStereo.size() / static_cast<int>(sizeof(float));
@@ -132,7 +148,12 @@ QByteArray SpecbleachFilter::process(const QByteArray& pcmStereo)
 void SpecbleachFilter::setReductionAmount(float dB)   { m_reduction = std::clamp(dB, 0.0f, 40.0f); m_paramsDirty = true; }
 void SpecbleachFilter::setSmoothingFactor(float pct)   { m_smoothing = std::clamp(pct, 0.0f, 100.0f); m_paramsDirty = true; }
 void SpecbleachFilter::setWhiteningFactor(float pct)   { m_whitening = std::clamp(pct, 0.0f, 100.0f); m_paramsDirty = true; }
-void SpecbleachFilter::setAdaptiveNoise(bool on)       { m_adaptive = on; m_paramsDirty = true; }
+void SpecbleachFilter::setAdaptiveNoise(bool on)
+{
+    if (m_adaptive.exchange(on) && !on)
+        m_relearn = true;   // build 589: the manual mode needs a profile
+    m_paramsDirty = true;
+}
 void SpecbleachFilter::setNoiseEstimationMethod(int m) { m_noiseMethod = std::clamp(m, 0, 2); m_paramsDirty = true; }
 void SpecbleachFilter::setMaskingDepth(float v)        { m_maskingDepth = std::clamp(v, 0.0f, 1.0f); m_paramsDirty = true; }
 void SpecbleachFilter::setSuppressionStrength(float v) { m_suppression = std::clamp(v, 0.0f, 1.0f); m_paramsDirty = true; }
