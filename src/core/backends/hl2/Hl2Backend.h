@@ -867,7 +867,7 @@ private:
     anan::AnanTxMonitor m_txMon;
     std::vector<float> m_txMonOut;
     std::atomic<bool> m_monIoWanted{false};
-    bool m_ananCfirPushed = false;
+    int m_ananCfirPushed = -1;   // build 638: the CFIR state pushed (-1 none yet)
     std::size_t m_monDiagN = 0;   // MON samples played this over (GUI thread)
     float m_monDiagPk = 0.0f;   // CFIR on the TXA channel (Thetis, P2)
     // MON wanted / its gain (MON 1..100 -> -40..0 dB), for the transmit thread.

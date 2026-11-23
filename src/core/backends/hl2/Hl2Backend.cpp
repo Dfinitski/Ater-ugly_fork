@@ -765,10 +765,15 @@ Hl2Backend::Hl2Backend(QObject* parent)
                                    wdsp::txaGeneration().load(std::memory_order_acquire));
         }
         // ANAN-100D port: Thetis runs the TXA CFIR on every Protocol 2 radio.
-        if (m_txDsp && !m_ananCfirPushed) {
-            m_ananCfirPushed = true;
+        // Build 638 (operator, 23.11: "follow Thetis, do not switch this
+        // filter on [for Protocol 1], touch nothing else"): Thetis
+        // (cmaster.cs) runs it with the new-protocol firmware only -- it
+        // makes up the Protocol 2 DUC's CIC droop. Protocol 1: off.
+        const int cfirWanted = static_cast<anan::P2Transport*>(m_metis)->isProtocol1() ? 0 : 1;
+        if (m_txDsp && cfirWanted != m_ananCfirPushed) {
+            m_ananCfirPushed = cfirWanted;
             QMetaObject::invokeMethod(m_txDsp, "setCicCompensation", Qt::QueuedConnection,
-                                      Q_ARG(bool, true));
+                                      Q_ARG(bool, cfirWanted != 0));
         }
         // ANAN-100D port: the receivers' tuned frequencies for the User Out
         // RX row -- applyBandFilter() sends them on every tune; this catches
