@@ -13983,7 +13983,7 @@ int SpectrumWidget::rateGroupWidth() const
     const bool zoomShown = m_zoomLabel
         && (m_rateGroupCovered ? m_zoomLabelWanted : m_zoomLabel->isVisible());
     const int zoomW = zoomShown ? m_zoomLabel->width() + 4 : 0;
-    return zoomW + m_rateDownBtn->width() + 2 + m_rateLabel->width() + 2 + m_rateUpBtn->width() + 8;
+    return zoomW + m_rateDownBtn->width() + 4 + m_rateLabel->width() + 4 + m_rateUpBtn->width() + 8;
 }
 
 void SpectrumWidget::refreshRateLabel()
@@ -13997,8 +13997,19 @@ void SpectrumWidget::refreshRateLabel()
     const double rateMhz = rateHz > 0 ? rateHz / 1.0e6 : m_bandwidthMhz;
     const int khz = static_cast<int>(std::lround(rateMhz * 1000.0));
     const QString text = QStringLiteral("%1kHz").arg(khz);
-    if (m_rateLabel->text() != text)
+    if (m_rateLabel->text() != text) {
         m_rateLabel->setText(text);
+        // ANAN fork build 646 (operator, 23.11: "make the gap between the
+        // rate buttons and the rate text the same as between the zoom text
+        // and the minus button; the rate text changes its length"). The label
+        // is as wide as its text, so the gaps are the 4 px of the zoom's.
+        m_rateLabel->ensurePolished();
+        const int w = m_rateLabel->fontMetrics().horizontalAdvance(text) + 1;
+        if (w != m_rateLabel->width()) {
+            m_rateLabel->setFixedWidth(w);
+            positionZoomButtons();
+        }
+    }
     if (m_zoomLabel) {
         const bool show = rateHz > 0 && m_bandwidthMhz > 0.0;
         if (show) {
@@ -14097,8 +14108,10 @@ void SpectrumWidget::positionZoomButtons()
         const int right = width() - std::max(DBM_STRIP_W, m_topRightReserve) - 6;
         constexpr int top = 4;
         const int upX = right - m_rateUpBtn->width();
-        const int labelX = upX - 2 - m_rateLabel->width();
-        const int downX = labelX - 2 - m_rateDownBtn->width();
+        // Build 646: 4 px either side of the rate text, as the zoom text's
+        // gap to the minus button.
+        const int labelX = upX - 4 - m_rateLabel->width();
+        const int downX = labelX - 4 - m_rateDownBtn->width();
         m_rateUpBtn->move(upX, top);
         m_rateLabel->move(labelX, top);
         m_rateDownBtn->move(downX, top);
