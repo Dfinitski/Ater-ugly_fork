@@ -8615,10 +8615,27 @@ void SpectrumWidget::setFrequencyRangeInternal(double centerMhz, double bandwidt
     if (m_panCenterAnim->state() != QAbstractAnimation::Stopped) {
         m_panCenterAnim->stop();
     }
-    m_panCenterAnim->setEasingCurve(QEasingCurve::InOutQuad);   // build 619: a glide may have changed it
+    // ANAN fork build 642: nudges that keep coming (the panadapter scrolling
+    // with a VFO pushed at its edge) run at the steps' pace, linear, as the
+    // Center Lock glide (build 619) -- each one ends as the next arrives; a
+    // single nudge eases in 110 ms as before.
+    double nudgeIntervalMs = -1.0;
+    if (m_glideStepClock.isValid())
+        nudgeIntervalMs = static_cast<double>(m_glideStepClock.restart());
+    else
+        m_glideStepClock.start();
+    const bool nudgesContinuous = nudgeIntervalMs > 0.0 && nudgeIntervalMs < 600.0;
+    if (nudgesContinuous)
+        m_glideIntervalMs = m_glideIntervalMs > 0.0 ? 0.6 * m_glideIntervalMs + 0.4 * nudgeIntervalMs
+                                                    : nudgeIntervalMs;
+    else
+        m_glideIntervalMs = 0.0;
+    m_panCenterAnim->setEasingCurve(nudgesContinuous ? QEasingCurve::Linear
+                                                     : QEasingCurve::InOutQuad);   // build 619: a glide may have changed it
     m_panCenterAnim->setStartValue(m_centerMhz);
     m_panCenterAnim->setEndValue(centerMhz);
-    m_panCenterAnim->setDuration(110);
+    m_panCenterAnim->setDuration(nudgesContinuous
+        ? static_cast<int>(std::clamp(m_glideIntervalMs, 40.0, 400.0)) : 110);
     m_panCenterAnim->start();
     emit frequencyRangeChanged(centerMhz, m_bandwidthMhz);
 }

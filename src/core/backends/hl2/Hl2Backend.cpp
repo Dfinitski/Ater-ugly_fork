@@ -5223,7 +5223,28 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
     // receiver (cleared or zeroed) — the NCO comes back
     // to the dial, or the pan centre stays offset by the old RIT for good.
     const bool ritReturn = !outsideWindow && !ritApplies && r->ncoMovedForRit;
-    if (r->ctunOff) {
+    // ANAN fork build 642 (operator, 23.11: "I saw no glide: reaching the
+    // edge of the panadapter it is retuned once, in one jump, so that the
+    // filter is in the middle again"). At full span the view is the DDC's
+    // band, so the receiver reaching the window's edge re-centred the NCO on
+    // it -- half the view in one jump. Now, at full span, a receiver tuned
+    // a little past kEdgeFollowPin of the window moves the NCO only by that
+    // much: the receiver stays near the edge and the panadapter scrolls with
+    // it, step by step (the view keeps its place on the NCO; the average is
+    // kept, see moveNcoForView). A jump of more than a quarter of the span,
+    // RIT, CTUN OFF and a zoomed view (its own follow, MainWindow) as before.
+    constexpr double kEdgeFollowPin = 0.92;
+    const double edgePinHz = usableHz * kEdgeFollowPin;
+    const double ncoOffHz = tunedHz - r->ncoHz;
+    const bool fullView = !(r->zoomViewHz > 0.0
+        && r->zoomViewHz < static_cast<double>(m_sampleRateHz) * anan::kUsableSpanFraction);
+    const bool edgeScroll = !r->ctunOff && fullView && !ritApplies && !r->ncoMovedForRit
+        && std::abs(ncoOffHz) > edgePinHz
+        && std::abs(ncoOffHz) - edgePinHz <= halfSpanHz * 0.25;
+    if (edgeScroll) {
+        const double newNcoHz = tunedHz - (ncoOffHz > 0.0 ? edgePinHz : -edgePinHz);
+        moveNcoForView(ddc, *r, newNcoHz, std::round(newNcoHz) + r->viewOffsetHz);
+    } else if (r->ctunOff) {
         // Build 326: CTUN OFF -- the hardware NCO follows the tune so the
         // passband sits in the middle of the view; one register write, the
         // view on the NCO, a fresh average. No window, no lead, no settle.
