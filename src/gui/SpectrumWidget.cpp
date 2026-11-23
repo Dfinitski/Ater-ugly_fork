@@ -2478,7 +2478,12 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
             " border-radius: 2px; color: rgba(200,216,232,150); font-size: 13px; font-weight: bold;"
             " padding: 0; margin: 0; min-width: 0; }"
             "QPushButton:hover { background: rgba(30,50,70,150); color: rgba(220,232,244,220); }"
-            "QPushButton:pressed { background: rgba(0,180,216,150); color: #000; }";
+            "QPushButton:pressed { background: rgba(0,180,216,150); color: #000; }"
+            // Build 648: a button at the end of the ladder stays a button
+            // (it takes the click), only its sign is dimmed.
+            "QPushButton[atLimit=\"true\"] { color: rgba(200,216,232,55); }"
+            "QPushButton[atLimit=\"true\"]:hover { background: rgba(15,15,26,90); color: rgba(200,216,232,55); }"
+            "QPushButton[atLimit=\"true\"]:pressed { background: rgba(15,15,26,90); color: rgba(200,216,232,55); }";
         auto makeRateBtn = [&](const QString& text, const QString& objName, const QString& a11y) {
             auto* btn = new QPushButton(text, this);
             btn->setObjectName(objName);
@@ -14016,8 +14021,22 @@ void SpectrumWidget::refreshRateLabel()
     // of a flag's parts that sends no move or resize of the flag itself.
     updateRateGroupCover();
     const double tol = 1e-6;
-    m_rateDownBtn->setEnabled(rateMhz > std::max(m_minBwMhz, 0.048) + tol);
-    m_rateUpBtn->setEnabled(rateMhz < m_maxBwMhz - tol);
+    // ANAN fork build 648 (operator, 23.11: "the button that can go no
+    // further -- plus at 1536 k, minus at 48 k -- must stay a button: take
+    // the mouse, press, do nothing; now I click the panadapter through it").
+    // A disabled QPushButton passes the click to the panadapter below; the
+    // buttons stay enabled (stepReceiverRate does nothing past the ladder's
+    // end) and the one at its end is only drawn dimmed.
+    auto setAtLimit = [](QPushButton* b, bool atLimit) {
+        if (b->property("atLimit").toBool() == atLimit)
+            return;
+        b->setProperty("atLimit", atLimit);
+        b->style()->unpolish(b);
+        b->style()->polish(b);
+        b->update();
+    };
+    setAtLimit(m_rateDownBtn, !(rateMhz > std::max(m_minBwMhz, 0.048) + tol));
+    setAtLimit(m_rateUpBtn, !(rateMhz < m_maxBwMhz - tol));
 }
 
 void SpectrumWidget::scheduleRateGroupCover()
