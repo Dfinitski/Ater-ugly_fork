@@ -5586,6 +5586,7 @@ ReceiveDispatch Hl2Backend::requestTransverter(const TransverterRequest& request
             x->maxDrivePct = std::clamp(std::get<double>(request.value), 0.0, 100.0);
             break;
         case Field::RxOnly: x->rxOnly = std::get<bool>(request.value); break;
+        case Field::DisablePa: x->disablePa = std::get<bool>(request.value); break;   // build 637
         case Field::Create: case Field::Remove: case Field::Count: return ReceiveDispatch::Unsupported;
         }
         store.save();
@@ -7976,6 +7977,20 @@ void Hl2Backend::setTxFrequency(double hz)
     m_txWantedHz = txHz;
     m_txWantedDialHz = hz;
     updateCwBandInhibit();
+    // Build 637: through a transverter set Disable PA the drive goes to the
+    // XVTR port (Thetis: SetXVTREnable(1) + DisablePA(1) for tx_xvtr_index).
+    {
+        const anan::Xvtr* x = anan::AnanXvtrStore::instance().forRf(txHz, m_tuningMinHz, m_tuningMaxHz);
+        const int xvtrTx = (x && x->disablePa) ? 1 : 0;
+        if (xvtrTx != m_ananXvtrTxPushed) {
+            m_ananXvtrTxPushed = xvtrTx;
+            qCInfo(lcHl2).noquote() << "ANAN: transmit through"
+                                    << (xvtrTx ? QStringLiteral("the XVTR port (transverter \"%1\", PA disabled)")
+                                                     .arg(x->name)
+                                               : QStringLiteral("the PA"));
+            QMetaObject::invokeMethod(m_metis, "setXvtrTx", Qt::QueuedConnection, Q_ARG(bool, xvtrTx != 0));
+        }
+    }
     // Build 223: while transmitting, a move outside the amateur bands is not
     // followed -- the carrier stays where it was, inside the band. Written on
     // unkey (applyKeying), so the register never keeps a stale frequency.

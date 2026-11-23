@@ -855,6 +855,7 @@ private:
     void setAnanAntennaSetting(const QString& key, int index);
     int m_ananRxAntPushed = -1;
     int m_ananTxAntPushed = -1;
+    int m_ananXvtrTxPushed = -1;   // build 637: transverter port (Disable PA) as pushed
     QByteArray m_ananOcPushed;
     // ANAN port: the tuned frequency last sent to the transport per DDC, for
     // the User Out RX row (pushAnanTunedFrequencies()).

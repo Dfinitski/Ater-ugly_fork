@@ -166,7 +166,8 @@ hl2::Cc p1Cc(int index, const P1CcState& s) noexcept
     case 16:  // ADC1 band-pass bank (ORION MkII), transverter, PureSignal
         c[0] |= 0x24;
         c[1] = static_cast<std::uint8_t>((s.alex2Hpf & 0x7F) | (s.rx2GroundOnTx ? 0x80 : 0));
-        c[2] = static_cast<std::uint8_t>(s.psCouplerRelay ? 0x40 : 0);   // build 504
+        c[2] = static_cast<std::uint8_t>((s.psCouplerRelay ? 0x40 : 0)    // build 504
+                                         | (s.xvtrEnable ? 0x01 : 0));   // build 637
         break;
     default:
         break;

@@ -814,6 +814,7 @@ void P2Transport::sendHighPriority(bool run)
     o.paEnabled = paEffective();
     o.rxAntenna = m_rxAnt;
     o.tunerStart = m_tunerStart;
+    o.xvtrEnable = m_xvtrTx;   // build 637
     o.alexPreamp = m_lna;
     o.txAntenna = m_txAnt;
     o.psEnabled = m_psEnabled;
@@ -1946,6 +1947,19 @@ void P2Transport::setTunerStart(bool on)
     qCInfo(lcAnanP2T) << "ANAN: tuner start bit" << (on ? "ON" : "off");
     if (m_run && m_configured)
         sendHighPriority(true);
+}
+
+void P2Transport::setXvtrTx(bool on)
+{
+    if (on == m_xvtrTx)
+        return;
+    m_xvtrTx = on;
+    qCInfo(lcAnanP2T) << "ANAN: transverter port" << (on ? "ON (PA disabled, XVTR T/R relay enabled)"
+                                                           : "off (PA enabled)");
+    if (m_run && m_configured && !m_p1) {
+        sendGeneral();
+        sendHighPriority(true);
+    }
 }
 
 void P2Transport::setPsAttFollowsDrive(bool on)
@@ -3308,6 +3322,7 @@ P1CcState P2Transport::p1State() const
     if (m_lna && !m_mox)
         s.alexHpf |= 0x40;   // 6 m preamp, the LNA button
     s.paEnabled = paEffective();
+    s.xvtrEnable = m_xvtrTx;   // build 637
     // Mic connector (Thetis prn->mic: TRS bit 4, bias bit 5, PTT bit 6).
     s.micControl = static_cast<std::uint8_t>(((m_micControl & kMicTipIsPtt) ? 0x10 : 0)
                                              | ((m_micControl & kMicBiasOn) ? 0x20 : 0)

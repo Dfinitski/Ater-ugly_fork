@@ -215,6 +215,7 @@ ReceiveDispatch FlexBackend::requestTransverter(const TransverterRequest& reques
             value = QString::number(XvtrPolicy::clampMaxPowerDbm(std::get<double>(request.value),
                 request.powerIfMhz, m_modelProvider ? m_modelProvider() : QString()), 'f', 2); break;
         case Field::RxOnly: key = QStringLiteral("rx_only"); value = QString::number(int(std::get<bool>(request.value))); break;
+        case Field::DisablePa:   // ANAN fork build 637: not a Flex field
         case Field::Create: case Field::Remove: case Field::Count: return ReceiveDispatch::Unsupported;
         }
         command = QStringLiteral("xvtr set %1 %2=%3").arg(request.id).arg(key, value);

@@ -535,6 +535,9 @@ struct HighPriorityOptions {
     // ANAN-100D port: byte 1400 bit 2, the tuner start line, held while the
     // operator's TUNE is on (Hl2Backend::setTune).
     bool tunerStart = false;
+    // ANAN fork build 637: byte 1400 bit 0, the transverter T/R relay (Thetis
+    // SetXVTREnable), while the TX transverter is set Disable PA.
+    bool xvtrEnable = false;
     // ANAN-100D port: Alex bit 3 ("6M Preamp", spec Appendix D) -- the only
     // preamp/LNA bit Protocol 2 carries for these boards; receive state only.
     bool alexPreamp = false;

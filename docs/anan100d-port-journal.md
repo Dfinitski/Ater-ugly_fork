@@ -10953,6 +10953,20 @@ AudioEngine.cpp, Hl2AudioMixer.cpp, Hl2Backend.cpp/.h сверены со сбо
 - Windows: `AetherSDR-ANAN-build636-win64-portable.zip` = архив 572 (SHA-256 сверен) + `AetherSDR.exe` оператора из `Desktop\AetherSDR-Release` (91 057 664 байт; время файла на 125 с позже последней записи исходников 636; в нём строки сборок 632–636: `unkey -- RF down`, `RF Delay tail`, `frequency calibration pass`, `hl2FreqCalCapture`, `more than %3 ppm`, стиль кнопки-стрелки с `padding: 0px`) + `README-build636.md` вместо `README-build572.md`, верхняя папка `AetherSDR-ANAN-build636`. 93 записи, 165 237 028 байт, SHA-256 `4f578f803b147d3dbf1c8a4403d6bac9369463e18f933d562f9d37bed016d62e`; записан в `Desktop\AetherSDR-Release`, считан обратно, хеш совпал.
 - Тег `build-636` и выпуск на GitHub создаёт оператор (из сессии — 403). AppImage и DMG CI собирает по тегу.
 
+## 618. Сборка 637 — «Disable PA» у трансвертера (передача через порт XVTR)
+
+Оператор, 22.11: пользователи жалуются, что в режиме трансвертера нет передачи; «посмотри, может у нас ошибка или неправильно рассчитывается частота для передачи». После разбора: «да, скорее всего дело в этом, добавь галку».
+
+Разбор: частоты верны — регистр DUC, фильтры Alex, OC, калибровка PA по диапазону и PureSignal берут IF (RF − (RF − IF трансвертера) − ошибка гетеродина); проверка любительских диапазонов на трансвертере не действует (как Thetis), запрет только «RX Only»; «Max Power (%)» по умолчанию 100. Отличие от Thetis: у него на трансвертер с «Disable PA» передача уходит на порт XVTR — `SetXVTREnable(1)` (P2 High Priority байт 1400 бит 0; P1 C0 0x24 C2 бит 0) и `DisablePA(1)` (P2 General байт 58 бит 0 = 0; P1 C0 0x12 C3 бит 7). У нас бит 0 байта 1400 не ставился никогда, PA всегда включён: трансвертер на порту XVTR не получал ничего.
+
+Сделано:
+- `Xvtr::disablePa` (AppSettings `AnanTransverters`, поле `disablePa`; статус `disable_pa`); `TransverterRequest::Field::DisablePa` (Flex — Unsupported); `RadioModel::XvtrInfo::disablePa`.
+- Radio Setup → XVTR, у каждого трансвертера галка «Disable PA (transmit through the XVTR port)» (по умолчанию выключена — как было).
+- `Hl2Backend::setTxFrequency`: если частота передачи идёт через трансвертер с этой галкой — `P2Transport::setXvtrTx(true)`, иначе `false` (лог «ANAN: transmit through the XVTR port (transverter …, PA disabled)» / «the PA»).
+- `P2Transport`: `m_xvtrTx` → `paEffective()` ложно (PA off в General / P1), `xvtrEnable` в High Priority (бит 0 байта 1400, во всех трёх вариантах пакета) и в P1 (C0 0x24 C2 бит 0); при смене — General и High Priority сразу.
+
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

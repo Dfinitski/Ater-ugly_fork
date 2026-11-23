@@ -2434,6 +2434,7 @@ public:
         double  rxGain{0.0};
         double  maxPower{10.0};
         bool    rxOnly{false};
+        bool    disablePa{false};   // ANAN fork build 637 (`disable_pa`)
         bool    isValid{false};
         bool    hasIsValid{false};
     };

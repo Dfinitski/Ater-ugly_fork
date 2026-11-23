@@ -227,6 +227,9 @@ public:
     // ANAN-100D port: High Priority byte 1400 bit 2 (tuner start) while TUNE
     // is on, and the Alex "6M Preamp" bit 3 (the LNA button).
     Q_INVOKABLE void setTunerStart(bool on);
+    // ANAN fork build 637: transmit through a transverter set Disable PA --
+    // the PA off (General) and the transverter T/R relay on (High Priority).
+    Q_INVOKABLE void setXvtrTx(bool on);
     Q_INVOKABLE void setLna(bool on);
     // ANAN-100D port: User Out (open collector) matrices -- 11 RX band masks,
     // 11 TX band masks (bit n = OC n+1) and 7 TX pin actions (OcTxAction).
@@ -556,6 +559,7 @@ private:
     int m_filterOwnerRx = -1;   // build 388, I/O thread
     int m_rxAnt = 0;   // 0..2 = ANT1..ANT3
     bool m_tunerStart = false;
+    bool m_xvtrTx = false;   // build 637
     bool m_lna = false;
     OcMatrix m_oc;
     WidebandOptions m_wb;
@@ -839,7 +843,7 @@ private:
     QTimer* m_paddleHangTimer = nullptr;
     void updateRadioPtt();
     [[nodiscard]] bool cwDemoActive() const noexcept { return m_cwKeyer.enabled && m_cwKeyer.demo; }
-    [[nodiscard]] bool paEffective() const noexcept { return m_paEnabled && !cwDemoActive(); }
+    [[nodiscard]] bool paEffective() const noexcept { return m_paEnabled && !cwDemoActive() && !m_xvtrTx; }
     QElapsedTimer m_telemetryClock;
     quint64 m_statusPackets = 0;
 

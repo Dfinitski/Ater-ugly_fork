@@ -11557,6 +11557,7 @@ void RadioModel::onStatusReceived(const QString& object,
             if (kvs.contains("rx_gain"))   x.rxGain   = kvs["rx_gain"].toDouble();
             if (kvs.contains("max_power")) x.maxPower = kvs["max_power"].toDouble();
             if (kvs.contains("rx_only"))   x.rxOnly   = kvs["rx_only"] == "1";
+            if (kvs.contains("disable_pa")) x.disablePa = kvs["disable_pa"] == "1";   // build 637
             const bool statusHasIsValid = kvs.contains("is_valid");
             if (statusHasIsValid) {
                 x.isValid = kvs["is_valid"] == "1";

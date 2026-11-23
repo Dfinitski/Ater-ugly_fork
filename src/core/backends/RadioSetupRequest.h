@@ -137,7 +137,9 @@ struct TxBandRequest {
 
 struct TransverterRequest {
     enum class Field { Create, Remove, Name, RfFrequencyMhz, IfFrequencyMhz,
-                       LoErrorMhz, RxGainDb, MaximumPowerDbm, RxOnly, Count };
+                       LoErrorMhz, RxGainDb, MaximumPowerDbm, RxOnly,
+                       DisablePa,   // ANAN fork build 637: transmit via the XVTR port, PA off
+                       Count };
     int id;
     Field field;
     std::variant<std::monostate, bool, double, QString> value;
@@ -156,7 +158,7 @@ struct TransverterRequest {
             const QString* text = std::get_if<QString>(&value);
             return text && setupTextValid(*text);
         }
-        case Field::RxOnly: return std::holds_alternative<bool>(value);
+        case Field::RxOnly: case Field::DisablePa: return std::holds_alternative<bool>(value);
         case Field::RfFrequencyMhz: case Field::IfFrequencyMhz:
         case Field::LoErrorMhz: case Field::RxGainDb: case Field::MaximumPowerDbm: {
             const double* number = std::get_if<double>(&value);

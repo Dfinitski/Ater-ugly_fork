@@ -6001,6 +6001,20 @@ QWidget* RadioSetupDialog::buildXvtrTab()
         });
         grid->addWidget(rxOnlyBtn, 3, 3);
 
+        // ANAN fork build 637: Thetis's "Disable PA" per transverter.
+        if (isAnan) {
+            auto* disablePaBox = new QCheckBox(tr("Disable PA (transmit through the XVTR port)"));
+            disablePaBox->setChecked(x.disablePa);
+            disablePaBox->setToolTip(tr("Transmitting through this transverter, the radio's power "
+                                        "amplifier is switched off and the transverter T/R relay on: "
+                                        "the low-level drive goes to the radio's XVTR port. Leave it off "
+                                        "when the transverter takes its drive from an antenna socket."));
+            connect(disablePaBox, &QCheckBox::toggled, this, [submit, idx](bool on) {
+                submit({idx, XvtrField::DisablePa, on});
+            });
+            grid->addWidget(disablePaBox, 6, 0, 1, 4);
+        }
+
         auto* maxPwrEdit = addField(4, 0, isAnan ? "Max Power (%):" : "Max Power (dBm):",
                                     QString::number(x.maxPower, 'f', 1));
         if (isAnan) {

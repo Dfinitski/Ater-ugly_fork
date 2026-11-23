@@ -695,6 +695,8 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
         }
         if (opts.tunerStart)
             pkt[1400] |= std::uint8_t(1u << 2);
+        if (opts.xvtrEnable)   // build 637
+            pkt[1400] |= std::uint8_t(1u << 0);
         // User Out / open collectors (spec p.27, Thetis network.c).
         pkt[1401] = std::uint8_t((opts.openCollector << 1) & 0xfe);
         pkt[1443] = static_cast<std::uint8_t>(
@@ -763,6 +765,8 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
             pkt[1400] = std::uint8_t(1u << 1);
         if (opts.tunerStart)
             pkt[1400] |= std::uint8_t(1u << 2);
+        if (opts.xvtrEnable)   // build 637
+            pkt[1400] |= std::uint8_t(1u << 0);
         pkt[1401] = std::uint8_t((opts.openCollector << 1) & 0xfe);
         pkt[1443] = static_cast<std::uint8_t>(
             std::clamp(adc0AttenuationDb, 0, kMaxStepAttenuationDb));
@@ -795,6 +799,8 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
     }
     if (opts.tunerStart)
         pkt[1400] |= std::uint8_t(1u << 2);
+    if (opts.xvtrEnable)   // build 637
+        pkt[1400] |= std::uint8_t(1u << 0);
     pkt[1401] = std::uint8_t((opts.openCollector << 1) & 0xfe);
     // Step attenuators, pp.34,36: byte 1443 = ADC0, byte 1442 = ADC1, 0-31 dB.
     pkt[1443] = static_cast<std::uint8_t>(

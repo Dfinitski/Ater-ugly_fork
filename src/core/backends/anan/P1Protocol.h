@@ -92,6 +92,7 @@ struct P1CcState {
     std::uint8_t alex2Hpf = 0;             // ORION MkII: the ADC1 band-pass bank (C0 0x24)
     bool rx2GroundOnTx = false;
     bool paEnabled = false;
+    bool xvtrEnable = false;               // C0 0x24 C2 bit 0 (build 637, Thetis xvtr_enable)
     std::uint8_t micControl = 0;           // C0 0x14 C1 bits 4-6: TRS, bias, PTT
     int lineInGain = 0;
     bool pureSignal = false;               // C0 0x14 C2 bit 6

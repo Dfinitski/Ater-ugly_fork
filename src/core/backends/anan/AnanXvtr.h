@@ -44,6 +44,12 @@ struct Xvtr {
     // so has no dBm figure of its own to compare against.
     double maxDrivePct{100.0};
     bool rxOnly{false};
+    // Build 637 (operator, 22.11: users get no transmit through their
+    // transverters): Thetis's "Disable PA" -- transmitting through this
+    // transverter the radio's PA is switched off and the transverter T/R
+    // relay on (P2 High Priority byte 1400 bit 0, P1 C0 0x24 C2 bit 0), so the
+    // low-level drive goes to the XVTR port instead of the PA.
+    bool disablePa{false};
 };
 
 class AnanXvtrStore {
@@ -132,6 +138,7 @@ public:
             o[QStringLiteral("maxPower")] = x.maxPowerDbm;
             o[QStringLiteral("maxPct")] = x.maxDrivePct;
             o[QStringLiteral("rxOnly")] = x.rxOnly;
+            o[QStringLiteral("disablePa")] = x.disablePa;
             arr.append(o);
         }
         auto& st = AppSettings::instance();
@@ -153,6 +160,7 @@ public:
         kvs[QStringLiteral("rx_gain")] = QString::number(x.rxGainDb, 'f', 2);
         kvs[QStringLiteral("max_power")] = QString::number(x.maxDrivePct, 'f', 2);   // build 357: percent
         kvs[QStringLiteral("rx_only")] = x.rxOnly ? QStringLiteral("1") : QStringLiteral("0");
+        kvs[QStringLiteral("disable_pa")] = x.disablePa ? QStringLiteral("1") : QStringLiteral("0");
         kvs[QStringLiteral("is_valid")] =
             valid(x, nativeMinHz, nativeMaxHz) ? QStringLiteral("1") : QStringLiteral("0");
         return kvs;
@@ -178,6 +186,7 @@ private:
             x.maxPowerDbm = o.value(QStringLiteral("maxPower")).toDouble(10.0);
             x.maxDrivePct = std::clamp(o.value(QStringLiteral("maxPct")).toDouble(100.0), 0.0, 100.0);
             x.rxOnly = o.value(QStringLiteral("rxOnly")).toBool();
+            x.disablePa = o.value(QStringLiteral("disablePa")).toBool();
             m_items.insert(x.index, x);
         }
     }
