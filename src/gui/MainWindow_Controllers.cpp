@@ -37,6 +37,7 @@
 #include "Ctr2AudioSpectrumFeeder.h"
 #include "models/Ctr2ProxyModel.h"
 
+#include <QDateTime>
 #include <QHostAddress>
 
 #include <QColor>
@@ -3039,8 +3040,50 @@ void MainWindow::wireExternalControllers()
 
     // MIDI relativeAction signal: coalesced step-based tuning. VFO tune knob
     // steps are exact detents; controller-side jog speed is not multiplied here.
+    // ANAN fork build 639 (operator, 23.11: "a user with a 400-pulse encoder
+    // and a small step tunes very fast in Center Lock and the panadapter still
+    // jerks -- we hit the processing limit; decimate the pulses and send, at
+    // a relaxed pace, the sum, so the program sees an unhurried tuning in a
+    // large step"). Thetis divides MIDI messages by a fixed "messages per
+    // tune step"; MicronSDR's valcoder gets the clicks summed by its source.
+    // Here, in Center Lock only: the knob's target keeps every detent, but
+    // the tune itself (radio, audio, panadapter recentre and glide) goes out
+    // at most once per kCenterLockTuneMinMs -- the first one after a pause at
+    // once, the rest summed; the glide then runs at that pace without a stop.
+    struct CenterLockTuneCap {
+        QTimer* timer = nullptr;
+        QHash<QString, qint64> lastSentMs;           // knob -> last tune sent
+        QHash<QString, QPointer<SliceModel>> slice;  // knob -> slice pending
+        QHash<QString, double> pendingMhz;           // knob -> target pending
+    };
+    static constexpr qint64 kCenterLockTuneMinMs = 100;
+    auto cap = std::make_shared<CenterLockTuneCap>();
+    cap->timer = new QTimer(this);
+    cap->timer->setSingleShot(true);
+    connect(cap->timer, &QTimer::timeout, this, [this, cap] {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        qint64 nextMs = -1;
+        const QStringList knobs = cap->pendingMhz.keys();
+        for (const QString& knob : knobs) {
+            const qint64 dueMs = cap->lastSentMs.value(knob, 0) + kCenterLockTuneMinMs;
+            if (now + 2 < dueMs) {
+                nextMs = nextMs < 0 ? dueMs - now : std::min(nextMs, dueMs - now);
+                continue;
+            }
+            const double mhz = cap->pendingMhz.take(knob);
+            SliceModel* s = cap->slice.take(knob).data();
+            cap->lastSentMs[knob] = now;
+            if (!s || s->isLocked())
+                continue;
+            pushSliceFrequencyToOverlays(s, mhz);
+            applyTuneRequest(s, mhz, TuneIntent::IncrementalTune, "midi-relative");
+        }
+        if (nextMs >= 0)
+            cap->timer->start(static_cast<int>(nextMs));
+    });
+
     connect(m_midiControl, &MidiControlManager::relativeAction,
-            this, [this](const QString& paramId, int steps) {
+            this, [this, cap](const QString& paramId, int steps) {
         // Build 476: the knobs of VFO A', B', C, D -- fixed slices.
         int knobX = -1;
         int knobXSlice = -1;
@@ -3087,8 +3130,21 @@ void MainWindow::wireExternalControllers()
             }
             tuneTargetMhz += steps * stepHz / 1e6;
             const double targetMhz = tuneTargetMhz;   // applyTuneRequest may reset it
-            pushSliceFrequencyToOverlays(s, targetMhz);
             tuneIdleTimer.start();
+            // Build 639: Center Lock -- at most one tune per kCenterLockTuneMinMs.
+            if (centerLockActiveForSlice(s)) {
+                const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                const qint64 dueMs = cap->lastSentMs.value(paramId, 0) + kCenterLockTuneMinMs;
+                if (now < dueMs || cap->pendingMhz.contains(paramId)) {
+                    cap->pendingMhz[paramId] = targetMhz;
+                    cap->slice[paramId] = s;
+                    if (!cap->timer->isActive())
+                        cap->timer->start(static_cast<int>(std::max<qint64>(1, dueMs - now)));
+                    return;
+                }
+                cap->lastSentMs[paramId] = now;
+            }
+            pushSliceFrequencyToOverlays(s, targetMhz);
             applyTuneRequest(s, targetMhz, TuneIntent::IncrementalTune,
                              "midi-relative");
         }
