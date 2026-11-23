@@ -3132,7 +3132,19 @@ void MainWindow::wireExternalControllers()
             const double targetMhz = tuneTargetMhz;   // applyTuneRequest may reset it
             tuneIdleTimer.start();
             // Build 639: Center Lock -- at most one tune per kCenterLockTuneMinMs.
-            if (centerLockActiveForSlice(s)) {
+            // Build 640 (operator, 23.11: "without Center Lock the filter
+            // reaches the edge and it all works the same way"): also when the
+            // panadapter follows the VFO and the target is within 10 % of the
+            // width from an edge (the follow triggers at 2 % + the flag) or
+            // outside the view -- then each tune moves the panadapter too.
+            bool panMoves = centerLockActiveForSlice(s);
+            if (!panMoves && panFollowEnabled()) {
+                if (SpectrumWidget* sw = spectrumForSlice(s)) {
+                    const double halfBw = sw->bandwidthMhz() / 2.0;
+                    panMoves = halfBw > 0.0 && std::abs(targetMhz - sw->centerMhz()) > halfBw * 0.8;
+                }
+            }
+            if (panMoves) {
                 const qint64 now = QDateTime::currentMSecsSinceEpoch();
                 const qint64 dueMs = cap->lastSentMs.value(paramId, 0) + kCenterLockTuneMinMs;
                 if (now < dueMs || cap->pendingMhz.contains(paramId)) {
