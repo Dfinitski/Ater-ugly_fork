@@ -3131,6 +3131,20 @@ void MainWindow::wireExternalControllers()
             tuneTargetMhz += steps * stepHz / 1e6;
             const double targetMhz = tuneTargetMhz;   // applyTuneRequest may reset it
             tuneIdleTimer.start();
+            // Build 643 (operator, 23.11: "dragging the panorama under Center
+            // Lock is smooth at any speed -- do the knob exactly the same
+            // way"): under Center Lock the knob drives the view as a pan drag
+            // (SpectrumWidget::knobPanDragTo); the drag tunes the locked
+            // receiver with the view ("anan.lockdrag", every 33 ms).
+            if (centerLockActiveForSlice(s)) {
+                if (SpectrumWidget* sw = spectrumForSlice(s)) {
+                    double viewMhz = targetMhz;
+                    if (m_tciIqCenterLockPans.contains(s->panId()))   // the lock centres the passband
+                        viewMhz += (s->filterLow() + s->filterHigh()) / 2.0e6;
+                    if (sw->knobPanDragTo(viewMhz))
+                        return;
+                }
+            }
             // Build 639: Center Lock -- at most one tune per kCenterLockTuneMinMs.
             // Build 640 (operator, 23.11: "without Center Lock the filter
             // reaches the edge and it all works the same way"): also when the

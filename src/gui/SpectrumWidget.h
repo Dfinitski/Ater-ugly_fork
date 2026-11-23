@@ -179,6 +179,17 @@ public:
     // constant speed while they keep coming; a large one snaps as before.
     // The locked receiver stays drawn at the gliding centre.
     void glideCenterLockRange(double centerMhz, double bandwidthMhz);
+    // ANAN fork build 643 (operator, 23.11: "dragging the panorama under
+    // Center Lock at any speed has no problem -- do the knob exactly the
+    // same way"). A VFO knob under Center Lock drives the view as a pan drag
+    // does: the centre moves in the widget at once (frequency preview, the
+    // locked filter frozen in the middle), centerChangeRequested goes out at
+    // most every kPanDragCommandMs (MainWindow: "anan.lockdrag", the receiver
+    // tuned with the view, the NCO moved with a lead), and kKnobDragEndMs
+    // after the last step the drag is released as a mouse release would.
+    // False when the view cannot be driven so (a mouse drag, TX zoom, a
+    // confirmed-geometry pan): the caller tunes as before.
+    bool knobPanDragTo(double centerMhz);
     void clearDisplay();  // blank spectrum and waterfall on disconnect
     void resetGpuResources();  // tear down GPU pipelines for reparenting (#1240)
     void prepareForTopLevelChange(); // unregister QRhiWidget from the current backing-store QRhi
@@ -2087,6 +2098,10 @@ private:
     QElapsedTimer m_panDragWaterfallClock;
     QElapsedTimer m_panDragCommandClock;
     QTimer* m_panDragSettleTimer{nullptr};
+    // Build 643: the knob's drag (knobPanDragTo).
+    QTimer* m_knobDragEndTimer{nullptr};
+    bool m_knobDragActive{false};
+    void finishKnobPanDrag();
     // Filter edge drag state
     enum class FilterEdge { None, Low, High };
     FilterEdge m_draggingFilter{FilterEdge::None};

@@ -9173,6 +9173,23 @@ void MainWindow::applyTuneRequest(SliceModel* slice, double mhz,
 #endif
     }
 
+    // ANAN fork build 643: under Center Lock a stepping tuner whose next step
+    // does not read the slice's (lagging) frequency -- the spectrum wheel
+    // (from the drawn filter, which the drag keeps in the middle) and the
+    // FlexControl knob (its own target) -- drives the view as a pan drag,
+    // as the MIDI knobs do (MainWindow_Controllers.cpp, relativeAction).
+    if (intent == TuneIntent::IncrementalTune && source
+        && (qstrcmp(source, "spectrum-incremental") == 0 || qstrcmp(source, "flexcontrol") == 0)
+        && !m_radioModel.confirmsReceiveControls() && centerLockActiveForSlice(slice)) {
+        if (SpectrumWidget* sw = spectrumForSlice(slice)) {
+            double viewMhz = mhz;
+            if (m_tciIqCenterLockPans.contains(slice->panId()))   // the lock centres the passband
+                viewMhz += (slice->filterLow() + slice->filterHigh()) / 2.0e6;
+            if (sw->knobPanDragTo(viewMhz))
+                return;
+        }
+    }
+
     if (m_radioModel.confirmsReceiveControls()) {
         if (m_radioModel.slice(slice->sliceId()) != slice) { return; }
         IRadioBackend::ReceiveTuneView view = IRadioBackend::ReceiveTuneView::Preserve;

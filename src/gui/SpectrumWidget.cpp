@@ -12120,6 +12120,59 @@ void SpectrumWidget::edgePanVelocityStep()
     emit edgePanTuneRequested(newCenter, sliceFreq);
 }
 
+bool SpectrumWidget::knobPanDragTo(double centerMhz)
+{
+    constexpr int kKnobDragEndMs = 150;
+    if (!std::isfinite(centerMhz) || m_bandwidthMhz <= 0.0 || m_txZoomActive
+        || panGeometryConfirmationRequired())
+        return false;
+    if (m_draggingPan && !m_knobDragActive)
+        return false;   // the mouse is dragging
+    if (!m_draggingPan) {
+        if (m_panCenterAnim && m_panCenterAnim->state() != QAbstractAnimation::Stopped) {
+            m_panCenterAnim->stop();   // a glide in flight: from where it is
+            m_centerMhz = m_panCenterTarget;
+        }
+        beginPanDrag(0);
+        m_knobDragActive = true;
+    }
+    const double newCenter = std::max(centerMhz, m_bandwidthMhz / 2.0);
+    m_panDragPendingCenterMhz = newCenter;
+    m_panDragPendingCenterValid = true;
+    applyPanDragCenter(newCenter, false);
+    if (!m_knobDragEndTimer) {
+        m_knobDragEndTimer = new QTimer(this);
+        m_knobDragEndTimer->setSingleShot(true);
+        m_knobDragEndTimer->setInterval(kKnobDragEndMs);
+        connect(m_knobDragEndTimer, &QTimer::timeout, this, [this] { finishKnobPanDrag(); });
+    }
+    m_knobDragEndTimer->start();
+    return true;
+}
+
+void SpectrumWidget::finishKnobPanDrag()
+{
+    // As the mouse release of a pan drag (mouseReleaseEvent): the last
+    // centre sent at once (final), the preview committed, the drag settled.
+    if (!m_knobDragActive)
+        return;
+    m_knobDragActive = false;
+    if (!m_draggingPan)
+        return;
+    m_draggingPan = false;
+    if (m_panDragSettleTimer)
+        m_panDragSettleTimer->stop();
+    applyPanDragCenter(panGeometryConfirmationRequired() ? m_panDragPendingCenterMhz : m_centerMhz,
+                       true);
+    commitFrequencyPreview();
+    m_panDragWaterfallFrameCenterMhz = m_centerMhz;
+    emit panDragSettled(m_centerMhz, m_bandwidthMhz);
+    m_panDragPendingCenterValid = false;
+    m_panDragDeferredUpdateScheduled = false;
+    m_panDragWaterfallClock.invalidate();
+    m_panDragCommandClock.invalidate();
+}
+
 void SpectrumWidget::schedulePanDragDeferredUpdate()
 {
     if (m_panDragDeferredUpdateScheduled) {
@@ -12194,6 +12247,10 @@ void SpectrumWidget::finishFrequencyRangeSettleUpdate()
 
 void SpectrumWidget::beginPanDrag(int startX)
 {
+    // Build 643: a mouse drag takes over from a knob's.
+    m_knobDragActive = false;
+    if (m_knobDragEndTimer)
+        m_knobDragEndTimer->stop();
     m_draggingPan = true;
     m_panDragStartX = startX;
     m_panDragStartCenter = m_centerMhz;
