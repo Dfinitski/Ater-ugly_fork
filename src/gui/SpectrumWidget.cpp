@@ -19413,20 +19413,10 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
             }
         };
 
-        // Passive target marker: Center Lock is a controller state, so its
-        // visible affordance stays attached to the locked slice rather than
-        // adding another mouse control to the pan chrome.
-        if (so.sliceId == m_centerLockSliceId) {
-            const QPoint targetCenter(vfoX, specRect.top() + flagTopPad() + 18);
-            p.setBrush(AetherSDR::theme::withAlpha("color.background.0", 190));
-            p.setPen(QPen(QColor(col.red(), col.green(), col.blue(), 240), 2));
-            p.drawEllipse(targetCenter, 6, 6);
-            p.setPen(QPen(QColor(col.red(), col.green(), col.blue(), 240), 1));
-            p.drawLine(targetCenter.x() - 9, targetCenter.y(),
-                       targetCenter.x() + 9, targetCenter.y());
-            p.drawLine(targetCenter.x(), targetCenter.y() - 9,
-                       targetCenter.x(), targetCenter.y() + 9);
-        }
+        // ANAN fork build 644 (operator, 23.11: "remove it, it is not needed
+        // and looks like an artifact"): upstream's Center Lock target marker
+        // (a ring with a cross on the frequency line) is not drawn -- the
+        // VFO flag half-covered it.
 
         // Slice Link member marker: name the peer beside each linked VFO so
         // multiple independent pairs remain legible without opening a menu.
