@@ -5239,13 +5239,28 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
         // Judged against the NCO BEFORE it moves: did the dial alone fit?
         r->ncoMovedForRit = outsideWindow && ritApplies
             && std::abs(r->sliceFreqHz - r->ncoHz) <= usableHz;
-        r->ncoHz = tunedHz;
+        // ANAN fork build 651: a receiver tuned a little past the window's
+        // edge (a step of a knob / wheel / keys, not a jump elsewhere), at
+        // full span, without RIT: the NCO goes past it, so the receiver
+        // bounces back to kEdgeBounceFraction of the window on the side it
+        // came from -- the most room ahead before the next bounce -- instead
+        // of the middle. Anything else is centred on the receiver as before.
+        double newNcoHz = tunedHz;
+        {
+            const double offHz = tunedHz - r->ncoHz;
+            const bool fullView = !(r->zoomViewHz > 0.0
+                && r->zoomViewHz < static_cast<double>(m_sampleRateHz) * anan::kUsableSpanFraction);
+            if (outsideWindow && !ritApplies && fullView
+                && std::abs(offHz) - usableHz <= halfSpanHz * 0.25)
+                newNcoHz = std::round(tunedHz + (offHz > 0.0 ? 1.0 : -1.0) * usableHz * kEdgeBounceFraction);
+        }
+        r->ncoHz = newNcoHz;
         if (m_metis)
             // THIS receiver's NCO register, not RX1's. The two-argument overload
             // is the whole reason the receivers can sit on different bands.
             QMetaObject::invokeMethod(m_metis, "setRxFrequencyHz", Qt::QueuedConnection,
                 Q_ARG(int, ddc),
-                Q_ARG(std::uint32_t, ncoCommandHz(tunedHz)));
+                Q_ARG(std::uint32_t, ncoCommandHz(newNcoHz)));
         // Notch centres are measured from the NCO, so moving it without saying
         // so leaves every notch parked at its old RF frequency — the operator
         // tunes across the band and the notches follow them, which is precisely
@@ -6389,6 +6404,27 @@ void Hl2Backend::setPanCenter(const QString& panId, double hz, PanCenterIntent i
         // the NCO ON the view: a view centred on the NCO fits at any width,
         // so the steps that follow need no further move.
         moveNcoForView(ddc, *r, hz, hz);
+    }
+    // ANAN fork build 651 (operator, 23.11: "dragging the panadapter the
+    // filter goes far off and I still hear reception from there" -- an alias:
+    // the receiver had left the band the radio captures; "bounce it back as
+    // tuning does, to 70 %"). A drag that takes the receiver to the edge of
+    // the view retunes it to kEdgeBounceFraction of the half view on the
+    // other side (it re-enters from the side the band comes in from), so it
+    // stays inside the view, and so inside the captured band.
+    if (intent == PanCenterIntent::Drag) {
+        const double viewCenterHz = panCenterHz(*r);
+        const double halfViewHz = panViewHz(*r) / 2.0;
+        const double offHz = r->sliceFreqHz - viewCenterHz;
+        if (halfViewHz > 0.0 && std::abs(offHz) > halfViewHz) {
+            const double newHz = std::round((viewCenterHz
+                - (offHz > 0.0 ? 1.0 : -1.0) * halfViewHz * kEdgeBounceFraction) / 10.0) * 10.0;
+            if (const auto* ids = m_ids.byDdc(ddc)) {
+                qCInfo(lcHl2).nospace() << "ANAN: drag took receiver " << ids->uiNumber
+                                        << " past the view's edge -- bounced to " << newHz << " Hz";
+                setSliceFrequency(ids->uiNumber, newHz);
+            }
+        }
     }
     if (!m_panSettleTimer) {
         m_panSettleTimer = new QTimer(this);

@@ -2049,6 +2049,11 @@ private:
     // Fraction of the half-span the slice may occupy before the NCO re-centres.
     // 0.8 leaves the outer 20% of each side for filter roll-off.
     static constexpr double kUsablePassbandFraction = 0.8;
+    // ANAN fork build 651 (operator, 23.11: "when tuning or dragging takes the
+    // filter to the edge, let it bounce back -- not to the centre as now, but
+    // to 70 %"): where the receiver lands after a bounce, as a fraction of
+    // the half window / half view, on the side it came from.
+    static constexpr double kEdgeBounceFraction = 0.7;
     // Ceiling on host-mixed slice audio. N demodulated receivers are summed
     // here, so N loud slices can sum past full scale where one never could.
     static constexpr float kMixCeiling = 1.0f;
