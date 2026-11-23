@@ -6415,6 +6415,22 @@ MainWindow::TuneCenteringResult MainWindow::revealFrequencyIfNeeded(
         ? kPanFollowAnimationDurationMs
         : 0;
 
+    // ANAN fork build 641 (operator, 23.11: "if the glide is better, why not
+    // use it here too?"): a knob / wheel pushing the VFO against the edge
+    // moves the panadapter by the Center Lock glide of build 619 (constant
+    // speed at the steps' pace) instead of a fresh 110 ms ease per step. As
+    // snapCenterLockForSlice: the view glides only once the radio write went
+    // out (#4142); a large shift still snaps (the glide's own 25 % rule, the
+    // same as animationDurationMs == 0 here).
+    if (incremental && sw && result.animationDurationMs > 0
+        && PanRecenterPolicy::recenterWrite(/*kiwiDisplayActive=*/false,
+                                            /*widgetOwnsViewDuringGesture=*/false)
+               == PanRecenterPolicy::Write::RadioAndModel) {
+        if (m_radioModel.requestPanCenter(pan->panId(), result.newCenterMhz))
+            sw->glideCenterLockRange(result.newCenterMhz, sw->bandwidthMhz());
+        return result;
+    }
+
     // Apply the center so the owning spectrum repaints immediately;
     // SpectrumWidget decides whether that becomes a short retargetable animation
     // or an immediate snap based on shift size.
