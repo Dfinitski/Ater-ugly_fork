@@ -7843,6 +7843,13 @@ bool Hl2Backend::hzInAmateurBand(double lo, double hi) const
     // band plan whatever its real reason was (transmitRefusalText()).
     if (const anan::Xvtr* x = anan::AnanXvtrStore::instance().forRf(lo, m_tuningMinHz, m_tuningMaxHz))
         return !x->rxOnly;
+    // ANAN fork build 649 (operator, 23.11: "for the RZ3QS branch, transmit
+    // without limits on any frequency"). The branch is the FreeDV text field
+    // reading RZ3QS (as the AeRX / AeTX buttons, builds 606 / 612): no band
+    // limits at all -- the radio's own coverage still bounds the tuning, and
+    // a transverter set RX Only (above) still refuses.
+    if (fdv::FdvState::instance().callsign == QLatin1String("RZ3QS"))
+        return true;
     // Built-in until the band plan arrives: every amateur allocation of the
     // three IARU regions (the ANAN tunes to 55 MHz).
     static const std::vector<std::pair<double, double>> kAllRegions = {
