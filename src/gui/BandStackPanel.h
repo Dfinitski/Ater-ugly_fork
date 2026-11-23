@@ -69,6 +69,12 @@ private:
     QPushButton* m_clearAllButton{nullptr};
     QPushButton* m_settingsButton{nullptr};
     bool m_grouped{false};
+    // ANAN fork build 645 (operator, 23.11): "Group by freq" -- the buttons
+    // from the lowest frequency to the highest, top to bottom, inside the
+    // band groups when those are on; off: in the order they were added.
+    // AppSettings "BandStackGroupByFreq".
+    bool m_groupByFreq{false};
+    QVector<int> orderedIndices(QVector<int> indices) const;
     int m_autoExpiryMinutes{0};
     int m_autoSaveDwellSeconds{0};
 };

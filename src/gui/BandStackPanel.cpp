@@ -9,6 +9,9 @@
 #include <QMenu>
 #include <QMap>
 #include "core/ThemeManager.h"
+#include "core/AppSettings.h"
+
+#include <algorithm>
 
 namespace AetherSDR {
 
@@ -21,6 +24,10 @@ static const char* kMenuStyle =
 BandStackPanel::BandStackPanel(QWidget* parent)
     : QWidget(parent)
 {
+    // Build 645: "Group by freq".
+    m_groupByFreq = AppSettings::instance()
+                        .value(QStringLiteral("BandStackGroupByFreq"), QStringLiteral("False"))
+                        .toString() == QLatin1String("True");
     theme::setContainer(this, QStringLiteral("panel/bandStack"));
     setFixedWidth(80);
     // Build 320 (operator, 12.11: build 313/314 changed the colour of the
@@ -102,6 +109,10 @@ BandStackPanel::BandStackPanel(QWidget* parent)
         auto* groupAction = menu.addAction("Group by band");
         groupAction->setCheckable(true);
         groupAction->setChecked(m_grouped);
+        // Build 645.
+        auto* freqAction = menu.addAction("Group by freq");
+        freqAction->setCheckable(true);
+        freqAction->setChecked(m_groupByFreq);
 
         menu.addSeparator();
         auto* expiryLabel = menu.addAction("Auto-expiry:");
@@ -138,6 +149,15 @@ BandStackPanel::BandStackPanel(QWidget* parent)
         if (result == groupAction) {
             m_grouped = !m_grouped;
             emit groupByBandChanged(m_grouped);
+            rebuildLayout();
+            return;
+        }
+        if (result == freqAction) {   // build 645
+            m_groupByFreq = !m_groupByFreq;
+            auto& st = AppSettings::instance();
+            st.setValue(QStringLiteral("BandStackGroupByFreq"),
+                        m_groupByFreq ? QStringLiteral("True") : QStringLiteral("False"));
+            st.save();
             rebuildLayout();
             return;
         }
@@ -321,7 +341,7 @@ void BandStackPanel::rebuildLayout()
                 QString(kBands[b].name), kBands[b].lowMhz, kBands[b].highMhz);
             m_buttonLayout->addWidget(header, 0, Qt::AlignHCenter);
             m_bandHeaders.append(header);
-            for (int idx : bandGroups[b]) {
+            for (int idx : orderedIndices(bandGroups[b])) {
                 m_buttonLayout->addWidget(m_bookmarks[idx].button, 0,
                                           Qt::AlignHCenter);
             }
@@ -331,19 +351,39 @@ void BandStackPanel::rebuildLayout()
             auto* header = createBandHeader("Other", 0, 0);
             m_buttonLayout->addWidget(header, 0, Qt::AlignHCenter);
             m_bandHeaders.append(header);
-            for (int idx : otherIndices) {
+            for (int idx : orderedIndices(otherIndices)) {
                 m_buttonLayout->addWidget(m_bookmarks[idx].button, 0,
                                           Qt::AlignHCenter);
             }
         }
     } else {
-        // Flat: insertion order
-        for (auto& bm : m_bookmarks) {
-            m_buttonLayout->addWidget(bm.button, 0, Qt::AlignHCenter);
-        }
+        // Build 645: by frequency, or in the order the bookmarks were added.
+        QVector<int> all;
+        for (int i = 0; i < m_bookmarks.size(); ++i)
+            all.append(i);
+        for (int idx : orderedIndices(all))
+            m_buttonLayout->addWidget(m_bookmarks[idx].button, 0, Qt::AlignHCenter);
     }
 
     m_buttonLayout->addStretch(1);
+}
+
+QVector<int> BandStackPanel::orderedIndices(QVector<int> indices) const
+{
+    // Build 645: lowest frequency on top with "Group by freq"; otherwise the
+    // order of adding (createdAtMs; legacy entries without a date are the
+    // oldest -- first, in their stored order; the store appends anyway).
+    if (m_groupByFreq) {
+        std::stable_sort(indices.begin(), indices.end(), [this](int a, int b) {
+            return m_bookmarks[a].entry.frequencyMhz < m_bookmarks[b].entry.frequencyMhz;
+        });
+    } else {
+        std::stable_sort(indices.begin(), indices.end(), [this](int a, int b) {
+            return std::max<qint64>(0, m_bookmarks[a].entry.createdAtMs)
+                 < std::max<qint64>(0, m_bookmarks[b].entry.createdAtMs);
+        });
+    }
+    return indices;
 }
 
 void BandStackPanel::setGrouped(bool grouped)
