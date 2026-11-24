@@ -835,8 +835,24 @@ int VfoWidget::freqDigitPlaceAt(const QPoint& labelPos) const
             ++digits;
     // The label is right-aligned in its contents rect, so the text ends at
     // the rect's right edge.
+    // ANAN fork build 664 (operator, 23.11: "tuning digit by digit with the
+    // wheel on the flag changes not the digit under the mouse but the one
+    // next to it"). OUR ERROR (build 9.11): the text does NOT end at the
+    // contents rect's edge. QLabel (qlabel.cpp, paintEvent) first takes its
+    // margin off the contents rect, and a label with a frame -- the style
+    // sheet's 1 px border makes one -- and no indent set is indented by half
+    // an 'x' less the margin on its aligned side: the text ends about half a
+    // digit left of where this assumed, so over the right half of a digit
+    // the wheel turned the digit to its right. The same rect as QLabel's.
     const QFontMetricsF fm(m_freqLabel->font());
-    const QRect cr = m_freqLabel->contentsRect();
+    QRect cr = m_freqLabel->contentsRect();
+    const int margin = m_freqLabel->margin();
+    cr.adjust(margin, margin, -margin, -margin);
+    int indent = m_freqLabel->indent();
+    if (indent < 0 && m_freqLabel->frameWidth() > 0)
+        indent = m_freqLabel->fontMetrics().horizontalAdvance(QLatin1Char('x')) / 2 - margin;
+    if (indent > 0)
+        cr.setRight(cr.right() - indent);
     double x = cr.right() + 1 - fm.horizontalAdvance(text);
     if (labelPos.x() < x)
         return digits - 1;   // left of the number: its leading digit
