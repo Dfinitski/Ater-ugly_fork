@@ -2052,7 +2052,10 @@ private:
 
     // Fraction of the half-span the slice may occupy before the NCO re-centres.
     // 0.8 leaves the outer 20% of each side for filter roll-off.
-    static constexpr double kUsablePassbandFraction = 0.8;
+    // ANAN fork build 654 (operator, 23.11: "let's make 90 % clean in the
+    // window"): 0.9, the same 90 % as the view (kUsableSpanFraction) -- the
+    // measured DDC edge profile is within ~2-3 dB 5 % from the edge.
+    static constexpr double kUsablePassbandFraction = 0.9;
     // ANAN fork build 651 (operator, 23.11: "when tuning or dragging takes the
     // filter to the edge, let it bounce back -- not to the centre as now, but
     // to 70 %"): where the receiver lands after a bounce, as a fraction of
