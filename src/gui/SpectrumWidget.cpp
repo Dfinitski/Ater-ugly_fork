@@ -2501,47 +2501,36 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
         m_rateLabel->setStyleSheet(QStringLiteral(
             "QLabel { background: transparent; color: rgba(200,216,232,150);"
             " font-size: 12px; font-weight: bold; }"));
-        m_zoomLabel = new QLabel(this);
+        // ANAN fork build 661 (operator, 23.11: "make the zoom text take the
+        // mouse like a button, and a click sets the zoom to 1x"): the zoom
+        // indicator is a flat button, as wide as its text (as the rate label,
+        // build 646); hover and press as the rate buttons; a click shows the
+        // whole usable span (x1.0).
+        m_zoomLabel = new QPushButton(this);
         m_zoomLabel->setObjectName(QStringLiteral("panZoomLabel"));
-        m_zoomLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        m_zoomLabel->setAccessibleName(QStringLiteral("Zoom (click: x1.0)"));
         m_zoomLabel->setFixedSize(84, 20);
-        m_zoomLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+        m_zoomLabel->setCursor(Qt::PointingHandCursor);
+        m_zoomLabel->setFocusPolicy(Qt::NoFocus);
         m_zoomLabel->setStyleSheet(QStringLiteral(
-            "QLabel { background: transparent; color: rgba(200,216,232,150);"
-            " font-size: 12px; font-weight: bold; }"));
+            "QPushButton { background: transparent; border: none; border-radius: 2px;"
+            " color: rgba(200,216,232,150); font-size: 12px; font-weight: bold;"
+            " padding: 0; margin: 0; min-width: 0; }"
+            "QPushButton:hover { background: rgba(30,50,70,150); color: rgba(220,232,244,220); }"
+            "QPushButton:pressed { background: rgba(0,180,216,150); color: #000; }"));
         m_zoomLabel->setToolTip(tr("Display zoom relative to the full receiver bandwidth "
-                                   "(drag the frequency scale to zoom)"));
+                                   "(drag the frequency scale to zoom; click for x1.0)"));
+        connect(m_zoomLabel, &QPushButton::clicked, this, [this, emitZoom] {
+            const int rateHz = AetherSDR::anan::AnanUiState::instance().sampleRateHz;
+            if (rateHz <= 0 || m_bandwidthMhz <= 0.0)
+                return;
+            const double fullMhz = rateHz / 1.0e6 * AetherSDR::anan::kUsableSpanFraction;
+            emitZoom(fullMhz / m_bandwidthMhz);
+        });
         m_rateDownBtn->setToolTip(tr("Narrower panadapter / receiver bandwidth"));
         m_rateUpBtn->setToolTip(tr("Wider panadapter / receiver bandwidth"));
-        // ANAN fork build 658 -- TEMPORARY TEST (operator, 23.11: "simulate
-        // 100 pulses a second from a MIDI device on the frequency, with the
-        // rate buttons; while the button is held; the rate function off for
-        // the test; the tuning step, as MIDI"). Held, [-] / [+] sends one
-        // tune-knob step down / up every 10 ms through the MIDI knob's own
-        // path (MainWindow: MidiControlManager::relativeAction, rx.tuneKnob).
-        // The rate change is disconnected for the test; to restore, put back:
-        //   connect(m_rateDownBtn, &QPushButton::clicked, this, [this] { stepReceiverRate(-1); });
-        //   connect(m_rateUpBtn, &QPushButton::clicked, this, [this] { stepReceiverRate(+1); });
-        m_testPulseTimer = new QTimer(this);
-        m_testPulseTimer->setTimerType(Qt::PreciseTimer);
-        m_testPulseTimer->setInterval(10);
-        connect(m_testPulseTimer, &QTimer::timeout, this, [this] {
-            if (m_testPulseDir != 0)
-                emit testTunePulseRequested(m_testPulseDir);
-        });
-        auto startPulses = [this](int dir) {
-            m_testPulseDir = dir;
-            emit testTunePulseRequested(dir);
-            m_testPulseTimer->start();
-        };
-        auto stopPulses = [this] {
-            m_testPulseDir = 0;
-            m_testPulseTimer->stop();
-        };
-        connect(m_rateDownBtn, &QPushButton::pressed, this, [startPulses] { startPulses(-1); });
-        connect(m_rateUpBtn, &QPushButton::pressed, this, [startPulses] { startPulses(+1); });
-        connect(m_rateDownBtn, &QPushButton::released, this, stopPulses);
-        connect(m_rateUpBtn, &QPushButton::released, this, stopPulses);
+        connect(m_rateDownBtn, &QPushButton::clicked, this, [this] { stepReceiverRate(-1); });
+        connect(m_rateUpBtn, &QPushButton::clicked, this, [this] { stepReceiverRate(+1); });
         // The span arrives from the backend asynchronously; a light poll keeps
         // the label honest without hooking every range-setter path.
         auto* rateTimer = new QTimer(this);
@@ -12146,10 +12135,6 @@ bool SpectrumWidget::knobPanDragTo(double centerMhz)
         beginPanDrag(0);
         m_knobDragActive = true;
         m_knobGlideCenterMhz = m_centerMhz;
-        // Build 659 (diagnostic): the knob drag's start.
-        qInfo().nospace() << "ANAN knob drag begin: view " << QString::number(m_centerMhz, 'f', 6)
-                          << " MHz, first target " << QString::number(centerMhz, 'f', 6)
-                          << ", pan target " << QString::number(m_panCenterTarget, 'f', 6);
         if (m_knobGlideTimer)
             m_knobGlideTimer->stop();
     }
@@ -12228,15 +12213,6 @@ void SpectrumWidget::finishKnobPanDrag()
         m_knobDragEndTimer->start();
         return;
     }
-    // Build 659 (diagnostic): what the release sends.
-    qInfo().nospace() << "ANAN knob drag end: view " << QString::number(m_centerMhz, 'f', 6)
-                      << " MHz, glide " << QString::number(m_knobGlideCenterMhz, 'f', 6)
-                      << " -> " << QString::number(m_knobGlideTargetMhz, 'f', 6)
-                      << ", pending " << QString::number(m_panDragPendingCenterMhz, 'f', 6)
-                      << (m_panDragPendingCenterValid ? " (valid)" : " (not valid)")
-                      << ", last sent " << QString::number(m_panDragLastCommandCenterMhz, 'f', 6)
-                      << ", dragging " << m_draggingPan
-                      << ", confirmation " << panGeometryConfirmationRequired();
     m_knobDragActive = false;
     if (!m_draggingPan)
         return;
@@ -12421,15 +12397,6 @@ void SpectrumWidget::applyPanDragCenter(double newCenterMhz, bool force)
     const bool commandDue = force || !m_panDragCommandClock.isValid()
         || m_panDragCommandClock.elapsed() >= kPanDragCommandMs;
     if (commandChanged && commandDue) {
-        // Build 659 (diagnostic): a drag command far from the last one.
-        if (std::abs(newCenterMhz - m_panDragLastCommandCenterMhz) > 0.02)
-            qInfo().nospace() << "ANAN pan drag JUMP: centre "
-                              << QString::number(m_panDragLastCommandCenterMhz, 'f', 6) << " -> "
-                              << QString::number(newCenterMhz, 'f', 6) << " MHz, force " << force
-                              << ", knob " << m_knobDragActive << ", dragging " << m_draggingPan
-                              << ", glide " << QString::number(m_knobGlideCenterMhz, 'f', 6)
-                              << " -> " << QString::number(m_knobGlideTargetMhz, 'f', 6)
-                              << ", pending " << QString::number(m_panDragPendingCenterMhz, 'f', 6);
         emit centerChangeRequested(newCenterMhz);
         m_panDragLastCommandCenterMhz = newCenterMhz;
         m_panDragCommandClock.restart();
@@ -14119,8 +14086,17 @@ void SpectrumWidget::refreshRateLabel()
             const double mag = std::max(1.0, rateMhz * AetherSDR::anan::kUsableSpanFraction
                                                  / m_bandwidthMhz);
             const QString zoomText = QStringLiteral("Zoom \u00D7%1").arg(mag, 0, 'f', 1);
-            if (m_zoomLabel->text() != zoomText)
+            if (m_zoomLabel->text() != zoomText) {
                 m_zoomLabel->setText(zoomText);
+                // Build 661: as wide as the text, as the rate label (the 4 px
+                // gaps to the rate group stay as they were).
+                m_zoomLabel->ensurePolished();
+                const int w = m_zoomLabel->fontMetrics().horizontalAdvance(zoomText) + 1;
+                if (w != m_zoomLabel->width()) {
+                    m_zoomLabel->setFixedWidth(w);
+                    positionZoomButtons();
+                }
+            }
         }
         m_zoomLabelWanted = show;
         const bool visible = show && !m_rateGroupCovered;   // build 570

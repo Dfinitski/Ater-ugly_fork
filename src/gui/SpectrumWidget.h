@@ -1066,9 +1066,6 @@ signals:
     // ANAN-100D port: the DDC rate from the rate buttons (the pan bandwidth is
     // the display zoom on these radios). MainWindow sends "anan.rate".
     void receiverRateRequested(int hz);
-    // ANAN fork build 658 (TEMPORARY test): one simulated MIDI tune-knob
-    // pulse (+1 / -1 step), 100 a second while a rate button is held.
-    void testTunePulseRequested(int steps);
     // Emitted when a slice drag (in-window tune or edge auto-pan) starts (true)
     // and ends (false), so Pan Follow can stand down for the drag's duration and
     // recenter once on release. (user-reported)
@@ -2451,8 +2448,6 @@ private:
     // DDC rate on these radios). Replaces Ctrl+wheel zoom.
     QPushButton* m_rateDownBtn{nullptr};
     QPushButton* m_rateUpBtn{nullptr};
-    QTimer* m_testPulseTimer{nullptr};   // build 658 (temporary)
-    int m_testPulseDir{0};
     QLabel*      m_rateLabel{nullptr};
     [[nodiscard]] int rateGroupWidth() const;
     // ANAN fork build 282: the 3D waterfall. The surface takes the 2D
@@ -2474,7 +2469,7 @@ private:
     int drawWideChip(QPainter& p, int rightX) const;
     void stepReceiverRate(int direction);
     // ANAN-100D port: "Zoom xN.N" (magnification) left of the rate group.
-    QLabel*      m_zoomLabel{nullptr};
+    QPushButton* m_zoomLabel{nullptr};   // build 661: a button (click: zoom x1.0)
     void refreshRateLabel();
     // ANAN fork build 570 (operator, 21.11): the zoom indicator and the rate
     // group hide while any receiver's flag overlaps them and come back when
