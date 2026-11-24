@@ -2063,6 +2063,11 @@ private:
     // edge it reached (build 652, operator: "not on the other side, that is
     // too far; 70 % is the distance from the centre to the edge").
     static constexpr double kEdgeBounceFraction = 0.7;
+    // ANAN fork build 656 (operator, 23.11: "the bounce has to happen when
+    // the filter is a little short of the screen's edge"): the bounce fires
+    // once the filter's OUTER edge comes within this fraction of the half
+    // screen from the centre -- 5 % of the half screen before the edge.
+    static constexpr double kEdgeBounceTrigger = 0.95;
     // Ceiling on host-mixed slice audio. N demodulated receivers are summed
     // here, so N loud slices can sum past full scale where one never could.
     static constexpr float kMixCeiling = 1.0f;

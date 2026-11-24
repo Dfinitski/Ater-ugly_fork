@@ -5245,21 +5245,36 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
     // against the whole captured band so it does not recentre the NCO and
     // drop the average; the settle timer brings the view back inside the
     // clean 90 %.
+    // Build 656: the bounce fires a little BEFORE the screen's edge -- when
+    // the filter's outer edge passes kEdgeBounceTrigger of the half screen
+    // (a step, not a jump: at most a quarter of the half screen past it), at
+    // full span as well as zoomed. Zoomed: the view moves (as above). Full
+    // span: the NCO bounces in the branch below (edgeSide).
     bool viewBounced = false;
+    int edgeSide = 0;   // +1: the filter reached the right edge, -1: the left
+    double edgeHalfViewHz = 0.0;
     if (!r->ctunOff && !m_lockDragStep && !ritApplies) {
         const double rateHz = static_cast<double>(m_sampleRateHz);
         const bool zoomed = r->zoomViewHz > 0.0 && r->zoomViewHz < rateHz * anan::kUsableSpanFraction;
         const double viewCenterHz = panCenterHz(*r);
         const double halfViewHz = panViewHz(*r) / 2.0;
-        const double offHz = tunedHz - viewCenterHz;
-        if (zoomed && halfViewHz > 0.0 && std::abs(offHz) > halfViewHz
-            && std::abs(offHz) - halfViewHz <= halfViewHz * 0.25) {
+        const double triggerHz = halfViewHz * kEdgeBounceTrigger;
+        const double rightOffHz = tunedHz + std::max(r->filterLowHz, r->filterHighHz) - viewCenterHz;
+        const double leftOffHz = tunedHz + std::min(r->filterLowHz, r->filterHighHz) - viewCenterHz;
+        if (halfViewHz > 0.0) {
+            if (rightOffHz > triggerHz && rightOffHz - triggerHz <= halfViewHz * 0.25)
+                edgeSide = 1;
+            else if (leftOffHz < -triggerHz && -leftOffHz - triggerHz <= halfViewHz * 0.25)
+                edgeSide = -1;
+        }
+        edgeHalfViewHz = halfViewHz;
+        if (zoomed && edgeSide != 0) {
             if (const auto* ids = m_ids.byDdc(ddc)) {
-                const double newCenterHz = std::round(tunedHz
-                    - (offHz > 0.0 ? 1.0 : -1.0) * halfViewHz * kEdgeBounceFraction);
+                const double newCenterHz = std::round(tunedHz - edgeSide * halfViewHz * kEdgeBounceFraction);
                 setPanCenter(ids->panId, newCenterHz, PanCenterIntent::Drag);
                 viewBounced = true;
             }
+            edgeSide = 0;
         }
     }
     const double windowHz = (m_lockDragStep || viewBounced)
@@ -5281,7 +5296,7 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
         r->ncoMovedForRit = false;
         r->viewOffsetHz = 0.0;
         r->viewForNcoHz = r->ncoHz;
-    } else if (outsideWindow || ritReturn) {
+    } else if (outsideWindow || ritReturn || edgeSide != 0) {
         // Judged against the NCO BEFORE it moves: did the dial alone fit?
         r->ncoMovedForRit = outsideWindow && ritApplies
             && std::abs(r->sliceFreqHz - r->ncoHz) <= usableHz;
@@ -5296,7 +5311,9 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
             const double offHz = tunedHz - r->ncoHz;
             const bool fullView = !(r->zoomViewHz > 0.0
                 && r->zoomViewHz < static_cast<double>(m_sampleRateHz) * anan::kUsableSpanFraction);
-            if (outsideWindow && !ritApplies && fullView
+            if (edgeSide != 0)   // build 656: short of the screen's edge
+                newNcoHz = std::round(tunedHz - edgeSide * edgeHalfViewHz * kEdgeBounceFraction);
+            else if (outsideWindow && !ritApplies && fullView
                 && std::abs(offHz) - usableHz <= halfSpanHz * 0.25)
                 newNcoHz = std::round(tunedHz - (offHz > 0.0 ? 1.0 : -1.0) * usableHz * kEdgeBounceFraction);
         }
