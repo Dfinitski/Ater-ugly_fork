@@ -2052,7 +2052,9 @@ private:
     // ANAN fork build 651 (operator, 23.11: "when tuning or dragging takes the
     // filter to the edge, let it bounce back -- not to the centre as now, but
     // to 70 %"): where the receiver lands after a bounce, as a fraction of
-    // the half window / half view, on the side it came from.
+    // the half window / half view from the centre, on the SAME side -- the
+    // edge it reached (build 652, operator: "not on the other side, that is
+    // too far; 70 % is the distance from the centre to the edge").
     static constexpr double kEdgeBounceFraction = 0.7;
     // Ceiling on host-mixed slice audio. N demodulated receivers are summed
     // here, so N loud slices can sum past full scale where one never could.

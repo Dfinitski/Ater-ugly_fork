@@ -5241,10 +5241,10 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
             && std::abs(r->sliceFreqHz - r->ncoHz) <= usableHz;
         // ANAN fork build 651: a receiver tuned a little past the window's
         // edge (a step of a knob / wheel / keys, not a jump elsewhere), at
-        // full span, without RIT: the NCO goes past it, so the receiver
-        // bounces back to kEdgeBounceFraction of the window on the side it
-        // came from -- the most room ahead before the next bounce -- instead
-        // of the middle. Anything else is centred on the receiver as before.
+        // full span, without RIT: the receiver bounces back to
+        // kEdgeBounceFraction of the half window from the centre, on the same
+        // side (build 652), instead of the middle. Anything else is centred
+        // on the receiver as before.
         double newNcoHz = tunedHz;
         {
             const double offHz = tunedHz - r->ncoHz;
@@ -5252,7 +5252,7 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
                 && r->zoomViewHz < static_cast<double>(m_sampleRateHz) * anan::kUsableSpanFraction);
             if (outsideWindow && !ritApplies && fullView
                 && std::abs(offHz) - usableHz <= halfSpanHz * 0.25)
-                newNcoHz = std::round(tunedHz + (offHz > 0.0 ? 1.0 : -1.0) * usableHz * kEdgeBounceFraction);
+                newNcoHz = std::round(tunedHz - (offHz > 0.0 ? 1.0 : -1.0) * usableHz * kEdgeBounceFraction);
         }
         r->ncoHz = newNcoHz;
         if (m_metis)
@@ -6409,16 +6409,16 @@ void Hl2Backend::setPanCenter(const QString& panId, double hz, PanCenterIntent i
     // filter goes far off and I still hear reception from there" -- an alias:
     // the receiver had left the band the radio captures; "bounce it back as
     // tuning does, to 70 %"). A drag that takes the receiver to the edge of
-    // the view retunes it to kEdgeBounceFraction of the half view on the
-    // other side (it re-enters from the side the band comes in from), so it
-    // stays inside the view, and so inside the captured band.
+    // the view retunes it to kEdgeBounceFraction of the half view from the
+    // centre, on the side of that edge (build 652), so it stays inside the
+    // view, and so inside the captured band.
     if (intent == PanCenterIntent::Drag) {
         const double viewCenterHz = panCenterHz(*r);
         const double halfViewHz = panViewHz(*r) / 2.0;
         const double offHz = r->sliceFreqHz - viewCenterHz;
         if (halfViewHz > 0.0 && std::abs(offHz) > halfViewHz) {
             const double newHz = std::round((viewCenterHz
-                - (offHz > 0.0 ? 1.0 : -1.0) * halfViewHz * kEdgeBounceFraction) / 10.0) * 10.0;
+                + (offHz > 0.0 ? 1.0 : -1.0) * halfViewHz * kEdgeBounceFraction) / 10.0) * 10.0;
             if (const auto* ids = m_ids.byDdc(ddc)) {
                 qCInfo(lcHl2).nospace() << "ANAN: drag took receiver " << ids->uiNumber
                                         << " past the view's edge -- bounced to " << newHz << " Hz";
