@@ -12838,7 +12838,15 @@ void SpectrumWidget::mouseMoveEvent(QMouseEvent* ev)
         m_rmbPanMoved = true;
         setSpectrumCursor(Qt::ClosedHandCursor);
     }
-    if (m_draggingPan) {
+    // ANAN fork build 660 (operator, 23.11, the build 659 log: "I released
+    // the button and everything vanished -- the receiver retuned somewhere").
+    // OUR ERROR, of build 643: a knob's drag (knobPanDragTo) is a pan drag
+    // begun at x = 0, and a mouse MOVE over the panadapter while it lasted
+    // was taken for the mouse dragging it -- the centre jumped to the drag's
+    // start less the mouse's x (20:03:14: 5.0255 -> 4.8289 MHz, the cursor at
+    // the right edge) and the locked receiver went with it. While the knob
+    // drives the drag, the mouse does not (a mouse PRESS still takes over).
+    if (m_draggingPan && !m_knobDragActive) {
         const int dx = static_cast<int>(ev->position().x()) - m_panDragStartX;
         // Dragging right moves the view right → center shifts left
         const double deltaMhz = -(static_cast<double>(dx) / contentWidth()) * effectiveBandwidthMhz();
@@ -13240,7 +13248,9 @@ void SpectrumWidget::mouseReleaseEvent(QMouseEvent* ev)
         ev->accept();
         return;
     }
-    if (m_draggingPan) {
+    // Build 660: a mouse release ends a MOUSE drag only (a knob's drag ends
+    // on its own timer, finishKnobPanDrag).
+    if (m_draggingPan && !m_knobDragActive) {
         m_rmbPanArmed = false;
         m_draggingPan = false;
         if (m_panDragSettleTimer) {
