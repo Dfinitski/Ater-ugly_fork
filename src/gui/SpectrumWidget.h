@@ -2102,6 +2102,16 @@ private:
     QTimer* m_knobDragEndTimer{nullptr};
     bool m_knobDragActive{false};
     void finishKnobPanDrag();
+    // Build 657: the knob's drag glides to each step's centre at the steps'
+    // pace (as glideCenterLockRange), driven frame by frame through the drag.
+    QTimer* m_knobGlideTimer{nullptr};
+    QElapsedTimer m_knobGlideFrameClock;
+    QElapsedTimer m_knobStepClock;
+    double m_knobStepIntervalMs{0.0};
+    double m_knobGlideCenterMhz{0.0};
+    double m_knobGlideTargetMhz{0.0};
+    double m_knobGlideSpeedMhzPerMs{0.0};
+    void knobGlideTick();
     // Filter edge drag state
     enum class FilterEdge { None, Low, High };
     FilterEdge m_draggingFilter{FilterEdge::None};

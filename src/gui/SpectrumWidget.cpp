@@ -12118,11 +12118,44 @@ bool SpectrumWidget::knobPanDragTo(double centerMhz)
         }
         beginPanDrag(0);
         m_knobDragActive = true;
+        m_knobGlideCenterMhz = m_centerMhz;
+        if (m_knobGlideTimer)
+            m_knobGlideTimer->stop();
     }
     const double newCenter = std::max(centerMhz, m_bandwidthMhz / 2.0);
-    m_panDragPendingCenterMhz = newCenter;
+    // ANAN fork build 657 (operator, 23.11: "why does the panadapter move
+    // smoothly in the normal mode but jump on a large step under Center
+    // Lock? I told you to make it smooth everywhere"). Build 643 put the
+    // view on each step's centre at once: a large step was a jump. Now the
+    // drag glides there at constant speed so that it arrives as the next
+    // step comes (the steps' pace, smoothed, as glideCenterLockRange; a step
+    // alone takes 120 ms), frame by frame through the same drag -- the
+    // receiver, the spectrum and the waterfall follow it as under the mouse.
+    double intervalMs = -1.0;
+    if (m_knobStepClock.isValid())
+        intervalMs = static_cast<double>(m_knobStepClock.restart());
+    else
+        m_knobStepClock.start();
+    const bool continuous = intervalMs > 0.0 && intervalMs < 600.0;
+    if (continuous)
+        m_knobStepIntervalMs = m_knobStepIntervalMs > 0.0
+            ? 0.6 * m_knobStepIntervalMs + 0.4 * intervalMs : intervalMs;
+    else
+        m_knobStepIntervalMs = 0.0;
+    const double glideMs = continuous ? std::clamp(m_knobStepIntervalMs, 40.0, 400.0) : 120.0;
+    m_knobGlideTargetMhz = newCenter;
+    m_knobGlideSpeedMhzPerMs = std::abs(newCenter - m_knobGlideCenterMhz) / glideMs;
     m_panDragPendingCenterValid = true;
-    applyPanDragCenter(newCenter, false);
+    if (!m_knobGlideTimer) {
+        m_knobGlideTimer = new QTimer(this);
+        m_knobGlideTimer->setTimerType(Qt::PreciseTimer);
+        m_knobGlideTimer->setInterval(8);
+        connect(m_knobGlideTimer, &QTimer::timeout, this, [this] { knobGlideTick(); });
+    }
+    if (!m_knobGlideTimer->isActive()) {
+        m_knobGlideFrameClock.start();
+        m_knobGlideTimer->start();
+    }
     if (!m_knobDragEndTimer) {
         m_knobDragEndTimer = new QTimer(this);
         m_knobDragEndTimer->setSingleShot(true);
@@ -12133,12 +12166,37 @@ bool SpectrumWidget::knobPanDragTo(double centerMhz)
     return true;
 }
 
+void SpectrumWidget::knobGlideTick()
+{
+    // Build 657: one frame of the knob's glide (knobPanDragTo).
+    if (!m_knobDragActive || !m_draggingPan) {
+        m_knobGlideTimer->stop();
+        return;
+    }
+    const double dtMs = std::max(1.0, static_cast<double>(m_knobGlideFrameClock.restart()));
+    const double left = m_knobGlideTargetMhz - m_knobGlideCenterMhz;
+    const double stepMhz = m_knobGlideSpeedMhzPerMs * dtMs;
+    if (std::abs(left) <= stepMhz || stepMhz <= 0.0) {
+        m_knobGlideCenterMhz = m_knobGlideTargetMhz;
+        m_knobGlideTimer->stop();
+    } else {
+        m_knobGlideCenterMhz += left > 0.0 ? stepMhz : -stepMhz;
+    }
+    m_panDragPendingCenterMhz = m_knobGlideCenterMhz;
+    applyPanDragCenter(m_knobGlideCenterMhz, false);
+}
+
 void SpectrumWidget::finishKnobPanDrag()
 {
     // As the mouse release of a pan drag (mouseReleaseEvent): the last
     // centre sent at once (final), the preview committed, the drag settled.
     if (!m_knobDragActive)
         return;
+    // Build 657: not before the glide has arrived.
+    if (m_knobGlideTimer && m_knobGlideTimer->isActive()) {
+        m_knobDragEndTimer->start();
+        return;
+    }
     m_knobDragActive = false;
     if (!m_draggingPan)
         return;
