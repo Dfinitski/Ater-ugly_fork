@@ -5232,7 +5232,38 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
     // moves the view first (setPanCenter, the shifted average) and the
     // receiver after it, judged against the whole captured band; the
     // release brings the view back inside the clean 80 % (settlePanViews).
-    const double windowHz = m_lockDragStep ? std::max(usableHz, halfSpanHz * 0.96) : usableHz;
+    // ANAN fork build 655 (operator, 23.11: "in zoom the bounce off the
+    // screen does not work and the filter goes off screen -- I told you to
+    // bounce off the SCREEN, not off the edge of the panadapter"). Build 651
+    // bounced only at full span, where the screen and the receiver's window
+    // are one. Zoomed in, the screen is the view: a receiver tuned a little
+    // past the view's edge (a knob / wheel / key step, not a jump), without
+    // RIT, moves the VIEW so the receiver sits at kEdgeBounceFraction of the
+    // half view from its centre, on the side of that edge -- the view moves
+    // inside the captured band as a drag does (setPanCenter, the NCO only
+    // with its lead and the average shifted), and the receiver is then judged
+    // against the whole captured band so it does not recentre the NCO and
+    // drop the average; the settle timer brings the view back inside the
+    // clean 90 %.
+    bool viewBounced = false;
+    if (!r->ctunOff && !m_lockDragStep && !ritApplies) {
+        const double rateHz = static_cast<double>(m_sampleRateHz);
+        const bool zoomed = r->zoomViewHz > 0.0 && r->zoomViewHz < rateHz * anan::kUsableSpanFraction;
+        const double viewCenterHz = panCenterHz(*r);
+        const double halfViewHz = panViewHz(*r) / 2.0;
+        const double offHz = tunedHz - viewCenterHz;
+        if (zoomed && halfViewHz > 0.0 && std::abs(offHz) > halfViewHz
+            && std::abs(offHz) - halfViewHz <= halfViewHz * 0.25) {
+            if (const auto* ids = m_ids.byDdc(ddc)) {
+                const double newCenterHz = std::round(tunedHz
+                    - (offHz > 0.0 ? 1.0 : -1.0) * halfViewHz * kEdgeBounceFraction);
+                setPanCenter(ids->panId, newCenterHz, PanCenterIntent::Drag);
+                viewBounced = true;
+            }
+        }
+    }
+    const double windowHz = (m_lockDragStep || viewBounced)
+        ? std::max(usableHz, halfSpanHz * 0.96) : usableHz;
     const bool outsideWindow = std::abs(tunedHz - r->ncoHz) > windowHz;
     // A move RIT alone caused is undone when RIT stops applying to this
     // receiver (cleared or zeroed) — the NCO comes back
