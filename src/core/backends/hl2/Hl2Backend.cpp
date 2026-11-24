@@ -3201,6 +3201,18 @@ void Hl2Backend::ananPushCwKeyer()
     anan::CwKeyerOptions k;
     k.enabled = mode == QLatin1String("CW") || mode == QLatin1String("CWU")
                 || mode == QLatin1String("CWL");
+    // ANAN fork build 668 (operator, 24.11: "a user says that in CW, TUNE
+    // sends some Morse elements; as I remember nothing of the kind should
+    // go"). OUR ERROR: TUNE in CW kept the radio's FPGA keyer on (with
+    // break-in) under the TUNE carrier, so the radio's own keying went on
+    // the air with it. Thetis (console.cs chkTUN_CheckedChanged): in CWL /
+    // CWU it switches the firmware keyer off (CWFWKeyer = false) for the
+    // TUNE and back on after it. The same here: no FPGA keyer while TUNE is
+    // up -- the TUNE tone (at the DUC frequency, the CW carrier's own) goes
+    // out as in any other mode; the keyer is back with the carrier's end
+    // (setTune, and the periodic push for every other unkey).
+    if (m_tuning)
+        k.enabled = false;
     // In CW the radio's FPGA keyer makes the carrier itself, on the DUC
     // frequency (the slice's carrier, the RX filter's centre). Whatever the
     // host sends as TX IQ goes out between and around the elements: the
@@ -9484,6 +9496,7 @@ void Hl2Backend::setTune(bool on, int tunePowerPercent, const AetherSDR::TxCoord
     if (on) {
         m_tuning = true;
         m_tuneOperation = operation;
+        ananPushCwKeyer();   // build 668: no FPGA keyer under the TUNE carrier (CW)
         // BEFORE the carrier, not after. The HL2's AH-4 handler samples the
         // request alongside the key, and raising it after the tone is already
         // radiating leaves the first moments of the tune un-requested — which
@@ -9509,6 +9522,7 @@ void Hl2Backend::setTune(bool on, int tunePowerPercent, const AetherSDR::TxCoord
     } else {
         setKeying(false, operation, completion);   // clears m_tuning and restores the operator's RF power
         setTxTestTone(0.0, 0.0, operation);
+        ananPushCwKeyer();   // build 668: the FPGA keyer back (CW) after the carrier
         if (m_metis)
             QMetaObject::invokeMethod(m_metis, "setTunerStart", Qt::QueuedConnection,
                                       Q_ARG(bool, false));
