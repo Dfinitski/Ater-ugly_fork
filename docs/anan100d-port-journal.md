@@ -11280,6 +11280,14 @@ Thetis (console.cs `ZoomToBand`, `zoomToBandBandwidth`): панорама на �
 - Архив `AetherSDR-ANAN-build667-win64-portable.zip` (папка `AetherSDR-ANAN-build667`): архив 636 с `AetherSDR.exe` сборки 667 (собран оператором 23.11 21:09; проверен по строкам: стиль кнопки Zoom без `:pressed`, ключ `AnanZtb`) и `README-build667.md` вместо `README-build636.md`; 93 файла, 163 238 034 байт, SHA-256 `b270941dc08a0ae5704aad3c86dc1a4b1ed5ae1b95308fa9f27800e4deb4d30f`; положен в `Desktop\AetherSDR-Release`.
 - Тег `build-667` и релиз на GitHub делает оператор.
 
+## 650. CI: архивы отладочных символов больше не прикладываются к релизу
+
+Оператор, 23.11, о файлах `…-symbols.tar.xz` в релизе: «надо убрать, восстановим, только если будут сообщения о падении».
+
+Это наследство CI исходного AetherSDR (AppImage — 06.11, macOS — сборка 444): DWARF / dSYM, отделённые от `AetherSDR` и `aether-dv-waveform` (`scripts/build/split-debug-symbols.sh`), для разбора системных отчётов о падении на Linux / macOS; своих отчётов с этих систем пока не было.
+
+`.github/workflows/appimage.yml`, `macos-app.yml`: убраны шаги «Package debug symbols» и `*-symbols.tar.xz` из выгрузки и из «Attach to release». Шаг «Split debug symbols» оставлен — выпускаемые бинарники те же, что раньше (без отладочной информации). Вернуть — восстановить эти шаги из истории git (коммит до этого).
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -175,6 +175,9 @@ jobs:
         if: failure()
         run: grep -nE 'error:|Error [0-9]' build.log | head -60 || true
 
+      # Build 667 (operator, 23.11): the debug-symbol archive is no longer
+      # packaged or attached to the release -- to be restored if crashes are
+      # reported. The split stays: the shipped binary is stripped as before.
       - name: Split debug symbols
         continue-on-error: true
         run: |
@@ -327,22 +330,12 @@ jobs:
           ls -l out
           shasum -a 256 out/*.dmg
 
-      - name: Package debug symbols
-        continue-on-error: true
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          set -euo pipefail
-          REF="${RELEASE_TAG:-$GITHUB_REF_NAME}"; SAFE_REF="${REF//[^A-Za-z0-9._-]/_}"
-          tar -cJf "$GITHUB_WORKSPACE/out/AetherSDR-ANAN-${SAFE_REF}-macOS-arm64-symbols.tar.xz" -C symbols .
-
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: macOS-DMG-arm64
           path: |
             out/AetherSDR-*.dmg
-            out/AetherSDR-*-symbols.tar.xz
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
@@ -351,4 +344,3 @@ jobs:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           files: |
             out/AetherSDR-*.dmg
-            out/AetherSDR-*-symbols.tar.xz

@@ -297,8 +297,10 @@ jobs:
         run: cmake --build build --target AetherSDR aether-dv-waveform -j$(nproc)
 
       # Before Install: linuxdeploy strips everything it bundles. The build ID
-      # each debug file is keyed on survives install, patchelf and that strip;
-      # "Package debug symbols" below checks it on the AppImage itself.
+      # each debug file is keyed on survives install, patchelf and that strip.
+      # Build 667 (operator, 23.11): the debug-symbol archive is no longer
+      # packaged or attached to the release -- to be restored if crashes are
+      # reported. The split stays: the shipped binaries are as before.
       - name: Split debug symbols
         # Symbols are for us, not users: a failure here must not cost the release
         # its installer. A missing archive surfaces as /tag-release's WARN.
@@ -555,40 +557,12 @@ jobs:
           export LD_LIBRARY_PATH="$PWD/AppDir/usr/lib:$PWD/third_party/rtl-deps/lib:$PWD/third_party/qtkeychain/lib:$PWD/third_party/onnxruntime/lib:$PWD/third_party/sherpa-onnx/lib:${LD_LIBRARY_PATH:-}"
           ./linuxdeploy-${{ matrix.arch }}.AppImage --appdir AppDir --output appimage
 
-      # The archive is only worth attaching if its build IDs are the ones the
-      # AppImage actually ships, so read them back from the packaged binaries.
-      # .tar.xz on purpose: sign-release.yml downloads and checksums *.zip, so
-      # a .zip here would change SHA256SUMS.txt.
-      - name: Package debug symbols
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        continue-on-error: true   # never blocks the release; see "Split debug symbols"
-        run: |
-          set -euo pipefail
-          REF="${RELEASE_TAG:-$GITHUB_REF_NAME}"; SAFE_REF="${REF//[^A-Za-z0-9._-]/_}"
-          "./AetherSDR-ANAN-${SAFE_REF}-${{ matrix.arch }}.AppImage" --appimage-extract > /dev/null
-          while read -r name _ id _; do
-            shipped=$(find squashfs-root -type f -name "$name" -print -quit)
-            [ -n "$shipped" ] || { echo "::error::$name is not in the AppImage"; exit 1; }
-            notes=$(readelf -n "$shipped")
-            got=$(sed -n '/Build ID:/{s/^ *Build ID: *\([0-9a-f]*\)$/\1/p;q;}' <<< "$notes")
-            if [ "$got" != "$id" ]; then
-              echo "::error::$name in the AppImage has build ID '$got', symbols are for '$id'"
-              exit 1
-            fi
-            echo "$name: build ID $id matches the AppImage"
-          done < symbols/SYMBOLS.txt
-          rm -rf squashfs-root
-          tar -cJf "AetherSDR-ANAN-${SAFE_REF}-${{ matrix.arch }}-symbols.tar.xz" -C symbols .
-          ls -l AetherSDR-*-symbols.tar.xz
-
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: AppImage-${{ matrix.arch }}
           path: |
             AetherSDR-*.AppImage
-            AetherSDR-*-symbols.tar.xz
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
@@ -597,4 +571,3 @@ jobs:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           files: |
             AetherSDR-*.AppImage
-            AetherSDR-*-symbols.tar.xz
