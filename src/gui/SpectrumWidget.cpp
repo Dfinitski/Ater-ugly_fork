@@ -2502,10 +2502,11 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
             "QLabel { background: transparent; color: rgba(200,216,232,150);"
             " font-size: 12px; font-weight: bold; }"));
         // ANAN fork build 661 (operator, 23.11: "make the zoom text take the
-        // mouse like a button, and a click sets the zoom to 1x"): the zoom
-        // indicator is a flat button, as wide as its text (as the rate label,
-        // build 646); hover and press as the rate buttons; a click shows the
-        // whole usable span (x1.0).
+        // mouse like a button"): the zoom indicator is a flat button, as wide
+        // as its text (as the rate label, build 646); hover and press as the
+        // rate buttons. Build 662 (operator: "make it work as ZTB in
+        // Thetis"): left click -- recall / zoom to band, right click -- store
+        // (MainWindow::ztbActivate).
         m_zoomLabel = new QPushButton(this);
         m_zoomLabel->setObjectName(QStringLiteral("panZoomLabel"));
         m_zoomLabel->setAccessibleName(QStringLiteral("Zoom (click: x1.0)"));
@@ -2518,15 +2519,13 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
             " padding: 0; margin: 0; min-width: 0; }"
             "QPushButton:hover { background: rgba(30,50,70,150); color: rgba(220,232,244,220); }"
             "QPushButton:pressed { background: rgba(0,180,216,150); color: #000; }"));
-        m_zoomLabel->setToolTip(tr("Display zoom relative to the full receiver bandwidth "
-                                   "(drag the frequency scale to zoom; click for x1.0)"));
-        connect(m_zoomLabel, &QPushButton::clicked, this, [this, emitZoom] {
-            const int rateHz = AetherSDR::anan::AnanUiState::instance().sampleRateHz;
-            if (rateHz <= 0 || m_bandwidthMhz <= 0.0)
-                return;
-            const double fullMhz = rateHz / 1.0e6 * AetherSDR::anan::kUsableSpanFraction;
-            emitZoom(fullMhz / m_bandwidthMhz);
-        });
+        m_zoomLabel->setToolTip(tr("ZTB -- zoom to band. Left click: the view stored for this "
+                                   "receiver's band, or the whole band (region band edges). "
+                                   "Right click: store the current view for this band and receiver."));
+        m_zoomLabel->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(m_zoomLabel, &QPushButton::clicked, this, [this] { emit ztbRequested(false); });
+        connect(m_zoomLabel, &QWidget::customContextMenuRequested, this,
+                [this](const QPoint&) { emit ztbRequested(true); });
         m_rateDownBtn->setToolTip(tr("Narrower panadapter / receiver bandwidth"));
         m_rateUpBtn->setToolTip(tr("Wider panadapter / receiver bandwidth"));
         connect(m_rateDownBtn, &QPushButton::clicked, this, [this] { stepReceiverRate(-1); });

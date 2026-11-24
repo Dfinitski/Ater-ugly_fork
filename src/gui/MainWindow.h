@@ -1186,6 +1186,12 @@ private:
     // after a receiver-rate change.
     void applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool tuneAndMode,
                              int attempt = 0);
+    // ANAN fork build 662: ZTB (Thetis' zoom to band) on the zoom indicator --
+    // per receiver and band: store the view (right click, and every recall of
+    // a band button / quick memory / station memory that sets a view),
+    // recall it (left click), else zoom to the band's region edges.
+    void ztbActivate(const QString& panId, bool store);
+    void ztbStore(int sliceId, double freqMhz, double centerMhz, double bwMhz);
     // Build 487: the sub receiver (SPLIT VFO) of receiver owner (0 / 1) on or
     // off. On: at freqMhz (0: its remembered frequency if that is within this
     // receiver's capture, else a tenth of the view away), with volume / pan

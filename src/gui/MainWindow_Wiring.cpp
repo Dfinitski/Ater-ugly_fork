@@ -3917,6 +3917,8 @@ void MainWindow::ananSessionRestore(int sliceId)
         << QString::number(snap.value(QStringLiteral("freq")).toDouble(), 'f', 6) << " MHz "
         << snap.value(QStringLiteral("mode")).toString() << ", view "
         << QString::number(snap.value(QStringLiteral("bw")).toDouble() * 1000.0, 'f', 1) << " kHz";
+    // Build 662: the last session coming back is not a recall the ZTB learns.
+    snap.insert(QStringLiteral("noZtb"), true);
     applyRecallSnapshot(s, snap, true);
     // The band memory learns the restored band afresh (no "band left").
     m_ananBandMem.remove(sliceId);
@@ -4227,6 +4229,10 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
         // centred on the frequency (build 228).
         const bool centerOk = center > 0.0 && std::abs(freqMhz - center) < bw * 0.45;
         const double c = centerOk ? center : freqMhz;
+        // Build 662: a band button / quick memory / station memory recalled
+        // with its view -- the ZTB of this receiver and band takes that view.
+        if (!mem.value(QStringLiteral("noZtb")).toBool())
+            ztbStore(sid, freqMhz, c, bw);
         m_radioModel.requestPanCenter(panId, c, bw, IRadioBackend::PanCenterIntent::Range);
         QTimer::singleShot(300, this, [this, panId, c, bw] {
             if (m_radioModel.panadapter(panId))
@@ -4239,6 +4245,109 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
         << "MainWindow: recall snapshot -> slice " << sid << ": "
         << QString::number(freqMhz, 'f', 6) << " MHz " << s->mode()
         << (tuneAndMode ? "" : " (memory: its own frequency / mode / filter)");
+}
+
+// ANAN fork build 662 (operator, 23.11: "I'd like this button to work as ZTB
+// in Thetis"; then: "store, and a band recalled from a memory button, the
+// memory or the band button writes its view into this button too -- so
+// it's per receiver; and a right click sets it by hand"). Thetis' ZTB
+// (console.cs ZoomToBand / zoomToBandBandwidth): the panadapter shows the
+// receiver's whole band by the region's band edges, centred on the band; in
+// its recall / store mode a right click stores zoom, pan and centre per band
+// and receiver, a left click recalls them. Here, per receiver and band
+// (AppSettings "AnanZtb/<slice>/<band>" = "centre;width" MHz):
+//  - right click: the current view is stored;
+//  - a recall with a view (band button, quick memory, station memory --
+//    applyRecallSnapshot, restoreBandStackView) stores that view;
+//  - left click: the stored view, else the band: its region edges
+//    (the active band plan, one contiguous range as Thetis requires),
+//    centred; a band wider than the usable span (rate x 0.9) gets the whole
+//    span, centred on the band as far as the receiver stays in the view.
+//    Outside an amateur band with nothing stored: nothing (as Thetis).
+//  - Center Lock stays on (operator): only the width is applied, the
+//    centre stays on the receiver.
+void MainWindow::ztbStore(int sliceId, double freqMhz, double centerMhz, double bwMhz)
+{
+    if (!(freqMhz > 0.0) || !(centerMhz > 0.0) || !(bwMhz > 0.0))
+        return;
+    const QString band = BandSettings::bandForFrequency(freqMhz);
+    AppSettings::instance().setValue(QStringLiteral("AnanZtb/%1/%2").arg(sliceId).arg(band),
+        QStringLiteral("%1;%2").arg(centerMhz, 0, 'f', 6).arg(bwMhz, 0, 'f', 6));
+    qCInfo(lcProtocol).noquote().nospace()
+        << "MainWindow: ZTB stored for slice " << sliceId << " " << band << ": centre "
+        << QString::number(centerMhz, 'f', 6) << " MHz, width "
+        << QString::number(bwMhz * 1000.0, 'f', 1) << " kHz";
+}
+
+void MainWindow::ztbActivate(const QString& panId, bool store)
+{
+    SliceModel* s = activeSlice();
+    if (!s || s->panId() != panId) {
+        s = nullptr;
+        for (SliceModel* x : m_radioModel.slices()) {
+            if (x && x->panId() == panId) {
+                s = x;
+                break;
+            }
+        }
+    }
+    if (!s || !m_radioModel.panadapter(panId))
+        return;
+    const int sid = s->sliceId();
+    const double f = s->frequency();
+    if (store) {
+        ztbStore(sid, f, m_radioModel.effectivePanCenterMhz(panId),
+                 m_radioModel.effectivePanBandwidthMhz(panId));
+        return;
+    }
+    const bool locked = centerLockSliceForPan(panId) == sid;
+    const QString band = BandSettings::bandForFrequency(f);
+    double c = 0.0;
+    double bw = 0.0;
+    const QStringList stored = AppSettings::instance()
+        .value(QStringLiteral("AnanZtb/%1/%2").arg(sid).arg(band)).toString().split(QLatin1Char(';'));
+    if (stored.size() == 2) {
+        c = stored[0].toDouble();
+        bw = stored[1].toDouble();
+    }
+    const char* what = "stored view";
+    if (bw > 0.0) {
+        // As a recall: the stored centre if the receiver is inside that view.
+        if (locked || !(c > 0.0) || std::abs(f - c) >= bw * 0.45)
+            c = f;
+    } else {
+        if (band == QLatin1String("GEN"))
+            return;
+        const BandDef& def = BandSettings::bandDef(band);
+        double lo = def.lowMhz;
+        double hi = def.highMhz;
+        if (m_bandPlanMgr) {
+            const auto regions = m_bandPlanMgr->contiguousRegionsForBand(def.lowMhz, def.highMhz);
+            if (regions.size() > 1)
+                return;   // channels (60 m): as Thetis, no zoom to band
+            if (regions.size() == 1) {
+                lo = regions.first().lowMhz;
+                hi = regions.first().highMhz;
+            }
+        }
+        if (!(hi > lo) || f < lo || f > hi)
+            return;   // not inside the region's band
+        const int rateHz = anan::AnanUiState::instance().sampleRateHz;
+        const double fullMhz = rateHz > 0 ? rateHz / 1.0e6 * anan::kUsableSpanFraction
+                                          : m_radioModel.effectivePanBandwidthMhz(panId);
+        bw = std::min(hi - lo, fullMhz);
+        c = (lo + hi) / 2.0;
+        if (locked)
+            c = f;
+        else if (hi - lo > fullMhz)
+            c = std::clamp(c, f - bw * 0.4, f + bw * 0.4);
+        what = "band";
+    }
+    qCInfo(lcProtocol).noquote().nospace()
+        << "MainWindow: ZTB slice " << sid << " " << band << " (" << what << "): centre "
+        << QString::number(c, 'f', 6) << " MHz, width " << QString::number(bw * 1000.0, 'f', 1)
+        << " kHz" << (locked ? " (Center Lock: width only)" : "");
+    m_radioModel.requestPanCenter(panId, c, bw, IRadioBackend::PanCenterIntent::Range);
 }
 
 void MainWindow::selectBand(const QString& panId, const QString& bandName, double freqMhz,
@@ -5748,6 +5857,10 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
         if (m_radioModel.backendDeclaresExtension(QStringLiteral("hl2")))
             m_radioModel.invokeBackendExtension(QStringLiteral("hl2"),
                                                 QStringLiteral("anan.rate"), 0, QVariant(hz));
+    });
+    // Build 662: the zoom indicator as Thetis' ZTB.
+    connect(sw, &SpectrumWidget::ztbRequested, this, [this, applet](bool store) {
+        ztbActivate(applet->panId(), store);
     });
     connect(sw, &SpectrumWidget::edgePanTuneRequested,
             this, [this, resolveSpectrumTuneTarget](double centerMhz, double sliceFreqMhz) {

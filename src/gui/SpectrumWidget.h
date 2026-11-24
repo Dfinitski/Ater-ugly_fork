@@ -1066,6 +1066,10 @@ signals:
     // ANAN-100D port: the DDC rate from the rate buttons (the pan bandwidth is
     // the display zoom on these radios). MainWindow sends "anan.rate".
     void receiverRateRequested(int hz);
+    // ANAN fork build 662: the zoom indicator as Thetis' ZTB -- a left click
+    // recalls the view stored for the receiver's band (else zooms to the
+    // band), a right click stores the view (MainWindow::ztbActivate).
+    void ztbRequested(bool store);
     // Emitted when a slice drag (in-window tune or edge auto-pan) starts (true)
     // and ends (false), so Pan Follow can stand down for the drag's duration and
     // recenter once on release. (user-reported)

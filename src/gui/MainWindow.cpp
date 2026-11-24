@@ -12608,6 +12608,7 @@ void MainWindow::restoreBandStackView(SliceModel* slice, const BandStackEntry& e
     const QString panId = slice->panId();
     if (!m_radioModel.panadapter(panId))
         return;
+    ztbStore(slice->sliceId(), e.frequencyMhz, e.panCenterMhz, e.panBandwidthMhz);   // build 662
     m_radioModel.requestPanCenter(panId, e.panCenterMhz, e.panBandwidthMhz,
                                   IRadioBackend::PanCenterIntent::Range);
 }
