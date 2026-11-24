@@ -1662,6 +1662,10 @@ private:
     QTimer* m_bandwidthThrottle = nullptr;
     QTimer* m_zoomFftTimer = nullptr;   // ANAN-100D port: FFT size after a zoom settles
     QTimer* m_panSettleTimer = nullptr; // build 209: view back inside the clean band after a drag
+    // Build 653: a Center Lock drag step (anan.lockdrag) is being applied --
+    // the receiver rides on the view the drag already placed in the captured
+    // band, so its tune must not recentre the NCO (see setSliceFrequency).
+    bool m_lockDragStep = false;
     double m_pendingBandwidthHz = 0.0;   // 0 = nothing coalesced
 
     // The IO board's README asks for at most one frequency update per 0.5 s, only

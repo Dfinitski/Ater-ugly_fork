@@ -5218,7 +5218,22 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
     // a RIT offset past the edge moves the NCO too.
     const double tunedHz = rxTunedHz(*r);
     const bool ritApplies = (tunedHz != r->sliceFreqHz);
-    const bool outsideWindow = std::abs(tunedHz - r->ncoHz) > usableHz;
+    // ANAN fork build 653 (operator, 23.11: "zoom 3x, Center Lock, I drag the
+    // panadapter -- after about a screen the whole panadapter is recalculated,
+    // though plenty of bins are drawn beyond the screen"). OUR ERROR, since
+    // build 372: a Center Lock drag step tuned the receiver first, against
+    // the window of the clean 80 % (0.4 of the rate from the NCO), while the
+    // drag lets the view -- and the receiver in its middle -- go to
+    // kDragReach (0.48 of the rate less half the view). Zoomed in, the drag
+    // reach comes close to the window (at 3x: 65 against 77 kHz at 192 kHz)
+    // or passes it (deeper zoom), so a quick step took the receiver out of
+    // the window and it recentred the NCO on itself and DROPPED THE AVERAGE:
+    // a fresh panadapter, and no "pan move" line in the log. The step now
+    // moves the view first (setPanCenter, the shifted average) and the
+    // receiver after it, judged against the whole captured band; the
+    // release brings the view back inside the clean 80 % (settlePanViews).
+    const double windowHz = m_lockDragStep ? std::max(usableHz, halfSpanHz * 0.96) : usableHz;
+    const bool outsideWindow = std::abs(tunedHz - r->ncoHz) > windowHz;
     // A move RIT alone caused is undone when RIT stops applying to this
     // receiver (cleared or zeroed) — the NCO comes back
     // to the dial, or the pan centre stays offset by the old RIT for good.
@@ -6412,7 +6427,9 @@ void Hl2Backend::setPanCenter(const QString& panId, double hz, PanCenterIntent i
     // the view retunes it to kEdgeBounceFraction of the half view from the
     // centre, on the side of that edge (build 652), so it stays inside the
     // view, and so inside the captured band.
-    if (intent == PanCenterIntent::Drag) {
+    // Build 653: not in a Center Lock drag step -- there the receiver is set
+    // to the view's centre right after this.
+    if (intent == PanCenterIntent::Drag && !m_lockDragStep) {
         const double viewCenterHz = panCenterHz(*r);
         const double halfViewHz = panViewHz(*r) / 2.0;
         const double offHz = r->sliceFreqHz - viewCenterHz;
@@ -10074,8 +10091,14 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
             if (ok) {
                 const QString panId = ids->panId;
                 const int uiNumber = ids->uiNumber;
-                setSliceFrequency(uiNumber, std::round(tuneHz));
+                // Build 653: the view first (the NCO with its lead, the
+                // average shifted), then the receiver inside it -- the other
+                // order let the receiver's tune recentre the NCO and drop the
+                // whole average (see setSliceFrequency).
+                m_lockDragStep = true;
                 setPanCenter(panId, std::round(centerHz), PanCenterIntent::Drag);
+                setSliceFrequency(uiNumber, std::round(tuneHz));
+                m_lockDragStep = false;
                 // The last step of the drag: bring the view inside the clean
                 // part of the band now, not on the 400 ms timer -- the one
                 // retune a drag may need happens with the release.
