@@ -2522,10 +2522,14 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
         m_zoomLabel->setToolTip(tr("ZTB -- zoom to band. Left click: the view stored for this "
                                    "receiver's band, or the whole band (region band edges). "
                                    "Right click: store the current view for this band and receiver."));
-        m_zoomLabel->setContextMenuPolicy(Qt::CustomContextMenu);
         connect(m_zoomLabel, &QPushButton::clicked, this, [this] { emit ztbRequested(false); });
-        connect(m_zoomLabel, &QWidget::customContextMenuRequested, this,
-                [this](const QPoint&) { emit ztbRequested(true); });
+        // Build 666 (operator, 23.11: "a right click on the zoom button opens
+        // the panadapter's right-click menu -- a click through the button").
+        // QPushButton ignores a right press, so it went on to this widget's
+        // own right-button handling (pan drag / menu). The button's right
+        // press and release are taken here (eventFilter): the release stores.
+        m_zoomLabel->setContextMenuPolicy(Qt::PreventContextMenu);
+        m_zoomLabel->installEventFilter(this);
         m_rateDownBtn->setToolTip(tr("Narrower panadapter / receiver bandwidth"));
         m_rateUpBtn->setToolTip(tr("Wider panadapter / receiver bandwidth"));
         connect(m_rateDownBtn, &QPushButton::clicked, this, [this] { stepReceiverRate(-1); });
@@ -13631,6 +13635,23 @@ bool SpectrumWidget::applyAnchoredZoom(double bandwidthFactor,
 
 bool SpectrumWidget::eventFilter(QObject* watched, QEvent* event)
 {
+    // Build 666: the zoom button's right click (ZTB store) stays on the button.
+    if (m_zoomLabel && watched == m_zoomLabel) {
+        const QEvent::Type t = event->type();
+        if (t == QEvent::MouseButtonPress || t == QEvent::MouseButtonRelease
+            || t == QEvent::MouseButtonDblClick) {
+            auto* me = static_cast<QMouseEvent*>(event);
+            if (me->button() == Qt::RightButton) {
+                if (t == QEvent::MouseButtonRelease && m_zoomLabel->rect().contains(me->position().toPoint()))
+                    emit ztbRequested(true);
+                event->accept();
+                return true;
+            }
+        } else if (t == QEvent::ContextMenu) {
+            event->accept();
+            return true;
+        }
+    }
     QWidget* widget = qobject_cast<QWidget*>(watched);
     // Build 570: a flag moved, changed size, appeared or went -- does it
     // overlap the zoom indicator and the rate group now? (Also during a drag.)
