@@ -5749,6 +5749,16 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
             m_radioModel.invokeBackendExtension(QStringLiteral("hl2"),
                                                 QStringLiteral("anan.rate"), 0, QVariant(hz));
     });
+    // ANAN fork build 658 -- TEMPORARY TEST: a held rate button simulates the
+    // MIDI tune knob, 100 steps a second, through the knob's own handler.
+    connect(sw, &SpectrumWidget::testTunePulseRequested, this, [this](int steps) {
+#ifdef HAVE_MIDI
+        if (m_midiControl)
+            emit m_midiControl->relativeAction(QStringLiteral("rx.tuneKnob"), steps);
+#else
+        Q_UNUSED(steps);
+#endif
+    });
     connect(sw, &SpectrumWidget::edgePanTuneRequested,
             this, [this, resolveSpectrumTuneTarget](double centerMhz, double sliceFreqMhz) {
         auto* target = resolveSpectrumTuneTarget();

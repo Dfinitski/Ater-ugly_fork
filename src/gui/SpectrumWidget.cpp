@@ -2513,8 +2513,35 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
                                    "(drag the frequency scale to zoom)"));
         m_rateDownBtn->setToolTip(tr("Narrower panadapter / receiver bandwidth"));
         m_rateUpBtn->setToolTip(tr("Wider panadapter / receiver bandwidth"));
-        connect(m_rateDownBtn, &QPushButton::clicked, this, [this] { stepReceiverRate(-1); });
-        connect(m_rateUpBtn, &QPushButton::clicked, this, [this] { stepReceiverRate(+1); });
+        // ANAN fork build 658 -- TEMPORARY TEST (operator, 23.11: "simulate
+        // 100 pulses a second from a MIDI device on the frequency, with the
+        // rate buttons; while the button is held; the rate function off for
+        // the test; the tuning step, as MIDI"). Held, [-] / [+] sends one
+        // tune-knob step down / up every 10 ms through the MIDI knob's own
+        // path (MainWindow: MidiControlManager::relativeAction, rx.tuneKnob).
+        // The rate change is disconnected for the test; to restore, put back:
+        //   connect(m_rateDownBtn, &QPushButton::clicked, this, [this] { stepReceiverRate(-1); });
+        //   connect(m_rateUpBtn, &QPushButton::clicked, this, [this] { stepReceiverRate(+1); });
+        m_testPulseTimer = new QTimer(this);
+        m_testPulseTimer->setTimerType(Qt::PreciseTimer);
+        m_testPulseTimer->setInterval(10);
+        connect(m_testPulseTimer, &QTimer::timeout, this, [this] {
+            if (m_testPulseDir != 0)
+                emit testTunePulseRequested(m_testPulseDir);
+        });
+        auto startPulses = [this](int dir) {
+            m_testPulseDir = dir;
+            emit testTunePulseRequested(dir);
+            m_testPulseTimer->start();
+        };
+        auto stopPulses = [this] {
+            m_testPulseDir = 0;
+            m_testPulseTimer->stop();
+        };
+        connect(m_rateDownBtn, &QPushButton::pressed, this, [startPulses] { startPulses(-1); });
+        connect(m_rateUpBtn, &QPushButton::pressed, this, [startPulses] { startPulses(+1); });
+        connect(m_rateDownBtn, &QPushButton::released, this, stopPulses);
+        connect(m_rateUpBtn, &QPushButton::released, this, stopPulses);
         // The span arrives from the backend asynchronously; a light poll keeps
         // the label honest without hooking every range-setter path.
         auto* rateTimer = new QTimer(this);
