@@ -3917,9 +3917,7 @@ void MainWindow::ananSessionRestore(int sliceId)
         << QString::number(snap.value(QStringLiteral("freq")).toDouble(), 'f', 6) << " MHz "
         << snap.value(QStringLiteral("mode")).toString() << ", view "
         << QString::number(snap.value(QStringLiteral("bw")).toDouble() * 1000.0, 'f', 1) << " kHz";
-    // Build 662: the last session coming back is not a recall the ZTB learns.
-    snap.insert(QStringLiteral("noZtb"), true);
-    applyRecallSnapshot(s, snap, true);
+    applyRecallSnapshot(s, snap, true);   // build 665: the ZTB learns this view too
     // The band memory learns the restored band afresh (no "band left").
     m_ananBandMem.remove(sliceId);
     // Not acted on, only reported: whether something of the start-up changed
@@ -4231,8 +4229,10 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
         const double c = centerOk ? center : freqMhz;
         // Build 662: a band button / quick memory / station memory recalled
         // with its view -- the ZTB of this receiver and band takes that view.
-        if (!mem.value(QStringLiteral("noZtb")).toBool())
-            ztbStore(sid, freqMhz, c, bw);
+        // Build 665 (operator, 23.11: "any recall of stored settings, even at
+        // the program's start, puts the view into the zoom button"): the last
+        // session restored at start too.
+        ztbStore(sid, freqMhz, c, bw);
         m_radioModel.requestPanCenter(panId, c, bw, IRadioBackend::PanCenterIntent::Range);
         QTimer::singleShot(300, this, [this, panId, c, bw] {
             if (m_radioModel.panadapter(panId))
@@ -4258,7 +4258,8 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
 // (AppSettings "AnanZtb/<slice>/<band>" = "centre;width" MHz):
 //  - right click: the current view is stored;
 //  - a recall with a view (band button, quick memory, station memory --
-//    applyRecallSnapshot, restoreBandStackView) stores that view;
+//    applyRecallSnapshot, restoreBandStackView) stores that view, and so
+//    does the last session restored at the program's start (build 665);
 //  - left click: the stored view, else the band: its region edges
 //    (the active band plan, one contiguous range as Thetis requires),
 //    centred; a band wider than the usable span (rate x 0.9) gets the whole
