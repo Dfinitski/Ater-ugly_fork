@@ -6477,16 +6477,25 @@ void Hl2Backend::setPanCenter(const QString& panId, double hz, PanCenterIntent i
     // view, and so inside the captured band.
     // Build 653: not in a Center Lock drag step -- there the receiver is set
     // to the view's centre right after this.
+    // ANAN fork build 663 (operator, 23.11: "the filter bounces when it goes
+    // OFF the screen -- we made it fire before the edge"; dragging the
+    // panadapter with the right button). OUR ERROR: build 656 moved the
+    // trigger before the edge for TUNING only; the drag kept the build 651
+    // test (the receiver past the edge). Now the same as tuning: the
+    // filter's outer edge past kEdgeBounceTrigger of the half view.
     if (intent == PanCenterIntent::Drag && !m_lockDragStep) {
         const double viewCenterHz = panCenterHz(*r);
         const double halfViewHz = panViewHz(*r) / 2.0;
-        const double offHz = r->sliceFreqHz - viewCenterHz;
-        if (halfViewHz > 0.0 && std::abs(offHz) > halfViewHz) {
+        const double triggerHz = halfViewHz * kEdgeBounceTrigger;
+        const double rightOffHz = r->sliceFreqHz + std::max(r->filterLowHz, r->filterHighHz) - viewCenterHz;
+        const double leftOffHz = r->sliceFreqHz + std::min(r->filterLowHz, r->filterHighHz) - viewCenterHz;
+        const int side = rightOffHz > triggerHz ? 1 : (leftOffHz < -triggerHz ? -1 : 0);
+        if (halfViewHz > 0.0 && side != 0) {
             const double newHz = std::round((viewCenterHz
-                + (offHz > 0.0 ? 1.0 : -1.0) * halfViewHz * kEdgeBounceFraction) / 10.0) * 10.0;
+                + side * halfViewHz * kEdgeBounceFraction) / 10.0) * 10.0;
             if (const auto* ids = m_ids.byDdc(ddc)) {
                 qCInfo(lcHl2).nospace() << "ANAN: drag took receiver " << ids->uiNumber
-                                        << " past the view's edge -- bounced to " << newHz << " Hz";
+                                        << " to the view's edge -- bounced to " << newHz << " Hz";
                 setSliceFrequency(ids->uiNumber, newHz);
             }
         }
