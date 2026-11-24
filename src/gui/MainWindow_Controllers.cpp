@@ -3126,6 +3126,11 @@ void MainWindow::wireExternalControllers()
                     static_cast<long long>(std::round(s->frequency() * 1e6));
                 const long long snapped =
                     ((curHz + stepHz / 2) / stepHz) * stepHz;
+                // Build 659 (diagnostic): the knob's target taken anew.
+                qInfo().nospace() << "ANAN MIDI knob " << paramId << ": target taken from the receiver "
+                                  << QString::number(s->frequency(), 'f', 6) << " MHz (was "
+                                  << QString::number(tuneTargetMhz, 'f', 6) << ", idle timer "
+                                  << tuneIdleTimer.isActive() << ")";
                 tuneTargetMhz = snapped / 1e6;
             }
             tuneTargetMhz += steps * stepHz / 1e6;

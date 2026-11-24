@@ -4893,6 +4893,15 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 if (tuneMhz > 0.0 && m_radioModel.backendDeclaresExtension(QStringLiteral("hl2"))
                     && !locked->isLocked()) {
                     SpectrumWidget* dragSw = m_panStack ? m_panStack->spectrum(dragPanId) : nullptr;
+                    // Build 659 (diagnostic): a lock-drag step far from the receiver.
+                    {
+                        const bool fin = !(dragSw && dragSw->panDragActive());
+                        if (fin || std::abs(tuneMhz - locked->frequency()) > 0.02)
+                            qInfo().nospace() << "ANAN lockdrag send: receiver "
+                                              << QString::number(locked->frequency(), 'f', 6) << " -> "
+                                              << QString::number(tuneMhz, 'f', 6) << " MHz, centre "
+                                              << QString::number(center, 'f', 6) << ", final " << fin;
+                    }
                     holdCenterLockTuneTarget(locked, tuneMhz);
                     m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.lockdrag"), 0,
                         QVariantMap{{QStringLiteral("slice"), lockId},

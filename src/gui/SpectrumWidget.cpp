@@ -12146,6 +12146,10 @@ bool SpectrumWidget::knobPanDragTo(double centerMhz)
         beginPanDrag(0);
         m_knobDragActive = true;
         m_knobGlideCenterMhz = m_centerMhz;
+        // Build 659 (diagnostic): the knob drag's start.
+        qInfo().nospace() << "ANAN knob drag begin: view " << QString::number(m_centerMhz, 'f', 6)
+                          << " MHz, first target " << QString::number(centerMhz, 'f', 6)
+                          << ", pan target " << QString::number(m_panCenterTarget, 'f', 6);
         if (m_knobGlideTimer)
             m_knobGlideTimer->stop();
     }
@@ -12224,6 +12228,15 @@ void SpectrumWidget::finishKnobPanDrag()
         m_knobDragEndTimer->start();
         return;
     }
+    // Build 659 (diagnostic): what the release sends.
+    qInfo().nospace() << "ANAN knob drag end: view " << QString::number(m_centerMhz, 'f', 6)
+                      << " MHz, glide " << QString::number(m_knobGlideCenterMhz, 'f', 6)
+                      << " -> " << QString::number(m_knobGlideTargetMhz, 'f', 6)
+                      << ", pending " << QString::number(m_panDragPendingCenterMhz, 'f', 6)
+                      << (m_panDragPendingCenterValid ? " (valid)" : " (not valid)")
+                      << ", last sent " << QString::number(m_panDragLastCommandCenterMhz, 'f', 6)
+                      << ", dragging " << m_draggingPan
+                      << ", confirmation " << panGeometryConfirmationRequired();
     m_knobDragActive = false;
     if (!m_draggingPan)
         return;
@@ -12408,6 +12421,15 @@ void SpectrumWidget::applyPanDragCenter(double newCenterMhz, bool force)
     const bool commandDue = force || !m_panDragCommandClock.isValid()
         || m_panDragCommandClock.elapsed() >= kPanDragCommandMs;
     if (commandChanged && commandDue) {
+        // Build 659 (diagnostic): a drag command far from the last one.
+        if (std::abs(newCenterMhz - m_panDragLastCommandCenterMhz) > 0.02)
+            qInfo().nospace() << "ANAN pan drag JUMP: centre "
+                              << QString::number(m_panDragLastCommandCenterMhz, 'f', 6) << " -> "
+                              << QString::number(newCenterMhz, 'f', 6) << " MHz, force " << force
+                              << ", knob " << m_knobDragActive << ", dragging " << m_draggingPan
+                              << ", glide " << QString::number(m_knobGlideCenterMhz, 'f', 6)
+                              << " -> " << QString::number(m_knobGlideTargetMhz, 'f', 6)
+                              << ", pending " << QString::number(m_panDragPendingCenterMhz, 'f', 6);
         emit centerChangeRequested(newCenterMhz);
         m_panDragLastCommandCenterMhz = newCenterMhz;
         m_panDragCommandClock.restart();

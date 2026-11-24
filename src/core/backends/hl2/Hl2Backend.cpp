@@ -5199,6 +5199,10 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
     Receiver* r = rx(ddc);
     if (!r)
         return;   // a slice that is not running: see ddcForSlice
+    // Build 659 (diagnostic): a receiver retuned by more than 20 kHz at once.
+    if (std::abs(hz - r->sliceFreqHz) > 20000.0)
+        qCInfo(lcHl2).nospace() << "ANAN receiver " << sliceId << " jump: " << qint64(r->sliceFreqHz)
+                                << " -> " << qint64(hz) << " Hz, lock-drag step " << m_lockDragStep;
     r->sliceFreqHz = hz;
 
     // Keep the NCO — and therefore the panadapter centre — where it is, and put
@@ -10143,6 +10147,14 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
                 // average shifted), then the receiver inside it -- the other
                 // order let the receiver's tune recentre the NCO and drop the
                 // whole average (see setSliceFrequency).
+                // Build 659 (diagnostic): a lock-drag step far from the view.
+                if (const Receiver* lr = rx(ddc);
+                    lr && (std::abs(centerHz - panCenterHz(*lr)) > 20000.0
+                           || m.value(QStringLiteral("final")).toBool()))
+                    qCInfo(lcHl2).nospace() << "ANAN lockdrag: view " << qint64(panCenterHz(*lr))
+                        << " -> " << qint64(centerHz) << " Hz, receiver " << qint64(lr->sliceFreqHz)
+                        << " -> " << qint64(tuneHz) << " Hz, NCO " << qint64(lr->ncoHz)
+                        << ", final " << m.value(QStringLiteral("final")).toBool();
                 m_lockDragStep = true;
                 setPanCenter(panId, std::round(centerHz), PanCenterIntent::Drag);
                 setSliceFrequency(uiNumber, std::round(tuneHz));
