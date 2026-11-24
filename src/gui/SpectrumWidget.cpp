@@ -2517,8 +2517,9 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
             "QPushButton { background: transparent; border: none; border-radius: 2px;"
             " color: rgba(200,216,232,150); font-size: 12px; font-weight: bold;"
             " padding: 0; margin: 0; min-width: 0; }"
-            "QPushButton:hover { background: rgba(30,50,70,150); color: rgba(220,232,244,220); }"
-            "QPushButton:pressed { background: rgba(0,180,216,150); color: #000; }"));
+            "QPushButton:hover { background: rgba(30,50,70,150); color: rgba(220,232,244,220); }"));
+        // Build 667 (operator, 23.11): no colour change on a left press
+        // either -- the right click (store) has none.
         m_zoomLabel->setToolTip(tr("ZTB -- zoom to band. Left click: the view stored for this "
                                    "receiver's band, or the whole band (region band edges). "
                                    "Right click: store the current view for this band and receiver."));
