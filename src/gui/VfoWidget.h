@@ -454,6 +454,7 @@ private:
     double m_txValSwr = std::numeric_limits<double>::quiet_NaN();        // shown
     double m_txWindowPowerMax = std::numeric_limits<double>::quiet_NaN(); // of this 0.5 s
     double m_txWindowSwrMax = std::numeric_limits<double>::quiet_NaN();   // of this 0.5 s
+    bool m_txWindowHadReading{false};   // build 677: any TX meter reading in this 0.5 s
     bool txValuesShown() const;
     bool usesUnavailableSignalMeter() const;
     static float signalDbmToMeterFraction(float dbm);

@@ -5080,7 +5080,8 @@ void VfoWidget::updateSmartMtrValueText()
         // cannot be measured the SWR line vanishes -- it must read
         // SWR __:_"). An SWR absent for the whole 0.5 s (the radio's
         // txMeters say it is not valid) shows that placeholder under the
-        // power; before the first power reading nothing is shown.
+        // power. Build 677: the power is always there (0.0 W from the start
+        // of a transmission), so the two lines never vanish.
         if (!sUnit.isEmpty())
             level = (std::isfinite(m_txValSwr) && m_txValSwr >= 1.0)
                 ? QStringLiteral("SWR ") + QString::number(m_txValSwr, 'f', 1)
@@ -5164,8 +5165,16 @@ void VfoWidget::smartMtrValueTick()
     m_smartValWindowMax = std::numeric_limits<double>::quiet_NaN();
     // Build 675: the TX numbers on the same clock -- the highest forward power
     // and the highest SWR of the last 0.5 s.
-    m_txValPowerW = m_txWindowPowerMax;
-    m_txValSwr = m_txWindowSwrMax;
+    // Build 677 (operator, 24.11: "the text must never vanish, that would be
+    // blinking -- it must always show something"): a 0.5 s with no TX meter
+    // reading at all keeps the numbers shown; one with readings but no valid
+    // SWR shows the SWR placeholder.
+    if (m_txWindowHadReading) {
+        if (std::isfinite(m_txWindowPowerMax))
+            m_txValPowerW = m_txWindowPowerMax;
+        m_txValSwr = m_txWindowSwrMax;
+    }
+    m_txWindowHadReading = false;
     m_txWindowPowerMax = std::numeric_limits<double>::quiet_NaN();
     m_txWindowSwrMax = std::numeric_limits<double>::quiet_NaN();
     updateSmartMtrValueText();
@@ -5212,9 +5221,11 @@ void VfoWidget::setTxSwr(float swr)
 void VfoWidget::setTxPower(float fwdPowerW)
 {
     m_fwdPowerW = fwdPowerW;
-    if (m_transmitting && m_slice && m_slice->isTxSlice()
-        && std::isfinite(fwdPowerW) && !(fwdPowerW <= m_txWindowPowerMax))
-        m_txWindowPowerMax = fwdPowerW;   // build 675
+    if (m_transmitting && m_slice && m_slice->isTxSlice()) {
+        m_txWindowHadReading = true;   // build 677
+        if (std::isfinite(fwdPowerW) && !(fwdPowerW <= m_txWindowPowerMax))
+            m_txWindowPowerMax = fwdPowerW;   // build 675
+    }
     if (m_transmitting && m_slice && m_slice->isTxSlice())
         pushSmartMtrInput();
 }
@@ -5252,11 +5263,15 @@ void VfoWidget::setTransmitting(bool tx)
         return;
     m_transmitting = tx;
     pushSmartMtrInput(); // switch the SmartMTR kind (signal <-> mic)
-    // Build 675: each transmission starts its TX numbers afresh, and the
-    // receive numbers come back with the next tick of their own.
+    // Build 675: each transmission starts its TX numbers afresh. Build 677
+    // (operator: "the text must never vanish"): it starts at once with
+    // "0.0 W" over "SWR __:_" instead of an empty place until the first
+    // 0.5 s tick, and back on receive the last receive numbers stay until
+    // their own next tick.
     constexpr double nan = std::numeric_limits<double>::quiet_NaN();
-    m_txValPowerW = m_txValSwr = m_txWindowPowerMax = m_txWindowSwrMax = nan;
-    m_smartValDbm = m_smartValWindowMax = nan;
+    m_txValPowerW = 0.0;
+    m_txValSwr = m_txWindowPowerMax = m_txWindowSwrMax = nan;
+    m_txWindowHadReading = false;
     updateSmartMtrValueText();
 }
 
