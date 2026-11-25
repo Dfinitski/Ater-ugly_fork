@@ -5102,8 +5102,9 @@ void VfoWidget::updateSmartMtrValueText()
         if (!sUnit.isEmpty())
             // Build 714 (operator, 25.11): the number alone, no ":1"; the
             // placeholder in the same form.
+            // Build 716 (operator: "an SWR over 9.9 reads 9.9").
             level = (std::isfinite(m_txValSwr) && m_txValSwr >= 1.0)
-                ? QStringLiteral("SWR ") + QString::number(m_txValSwr, 'f', 1)
+                ? QStringLiteral("SWR ") + QString::number(std::min(m_txValSwr, 9.9), 'f', 1)
                 : QStringLiteral("SWR _._");
     } else if (m_smartMtrWidget && m_smartMtr && m_smartMtrWidget->showsSignalValues()
         && std::isfinite(m_smartValDbm)) {
@@ -5143,7 +5144,9 @@ void VfoWidget::updateSmartMtrValueText()
             const QStringList lines = text.split(QLatin1Char('\n'));
             for (const QString& line : lines)
                 w = qMax(w, fm.horizontalAdvance(line));
-            pad = 2 * fm.horizontalAdvance(QLatin1Char(' '));
+            // Build 716 (operator: "two spaces turned out too much, one less"):
+            // one space.
+            pad = fm.horizontalAdvance(QLatin1Char(' '));
             w += 2 + pad;
             if (m_freqStack && m_freqRow && m_freqRow->geometry().isValid()) {
                 int left = m_freqRow->geometry().left();
