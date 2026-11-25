@@ -329,7 +329,10 @@ void AnanMultiMeterWidget::paintEvent(QPaintEvent*)
 QRectF AnanMultiMeterWidget::meterArea(const QRectF& area) const
 {
     // The largest 4:3 rectangle that fits, at most the paper's size, centred.
-    double w = std::min({area.width(), area.height() / kAspect, kW});
+    // Build 740 (operator, 25.11: "the window grows, the meter does not --
+    // let it grow to twice"): floating, up to 2 x the paper's size.
+    const double cap = m_floating ? 2.0 * kW : kW;
+    double w = std::min({area.width(), area.height() / kAspect, cap});
     const double h = w * kAspect;
     return {area.x() + (area.width() - w) / 2.0, area.y() + (area.height() - h) / 2.0, w, h};
 }
@@ -393,6 +396,8 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
 
     const double step = (kH - kTop - kBottom) / kRows;
     const auto X = [](double f) { return kScaleX0 + (kScaleX1 - kScaleX0) * f; };
+    const double nameLeft = std::max(0.0, (nameColumnRight(Row::Po)
+        - QFontMetricsF(nameFont).horizontalAdvance(rowName(Row::Po))) / 2.0);
     for (int i = 0; i < kRows; ++i) {
         const Row row = Row(i);
         const double y = rowLineY(i, step);
@@ -402,11 +407,12 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
         p.setOpacity(on ? 1.0 : dim);
         p.setFont(row == Row::Comp ? nameSmall : nameFont);
         p.setPen(on ? c.accent : c.sub);
-        // Build 738: centred between the window's edge and the scale.
-        // Build 739: ... and its first figure; COMP stays where it was.
-        const double nameRight = row == Row::Comp ? kScaleX0 : nameColumnRight(row);
-        p.drawText(QRectF(0.0, y - 12.0, nameRight, 24.0),
-                   Qt::AlignHCenter | Qt::AlignVCenter, rowName(row));
+        // Build 740 (operator, 25.11: "where the P of PWR starts -- every
+        // name at that x, fixed; no more centring"): PWR as build 739 centred
+        // it (between the window's edge and its first figure), the others
+        // left-aligned at that x.
+        p.drawText(QRectF(nameLeft, y - 12.0, kScaleX0 - nameLeft, 24.0),
+                   Qt::AlignLeft | Qt::AlignVCenter, rowName(row));
 
         // The line: ink, red over its red part (thicker).
         const double redFrom = std::min(s.redFrom, 1.0);
