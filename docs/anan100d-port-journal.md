@@ -11963,6 +11963,36 @@ errcheck VfoWidget 4 = база; bogus +.
 
 errcheck: MainWindow 42, RadioSetupDialog 23, SpectrumWidget 12, PanadapterStack 0, Wiring 24, VfoWidget 4 = база.
 
+## 697. Релиз сборки 713
+
+Оператор, 25.11: «я скомпилил, готовь архив и описание релиза на гитхабе».
+
+- `docs/release-notes-build-713.md` — изменения с 667:
+  - Windows 11: пропадающий столбец пикселей;
+  - Max Level на четырёх измерителях;
+  - ANAN Multi Meter;
+  - мощность и КСВ на флаге;
+  - группа Zoom / рейт и флаги;
+  - шаг ручки в Center Lock;
+  - опции TX-панорамы и Stop Waterfall;
+  - TUNE в CW без кейера радио;
+  - Full ATT RX2 на 100D / 200D;
+  - вид TUNE;
+  - PROC = компрессор Aether;
+  - синхронизация EQ;
+  - BPF Bypass и перетаскивание правой кнопкой в WB;
+  - Save / Restore Settings;
+  - звук после FTX;
+  - заголовок FTX.
+
+  Отдельно перечислено, что подтверждено оператором и что нет.
+- README: раздел «Build 713», 667 — в списке прежних.
+- Архив `AetherSDR-ANAN-build713-win64-portable.zip` (папка `AetherSDR-ANAN-build713`) = архив 667 (SHA-256 сверен) с `AetherSDR.exe` оператора из `Desktop\AetherSDR-Release` и `README-build713.md` вместо `README-build667.md`.
+  - exe: 91 195 392 байт, время файла позже последней записи исходников 713. В нём есть строки 711/713 (`AnanPwrMaxLevel_`, «Power meter max level»), строк FrameDiag / ResizeDiag / AETHER_PAN_NATIVE_WINDOW нет.
+  - Архив: 93 файла, 163 282 285 байт, SHA-256 `0f8f104fc14e56a1443de7172f13debef398643c9d70643e8886de07fa49d3e2`.
+  - Записан в `Desktop\AetherSDR-Release`, считан обратно, хеш совпал.
+- Тег `build-713` и релиз на GitHub делает оператор.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -75,22 +75,23 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 667
+## Build 713
 
-Full notes: [docs/release-notes-build-667.md](docs/release-notes-build-667.md).
+Full notes: [docs/release-notes-build-713.md](docs/release-notes-build-713.md).
 
-- **ZTB (zoom to band), as in Thetis,** on the zoom indicator: left click -- the stored view or
-  the whole band, right click -- store; band buttons and memories store their views too.
-- **The filter bounces before the screen's edge** (tuning and dragging), at any zoom; it never
-  leaves the screen.
-- **Center Lock:** knob / wheel tuning moves the panadapter as a drag, smooth at any speed;
-  dragging when zoomed in keeps the bins already drawn.
-- **Fixed:** the flag's digit wheel turned the neighbouring digit.
-- **Transverters:** "Disable PA (transmit through the XVTR port)", as in Thetis.
-- **Quick memory buttons:** Group by freq.
-- Transmit CFIR on Protocol 2 only, as in Thetis.
+- **Windows 11:** the 1-pixel stripe (a missing column across the window) is gone, resizing
+  still without shaking.
+- **Power Meter Calibration → Max Level:** the top of the TX applet, S-meter, ANAN Multi Meter
+  and flag SmartMTR power scales (120 W, Odyssey-3 60 W).
+- **ANAN Multi Meter (Thetis)** as the other face of the side panel's S-meter.
+- **VFO flag on transmit:** forward power and SWR.
+- **Zoom / rate group** steps aside for the flags; Center Lock knob steps tune straight to the
+  step.
+- **Fixed:** TUNE in CW sent Morse; no sound after FTX (band memory).
+- PROC = the Aether TX compressor; graphic EQ in step with the Aether EQ; Wideband Monitor
+  BPF Bypass; TX panadapter options; Settings → Save / Restore Settings.
 
-Earlier notes: [build 636](docs/release-notes-build-636.md), [build 572](docs/release-notes-build-572.md), [build 557](docs/release-notes-build-557.md), [build 533](docs/release-notes-build-533.md), [build 494](docs/release-notes-build-494.md), [build 468](docs/release-notes-build-468.md), [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 667](docs/release-notes-build-667.md), [build 636](docs/release-notes-build-636.md), [build 572](docs/release-notes-build-572.md), [build 557](docs/release-notes-build-557.md), [build 533](docs/release-notes-build-533.md), [build 494](docs/release-notes-build-494.md), [build 468](docs/release-notes-build-468.md), [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Downloads
 
