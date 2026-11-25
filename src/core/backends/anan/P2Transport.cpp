@@ -299,6 +299,10 @@ QList<hl2::MetisClient::Discovered> P2Transport::discover(int timeoutMs,
                 d.reply.boardId = *id;
                 d.reply.streaming = r1->streaming;
                 d.reply.numRx = static_cast<std::uint8_t>(p1DdcPlanFor(*id).maxRx);   // build 468
+                // Build 723: a Hermes-Lite 2 reports its receivers (discovery
+                // 0x13); not more than the plan's.
+                if (*id == kBoardIdHermesLite && r1->numRx > 0)
+                    d.reply.numRx = std::min<std::uint8_t>(d.reply.numRx, r1->numRx);
                 d.address = dg.senderAddress();
                 out.append(d);
                 continue;
@@ -2469,6 +2473,9 @@ BoardProfile P2Transport::forcedProfileOr(const BoardProfile& reported) const
         ? m_forcedBoardFor[reported.boardId].load(std::memory_order_relaxed) : 0;
     if (forced <= 0 || forced == reported.boardId)
         return reported;
+    // Build 723: a Hermes-Lite 2 is never driven as an ANAN, nor an ANAN as it.
+    if (reported.boardId == kBoardIdHermesLite || forced == kBoardIdHermesLite)
+        return reported;
     const auto profile = boardProfileFor(static_cast<std::uint8_t>(forced));
     if (!profile)
         return reported;
@@ -3385,6 +3392,18 @@ P1CcState P2Transport::p1State() const
     s.cwRfDelayMs = m_cwKeyer.rfDelayMs;
     s.cwHangMs = m_cwKeyer.hangMs;
     s.cwSidetoneHz = m_cwKeyer.sidetoneHz;
+    // ANAN fork build 723: Hermes-Lite 2 -- its own rotation (p1CcHl2). The
+    // LNA gain is the interface's "LNA gain" itself (setLnaGainDb), receive
+    // and transmit alike for now.
+    if (m_profile.boardId == kBoardIdHermesLite) {
+        s.hermesLite = true;
+        // The open-collector byte is the filter board's (N2ADR), which the
+        // backend chooses per frequency (Hl2Backend::applyBandFilter ->
+        // setBandFilter), not the ANAN User Out matrix.
+        s.openCollector = static_cast<std::uint8_t>(m_p.ocFilterByte & 0x7F);
+        s.hl2RxGainDb = std::clamp(m_p.lnaGainDb, -12, 48);
+        s.hl2TxGainDb = s.hl2RxGainDb;
+    }
     return s;
 }
 
@@ -3411,10 +3430,13 @@ void P2Transport::sendP1Ep2()
     if (!m_sock)
         return;
     const P1CcState st = p1State();
+    // Build 723: the rotation's length per board (19 on a Hermes-Lite 2).
+    const int ccCount = p1CcCount(st);
+    m_p1CcIdx %= ccCount;
     const hl2::Cc a = p1Cc(m_p1CcIdx, st);
-    m_p1CcIdx = (m_p1CcIdx + 1) % kP1CcCount;
+    m_p1CcIdx = (m_p1CcIdx + 1) % ccCount;
     const hl2::Cc b = p1Cc(m_p1CcIdx, st);
-    m_p1CcIdx = (m_p1CcIdx + 1) % kP1CcCount;
+    m_p1CcIdx = (m_p1CcIdx + 1) % ccCount;
     // Build 426 (operator, 15.11: a 7000DLE on Protocol 1, the PS feedback on
     // ADC1, "the bypass relay does not switch"): what the radio is told on
     // transmit, once per transmission -- the board profile and the C&C bytes
@@ -3426,7 +3448,8 @@ void P2Transport::sendP1Ep2()
     const bool attChanged = st.mox && st.txAdc0AttDb != m_p1CcLoggedAtt;
     if (!st.mox)
         m_p1CcLoggedAtt = -1;
-    if (st.mox && (m_p1CcLogPending.exchange(false, std::memory_order_relaxed) || attChanged)) {
+    if (st.mox && !st.hermesLite   // build 723: the ANAN registers' meanings
+        && (m_p1CcLogPending.exchange(false, std::memory_order_relaxed) || attChanged)) {
         m_p1CcLoggedAtt = st.txAdc0AttDb;
         const hl2::Cc at = p1Cc(4, st);   // C0 0x1C: C3 ADC0 transmit attenuator
         const hl2::Cc a1 = p1Cc(12, st);  // C0 0x16: C1 ADC1 attenuator

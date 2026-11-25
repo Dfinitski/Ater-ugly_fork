@@ -12084,6 +12084,24 @@ errcheck SpectrumWidget 12 (база); bogus-проверка срабатыва
 
 errcheck SpectrumWidget 12, MainWindow_Wiring 24, MainWindow_Session 24 (базы); bogus-проверки срабатывают. Не проверено на радио, не собиралось под Windows.
 
+## 707. Сборка 723 — Hermes-Lite 2, этап 1: определение и приём
+
+Оператор: вернуть поддержку Hermes-Lite 2 (удалена на этапе H1, раздел 13). Вопросы: можно ли узнать HL2 по протоколу; вместо AUTO ATT — регулятор усиления LNA; группа «Hermes Lite settings»; в конце сверка каждого байта с Thetis. Ответы оператора: усиление ручное + AUTO; порядок — приём, усиление, передача, настройки, сверка.
+
+**Определение.** По протоколу — да: ответ Discovery Protocol 1, байт 10 = 6 (Hermes-Lite; Thetis `HPSDRHW.HermesLite = 6`, MI0BOT). Выбирать вручную не нужно. HL2 говорит только Protocol 1.
+
+**Источники.** Основной Thetis (MW0LGE) HL2 не поддерживает — только номер платы. HL2 сделан в Thetis MI0BOT (github mi0bot/OpenHPSDR-Thetis, `ChannelMaster/networkproto1.c` `WriteMainLoop_HL2`, `console.cs`), он и взят за образец. Вторая опора — удалённый код AetherSDR v26.10.4 (`hl2/MetisProtocol.*` с разбором гейтвера HL2 — остался в форке; `MetisClient.cpp`, `Hl2Discovery.*` — из тега upstream).
+
+**Сделано (по образцу ANAN Protocol 1, одна цепочка, ветвление у транспорта):**
+- `P2Protocol`: `kBoardIdHermesLite = 6`; `AlexScheme::None`; профиль платы — 1 АЦП (AD9866), без Alex, приёмники с DDC0, PureSignal не предлагается, без статуса Odyssey; модель `AnanModel::HermesLite2` («Hermes-Lite 2», 5 Вт), `kAnanModelCount` 15, модель по умолчанию для платы 6.
+- `P1Protocol`: плата P1 6 → `kBoardIdHermesLite`; план DDC как у HERMES (MI0BOT `UpdateDDCs`: nddc 4, RX1..RX4 = DDC0..3). Своя ротация C&C `p1CcHl2` — 19 регистров (`WriteMainLoop_HL2`, case 0..18: 17 общих + addr 0x17 «PTT hang / TX latency» и 0x3A «reset on disconnect»); `p1CcCount()`. Поля HL2 в `P1CcState`: усиление LNA приёма/передачи (−12..+48 дБ, C0 0x14 C4 = 0x40 | (gain+12)), PTT hang (12 мс), TX latency (20 мс), reset on disconnect (выкл.) — значения по умолчанию из Thetis.
+  - Отличия от байтов Thetis, сделанные сознательно (будут в сверке): addr 0x09 C2 — только бит 3 (PA enable, у Thetis для HL2 он же через `EnableApolloTuner`), без бита 6 и битов микрофона/Apollo; C3/C4 = 0 (у HL2 нет Alex; у Thetis C3 бит 7 = `tx[0].pa`). Основание — разбор гейтвера HL2 в `MetisProtocol.cpp` (`ccTxDrive`: DATA[17]/[18] должны быть 0). Addr 0x00 C3 = 0 (на HL2 бит dither — выход напряжения диапазона / динамик AK4951).
+  - I2C-транзакции (занимают слот в `WriteMainLoop_HL2`) — на этапе настроек.
+- `P2Transport`: длина ротации по плате; для HL2 в `p1State()` — байт открытого коллектора от платы фильтров (N2ADR, `Hl2Backend::applyBandFilter` → `setBandFilter`, логика upstream сохранилась), усиление LNA = `setLnaGainDb`; HL2 не назначается ANAN-моделью и наоборот; число приёмников из Discovery (0x13), не больше плана; журнал TX C&C — только для ANAN.
+- `AnanForcedModel`: HL2 исключён из «Forcedly assign» в обе стороны. `AnanDiscovery`: имя без «(Protocol 1)». `Hl2Backend::ananHwFields`: PureSignal для HL2 не предлагается, поле `ananHermesLite`; `RadioSetupDialog`: для HL2 галка «Forcedly assign» скрыта.
+
+errcheck P1Protocol / P2Protocol / P2Transport / AnanDiscovery 0 (как в R), Hl2Backend 2, RadioSetupDialog 23, ConnectionPanel 2 (базы); bogus-проверки срабатывают; тест ротации HL2 (19 банков, 0x14 C4 = 0x60 при +20 дБ). Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

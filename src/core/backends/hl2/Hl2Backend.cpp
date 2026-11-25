@@ -509,7 +509,11 @@ QVariantMap Hl2Backend::ananHwFields() const
         {QStringLiteral("ananAdc2Bank"), profile.hasAdc1FilterBank},
         {QStringLiteral("ananNumAdcs"), profile.numAdcs},   // build 671
         // Build 213: over Protocol 1 all five boards have the Thetis PS pair.
-        {QStringLiteral("ananPureSignal"), profile.psSupported || m_ananP1.load(std::memory_order_relaxed)},
+        // Build 723: not the Hermes-Lite 2 (not offered yet).
+        {QStringLiteral("ananPureSignal"), (profile.psSupported || m_ananP1.load(std::memory_order_relaxed))
+                                               && board != anan::kBoardIdHermesLite},
+        // Build 723: a Hermes-Lite 2 -- the page shows what applies to it.
+        {QStringLiteral("ananHermesLite"), m_ananBoardId == anan::kBoardIdHermesLite},
         {QStringLiteral("ananMicPttOff"), on("AnanMicPttOff", false)},
         {QStringLiteral("ananMicTipPtt"), on("AnanMicTipPtt", false)},
         {QStringLiteral("ananMicBias"), on("AnanMicBias", false)},

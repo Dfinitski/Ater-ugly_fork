@@ -33,7 +33,7 @@ inline constexpr std::uint8_t kP1BoardHermes = 1;      // ANAN-10 / ANAN-100 (al
 inline constexpr std::uint8_t kP1BoardGriffin = 2;
 inline constexpr std::uint8_t kP1BoardAngelia = 4;     // ANAN-100D
 inline constexpr std::uint8_t kP1BoardOrion = 5;       // ANAN-200D
-inline constexpr std::uint8_t kP1BoardHermesLite = 6;  // HL2: not driven by this backend
+inline constexpr std::uint8_t kP1BoardHermesLite = 6;  // HL2 (build 723: its own C&C rotation)
 inline constexpr std::uint8_t kP1BoardOrion2 = 10;     // ANAN-7000DLE / 8000DLE / Orion MkII
 
 // The Protocol 2 board id (P2Protocol.h) of a Protocol 1 board, for the board
@@ -114,12 +114,34 @@ struct P1CcState {
     int cwRfDelayMs = 0;
     int cwHangMs = 250;
     int cwSidetoneHz = 700;
+    // ---- ANAN fork build 723: Hermes-Lite 2 (MI0BOT's Thetis,
+    // networkproto1.c WriteMainLoop_HL2; the HL2 gateware notes in
+    // hl2/MetisProtocol.h) ----
+    bool hermesLite = false;
+    // AD9866 LNA gain, -12..+48 dB: C0 0x14 C4 = 0x40 | (gain + 12) -- the
+    // receive value, the transmit one while MOX (Thetis rx / tx_step_attn).
+    int hl2RxGainDb = 20;
+    int hl2TxGainDb = 20;
+    // C0 0x2E (addr 0x17): PTT hang (C3, 5 bits, ms) and TX buffer latency
+    // (C4, 7 bits, ms); Thetis' defaults 12 / 20.
+    int hl2PttHangMs = 12;
+    int hl2TxLatencyMs = 20;
+    // C0 0x74 (addr 0x3A) C4: the radio resets when the host disconnects.
+    bool hl2ResetOnDisconnect = false;
 };
 
 // Number of C&C registers in the rotation (Thetis cases 0..16).
 inline constexpr int kP1CcCount = 17;
+// Build 723: the Hermes-Lite 2's rotation, cases 0..18 (WriteMainLoop_HL2:
+// the 17 above plus addr 0x17 and 0x3A).
+inline constexpr int kP1CcCountHl2 = 19;
+[[nodiscard]] inline int p1CcCount(const P1CcState& s) noexcept
+{
+    return s.hermesLite ? kP1CcCountHl2 : kP1CcCount;
+}
 
-// The C&C bank `index` (0..16) for `s` (Thetis WriteMainLoop). C0 bit 0 = MOX.
+// The C&C bank `index` (0..16; 0..18 on a Hermes-Lite 2) for `s` (Thetis
+// WriteMainLoop / WriteMainLoop_HL2). C0 bit 0 = MOX.
 [[nodiscard]] hl2::Cc p1Cc(int index, const P1CcState& s) noexcept;
 
 // The Alex HPF byte (Protocol 1 order) for a receive filter selection.

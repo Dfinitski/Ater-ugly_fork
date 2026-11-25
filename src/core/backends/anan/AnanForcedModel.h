@@ -32,11 +32,15 @@ inline bool boardRunsOverProtocol1(std::uint8_t boardId) noexcept
 }
 
 // The models a connection over this protocol can be driven as.
+// Build 723: never the Hermes-Lite 2 (its own C&C rotation), and a Hermes-Lite
+// 2 is never driven as anything else (forcedModelFor).
 inline std::vector<AnanModel> modelsForProtocol(bool protocol1)
 {
     std::vector<AnanModel> out;
     for (int i = 0; i < kAnanModelCount; ++i) {
         const auto m = static_cast<AnanModel>(i);
+        if (m == AnanModel::HermesLite2)
+            continue;
         if (!protocol1 || boardRunsOverProtocol1(modelTraits(m).boardId))
             out.push_back(m);
     }
@@ -88,11 +92,14 @@ inline bool forceModelOn(std::uint8_t reportedBoard)
 // the protocol cannot drive -- then the reported board's default applies).
 inline std::optional<AnanModel> forcedModelFor(std::uint8_t reportedBoard, bool protocol1)
 {
+    if (reportedBoard == kBoardIdHermesLite)   // build 723
+        return std::nullopt;
     if (!forceModelOn(reportedBoard))
         return std::nullopt;
     const auto m = modelFromSetting(
         AppSettings::instance().value(forcedModelKey(reportedBoard), QString()).toString());
-    if (!m || (protocol1 && !boardRunsOverProtocol1(modelTraits(*m).boardId)))
+    if (!m || *m == AnanModel::HermesLite2
+        || (protocol1 && !boardRunsOverProtocol1(modelTraits(*m).boardId)))
         return std::nullopt;
     return m;
 }

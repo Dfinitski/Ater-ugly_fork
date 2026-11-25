@@ -85,6 +85,9 @@ inline constexpr std::uint8_t kBoardIdHermesII = 2;    // ANAN-10E / ANAN-100B
 inline constexpr std::uint8_t kBoardIdAngelia = 3;     // ANAN-100D
 inline constexpr std::uint8_t kBoardIdOrion = 4;       // ANAN-200D
 inline constexpr std::uint8_t kBoardIdOrion2 = 5;      // ANAN-7000DLE / 8000DLE / Orion MkII / Anvelina Pro3
+// ANAN fork build 723: the Hermes-Lite 2 (Thetis HPSDRHW.HermesLite = 6,
+// MI0BOT). Protocol 1 only; its Protocol 1 board type is 6 as well.
+inline constexpr std::uint8_t kBoardIdHermesLite = 6;  // Hermes-Lite 2
 inline constexpr std::uint8_t kBoardIdSaturn = 10;     // ANAN-G2 / G2-1K
 inline constexpr std::uint8_t kBoardIdSaturnMkII = 11; // ANAN-G2 (MkII board)
 inline constexpr std::uint8_t kBoardIdHermesC10 = 20;  // ANAN-G2E
@@ -108,6 +111,9 @@ enum class AlexScheme {
     // low-pass bank, which follows the transmit frequency only. RX-only
     // inputs use the master RX select bit 14; Alex1 bit 8 grounds ADC1 on TX.
     Orion2BandPass,
+    // ANAN fork build 723: no Alex at all (Hermes-Lite 2). Its filter board
+    // (N2ADR) hangs on the open-collector byte, not on Alex bits.
+    None,
 };
 
 struct BoardProfile {
@@ -168,8 +174,13 @@ enum class AnanModel : int {
     // wire. Chosen by hand only (Forcedly assign the radio): the board
     // reports Angelia, whose default stays the ANAN-100D.
     Odyssey3,
+    // ANAN fork build 723 (operator, 25.11: "we had Hermes Lite 2 support at
+    // first and removed it; it has to come back"). Its board type tells it
+    // apart (Protocol 1 discovery byte 10 = 6); it is never forced onto an
+    // ANAN nor an ANAN onto it (a different C&C rotation).
+    HermesLite2,
 };
-inline constexpr int kAnanModelCount = 14;
+inline constexpr int kAnanModelCount = 15;
 
 // A directional coupler reading -> watts (Thetis console.cs computeAlexFwdPower
 // / computeRefPower): V = (raw - offset) / 4095 * refVolts, W = V^2 / bridge.

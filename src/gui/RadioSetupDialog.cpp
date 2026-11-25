@@ -4566,6 +4566,8 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
                 const QSignalBlocker bf(forceModelChk);
                 forceModelChk->setChecked(forced);
             }
+            // Build 723: a Hermes-Lite 2 is never driven as another type.
+            forceModelChk->setVisible(!m.value(QStringLiteral("ananHermesLite")).toBool());
             const QString reported = m.value(QStringLiteral("ananReportedModel")).toString();
             forceNote->setText(QStringLiteral(
                 "The radio reports itself as %1. It is driven as the type chosen above "

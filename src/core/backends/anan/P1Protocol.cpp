@@ -15,7 +15,8 @@ std::optional<std::uint8_t> p2BoardIdForP1(std::uint8_t p1Board) noexcept
     case kP1BoardAngelia: return kBoardIdAngelia;
     case kP1BoardOrion:   return kBoardIdOrion;
     case kP1BoardOrion2:  return kBoardIdOrion2;
-    default:              return std::nullopt;   // Metis, Griffin, HL2, unknown
+    case kP1BoardHermesLite: return kBoardIdHermesLite;   // build 723
+    default:              return std::nullopt;   // Metis, Griffin, unknown
     }
 }
 
@@ -23,6 +24,7 @@ P1DdcPlan p1DdcPlanFor(std::uint8_t p2BoardId) noexcept
 {
     P1DdcPlan p;
     switch (p2BoardId) {
+    case kBoardIdHermesLite:   // build 723: MI0BOT's UpdateDDCs, the HERMES case
     case kBoardIdHermes:
         p.nddc = 4;
         p.rxDdc = {{0, 1, 2, 3}};
@@ -60,10 +62,112 @@ void freqBytes(hl2::Cc& c, std::uint32_t hz) noexcept
     c[4] = b(hz, 0);
 }
 
+// ANAN fork build 723: the Hermes-Lite 2's rotation, as MI0BOT's Thetis sends
+// it (networkproto1.c WriteMainLoop_HL2, cases 0..18). Where the HL2 gateware
+// gives a bit another meaning than the ANAN's, the value sent is the one
+// Thetis sends for an HL2 (its Alex fields are all clear, no Alex present).
+// Not here yet: the I2C transactions that take a slot of their own in
+// WriteMainLoop_HL2 (the Hermes Lite settings stage).
+hl2::Cc p1CcHl2(int index, const P1CcState& s) noexcept
+{
+    hl2::Cc c{};
+    c[0] = s.mox ? 0x01 : 0x00;
+    const auto gainCode = [](int db) {
+        return static_cast<std::uint8_t>(std::clamp(db, -12, 48) + 12);
+    };
+    const int txCode = gainCode(s.hl2TxGainDb);
+    switch (index) {
+    case 0:   // general settings
+        c[1] = static_cast<std::uint8_t>(s.rateCode & 3);
+        // C2 bits 1-7: the open-collector byte (the N2ADR filter board).
+        c[2] = static_cast<std::uint8_t>((s.openCollector << 1) & 0xFE);
+        // C3: Alex attenuators, preamp, dither (on the HL2: the band-voltage
+        // output / an AK4951's speaker), random and the Alex RX inputs --
+        // all clear, as Thetis has them for an HL2.
+        c[3] = 0;
+        // C4: ANT1, the duplex bit, the DDC count, no diversity.
+        c[4] = static_cast<std::uint8_t>(0x04 | (((std::clamp(s.nddc, 1, 12) - 1) & 0x0F) << 3));
+        break;
+    case 1:  c[0] |= 0x02; freqBytes(c, s.txHz); break;       // TX NCO
+    case 2:  c[0] |= 0x04; freqBytes(c, s.ddcHz[0]); break;   // DDC0
+    case 3:  c[0] |= 0x06; freqBytes(c, s.ddcHz[1]); break;   // DDC1
+    case 4:   // addr 0x0E: ADC assignment (one ADC: 0), the TX attenuator
+        c[0] |= 0x1C;
+        // C3: Thetis' tx_step_attn & 0x1F. On the HL2 0x0E[15] (C3 bit 7)
+        // enables the hardware-managed transmit gain; it stays clear, so
+        // this byte is inert there.
+        c[3] = static_cast<std::uint8_t>(txCode & 0x1F);
+        break;
+    case 5:  c[0] |= 0x08; freqBytes(c, s.ddcHz[2]); break;   // DDC2
+    case 6:  c[0] |= 0x0A; freqBytes(c, s.ddcHz[3]); break;   // DDC3
+    case 7:  c[0] |= 0x0C; freqBytes(c, s.ddcHz[4]); break;   // DDC4
+    case 8:  c[0] |= 0x0E; freqBytes(c, s.ddcHz[5]); break;   // DDC5
+    case 9:  c[0] |= 0x10; freqBytes(c, s.ddcHz[6]); break;   // DDC6
+    case 10:  // addr 0x09: drive level, PA enable
+        c[0] |= 0x12;
+        c[1] = static_cast<std::uint8_t>(std::clamp(s.driveLevel, 0, 255));
+        // C2 bit 3 (0x09[19]): the HL2's PA enable (Thetis DisablePA ->
+        // EnableApolloTuner on an HL2). Bits 1 / 2 (DATA[17] tuner bypass,
+        // DATA[18] T/R disable) stay clear (hl2/MetisProtocol.cpp ccTxDrive).
+        c[2] = static_cast<std::uint8_t>(s.paEnabled ? 0x08 : 0x00);
+        break;
+    case 11:  // addr 0x0A: the AD9866 LNA gain
+        c[0] |= 0x14;
+        c[2] = static_cast<std::uint8_t>((s.lineInGain & 0x1F) | (s.pureSignal ? 0x40 : 0));
+        // Bit 6: the gateware's six-bit gain path (ad9866.v).
+        c[4] = static_cast<std::uint8_t>(0x40 | ((s.mox ? txCode : gainCode(s.hl2RxGainDb)) & 0x3F));
+        break;
+    case 12:  // addr 0x0B: ADC1 / ADC2 attenuators (none here), keyer
+        c[0] |= 0x16;
+        c[1] = static_cast<std::uint8_t>((s.mox ? 0x1F : 0x00) | 0x20);
+        c[2] = static_cast<std::uint8_t>(0x20 | (s.cwPaddleSwap ? 0x40 : 0));
+        c[3] = static_cast<std::uint8_t>((std::clamp(s.cwSpeedWpm, 1, 60) & 0x3F)
+                                         | (s.cwMode == 0 ? 0x00 : s.cwMode == 1 ? 0x40 : 0x80));
+        c[4] = static_cast<std::uint8_t>((std::clamp(s.cwWeight, 0, 100) & 0x7F) | (s.cwStrictSpacing ? 0x80 : 0));
+        break;
+    case 13:  // addr 0x0F: CW
+        c[0] |= 0x1E;
+        c[1] = s.cwKeyer ? 1 : 0;
+        c[2] = static_cast<std::uint8_t>(std::clamp(s.cwSidetoneLevel, 0, 127));
+        c[3] = static_cast<std::uint8_t>(std::clamp(s.cwRfDelayMs, 0, 255));
+        break;
+    case 14:  // addr 0x10: CW hang time, sidetone frequency
+        c[0] |= 0x20;
+        {
+            const int hang = std::clamp(s.cwHangMs, 0, 1023);
+            const int tone = std::clamp(s.cwSidetoneHz, 0, 4095);
+            c[1] = static_cast<std::uint8_t>((hang >> 2) & 0xFF);
+            c[2] = static_cast<std::uint8_t>(hang & 0x03);
+            c[3] = static_cast<std::uint8_t>((tone >> 4) & 0xFF);
+            c[4] = static_cast<std::uint8_t>(tone & 0x0F);
+        }
+        break;
+    case 15:  c[0] |= 0x22; break;   // addr 0x11: EER PWM, not used
+    case 16:  // addr 0x12: BPF2 (none), transverter, PureSignal
+        c[0] |= 0x24;
+        c[2] = static_cast<std::uint8_t>((s.xvtrEnable ? 0x01 : 0) | (s.pureSignal ? 0x40 : 0));
+        break;
+    case 17:  // addr 0x17: PTT hang and TX buffer latency
+        c[0] |= 0x2E;
+        c[3] = static_cast<std::uint8_t>(std::clamp(s.hl2PttHangMs, 0, 31) & 0x1F);
+        c[4] = static_cast<std::uint8_t>(std::clamp(s.hl2TxLatencyMs, 0, 127) & 0x7F);
+        break;
+    case 18:  // addr 0x3A: reset on disconnect
+        c[0] |= 0x74;
+        c[4] = s.hl2ResetOnDisconnect ? 1 : 0;
+        break;
+    default:
+        break;
+    }
+    return c;
+}
+
 }  // namespace
 
 hl2::Cc p1Cc(int index, const P1CcState& s) noexcept
 {
+    if (s.hermesLite)   // build 723
+        return p1CcHl2(index, s);
     hl2::Cc c{};
     c[0] = s.mox ? 0x01 : 0x00;
     const auto att5 = [](int db) { return static_cast<std::uint8_t>(std::clamp(db, 0, 31)); };

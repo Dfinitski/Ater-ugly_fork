@@ -430,7 +430,9 @@ void AnanDiscovery::onReadyRead()
         if (route.valid())
             info.sessionBindAddress = route.local;
         info.model    = modelName(reply->boardId);
-        info.name     = protocol1 ? info.model + QStringLiteral(" (Protocol 1)") : info.model;
+        // Build 723: a Hermes-Lite 2 speaks only Protocol 1 -- no need to say it.
+        info.name     = (protocol1 && reply->boardId != kBoardIdHermesLite)
+                            ? info.model + QStringLiteral(" (Protocol 1)") : info.model;
         info.serial   = stableSerial(reply->mac, reply->boardId);
         info.nickname = effectiveNickname(QStringLiteral("anan"), info.serial, info.model);
         info.version  = QString::number(reply->firmwareVer);

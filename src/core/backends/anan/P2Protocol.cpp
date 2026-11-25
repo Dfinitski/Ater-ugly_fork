@@ -81,6 +81,18 @@ std::optional<BoardProfile> boardProfileFor(std::uint8_t boardId) noexcept
         p.hasAdc1FilterBank = true;
         p.odysseyStatus = false;
         return p;
+    case kBoardIdHermesLite:
+        // ANAN fork build 723: Hermes-Lite 2 -- one ADC (AD9866), no Alex, the
+        // receivers from DDC0 as on the Hermes boards (MI0BOT's Thetis puts it
+        // in UpdateDDCs' HERMES case). PureSignal not offered yet.
+        p.modelName = "Hermes-Lite 2";
+        p.rxDdcBase = 0;
+        p.numAdcs = 1;
+        p.alexScheme = AlexScheme::None;
+        p.alexEnableMask = 0;
+        p.psSupported = false;
+        p.odysseyStatus = false;
+        return p;
     case kBoardIdHermesC10:
         // ANAN-G2E: one ADC with the 7000-style band-pass bank (deskHPSDR
         // NEW_DEVICE_G2E), receivers from DDC0 like the Hermes boards.
@@ -169,6 +181,11 @@ const std::array<ModelTraits, kAnanModelCount>& allTraits() noexcept
         a[13].model = AnanModel::Odyssey3;
         a[13].key = "Odyssey-3";
         a[13].ratedWatts = 50;
+        // Build 723: Hermes-Lite 2, 5 W. Its power telemetry is not the Alex
+        // coupler's (MI0BOT's Thetis has its own formula; the transmit stage).
+        a[14] = traits(AnanModel::HermesLite2, "Hermes-Lite 2", kBoardIdHermesLite, kFwdDefault,
+                       kRevDefault);
+        a[14].ratedWatts = 5;
         return a;
     }();
     return table;
@@ -206,6 +223,7 @@ AnanModel defaultModelFor(std::uint8_t boardId) noexcept
     case kBoardIdSaturn:
     case kBoardIdSaturnMkII: return AnanModel::AnanG2;
     case kBoardIdHermesC10:  return AnanModel::AnanG2E;
+    case kBoardIdHermesLite: return AnanModel::HermesLite2;   // build 723
     default:                 return AnanModel::Anan100D;
     }
 }
