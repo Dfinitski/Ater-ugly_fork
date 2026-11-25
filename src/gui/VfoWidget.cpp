@@ -5144,9 +5144,10 @@ void VfoWidget::updateSmartMtrValueText()
             const QStringList lines = text.split(QLatin1Char('\n'));
             for (const QString& line : lines)
                 w = qMax(w, fm.horizontalAdvance(line));
-            // Build 716 (operator: "two spaces turned out too much, one less"):
-            // one space.
-            pad = fm.horizontalAdvance(QLatin1Char(' '));
+            // Build 716 took one space away from 714's two; the operator had
+            // meant one MORE (build 718, 25.11: "move them two spaces further
+            // away" from 716's one): three spaces.
+            pad = 3 * fm.horizontalAdvance(QLatin1Char(' '));
             w += 2 + pad;
             if (m_freqStack && m_freqRow && m_freqRow->geometry().isValid()) {
                 int left = m_freqRow->geometry().left();
