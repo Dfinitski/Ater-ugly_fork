@@ -131,6 +131,17 @@ struct P1CcState {
     bool hl2ResetOnDisconnect = false;
 };
 
+// ANAN fork build 725: the Hermes-Lite 2's drive. Its gateware takes only the
+// top four bits of the drive byte -- 16 steps of 0.5 dB, -7.5..0 dB -- so the
+// fine part is a scale on the transmit I/Q (deskHPSDR radio.c
+// radio_calc_drive_level, its table verbatim): `level` 0..255 as for any
+// board, `hwLevel` the byte sent (0, 16, .. 240), `iqScale` 0..1.
+struct Hl2DriveSplit {
+    int hwLevel = 0;
+    double iqScale = 0.0;
+};
+[[nodiscard]] Hl2DriveSplit hl2DriveSplit(int level) noexcept;
+
 // Number of C&C registers in the rotation (Thetis cases 0..16).
 inline constexpr int kP1CcCount = 17;
 // Build 723: the Hermes-Lite 2's rotation, cases 0..18 (WriteMainLoop_HL2:

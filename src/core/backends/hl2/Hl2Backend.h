@@ -937,6 +937,16 @@ public:
     static constexpr double kAnanPaMidDriveMin = 35.0;
     static constexpr double kAnanPaMidDriveMax = 80.0;
     static double ananPaMidDrivePercent();
+    // Build 725: the Hermes-Lite 2 keeps its own PA settings (another PA):
+    // the calibration "Hl2PaCal_<band>", default 100 % (its 5 W at the full
+    // drive, deskHPSDR's PA calibration 38.8 dB), and the slider law
+    // "Hl2PaMidDrivePct", default 70.7 % (an ideal PA). Chosen by the radio
+    // the session runs (AnanUiState::hermesLite), here and on the setup page.
+    static constexpr double kHl2PaMidDriveDefault = 70.7;
+    static QString ananPaCalPrefix();
+    static int ananPaCalDefault();
+    static QString ananPaMidDriveKey();
+    static double ananPaMidDriveDefault();
 private:
     double ananFwdDisplayWatts(double watts) const;   // Power Meter Calibration
     int m_ananLastDrivePercent{-1};

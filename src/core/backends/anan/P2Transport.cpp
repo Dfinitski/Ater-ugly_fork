@@ -1291,17 +1291,29 @@ void P2Transport::publishTelemetry()
     t.adcWindowMs = ms;
     // Directional coupler counts (Alex0). The watts/SWR conversion upstream
     // is the HL2's; ANAN calibration is a TODO (see the port journal).
+    const bool hl2 = m_p1 && m_profile.boardId == kBoardIdHermesLite;   // build 725
     if (m_mox) {
         // Build 231: the window's highest readings -- the meter shows the
         // peaks the radio's detector reported, not whichever sample was last.
         t.forwardPowerRaw = m_fwdPeakWin >= 0 ? m_fwdPeakWin : m_fwdRaw;
         t.reversePowerRaw = m_revPeakWin >= 0 ? m_revPeakWin : m_revRaw;
+        // Build 725 (deskHPSDR): a Hermes-Lite 2 whose reverse reads above
+        // the forward has its sense transformer the other way round.
+        if (hl2 && *t.reversePowerRaw > *t.forwardPowerRaw)
+            std::swap(t.forwardPowerRaw, t.reversePowerRaw);
         t.forwardPowerPeakRaw = t.forwardPowerRaw;
         t.forwardPowerSamples = 1;
     }
     m_fwdPeakWin = -1;
     m_revPeakWin = -1;
-    if (m_statusPackets > 0) {
+    if (hl2) {
+        // Build 725: the Hermes-Lite 2's words (MI0BOT's Thetis / deskHPSDR):
+        // C0 addr 1 C1/C2 the temperature (the ANANs' exciter power), addr 2
+        // C3/C4 the PA current (their AIN3). No supply rail.
+        if (m_excRaw > 0)
+            t.temperatureRaw = m_excRaw;
+        t.paAmpsRaw = m_userAdc0Raw;
+    } else if (m_statusPackets > 0) {
         t.supplyVoltsRaw = m_supplyRaw;
         t.paVoltsRaw = m_userAdc0Raw;
         t.paAmpsRaw = m_userAdc1Raw;
@@ -3406,6 +3418,9 @@ P1CcState P2Transport::p1State() const
         // Build 724: the LNA is the attenuator engine's ADC0 value, 48 - att
         // (Hl2Backend::ananPushAttenuators -> setAdcAttenuation).
         s.hl2RxGainDb = std::clamp(kHl2GainAtZeroAttDb - m_adcAtt[0], -12, 48);
+        // Build 725: the drive byte's hardware step; the rest scales the I/Q
+        // (sendP1Ep2).
+        s.driveLevel = hl2DriveSplit(s.driveLevel).hwLevel;
         // deskHPSDR (old_protocol.c, C0 0x14 / 0x1C): while transmitting with
         // the PA on, the LNA at its bottom (code 0, -12 dB); else as receiving.
         s.hl2TxGainDb = s.paEnabled ? -12 : s.hl2RxGainDb;
@@ -3509,6 +3524,13 @@ void P2Transport::sendP1Ep2()
             accountTxSamples(buf.data(), kIn);
             m_p1TxDec.process(buf.data(), kIn, iq48.data());
             limitTxDrive(iq48.data(), static_cast<int>(iq48.size()));   // build 348
+            // Build 725: a Hermes-Lite 2's fine drive (hl2DriveSplit).
+            if (st.hermesLite) {
+                const float k = static_cast<float>(
+                    hl2DriveSplit(cwDemoActive() ? 0 : m_drive).iqScale);
+                for (auto& v : iq48)
+                    v *= k;
+            }
             hl2::ep2WriteTxIq(pkt, std::span<const std::complex<float>>(iq48.data(), iq48.size()));
             ++m_txPacketsSent;
             m_ducSentTotal.fetch_add(1, std::memory_order_relaxed);

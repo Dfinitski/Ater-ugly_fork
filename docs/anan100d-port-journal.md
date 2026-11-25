@@ -12123,6 +12123,20 @@ errcheck P1Protocol / P2Protocol / P2Transport / AnanDiscovery 0 (как в R), 
 
 errcheck P1Protocol / P2Transport 0, Hl2Backend 2, SpectrumOverlayMenu 4 (как в R); тест ротации (0x1C C3 = E0 при +20 дБ, 0x2E 14 / 28). Не проверено на радио, не собиралось под Windows.
 
+## 709. Сборка 725 — Hermes-Lite 2, этап 3: передача
+
+Оператор: «делай передачу». Образцы — deskHPSDR (`radio.c` `radio_calc_drive_level`, `transmitter.c` расчёт мощности) и Thetis MI0BOT (`console.cs`, ток и температура HL2).
+
+Передача на HL2 идёт по уже работающему пути ANAN Protocol 1 (MOX в C0, I/Q 48 кГц в EP2, PA, PTT радио, ключ). Добавлено специфичное для HL2:
+- **Мощность.** Гейтвер HL2 берёт из байта мощности только старшие 4 бита — 16 ступеней по 0,5 дБ (−7,5..0 дБ). Как в deskHPSDR: `hl2DriveSplit(level)` (`P1Protocol`) — аппаратная ступень (0, 16 … 240, таблица deskHPSDR дословно) плюс масштаб I/Q для тонкой части (выше уровня 107 масштаб 0,94..1,00). `P2Transport`: для HL2 в C0 0x12 уходит ступень, I/Q передачи умножаются на масштаб (после ограничителя, в `sendP1Ep2`).
+- **Калибровка PA и закон движка мощности — свои у HL2** (другой PA): ключи `Hl2PaCal_<диапазон>` (по умолчанию 100 % — его 5 Вт при полной мощности, как PA calibration 38,8 дБ deskHPSDR) и `Hl2PaMidDrivePct` (по умолчанию 70,7 % — идеальный PA). Выбираются по подключённому радио (`AnanUiState::hermesLite`) в `Hl2Backend::applyDrive` и на странице настроек (группы «PA Level Calibration», «Power Slider Law»). Шкалы мощности: номинал 5 Вт, Max Level по умолчанию 6 Вт.
+- **Мощность / КСВ.** Подбор deskHPSDR (по данным Quisk «HL2FilterE3», одинаковый для прямой и обратной): V = (raw + 34) / 4095 · 3,3, W = V² / 1,52 — в `ModelTraits` HL2 (`CouplerCal{1.52, 1.52, 3.3, -34}`). Если обратная больше прямой — трансформатор тока намотан наоборот, показания меняются местами (deskHPSDR; `P2Transport` телеметрия).
+- **Температура и ток PA** (Thetis MI0BOT): слово addr 1 C1/C2 (у ANAN — мощность возбудителя) — температура (`hl2TemperatureCelsius`, метр RAD:PATEMP); addr 2 C3/C4 — ток: 3,26 В АЦП, усилитель ×50, шунт 0,04 Ом, делитель 1000/1270 → 1574,8 мВ на ампер. Напряжения питания у HL2 нет. `ModelTraits::hasSupplyVolts / hasPaTemp / swapFwdRevIfReversed`; возможности бэкенда (Radio Vitals) по модели.
+
+Не сделано на этом этапе: микрофон радио (у HL2 нет кодека, кроме платы AK4951) — выбор источника на этапе настроек; PureSignal на HL2; тюнер AH-4.
+
+errcheck P1Protocol / P2Protocol / P2Transport 0, Hl2Backend 2, RadioSetupDialog 23 (как в R); тест `hl2DriveSplit` совпадает с таблицей deskHPSDR; 1000 отсчётов → 0,457 Вт. Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

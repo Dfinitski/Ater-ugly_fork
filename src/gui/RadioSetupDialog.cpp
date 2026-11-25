@@ -4785,8 +4785,9 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     };
     // PA Level Calibration: per band the drive (0..100 % of the DUC drive
     // byte) that the RF / Tune power sliders reach at 100 %.
-    bandCalGroup(QStringLiteral("PA Level Calibration"), QStringLiteral("AnanPaCal_"),
-                 0, 100, 64, false,
+    // Build 725: a Hermes-Lite 2 keeps its own (Hl2Backend::ananPaCalPrefix).
+    bandCalGroup(QStringLiteral("PA Level Calibration"), hl2::Hl2Backend::ananPaCalPrefix(),
+                 0, 100, hl2::Hl2Backend::ananPaCalDefault(), false,
                  QStringLiteral("Maximum transmit level on %1: what the RF Power and Tune Power "
                                 "sliders reach at 100 %, in percent of the full drive."));
     // PA Power Law as its mid-scale point (operator, 07.11, build 193): the
@@ -4821,15 +4822,17 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
             "in percent of the drive set for 100 % by the PA Level Calibration.\n"
             "70.7 % = an ideal PA (power ~ drive^2). Lower for a PA that compresses.\n"
             "Default 46.7 % (measured on an ANAN-100D)."));
-        connect(mid, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [](double v) {
+        // Build 725: the key and default of the radio as connected.
+        const QString midKey = B::ananPaMidDriveKey();
+        connect(mid, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [midKey](double v) {
             auto& s = AppSettings::instance();
-            s.setValue(QStringLiteral("AnanPaMidDrivePct"), QString::number(v, 'f', 1));
+            s.setValue(midKey, QString::number(v, 'f', 1));
             s.save();
         });
         auto* reset = new QPushButton("Default");
-        reset->setToolTip(QStringLiteral("Back to 46.7 %"));
+        reset->setToolTip(QStringLiteral("Back to %1 %").arg(B::ananPaMidDriveDefault(), 0, 'f', 1));
         connect(reset, &QPushButton::clicked, this, [mid] {
-            mid->setValue(hl2::Hl2Backend::kAnanPaMidDriveDefault);
+            mid->setValue(hl2::Hl2Backend::ananPaMidDriveDefault());
         });
         lawGrid->addWidget(midLbl, 0, 0);
         lawGrid->addWidget(mid, 0, 1);

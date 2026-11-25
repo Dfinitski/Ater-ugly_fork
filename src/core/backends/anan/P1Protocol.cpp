@@ -280,6 +280,33 @@ hl2::Cc p1Cc(int index, const P1CcState& s) noexcept
     return c;
 }
 
+Hl2DriveSplit hl2DriveSplit(int level) noexcept
+{
+    // deskHPSDR radio_calc_drive_level, DEVICE_HERMES_LITE2: the hardware
+    // step just below the level, the rest by scaling (above 107 the scale
+    // stays within 0.94 .. 1.00).
+    struct Step { int above; int hw; double k; };
+    static constexpr Step kSteps[] = {
+        {240, 240, 0.0039215}, {227, 224, 0.0041539}, {214, 208, 0.0044000},
+        {202, 192, 0.0046607}, {191, 176, 0.0049369}, {180, 160, 0.0052295},
+        {170, 144, 0.0055393}, {160, 128, 0.0058675}, {151, 112, 0.0062152},
+        {143, 96, 0.0065835},  {135, 80, 0.0069736},  {127, 64, 0.0073868},
+        {120, 48, 0.0078245},  {113, 32, 0.0082881},  {107, 16, 0.0087793},
+    };
+    const int l = std::clamp(level, 0, 255);
+    Hl2DriveSplit out;
+    for (const Step& s : kSteps) {
+        if (l > s.above) {
+            out.hwLevel = s.hw;
+            out.iqScale = l * s.k;
+            return out;
+        }
+    }
+    out.hwLevel = 0;
+    out.iqScale = l * 0.0092995;   // 0 .. 0.995
+    return out;
+}
+
 std::uint8_t p1AlexHpfBits(AlexRxFilter f) noexcept
 {
     switch (f) {

@@ -4308,8 +4308,10 @@ RadioCapabilities Hl2Backend::buildCapabilities(const CapsInputs& in)
     // ANAN-100D port: Protocol 2 reports the supply rail (status bytes 49-50,
     // meter "+13.8A") and no PA temperature, so Radio Vitals shows volts and
     // hides the temperature gauge, which would otherwise sit empty.
-    c.hasSupplyVoltageTelemetry = true;
-    c.hasPaTemperatureTelemetry = false;
+    // Build 725: by model -- the Hermes-Lite 2 reports a PA temperature and
+    // current and no supply rail.
+    c.hasSupplyVoltageTelemetry = in.traits.hasSupplyVolts;
+    c.hasPaTemperatureTelemetry = in.traits.hasPaTemp;
     c.hasPaCurrentTelemetry = in.traits.hasAmps;
     // PROC runs in this host's ClientComp (hostModulates), not in the radio.
     c.speechProcessorControl = std::nullopt;
@@ -9751,10 +9753,33 @@ void Hl2Backend::applyDrive(int percent)
 double Hl2Backend::ananPaMidDrivePercent()
 {
     // RadioSetupDialog's PA Power Law group writes it; 46.7 % = gamma 0.91.
+    // Build 725: the Hermes-Lite 2 its own (ananPaMidDriveKey).
     return std::clamp(AppSettings::instance()
-                          .value(QStringLiteral("AnanPaMidDrivePct"), kAnanPaMidDriveDefault)
+                          .value(ananPaMidDriveKey(), ananPaMidDriveDefault())
                           .toDouble(),
                       kAnanPaMidDriveMin, kAnanPaMidDriveMax);
+}
+
+QString Hl2Backend::ananPaCalPrefix()
+{
+    return anan::AnanUiState::instance().hermesLite ? QStringLiteral("Hl2PaCal_")
+                                                    : QStringLiteral("AnanPaCal_");
+}
+
+int Hl2Backend::ananPaCalDefault()
+{
+    return anan::AnanUiState::instance().hermesLite ? 100 : 64;
+}
+
+QString Hl2Backend::ananPaMidDriveKey()
+{
+    return anan::AnanUiState::instance().hermesLite ? QStringLiteral("Hl2PaMidDrivePct")
+                                                    : QStringLiteral("AnanPaMidDrivePct");
+}
+
+double Hl2Backend::ananPaMidDriveDefault()
+{
+    return anan::AnanUiState::instance().hermesLite ? kHl2PaMidDriveDefault : kAnanPaMidDriveDefault;
 }
 
 QString Hl2Backend::ananPaCalKey() const
@@ -9781,7 +9806,7 @@ int Hl2Backend::ananPaCalPercent() const
     }
     const QString band = key == QLatin1String("8m") ? QStringLiteral("6m") : key;
     return std::clamp(AppSettings::instance()
-                          .value(QStringLiteral("AnanPaCal_") + band, 64).toInt(),
+                          .value(ananPaCalPrefix() + band, ananPaCalDefault()).toInt(),   // build 725
                       0, 100);
 }
 

@@ -220,6 +220,15 @@ struct ModelTraits {
     // SmartMTR): scale top = 1.2 x, red from it. 0 = the program's usual
     // scale (120 W, red from 100 W).
     int ratedWatts = 0;
+    // Build 725: what Radio Vitals shows -- the supply rail (Hermes status /
+    // User ADC0) and a PA temperature (the Hermes-Lite 2 reports it, the
+    // ANANs do not).
+    bool hasSupplyVolts = true;
+    bool hasPaTemp = false;
+    // Build 725 (deskHPSDR transmitter.c): a reverse reading above the
+    // forward one is a current-sense transformer wound the other way round
+    // (some Hermes-Lite 2s) -- the two are exchanged.
+    bool swapFwdRevIfReversed = false;
 };
 
 [[nodiscard]] const ModelTraits& modelTraits(AnanModel m) noexcept;

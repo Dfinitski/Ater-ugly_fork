@@ -183,9 +183,22 @@ const std::array<ModelTraits, kAnanModelCount>& allTraits() noexcept
         a[13].ratedWatts = 50;
         // Build 723: Hermes-Lite 2, 5 W. Its power telemetry is not the Alex
         // coupler's (MI0BOT's Thetis has its own formula; the transmit stage).
-        a[14] = traits(AnanModel::HermesLite2, "Hermes-Lite 2", kBoardIdHermesLite, kFwdDefault,
-                       kRevDefault);
+        // Build 725, transmit: deskHPSDR's coupler fit for the HL2 ("a fit to
+        // the HL2FilterE3 data in Quisk", the same for forward and reverse):
+        // V = (raw + 34) / 4095 * 3.3, W = V^2 / 1.52. PA current on the
+        // reverse word's partner (C0 addr 2 C3/C4), MI0BOT's Thetis: 3.26 V
+        // ADC, x50 sense amplifier, 0.04 ohm, a 1000 / 1270 divider -- as
+        // (mV - 0) / 1574.8 mV per A; the temperature on the exciter word.
+        constexpr CouplerCal kHl2{1.52, 1.52, 3.3, -34};
+        a[14] = traits(AnanModel::HermesLite2, "Hermes-Lite 2", kBoardIdHermesLite, kHl2, kHl2);
         a[14].ratedWatts = 5;
+        a[14].hasAmps = true;
+        a[14].userAdcRefVolts = 3.26 * 4095.0 / 4096.0;
+        a[14].ampVoffMv = 0.0;
+        a[14].ampSensMvPerA = 50.0 * 0.04 * 1000.0 / 1.27;   // 1574.8 mV per A
+        a[14].hasSupplyVolts = false;
+        a[14].hasPaTemp = true;
+        a[14].swapFwdRevIfReversed = true;
         return a;
     }();
     return table;
