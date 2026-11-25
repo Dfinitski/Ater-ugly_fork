@@ -1,6 +1,7 @@
 #include "AnanMultiMeterWidget.h"
 
 #include <QFont>
+#include <QFontMetricsF>
 #include <QLinearGradient>
 #include <QPainter>
 #include <QPainterPath>
@@ -23,7 +24,7 @@ constexpr double kBottom = 8.0;                // below the last row
 // Build 736: five rows (no Id / Vd) take the room of seven -- everything in
 // a row is 1.3 x the build 735 size.
 constexpr double kScaleX0 = 60.0;              // where the scales start
-constexpr double kScaleX1 = kW - 68.0;         // ... and end
+constexpr double kScaleX1 = kW - 72.0;         // ... and end (build 737: room for dBm)
 constexpr double kNamePx = 13.0, kMarkPx = 10.0, kValuePx = 13.0;
 constexpr int kTickMs = 50;
 
@@ -240,12 +241,12 @@ float AnanMultiMeterWidget::reading(Row row) const
 QString AnanMultiMeterWidget::valueText(Row row, float v) const
 {
     switch (row) {
+    // Build 737 (operator, 25.11: "the S-meter must give its reading in dBm
+    // -- the S units are on the scale already"). Minus sign as on the scale.
     case Row::S: {
-        if (v <= -73.0f) {
-            const int u = std::clamp(int(std::lround((v + 127.0f) / 6.0f)), 0, 9);
-            return QStringLiteral("S%1").arg(u);
-        }
-        return QStringLiteral("S9+%1").arg(int(std::lround(v + 73.0f)));
+        const int dbm = int(std::lround(v));
+        return dbm < 0 ? QString::fromUtf8("\xE2\x88\x92%1 dBm").arg(-dbm)
+                       : QStringLiteral("%1 dBm").arg(dbm);
     }
     case Row::Po:
         return v < 10.0f ? QStringLiteral("%1 W").arg(v, 0, 'f', 1)
@@ -253,6 +254,8 @@ QString AnanMultiMeterWidget::valueText(Row row, float v) const
     case Row::Swr:  return QString::number(std::min(v, 9.9f), 'f', 1);
     case Row::Alc: {
         const int db = int(std::lround(v));
+        if (db < 0)
+            return QString::fromUtf8("\xE2\x88\x92%1 dB").arg(-db);
         return (db > 0 ? QStringLiteral("+%1 dB") : QStringLiteral("%1 dB")).arg(db);
     }
     case Row::Comp: return QStringLiteral("%1 dB").arg(int(std::lround(v)));
@@ -405,6 +408,9 @@ void AnanMultiMeterWidget::drawDynamic(QPainter& p, const QRectF& meter)
     QFont valueFont = font();
     valueFont.setPixelSize(int(kValuePx));
     valueFont.setBold(true);
+    QFont unitFont = font();
+    unitFont.setPixelSize(9);
+    unitFont.setBold(m_face == Face::Light);
     p.setFont(valueFont);
 
     const double step = (kH - kTop - kBottom) / kRows;
@@ -426,10 +432,25 @@ void AnanMultiMeterWidget::drawDynamic(QPainter& p, const QRectF& meter)
         p.setPen(Qt::NoPen);
         p.setBrush(c.pointer);
         p.drawPath(tri);
-        // The value, right.
+        // The value, right: the number bold, its unit (dBm, W, dB) smaller
+        // after it (build 737: "-127 dBm" has to fit).
         p.setPen(c.ink);
-        p.drawText(QRectF(kScaleX1 + 4.0, y - 10.0, kW - kScaleX1 - 10.0, 18.0),
-                   Qt::AlignRight | Qt::AlignVCenter, valueText(row, reading(row)));
+        const QString text = valueText(row, reading(row));
+        const int sp = text.lastIndexOf(QLatin1Char(' '));
+        const QString number = sp > 0 ? text.left(sp) : text;
+        const QString unit = sp > 0 ? text.mid(sp + 1) : QString();
+        const double right = kW - 6.0;
+        double unitW = 0.0;
+        if (!unit.isEmpty()) {
+            p.setFont(unitFont);
+            unitW = QFontMetricsF(unitFont).horizontalAdvance(unit);
+            p.drawText(QRectF(right - unitW, y - 10.0, unitW + 1.0, 18.0),
+                       Qt::AlignRight | Qt::AlignVCenter, unit);
+            unitW += 2.0;
+        }
+        p.setFont(valueFont);
+        p.drawText(QRectF(kScaleX1 + 2.0, y - 10.0, right - unitW - kScaleX1 - 2.0, 18.0),
+                   Qt::AlignRight | Qt::AlignVCenter, number);
     }
 }
 
