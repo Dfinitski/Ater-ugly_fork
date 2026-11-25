@@ -76,25 +76,13 @@ inline bool usesNativeCaption(const QWidget* window)
     return usesNativeCaption(window->windowFlags(), QGuiApplication::platformName());
 }
 
-// Qt's expanded client area leaves a resize border on the left, right and
-// bottom as non-client, which Windows 10 paints as a light strip (#6266), so
-// MainWindow::nativeEvent claims the whole window as client area.
-// ANAN fork build 699 (operator, 25.11: a 1-pixel vertical stripe -- a
-// missing column -- runs across the whole window, it turned the + of the
-// rate button into a -). Windows 11 too: there Qt's answer was kept, and it
-// disagrees with itself -- the native client area was 8 px in from the
-// window on the left and right (GetClientRect 1621 of a 1637 window), while
-// Qt took its frame margins as 5 (QWindow 1627, ResizeDiag of builds
-// 697/698). Qt draws the window 1627 wide; the blit swap chain (build 461)
-// is stretched by Windows onto the 1621 client area, dropping 6 columns
-// (one per ~270 px); the flip model showed none. With the whole window as
-// client Qt and Windows agree (Qt keeps no frame margins when the client
-// rect equals the window rect), as on Windows 10. `os` stays in the
-// signature for the callers and tests.
+// Windows 10 only: Qt's expanded client area leaves a resize border on the
+// left, right and bottom as non-client, which Windows 10 paints as a light
+// strip (#6266), so MainWindow::nativeEvent claims the whole window as client
+// area. Windows 11 draws that border invisibly and keeps Qt's answer.
 inline bool claimsWholeWindowAsClient(Qt::WindowFlags flags, const QOperatingSystemVersion& os)
 {
-    Q_UNUSED(os);
-    return flags.testFlag(Qt::ExpandedClientAreaHint);
+    return flags.testFlag(Qt::ExpandedClientAreaHint) && os < QOperatingSystemVersion::Windows11;
 }
 
 // Windows expanded client area: the part of the window a point is on, for the

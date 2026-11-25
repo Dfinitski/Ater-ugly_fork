@@ -3929,44 +3929,9 @@ static LRESULT frameHitCode(WindowChrome::FrameHit hit)
     return HTCLIENT;
 }
 
-void MainWindow::setPanadaptersHeldForResize(bool held)
-{
-    if (m_panadaptersHeldForResize == held)
-        return;
-    m_panadaptersHeldForResize = held;
-    // Only the panadapters of this window: a popped-out panadapter is a
-    // window of its own and is not resized with this one.
-    const QList<SpectrumWidget*> pans = findChildren<SpectrumWidget*>();
-    for (SpectrumWidget* pan : pans) {
-        if (pan->window() == this)
-            pan->setResizeHold(held);
-    }
-}
-
 bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr* result)
 {
     auto* msg = static_cast<MSG*>(message);
-    // ANAN fork build 700 (operator, 25.11, after build 699: "the whole
-    // window shakes while its edge is dragged, the controls most, the applet
-    // panel at the side most of all"). ResizeDiag of build 699: at rest Qt,
-    // Windows and the backing store now agree exactly; during the drag the
-    // panadapter's own frames (it renders continuously, QRhiWidget) make Qt
-    // put the window's picture together while the backing store still has
-    // the previous size -- up to 48 px off -- and the blit swap chain
-    // (build 461) is stretched by Windows over the whole client area: every
-    // such frame shows the ordinary widgets stretched or squeezed. Before
-    // build 699 the client area was a fixed 6 px off Qt anyway. The
-    // panadapters of this window now request no frames of their own from the
-    // first WM_SIZING (only a resize, not a move) until WM_EXITSIZEMOVE: the
-    // frames during the drag come from Qt's own resize repaints, which resize
-    // the backing store first (SpectrumWidget::update / setResizeHold; the
-    // flags and buttons over it repaint as usual). Its picture keeps
-    // following the resize through those repaints; its own data frames
-    // resume on release.
-    if (msg && msg->message == WM_SIZING)
-        setPanadaptersHeldForResize(true);
-    else if (msg && msg->message == WM_EXITSIZEMOVE)
-        setPanadaptersHeldForResize(false);
     // Under the expanded client area Qt 6.12 answers WM_NCHITTEST by turning
     // the live mouse-button state into synthetic presses, which doubles real
     // clicks and closes menus as they open (#6272). Answer it here instead:
