@@ -952,6 +952,17 @@ void MainWindow::maybeAutoConnectAnan(const RadioInfo& info)
     // Build 268 (operator, 11.11): at program start the radio is found and
     // shown (its tab, the antenna picture on the panadapter), not started --
     // until the operator starts it.
+    // Build 715: Settings > Autostart Radio with AetherSDR -- the radio used
+    // last starts by itself at program start.
+    if (m_waitForUserStart
+        && AppSettings::instance().value("AnanAutoStartRadio", "False").toString() == "True") {
+        const QString lastSerial =
+            AppSettings::instance().value("LastConnectedRadioSerial").toString();
+        if (!lastSerial.isEmpty() && info.serial == lastSerial) {
+            qInfo().noquote() << "Autostart Radio: starting the radio used last" << info.serial;
+            m_waitForUserStart = false;
+        }
+    }
     if (m_waitForUserStart) {
         const QString label = radioLinkLabel(info);
         setLinkState(LinkState::Ready, label);

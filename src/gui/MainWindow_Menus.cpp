@@ -1106,6 +1106,23 @@ void MainWindow::buildMenuBar()
 
     settingsMenu->addSeparator();
 
+    // ANAN fork build 715 (operator, 25.11: "next to Autostart CAT and MIDI
+    // add autostart of the radio -- start the radio used last when the
+    // program starts; it was there before and we switched it off, make it a
+    // menu option"). Off (the default) keeps build 268: the radio found at
+    // start is shown and waits for the operator's start. On: the radio
+    // connected last (LastConnectedRadioSerial) starts as soon as discovery
+    // finds it; another radio still waits (MainWindow::maybeAutoConnectAnan).
+    auto* autoRadioAction = settingsMenu->addAction("Autostart Radio with AetherSDR");
+    autoRadioAction->setCheckable(true);
+    autoRadioAction->setChecked(
+        AppSettings::instance().value("AnanAutoStartRadio", "False").toString() == "True");
+    connect(autoRadioAction, &QAction::toggled, this, [](bool on) {
+        auto& s = AppSettings::instance();
+        s.setValue("AnanAutoStartRadio", on ? "True" : "False");
+        s.save();
+    });
+
     // CAT: unified port manager (rigctld / TS-2000 / FlexCAT per port)
     auto* autoCatAction = settingsMenu->addAction("Autostart CAT with AetherSDR");
     autoCatAction->setCheckable(true);

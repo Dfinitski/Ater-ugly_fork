@@ -12005,6 +12005,18 @@ errcheck: MainWindow 42, RadioSetupDialog 23, SpectrumWidget 12, PanadapterStack
 
 errcheck VfoWidget 4 = база; bogus +1.
 
+## 699. Сборка 715 — Settings → Autostart Radio with AetherSDR
+
+Оператор, 25.11: «в меню настроек, там где у нас Autostart CAT and MIDI, добавь автостарт радио и сделай запуск радио при старте того последнего, что использовался. Эта возможность уже была ранее, но мы её отключили. Сделай теперь опцию в меню».
+
+Ранее: до сборки 268 найденное ANAN подключалось само. В 268 оператор сделал так, что найденное радио показывается и ждёт его запуска (`m_waitForUserStart`).
+
+**Изменения:**
+- `MainWindow_Menus.cpp`: в меню Settings, перед «Autostart CAT with AetherSDR», добавлен пункт-галка «Autostart Radio with AetherSDR» (ключ `AnanAutoStartRadio`, по умолчанию False).
+- `MainWindow::maybeAutoConnectAnan`: если галка включена, а программа ещё ждёт запуска оператором, то радио, найденное поиском с серийным номером `LastConnectedRadioSerial`, запускается сразу (`m_waitForUserStart = false`, строка «Autostart Radio» в логе). Дальше подключение идёт обычным путём, включая перехват своей прежней занятой сессии. Другое найденное радио по-прежнему ждёт. Без галки — как в 268.
+
+errcheck: MainWindow_Menus 24, MainWindow_Session 24 = база; bogus +1.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
