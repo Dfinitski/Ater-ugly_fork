@@ -44,8 +44,8 @@
 
 #include <QPainter>
 #include <QPainterPath>
-#include <QStyleOptionButton>
-#include <QStylePainter>
+#include <QBackingStore>
+#include <QWindow>
 #include <QResizeEvent>
 #include <QScopeGuard>
 #include <QMouseEvent>
@@ -115,44 +115,6 @@ bool SpectrumWidget::s_starstruckMode = false;
 QSoundEffect* SpectrumWidget::s_starstruckSound = nullptr;
 
 namespace {
-
-// ANAN fork build 694 (operator, 24.11: "the + rate button looks like -").
-// The two signs were font glyphs: U+2212 and "+" of the button font are not
-// the same size (the "+" of the 13 px bold UI font draws small and thin, at
-// the button's alpha it read as a minus). The sign is drawn here instead --
-// two strokes of the same length and weight on both buttons -- in the
-// colours of kRateBtnStyle (normal / hover / pressed); the face and border
-// stay the style sheet's.
-class RateSignButton : public QPushButton {
-public:
-    RateSignButton(bool plus, QWidget* parent) : QPushButton(parent), m_plus(plus) {}
-
-protected:
-    void paintEvent(QPaintEvent*) override
-    {
-        QStylePainter sp(this);
-        QStyleOptionButton opt;
-        initStyleOption(&opt);
-        opt.text.clear();
-        sp.drawControl(QStyle::CE_PushButton, opt);
-        const QColor ink = isDown() ? QColor(0, 0, 0)
-                         : underMouse() ? QColor(220, 232, 244, 220)
-                                        : QColor(200, 216, 232, 150);
-        // Whole pixels, centred on the 20 x 20 face: 10 px strokes, 2 px thick.
-        constexpr int kLen = 10;
-        constexpr int kWeight = 2;
-        const int x0 = (width() - kLen) / 2;
-        const int y0 = (height() - kLen) / 2;
-        const int xm = (width() - kWeight) / 2;
-        const int ym = (height() - kWeight) / 2;
-        sp.fillRect(QRect(x0, ym, kLen, kWeight), ink);
-        if (m_plus)
-            sp.fillRect(QRect(xm, y0, kWeight, kLen), ink);
-    }
-
-private:
-    bool m_plus;
-};
 
 constexpr int kDssMaxIncrementalUploadRows = 8;
 constexpr qint64 kDssFftPixelScaleSettleMs = 750;
@@ -2520,8 +2482,7 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
             "QPushButton:hover { background: rgba(30,50,70,150); color: rgba(220,232,244,220); }"
             "QPushButton:pressed { background: rgba(0,180,216,150); color: #000; }";
         auto makeRateBtn = [&](const QString& text, const QString& objName, const QString& a11y) {
-            // Build 694: the sign is drawn (RateSignButton), not a glyph.
-            auto* btn = new RateSignButton(text == QStringLiteral("+"), this);
+            auto* btn = new QPushButton(text, this);
             btn->setObjectName(objName);
             btn->setAccessibleName(a11y);
             btn->setFixedSize(20, 20);
@@ -17883,6 +17844,56 @@ void SpectrumWidget::render(QRhiCommandBuffer* cb)
     if (!m_rhiInitialized) {
         initialize(cb);
         if (!m_rhiInitialized) return;
+    }
+    // ANAN fork build 697 (operator, 25.11: "a dark vertical stripe, 1 pixel,
+    // runs over the buttons and labels while the window is resized; it was
+    // in the applet panel before; it hid the + of the rate button"). A
+    // diagnostic: every size taking part in putting the window's picture
+    // together, logged once each time any of them changes -- the top-level
+    // window, its native window and its backing store (where the ordinary
+    // widgets are painted), this panadapter (logical, its place in the
+    // window, its GPU render target, the last settled frame, the overlay
+    // texture) and the rate buttons' place in the window. A stripe means one
+    // of these is a pixel off another; the log shows which and when.
+    {
+        QWidget* top = window();
+        const QSize topSize = top ? top->size() : QSize();
+        const QSize handleSize = (top && top->windowHandle())
+            ? top->windowHandle()->size() : QSize();
+        const qreal handleDpr = (top && top->windowHandle())
+            ? top->windowHandle()->devicePixelRatio() : 0.0;
+        QBackingStore* store = top ? top->backingStore() : nullptr;
+        const QSize storeSize = store ? store->size() : QSize();
+        const QPoint inWindow = top ? mapTo(top, QPoint(0, 0)) : QPoint();
+        const QSize rtSize = renderTarget() ? renderTarget()->pixelSize() : QSize();
+        const QSize ovSize = m_ovGpuTex ? m_ovGpuTex->pixelSize() : QSize();
+        const QPoint downAt = (top && m_rateDownBtn) ? m_rateDownBtn->mapTo(top, QPoint(0, 0)) : QPoint();
+        const QPoint upAt = (top && m_rateUpBtn) ? m_rateUpBtn->mapTo(top, QPoint(0, 0)) : QPoint();
+        const QString line = QStringLiteral(
+            "top %1x%2 handle %3x%4 dpr %5 store %6x%7 | pan %8 at %9,%10 dpr %11"
+            " rt %12x%13 settled %14x%15 ov %16x%17 preview %18 | rate- at %19,%20 %21x%22"
+            " rate+ at %23,%24 %25x%26")
+            .arg(topSize.width()).arg(topSize.height())
+            .arg(handleSize.width()).arg(handleSize.height())
+            .arg(handleDpr)
+            .arg(storeSize.width()).arg(storeSize.height())
+            .arg(objectName().isEmpty() ? QStringLiteral("#%1").arg(m_panIndex) : objectName())
+            .arg(inWindow.x()).arg(inWindow.y())
+            .arg(devicePixelRatioF())
+            .arg(rtSize.width()).arg(rtSize.height())
+            .arg(m_resizePresentationSize.width()).arg(m_resizePresentationSize.height())
+            .arg(ovSize.width()).arg(ovSize.height())
+            .arg(m_resizeBufferSettleTimer && m_resizeBufferSettleTimer->isActive() ? 1 : 0)
+            .arg(downAt.x()).arg(downAt.y())
+            .arg(m_rateDownBtn ? m_rateDownBtn->width() : 0)
+            .arg(m_rateDownBtn ? m_rateDownBtn->height() : 0)
+            .arg(upAt.x()).arg(upAt.y())
+            .arg(m_rateUpBtn ? m_rateUpBtn->width() : 0)
+            .arg(m_rateUpBtn ? m_rateUpBtn->height() : 0);
+        if (line != m_resizeDiagLast) {
+            m_resizeDiagLast = line;
+            qInfo().noquote() << "ResizeDiag:" << line;
+        }
     }
     if (m_rhiFailureForcedForAutomation) {
         // Keep the widget on its production QRhi API. Mixing Null with Metal or
