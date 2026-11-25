@@ -4597,7 +4597,14 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
             micBiasChk->setVisible(orion);
             micXlrChk->setVisible(xlr);
             gndChk->setVisible(adc2);
-            fullAttChk->setVisible(adc2);   // build 542
+            // ANAN fork build 671 (operator, 24.11: "I don't see the box for
+            // the attenuator on transmit for the second receiver, and this is
+            // an ANAN-100D"). OUR ERROR (542): it was shown with RX2's own
+            // band-pass bank (7000DLE / 8000DLE / G2), like the ground relay.
+            // The second ADC's step attenuator on transmit (P2 TX-specific
+            // byte 58, P1 C0 0x1C) is there on every radio with two ADCs --
+            // the ANAN-100D / 200D too; only the ground relay needs the bank.
+            fullAttChk->setVisible(m.value(QStringLiteral("ananNumAdcs"), 2).toInt() >= 2);
             connNone->setVisible(false);   // build 502: the two TX options are always there
             connGroup->setVisible(true);
             for (const QPointer<QWidget>& w : *controls) {
