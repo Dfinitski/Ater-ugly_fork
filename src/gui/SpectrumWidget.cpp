@@ -9576,6 +9576,13 @@ void SpectrumWidget::updateSpectrum(const QVector<float>& binsDbm, const Spectru
         // backend's FFT keeps running and puts its own average back.
         return;
     }
+    // ANAN fork build 669 (operator, 24.11: "the boxes become Show TX
+    // Panorama when SSB / CW / FreeDV; on (the default) everything works as
+    // now; off, show the receive panadapter frozen" -- the waterfall frozen
+    // too). Off, nothing comes in while transmitting: the trace stays as it
+    // was at the key-down (and the waterfall rows below are never reached).
+    if (m_transmitting && m_txFreezeView && txWaterfallAffectsThisPan())
+        return;
     if (m_ananHoldTraceUntilMs > 0 && !m_txZoomFeeding) {
         if (QDateTime::currentMSecsSinceEpoch() < m_ananHoldTraceUntilMs)
             return;
@@ -9829,6 +9836,8 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
     // During TX, any pan that can see the TX passband uses FFT-derived rows as
     // the sole waterfall source. Mixing native tiles with FFT rows double-
     // advances the waterfall and produces timing/row artifacts.
+    // (Build 669: with the receive view frozen, no rows at all -- this return
+    // and the early one in updateSpectrum.)
     if (m_transmitting && txWaterfallAffectsThisPan()) return;
 
     // Suppress post-TX transient noise rows (#2117). The receiver AGC needs

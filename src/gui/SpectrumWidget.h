@@ -1018,6 +1018,10 @@ public:
     // ANAN-100D port: while transmitting the panadapter shows a fixed
     // 0 .. -80 dBFS scale (build 345; 0 = full scale to the radio); the receive scale comes back on unkey.
     void setTxFixedDbmRange(bool on) { m_txFixedRange = on; }
+    // ANAN fork build 669: "Show TX Panorama when ..." off for the mode -- the
+    // receive panadapter (trace and waterfall) stands frozen while
+    // transmitting (MainWindow sets it before setTransmitting).
+    void setTxFreezeView(bool on) { m_txFreezeView = on; }
     // ANAN-100D port, unkey test: log what this pan receives and draws for
     // 6 s from now (100 ms rows).
     void ananStartUnkeyTrace();
@@ -2300,6 +2304,7 @@ private:
 
     bool m_txDbmRangeFrozen{false};
     bool m_txFixedRange{false};      // ANAN: fixed TX scale wanted
+    bool m_txFreezeView{false};      // ANAN build 669: receive view frozen while transmitting
     QElapsedTimer m_ukClock;
     bool m_ukOn{false};
     struct UkRow { float inMax = -999, inMed = -999, smMax = -999, smMed = -999, ref = 0, range = 0; int frames = 0; bool zoom = false, tx = false; };

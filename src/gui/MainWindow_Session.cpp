@@ -1997,10 +1997,17 @@ void MainWindow::wireRadioModel()
             txZoomWanted = AppSettings::instance().value(key, QStringLiteral("True")).toString()
                            == QLatin1String("True");
         }
+        // Build 669 (operator, 24.11): the boxes are "Show TX Panorama when
+        // SSB / CW / FreeDV"; on, the TX panadapter as before (zoom, TX
+        // scale); off, the receive panadapter stands frozen -- trace and
+        // waterfall -- until the over ends. Not in DUP: there the receiver
+        // keeps receiving and its view stays live, as before.
+        const bool txFreeze = panTx && ananTxScale && !txZoomWanted && !dupHold;
         for (auto* pan : m_radioModel.panadapters()) {
             if (auto* sw = m_panStack ? m_panStack->spectrum(pan->panId()) : nullptr) {
                 if (panTx)
                     sw->setTxFixedDbmRange(ananTxScale && txZoomWanted);
+                sw->setTxFreezeView(txFreeze);
                 sw->setTransmitting(panTx);
                 sw->setDuplexTxHold(dupHold);
             }
@@ -2008,6 +2015,7 @@ void MainWindow::wireRadioModel()
         if (!m_panStack && m_panApplet) {
             if (panTx)
                 m_panApplet->spectrumWidget()->setTxFixedDbmRange(ananTxScale && txZoomWanted);
+            m_panApplet->spectrumWidget()->setTxFreezeView(txFreeze);
             m_panApplet->spectrumWidget()->setTransmitting(panTx);
             m_panApplet->spectrumWidget()->setDuplexTxHold(dupHold);
         }

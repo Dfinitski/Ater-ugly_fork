@@ -3422,15 +3422,19 @@ QWidget* RadioSetupDialog::buildTxTab()
             });
             gvb->addWidget(cb);
         };
-        box(QStringLiteral("Zoom for CW"), QStringLiteral("AnanTxZoomCw"),
-            QStringLiteral("CW, CWL: the panadapter zooms onto the transmitted signal"));
-        box(QStringLiteral("Zoom for SSB"), QStringLiteral("AnanTxZoomVoice"),
+        // Build 669 (operator, 24.11): "Show TX Panorama when SSB / CW /
+        // FreeDV"; off, the receive panadapter stands frozen while
+        // transmitting (trace and waterfall). Same settings keys.
+        box(QStringLiteral("Show TX Panorama when SSB"), QStringLiteral("AnanTxZoomVoice"),
             QStringLiteral("SSB and every other mode but CW and FreeDV (AM, FM, digital)"));
-        box(QStringLiteral("Zoom for FreeDV"), QStringLiteral("AnanTxZoomFdv"),
+        box(QStringLiteral("Show TX Panorama when CW"), QStringLiteral("AnanTxZoomCw"),
+            QStringLiteral("CW, CWL"));
+        box(QStringLiteral("Show TX Panorama when FreeDV"), QStringLiteral("AnanTxZoomFdv"),
             QStringLiteral("FreeDV / RADE on the transmitting receiver"));
         auto* hint = new QLabel(
-            "While transmitting, the panadapter zooms onto the transmitted signal. Off, it keeps "
-            "the receive view for that mode. DUP (TX applet) keeps the receive view in every mode.");
+            "On: while transmitting, the panadapter shows the transmitted signal (zoomed onto it, "
+            "TX scale). Off: the receive panadapter stands frozen until the transmission ends. "
+            "DUP (TX applet) keeps the receive panadapter live in every mode.");
         setTone(hint, Tone::Hint);
         hint->setWordWrap(true);
         gvb->addWidget(hint);
