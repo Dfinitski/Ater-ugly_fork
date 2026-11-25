@@ -11758,6 +11758,16 @@ errcheck MainWindow_DspApplets 24 = база; bogus +1.
 
 Блок проверен отдельным TU с заголовками Qt; errcheck SpectrumWidget 12 = база.
 
+## 682. Сборка 699 — причина полосы: на Windows 11 Qt и Windows расходятся в рамке окна
+
+Лог 698 (`aethersdr-20261125-003919.log`). В покое, например, top/handle/store 1627×920, а Windows `GetClientRect` 1621×920 и `GetWindowRect` 1637×928. Настоящая рамка: 8 px слева и справа, 8 снизу, 0 сверху. Qt считает рамку по 5 px слева и справа: в `calculateFullFrameMargins()` он берёт левую и правую рамку из `frameMargins_sys()` (`AdjustWindowRectExForDpi`), а не из настоящей клиентской области. Qt рисует окно шириной 1627, swap chain в режиме blit (сборка 461) Windows растягивает на клиентскую область 1621, и выпадает 6 столбцов, примерно через каждые 270 px. Это и есть полосы. В режиме flip растяжения нет, поэтому полос не было.
+
+На Windows 10 `MainWindow::nativeEvent` (`WM_NCCALCSIZE`) уже объявляет всё окно рабочей областью (#6266). Тогда клиентская область равна окну, и Qt не держит никаких рамок (`calculateFullFrameMargins`: при window == client — только заданные пользователем, то есть 0). На Windows 11 этого не делали.
+
+**Исправление** (`WindowChrome.h`): `claimsWholeWindowAsClient()` теперь истинно при `ExpandedClientAreaHint` на любой версии Windows; параметр `os` оставлен для вызовов и тестов. Тест `unified_title_bar_test.cpp` для Windows 11 (22000) переписан на «claims too». Окно на Windows 11 теперь показывает содержимое и в бывшей невидимой рамке (по 8 px слева, справа и снизу). Край окна тянется нашим `WM_NCHITTEST`, как на Windows 10. Режим blit (461) остаётся. Оператор подтвердил: Windows 11, делать как на 10.
+
+errcheck MainWindow 42 = база, TitleBar 6 = база, тест 4 = база; bogus +1. Диагностика ResizeDiag (697/698) пока остаётся.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -151,8 +151,10 @@ int main(int argc, char** argv)
         const OSV win10(OSV::Windows, 10, 0, 19045);
         check(WindowChrome::claimsWholeWindowAsClient(expanded, win10),
               "Windows 10 under the expanded chrome claims the whole window as client");
-        check(!WindowChrome::claimsWholeWindowAsClient(expanded, OSV(OSV::Windows, 10, 0, 22000)),
-              "Windows 11's first build keeps Qt's non-client border");
+        // Build 699 (fork): Windows 11 too -- Qt's own frame margins there were
+        // 3 px off the native client area, and the blit swap chain dropped columns.
+        check(WindowChrome::claimsWholeWindowAsClient(expanded, OSV(OSV::Windows, 10, 0, 22000)),
+              "Windows 11 under the expanded chrome claims the whole window as client too");
         check(!WindowChrome::claimsWholeWindowAsClient(system, win10),
               "Frameless Window off keeps the system frame on Windows 10");
         // With the whole window as client the frame is zero, so restoring a
