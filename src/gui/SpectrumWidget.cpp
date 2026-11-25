@@ -14105,8 +14105,10 @@ int SpectrumWidget::rateGroupWidth() const
     // Build 570: hidden under a flag, the group keeps its place.
     if (!m_rateLabel || (!m_rateLabel->isVisible() && !m_rateGroupCovered))
         return 0;
+    // Build 678: the one-line width in every stage -- what is drawn to the
+    // left keeps its place while the group rearranges or hides.
     const bool zoomShown = m_zoomLabel
-        && (m_rateGroupCovered ? m_zoomLabelWanted : m_zoomLabel->isVisible());
+        && (m_rateStage != 0 ? m_zoomLabelWanted : m_zoomLabel->isVisible());
     const int zoomW = zoomShown ? m_zoomLabel->width() + 4 : 0;
     return zoomW + m_rateDownBtn->width() + 4 + m_rateLabel->width() + 4 + m_rateUpBtn->width() + 8;
 }
@@ -14192,25 +14194,87 @@ void SpectrumWidget::updateRateGroupCover()
     m_rateCoverPending = false;
     if (!m_rateLabel || !m_rateDownBtn || !m_rateUpBtn)
         return;
-    // The group's place, shown or not (a hidden widget keeps its geometry).
-    QRect group = m_rateDownBtn->geometry() | m_rateLabel->geometry() | m_rateUpBtn->geometry();
-    if (m_zoomLabel && m_zoomLabelWanted)
-        group |= m_zoomLabel->geometry();
-    bool covered = false;
-    for (const VfoWidget* flag : std::as_const(m_vfoWidgets)) {
-        if (flag && flag->flagCovers(group)) {
-            covered = true;
-            break;
-        }
+    // Build 678: three stages. The one-line place and the two-line place are
+    // fixed (they follow the widget's width and the texts, not the stage), so
+    // the stage depends only on where the flags are: a flag that made the
+    // group take two lines lets it back into one line only once it has left
+    // the one-line place -- the edge it crossed -- and it cannot flicker
+    // between the stages on the way.
+    QRect z0, d0, l0, u0, z1, d1, l1, u1;
+    rateGroupGeometry(false, z0, d0, l0, u0);
+    rateGroupGeometry(true, z1, d1, l1, u1);
+    const bool withZoom = m_zoomLabel && m_zoomLabelWanted;
+    QRect oneLine = d0 | l0 | u0;
+    QRect twoLines = d1 | l1 | u1;
+    if (withZoom) {
+        oneLine |= z0;
+        twoLines |= z1;
     }
-    if (covered == m_rateGroupCovered)
+    auto covered = [this](const QRect& area) {
+        for (const VfoWidget* flag : std::as_const(m_vfoWidgets))
+            if (flag && flag->flagCovers(area))
+                return true;
+        return false;
+    };
+    // Without the zoom there is nothing to rearrange: one line or hidden.
+    const int stage = !covered(oneLine) ? 0
+                    : (withZoom && !covered(twoLines)) ? 1 : 2;
+    if (stage == m_rateStage)
         return;
-    m_rateGroupCovered = covered;
-    m_rateDownBtn->setVisible(!covered);
-    m_rateLabel->setVisible(!covered);
-    m_rateUpBtn->setVisible(!covered);
+    m_rateStage = stage;
+    const bool hidden = stage == 2;
+    m_rateGroupCovered = hidden;
+    m_rateDownBtn->setVisible(!hidden);
+    m_rateLabel->setVisible(!hidden);
+    m_rateUpBtn->setVisible(!hidden);
     if (m_zoomLabel)
-        m_zoomLabel->setVisible(!covered && m_zoomLabelWanted);
+        m_zoomLabel->setVisible(!hidden && m_zoomLabelWanted);
+    placeRateGroup();
+    update();   // the indicators drawn left of the group
+}
+
+void SpectrumWidget::rateGroupGeometry(bool twoRows, QRect& zoom, QRect& down,
+                                       QRect& label, QRect& up) const
+{
+    const int right = width() - std::max(DBM_STRIP_W, m_topRightReserve) - 6;
+    constexpr int top = 4;
+    constexpr int gap = 2;   // between the two lines
+    const int zoomH = m_zoomLabel ? m_zoomLabel->height() : 0;
+    const int zoomW = m_zoomLabel ? m_zoomLabel->width() : 0;
+    const int rateY = twoRows ? top + zoomH + gap : top;
+    const int upX = right - m_rateUpBtn->width();
+    // Build 646: 4 px either side of the rate text, as the zoom text's
+    // gap to the minus button.
+    const int labelX = upX - 4 - m_rateLabel->width();
+    const int downX = labelX - 4 - m_rateDownBtn->width();
+    up = QRect(QPoint(upX, rateY), m_rateUpBtn->size());
+    label = QRect(QPoint(labelX, rateY), m_rateLabel->size());
+    down = QRect(QPoint(downX, rateY), m_rateDownBtn->size());
+    if (twoRows) {
+        // Centred over the rate group (minus button to plus button).
+        const int groupCentre2 = downX + right;   // twice the centre
+        zoom = QRect((groupCentre2 - zoomW) / 2, top, zoomW, zoomH);
+    } else {
+        zoom = QRect(downX - 4 - zoomW, top, zoomW, zoomH);
+    }
+}
+
+void SpectrumWidget::placeRateGroup()
+{
+    if (!m_rateLabel || !m_rateDownBtn || !m_rateUpBtn)
+        return;
+    QRect zoom, down, label, up;
+    rateGroupGeometry(m_rateStage == 1, zoom, down, label, up);
+    m_rateUpBtn->move(up.topLeft());
+    m_rateLabel->move(label.topLeft());
+    m_rateDownBtn->move(down.topLeft());
+    if (m_zoomLabel) {
+        m_zoomLabel->move(zoom.topLeft());
+        m_zoomLabel->raise();
+    }
+    m_rateUpBtn->raise();
+    m_rateLabel->raise();
+    m_rateDownBtn->raise();
 }
 
 void SpectrumWidget::stepReceiverRate(int direction)
@@ -14245,23 +14309,7 @@ void SpectrumWidget::positionZoomButtons()
     // ANAN-100D port: the rate group, top right, left of the dBm strip and of
     // whatever the pan header reserves there.
     if (m_rateLabel) {
-        const int right = width() - std::max(DBM_STRIP_W, m_topRightReserve) - 6;
-        constexpr int top = 4;
-        const int upX = right - m_rateUpBtn->width();
-        // Build 646: 4 px either side of the rate text, as the zoom text's
-        // gap to the minus button.
-        const int labelX = upX - 4 - m_rateLabel->width();
-        const int downX = labelX - 4 - m_rateDownBtn->width();
-        m_rateUpBtn->move(upX, top);
-        m_rateLabel->move(labelX, top);
-        m_rateDownBtn->move(downX, top);
-        if (m_zoomLabel) {
-            m_zoomLabel->move(downX - 4 - m_zoomLabel->width(), top);
-            m_zoomLabel->raise();
-        }
-        m_rateUpBtn->raise();
-        m_rateLabel->raise();
-        m_rateDownBtn->raise();
+        placeRateGroup();           // build 678: in the stage's arrangement
         scheduleRateGroupCover();   // build 570: the group moved
     }
     constexpr int pad = 4;

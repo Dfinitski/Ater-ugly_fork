@@ -2498,6 +2498,19 @@ private:
     // drawn to their left does not slide under the flag.
     bool m_rateGroupCovered{false};
     bool m_zoomLabelWanted{false};
+    // ANAN fork build 678 (operator, 24.11: "the zoom button is important now
+    // and must not vanish so early -- steps: a flag running onto them first
+    // rearranges them, zoom on the upper line, the rate buttons on the lower;
+    // if the flag still runs onto them, all hide; the reverse as it leaves;
+    // the upper line centred over the lower"). 0 = one line (zoom left of
+    // the rate group), 1 = two lines, 2 = hidden (m_rateGroupCovered).
+    int m_rateStage{0};
+    // The places of the four parts in one line (twoRows false) or in two;
+    // they do not depend on the stage shown, so each stage is decided by
+    // where the flags are against fixed places (updateRateGroupCover()).
+    void rateGroupGeometry(bool twoRows, QRect& zoom, QRect& down,
+                           QRect& label, QRect& up) const;
+    void placeRateGroup();
     bool m_rateCoverPending{false};
     void scheduleRateGroupCover();
     void updateRateGroupCover();
