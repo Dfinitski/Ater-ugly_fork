@@ -449,8 +449,12 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
                 // ANAN-100D port: width clamp only while docked (see eventFilter).
                 if (mode != ContainerWidget::DockMode::PanelDocked)
                     m_sMeterContainer->setMaximumWidth(QWIDGETSIZE_MAX);
-                else if (m_scrollArea)
+                else if (m_scrollArea) {
                     m_sMeterContainer->setMaximumWidth(m_scrollArea->viewport()->width());
+                    // Build 733: re-docking re-inserts the container into the
+                    // layout without its alignment; set it once it is back.
+                    QTimer::singleShot(0, this, [this] { alignSMeterToApplets(); });
+                }
             });
     const bool sMeterOn = AppSettings::instance()
         .value("Applet_VU", "True").toString() == "True";
@@ -1828,6 +1832,35 @@ void AppletPanel::setScrollBarOnLeft(bool onLeft)
     m_scrollArea->setLayoutDirection(onLeft ? Qt::RightToLeft : Qt::LeftToRight);
     if (auto* content = m_scrollArea->widget())
         content->setLayoutDirection(Qt::LeftToRight);
+    alignSMeterToApplets();
+}
+
+void AppletPanel::alignSMeterToApplets()
+{
+    // ANAN fork build 733 (operator, 25.11: "with the applet panel moved to
+    // the left, all applets line up to the right and the S-meter stays on
+    // the left"). The docked S-Meter is held to the viewport's width (see
+    // eventFilter) and sits above the scroll area, outside it. Docked left,
+    // the scroll bar goes to the window edge (setScrollBarOnLeft), the
+    // viewport -- and every applet in it -- moves right by the bar's width,
+    // while the S-Meter kept the left edge. Put it over the viewport: at the
+    // right with the bar on the left, at the left (as before) otherwise.
+    if (!m_sMeterContainer || !m_scrollArea || m_sMeterContainer->parentWidget() != this)
+        return;
+    auto* box = qobject_cast<QBoxLayout*>(layout());
+    if (!box)
+        return;
+    const Qt::Alignment want = m_scrollArea->layoutDirection() == Qt::RightToLeft
+        ? (Qt::AlignRight | Qt::AlignAbsolute)
+        : Qt::Alignment();
+    for (int i = 0; i < box->count(); ++i) {
+        QLayoutItem* item = box->itemAt(i);
+        if (item && item->widget() == m_sMeterContainer) {
+            if (item->alignment() != want)
+                box->setAlignment(m_sMeterContainer, want);
+            return;
+        }
+    }
 }
 
 void AppletPanel::resetOrder()
@@ -2367,6 +2400,7 @@ bool AppletPanel::eventFilter(QObject* obj, QEvent* ev)
             if (m_sMeterContainer->maximumWidth() != QWIDGETSIZE_MAX)
                 m_sMeterContainer->setMaximumWidth(QWIDGETSIZE_MAX);
         } else if (m_sMeterContainer && vw > 0 && m_sMeterContainer->maximumWidth() != vw) {
+            alignSMeterToApplets();   // build 733
             m_sMeterContainer->setMaximumWidth(vw);
             qInfo().noquote() << "AppletPanel: width" << width() << "viewport" << vw
                               << "S-Meter min" << m_sMeterContainer->minimumSizeHint().width()

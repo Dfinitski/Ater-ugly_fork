@@ -355,6 +355,7 @@ protected:
     static constexpr int kPanelWidth = 266;
     void scheduleFitWidth();
     void fitWidthToApplets();
+    void alignSMeterToApplets();
     bool m_fitWidthPending{false};
 
 private:
