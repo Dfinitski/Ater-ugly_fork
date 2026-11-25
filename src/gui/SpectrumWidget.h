@@ -2004,8 +2004,6 @@ private:
     qint64 m_resizeBufferCommitLastNs{0};
     qint64 m_resizeBufferCommitMaxNs{0};
     QSize  m_resizePresentationSize;
-    // ANAN fork build 697: the last line of the resize diagnostics (render()).
-    QString m_resizeDiagLast;
     QSize  m_waterfallStreamSizeHint;
     QSize  m_waterfallHistoryStreamSizeHint;
     QVector<qint64> m_wfHistoryTimestamps;

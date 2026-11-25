@@ -44,8 +44,6 @@
 
 #include <QPainter>
 #include <QPainterPath>
-#include <QBackingStore>
-#include <QWindow>
 #include <QResizeEvent>
 #include <QScopeGuard>
 #include <QMouseEvent>
@@ -108,15 +106,6 @@
 #include <utility>
 #include "core/ThemeManager.h"
 #include "core/WaterfallRate.h"
-
-#ifdef Q_OS_WIN
-// ANAN fork build 698: the two user32 calls of the resize diagnostics
-// (ResizeDiag), declared here rather than through <windows.h> (its min/max
-// macros), as TitleBar.cpp does (build 520).
-struct AetherWinRect { long left; long top; long right; long bottom; };
-extern "C" __declspec(dllimport) int __stdcall GetClientRect(void* hWnd, AetherWinRect* rect);
-extern "C" __declspec(dllimport) int __stdcall GetWindowRect(void* hWnd, AetherWinRect* rect);
-#endif
 
 namespace AetherSDR {
 
@@ -17853,79 +17842,6 @@ void SpectrumWidget::render(QRhiCommandBuffer* cb)
     if (!m_rhiInitialized) {
         initialize(cb);
         if (!m_rhiInitialized) return;
-    }
-    // ANAN fork build 697 (operator, 25.11: "a dark vertical stripe, 1 pixel,
-    // runs over the buttons and labels while the window is resized; it was
-    // in the applet panel before; it hid the + of the rate button"). A
-    // diagnostic: every size taking part in putting the window's picture
-    // together, logged once each time any of them changes -- the top-level
-    // window, its native window and its backing store (where the ordinary
-    // widgets are painted), this panadapter (logical, its place in the
-    // window, its GPU render target, the last settled frame, the overlay
-    // texture) and the rate buttons' place in the window. A stripe means one
-    // of these is a pixel off another; the log shows which and when.
-    {
-        QWidget* top = window();
-        const QSize topSize = top ? top->size() : QSize();
-        const QSize handleSize = (top && top->windowHandle())
-            ? top->windowHandle()->size() : QSize();
-        const qreal handleDpr = (top && top->windowHandle())
-            ? top->windowHandle()->devicePixelRatio() : 0.0;
-        QBackingStore* store = top ? top->backingStore() : nullptr;
-        const QSize storeSize = store ? store->size() : QSize();
-        const QPoint inWindow = top ? mapTo(top, QPoint(0, 0)) : QPoint();
-        const QSize rtSize = renderTarget() ? renderTarget()->pixelSize() : QSize();
-        const QSize ovSize = m_ovGpuTex ? m_ovGpuTex->pixelSize() : QSize();
-        const QPoint downAt = (top && m_rateDownBtn) ? m_rateDownBtn->mapTo(top, QPoint(0, 0)) : QPoint();
-        const QPoint upAt = (top && m_rateUpBtn) ? m_rateUpBtn->mapTo(top, QPoint(0, 0)) : QPoint();
-        const QString line = QStringLiteral(
-            "top %1x%2 handle %3x%4 dpr %5 store %6x%7 | pan %8 at %9,%10 dpr %11"
-            " rt %12x%13 settled %14x%15 ov %16x%17 preview %18 | rate- at %19,%20 %21x%22"
-            " rate+ at %23,%24 %25x%26")
-            .arg(topSize.width()).arg(topSize.height())
-            .arg(handleSize.width()).arg(handleSize.height())
-            .arg(handleDpr)
-            .arg(storeSize.width()).arg(storeSize.height())
-            .arg(objectName().isEmpty() ? QStringLiteral("#%1").arg(m_panIndex) : objectName())
-            .arg(inWindow.x()).arg(inWindow.y())
-            .arg(devicePixelRatioF())
-            .arg(rtSize.width()).arg(rtSize.height())
-            .arg(m_resizePresentationSize.width()).arg(m_resizePresentationSize.height())
-            .arg(ovSize.width()).arg(ovSize.height())
-            .arg(m_resizeBufferSettleTimer && m_resizeBufferSettleTimer->isActive() ? 1 : 0)
-            .arg(downAt.x()).arg(downAt.y())
-            .arg(m_rateDownBtn ? m_rateDownBtn->width() : 0)
-            .arg(m_rateDownBtn ? m_rateDownBtn->height() : 0)
-            .arg(upAt.x()).arg(upAt.y())
-            .arg(m_rateUpBtn ? m_rateUpBtn->width() : 0)
-            .arg(m_rateUpBtn ? m_rateUpBtn->height() : 0);
-#ifdef Q_OS_WIN
-        // Build 698: the native window's own client and window rectangles.
-        // With the blit swap chain (build 461) Windows stretches the
-        // presented picture to the client area, so a client area a pixel off
-        // Qt's window size ("handle") would drop one column of the whole
-        // window -- the stripe; the flip model (no stretch) showed none.
-        QString nativeSizes;
-        if (top && top->windowHandle()) {
-            AetherWinRect client{};
-            AetherWinRect frame{};
-            void* hwnd = reinterpret_cast<void*>(top->winId());
-            const bool haveClient = GetClientRect(hwnd, &client) != 0;
-            const bool haveFrame = GetWindowRect(hwnd, &frame) != 0;
-            nativeSizes = QStringLiteral(" | native client %1x%2 window %3x%4")
-                .arg(haveClient ? client.right - client.left : -1)
-                .arg(haveClient ? client.bottom - client.top : -1)
-                .arg(haveFrame ? frame.right - frame.left : -1)
-                .arg(haveFrame ? frame.bottom - frame.top : -1);
-        }
-        const QString lineAll = line + nativeSizes;
-#else
-        const QString& lineAll = line;
-#endif
-        if (lineAll != m_resizeDiagLast) {
-            m_resizeDiagLast = lineAll;
-            qInfo().noquote() << "ResizeDiag:" << lineAll;
-        }
     }
     if (m_rhiFailureForcedForAutomation) {
         // Keep the widget on its production QRhi API. Mixing Null with Metal or
