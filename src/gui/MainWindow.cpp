@@ -6018,6 +6018,26 @@ void MainWindow::buildUI()
             if (!m_audio)
                 return;
             ChannelStripPresets::applyTxJson(m_audio, tx);
+            // ANAN fork build 720 (operator, 25.11: "check that all the newly
+            // made modules keep their settings by the profile buttons"). PROC
+            // (build 719: its own compressor) and the Aether TX compressor are
+            // mutually exclusive. The profile's PROC is applied before this
+            // chain (applyMicProfile), so a chain that switches the Aether
+            // compressor on would make the mirror switch PROC off. A profile
+            // saved before 719 with PROC on always has the Aether compressor
+            // on too -- it held PROC's preset then -- so PROC on in the
+            // profile means PROC: the Aether compressor goes off here. A
+            // profile saved from 719 on never has both on.
+            if (hostModulatesTxAudio() && m_radioModel.transmitModel().speechProcessorEnable()) {
+                if (ClientComp* comp = m_audio->clientCompTx(); comp && comp->isEnabled()) {
+                    comp->setEnabled(false);
+                    m_audio->saveClientCompSettings();
+                    m_aetherCompLastOn = 0;
+                    qInfo() << "Mic profile: PROC on, the Aether TX compressor switched off";
+                    if (m_appletPanel && m_appletPanel->clientCompTxApplet())
+                        m_appletPanel->clientCompTxApplet()->refreshEnableFromEngine();
+                }
+            }
             if (m_aetherialStrip)
                 m_aetherialStrip->refreshAfterProfile();
         };
@@ -6025,6 +6045,11 @@ void MainWindow::buildUI()
         // own settings schema, EqualizerModel::stateToJson); "rx" -- the
         // receive ClientEq as the AetherRX profiles keep it (its bands 0..7
         // are the EQ applet's RX side, the rest the strip's own).
+        // Build 720: since 717 "graphic" is the WDSP equaliser of each side
+        // (applyGraphicEqToClientEq publishes it to the backend), the ClientEqs
+        // the Aether strip's own; applied after them, an applet EQ that is on
+        // switches the Aether EQ of its side off -- a profile saved before 717
+        // (both on, kept in step then) comes back as the applet EQ.
         mic->captureEq = [this] {
             QJsonObject o;
             QJsonObject graphic;
