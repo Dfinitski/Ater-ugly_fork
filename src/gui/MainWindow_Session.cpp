@@ -2003,11 +2003,19 @@ void MainWindow::wireRadioModel()
         // waterfall -- until the over ends. Not in DUP: there the receiver
         // keeps receiving and its view stays live, as before.
         const bool txFreeze = panTx && ananTxScale && !txZoomWanted && !dupHold;
+        // Build 670: "Stop Waterfall when TX" (Radio Setup -> Transmit -> TX
+        // Panadapter, on by default) -- in DUP the waterfall stands still
+        // while transmitting; read at each key-down.
+        const bool dupStopWf = AppSettings::instance()
+            .value(QStringLiteral("AnanDupStopWaterfall"), QStringLiteral("True")).toString()
+            == QLatin1String("True");
         for (auto* pan : m_radioModel.panadapters()) {
             if (auto* sw = m_panStack ? m_panStack->spectrum(pan->panId()) : nullptr) {
                 if (panTx)
                     sw->setTxFixedDbmRange(ananTxScale && txZoomWanted);
                 sw->setTxFreezeView(txFreeze);
+                if (dupHold)
+                    sw->setDupStopWaterfall(dupStopWf);
                 sw->setTransmitting(panTx);
                 sw->setDuplexTxHold(dupHold);
             }
@@ -2016,6 +2024,8 @@ void MainWindow::wireRadioModel()
             if (panTx)
                 m_panApplet->spectrumWidget()->setTxFixedDbmRange(ananTxScale && txZoomWanted);
             m_panApplet->spectrumWidget()->setTxFreezeView(txFreeze);
+            if (dupHold)
+                m_panApplet->spectrumWidget()->setDupStopWaterfall(dupStopWf);
             m_panApplet->spectrumWidget()->setTransmitting(panTx);
             m_panApplet->spectrumWidget()->setDuplexTxHold(dupHold);
         }

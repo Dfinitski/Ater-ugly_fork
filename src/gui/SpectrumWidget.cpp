@@ -9839,6 +9839,11 @@ void SpectrumWidget::updateWaterfallRow(const QVector<float>& binsIntensity,
     // (Build 669: with the receive view frozen, no rows at all -- this return
     // and the early one in updateSpectrum.)
     if (m_transmitting && txWaterfallAffectsThisPan()) return;
+    // Build 670 (operator, 24.11: "in duplex the waterfall runs while
+    // transmitting"): Stop Waterfall when TX -- in DUP the pans are not told
+    // about the over (they stay live), so the rows are stopped here and in
+    // pushWaterfallRow while the over and its receive tail last.
+    if (m_dupTxHold && m_dupStopWaterfall) return;
 
     // Suppress post-TX transient noise rows (#2117). The receiver AGC needs
     // ~400 ms to settle after TX→RX; discard waterfall data during that
@@ -14725,6 +14730,8 @@ void SpectrumWidget::pushWaterfallRow(const QVector<float>& bins, int destWidth,
     // keeps its line_duration calibration, while Kiwi follows observed rows.
 
     if (m_waterfall.isNull() || destWidth <= 0) return;
+    // Build 670: Stop Waterfall when TX, in DUP (the FFT-derived rows).
+    if (m_dupTxHold && m_dupStopWaterfall) return;
 
     const int h = m_waterfall.height();
     if (h <= 1) return;

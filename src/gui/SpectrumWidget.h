@@ -1015,6 +1015,9 @@ public:
     void setTransmitting(bool tx);
     // Build 315: DUP over -- the receiver automatics hold, the display does not.
     void setDuplexTxHold(bool hold);
+    // ANAN fork build 670: "Stop Waterfall when TX" -- in DUP no waterfall
+    // rows while the over (and its 500 ms receive tail, m_dupTxHold) lasts.
+    void setDupStopWaterfall(bool on) { m_dupStopWaterfall = on; }
     // ANAN-100D port: while transmitting the panadapter shows a fixed
     // 0 .. -80 dBFS scale (build 345; 0 = full scale to the radio); the receive scale comes back on unkey.
     void setTxFixedDbmRange(bool on) { m_txFixedRange = on; }
@@ -1834,6 +1837,7 @@ private:
     QTimer* m_squelchLineHideTimer{nullptr};
     QTimer* m_ananOverlayPoll{nullptr};   // ANAN noise line / overload warning -> overlay dirty
     bool m_dupTxHold{false};   // build 315: a DUP over is on the air
+    bool m_dupStopWaterfall{false};   // build 670: Stop Waterfall when TX (DUP)
     int m_dupTxHoldGen{0};
     QString m_ananOverlayStateSig;        // build 308: overload/visibility part
     QElapsedTimer m_ananOverlayLineClock; // build 308: line-driven repaints <= 2/s

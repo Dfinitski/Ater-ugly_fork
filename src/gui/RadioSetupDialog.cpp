@@ -3407,10 +3407,14 @@ QWidget* RadioSetupDialog::buildTxTab()
     // receive view for that mode (no zoom, no fixed TX scale). Read at each
     // key-down (MainWindow, radioTransmittingChanged).
     {
+        // Build 670 (operator, 24.11: "four boxes now -- lay them out in two
+        // columns to save room"): a grid, the hint across both columns.
         auto* group = new QGroupBox("TX Panadapter");
-        auto* gvb = new QVBoxLayout(group);
-        gvb->setSpacing(6);
-        auto box = [gvb](const QString& text, const QString& key, const QString& tip) {
+        auto* gvb = new QGridLayout(group);
+        gvb->setHorizontalSpacing(16);
+        gvb->setVerticalSpacing(6);
+        int boxIndex = 0;
+        auto box = [gvb, &boxIndex](const QString& text, const QString& key, const QString& tip) {
             auto* cb = new QCheckBox(text);
             cb->setToolTip(tip);
             cb->setChecked(AppSettings::instance().value(key, QStringLiteral("True")).toString()
@@ -3420,7 +3424,8 @@ QWidget* RadioSetupDialog::buildTxTab()
                 st.setValue(key, on ? QStringLiteral("True") : QStringLiteral("False"));
                 st.save();
             });
-            gvb->addWidget(cb);
+            gvb->addWidget(cb, boxIndex / 2, boxIndex % 2);
+            ++boxIndex;
         };
         // Build 669 (operator, 24.11): "Show TX Panorama when SSB / CW /
         // FreeDV"; off, the receive panadapter stands frozen while
@@ -3431,13 +3436,18 @@ QWidget* RadioSetupDialog::buildTxTab()
             QStringLiteral("CW, CWL"));
         box(QStringLiteral("Show TX Panorama when FreeDV"), QStringLiteral("AnanTxZoomFdv"),
             QStringLiteral("FreeDV / RADE on the transmitting receiver"));
+        // Build 670 (operator, 24.11: "a box Stop Waterfall when TX: stops the
+        // waterfall while transmitting in duplex; on by default").
+        box(QStringLiteral("Stop Waterfall when TX"), QStringLiteral("AnanDupStopWaterfall"),
+            QStringLiteral("DUP: the waterfall stands still while transmitting (the spectrum stays live)"));
         auto* hint = new QLabel(
-            "On: while transmitting, the panadapter shows the transmitted signal (zoomed onto it, "
-            "TX scale). Off: the receive panadapter stands frozen until the transmission ends. "
-            "DUP (TX applet) keeps the receive panadapter live in every mode.");
+            "Show TX Panorama on: while transmitting, the panadapter shows the transmitted signal "
+            "(zoomed onto it, TX scale). Off: the receive panadapter stands frozen until the "
+            "transmission ends. DUP (TX applet) keeps the receive panadapter live in every mode; "
+            "Stop Waterfall when TX stops its waterfall while transmitting.");
         setTone(hint, Tone::Hint);
         hint->setWordWrap(true);
-        gvb->addWidget(hint);
+        gvb->addWidget(hint, (boxIndex + 1) / 2, 0, 1, 2);
         vbox->addWidget(group);
     }
 

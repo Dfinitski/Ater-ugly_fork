@@ -11309,6 +11309,18 @@ Thetis (console.cs `ZoomToBand`, `zoomToBandBandwidth`): панорама на �
 
 Не проверено на радио, не собиралось под Windows.
 
+## 653. Сборка 670 — «Stop Waterfall when TX» (DUP); галки TX Panadapter в две колонки
+
+Оператор, 24.11: «сделай там же кнопку Stop Waterfall when TX … смысл — останавливать водопад во время дуплекса во время передачи, по умолчанию включена»; проверил сам: в DUP водопад на передаче идёт. «Раз их уже 4 — оформи в две колонки».
+
+Разбор существующего: «Show TX in Waterfall» (`TransmitModel::showTxInWaterfall`, из исходного AetherSDR / Flex) — кнопки в интерфейсе нет, по умолчанию выключена, действует только без DUP (водопад панорам, видящих передачу, стоит); водопады FT8/FT4/JS8 стоят на любой передаче (395). В DUP панораме о передаче не сообщают (она живая) — водопад шёл.
+
+- `RadioSetupDialog` (Transmit → TX Panadapter): `QGridLayout` в две колонки — SSB | CW, FreeDV | Stop Waterfall when TX (ключ `AnanDupStopWaterfall`, по умолчанию True); подсказка на обе колонки, дополнена.
+- `MainWindow_Session`: при нажатии в DUP — `SpectrumWidget::setDupStopWaterfall(настройка)`.
+- `SpectrumWidget`: пока `m_dupTxHold` (передача в DUP и 500 мс хвоста приёма после неё) и `m_dupStopWaterfall` — строки водопада не принимаются ни от бэкенда (`updateWaterfallRow`), ни из спектра (`pushWaterfallRow`); спектр остаётся живым.
+
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
