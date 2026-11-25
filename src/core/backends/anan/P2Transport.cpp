@@ -283,7 +283,7 @@ QList<hl2::MetisClient::Discovered> P2Transport::discover(int timeoutMs,
             if (const auto r1 = hl2::parseDiscoveryReply(asBytes(data))) {
                 // Protocol 1 firmware (EF FE 02/03 ...): its board type mapped
                 // to the Protocol 2 id the profiles and models are keyed by.
-                const auto id = p2BoardIdForP1(r1->boardId);
+                const auto id = p2BoardIdForP1(r1->boardId, r1->gatewareVersion);
                 if (!id)
                     continue;
                 const QString key = dg.senderAddress().toString();
@@ -1408,7 +1408,7 @@ void P2Transport::handleDatagram(std::span<const std::uint8_t> bytes, quint16 se
         }
         if ((bytes[2] == 0x02 || bytes[2] == 0x03) && !m_configured && !m_p1Pending) {
             if (const auto r1 = hl2::parseDiscoveryReply(bytes)) {
-                const auto id = p2BoardIdForP1(r1->boardId);
+                const auto id = p2BoardIdForP1(r1->boardId, r1->gatewareVersion);
                 qCInfo(lcAnanP2T).nospace()
                     << "ANAN transport: Protocol 1 Discovery reply: board " << int(r1->boardId)
                     << ", gateware " << int(r1->gatewareVersion) << ", "
@@ -2582,6 +2582,7 @@ void P2Transport::queueHl2SessionSetup()
 {
     m_hl2Once.clear();
     m_hl2OnceGap = false;
+    m_hl2IobRxCode = 0xFF;   // build 727: sent again
     m_hl2Once.push_back(hl2::Cc{0x72, std::uint8_t(m_hl2.disableWatchdog ? 0x09 : 0x08), 0, 0, 0});
     m_hl2Once.push_back(hl2::ccI2c2Write(hl2::kIoBoardI2cAddr, 11, std::uint8_t(m_hl2.iobRxIn)));
     if (m_hl2Cl1)
@@ -3553,6 +3554,16 @@ void P2Transport::sendP1Ep2()
     const hl2::Cc a = p1Cc(m_p1CcIdx, st);
     m_p1CcIdx = (m_p1CcIdx + 1) % ccCount;
     hl2::Cc b;
+    // Build 727: the N2ADR IO board's receive frequency code (register 13,
+    // RX1), as Quisk (IOBoard.NewRxFreq) and deskHPSDR send it, when the
+    // code changes.
+    if (st.hermesLite) {
+        const std::uint8_t code = hl2IoBoardFreqCode(static_cast<double>(m_rxHz[0]));
+        if (code != m_hl2IobRxCode) {
+            m_hl2IobRxCode = code;
+            m_hl2Once.push_back(hl2::ccI2c2Write(hl2::kIoBoardI2cAddr, 13, code));
+        }
+    }
     // Build 726: a Hermes-Lite 2's one-shot (I2C, watchdog) in place of the
     // second bank, every other packet (the gateware's I2C needs the time;
     // Thetis MI0BOT waits 5 frames, deskHPSDR sends one per HL2 slot).

@@ -20,6 +20,21 @@ std::optional<std::uint8_t> p2BoardIdForP1(std::uint8_t p1Board) noexcept
     }
 }
 
+std::optional<std::uint8_t> p2BoardIdForP1(std::uint8_t p1Board, std::uint8_t gateware) noexcept
+{
+    if (p1Board == kP1BoardHermesLite && gateware < 40)
+        return std::nullopt;   // Hermes-Lite 1
+    return p2BoardIdForP1(p1Board);
+}
+
+std::uint8_t hl2IoBoardFreqCode(double hz) noexcept
+{
+    if (!(hz > 0.0))
+        return 0;
+    const double code = std::floor(0.5 + 15.47 * std::log(hz / 18748.1));
+    return static_cast<std::uint8_t>(std::clamp(code, 1.0, 255.0));
+}
+
 P1DdcPlan p1DdcPlanFor(std::uint8_t p2BoardId) noexcept
 {
     P1DdcPlan p;
@@ -137,7 +152,10 @@ hl2::Cc p1CcHl2(int index, const P1CcState& s) noexcept
         c[0] |= 0x1E;
         c[1] = s.cwKeyer ? 1 : 0;
         c[2] = static_cast<std::uint8_t>(std::clamp(s.cwSidetoneLevel, 0, 127));
-        c[3] = static_cast<std::uint8_t>(std::clamp(s.cwRfDelayMs, 0, 255));
+        // Build 727, deskHPSDR (case 7): the RF delay at most 900 / WPM ms,
+        // "a quirk working around a bug in the FPGA iambic keyer".
+        c[3] = static_cast<std::uint8_t>(
+            std::min(std::clamp(s.cwRfDelayMs, 0, 255), 900 / std::clamp(s.cwSpeedWpm, 1, 60)));
         break;
     case 14:  // addr 0x10: CW hang time, sidetone frequency
         c[0] |= 0x20;

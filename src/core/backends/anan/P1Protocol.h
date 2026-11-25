@@ -39,6 +39,14 @@ inline constexpr std::uint8_t kP1BoardOrion2 = 10;     // ANAN-7000DLE / 8000DLE
 // The Protocol 2 board id (P2Protocol.h) of a Protocol 1 board, for the board
 // profile and the model list; nullopt for a board this backend does not drive.
 [[nodiscard]] std::optional<std::uint8_t> p2BoardIdForP1(std::uint8_t p1Board) noexcept;
+// Build 727: the same from a whole discovery reply. Board 6 is a Hermes-Lite 2
+// only with gateware 40 or later (deskHPSDR old_discovery.c; Quisk ChangeLNA):
+// a Hermes-Lite 1 (up to 31) has another LNA register and is not driven.
+[[nodiscard]] std::optional<std::uint8_t> p2BoardIdForP1(std::uint8_t p1Board,
+                                                         std::uint8_t gateware) noexcept;
+// Build 727: the N2ADR IO board's one-byte frequency code (Quisk IOBoard.
+// hertz2code): 0.5 + 15.47 ln(f / 18748.1), 1..255; 0 for 0 Hz.
+[[nodiscard]] std::uint8_t hl2IoBoardFreqCode(double hz) noexcept;
 
 // Thetis UpdateDDCs (console.cs), Protocol 1: how many DDCs the radio runs
 // and which carry the receivers.

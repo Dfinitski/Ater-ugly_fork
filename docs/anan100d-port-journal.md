@@ -12162,6 +12162,38 @@ errcheck P1Protocol / P2Protocol / P2Transport 0, Hl2Backend 2, RadioSetupDialog
 
 errcheck P1Protocol / P2Transport 0, Hl2Backend 2, RadioSetupDialog 23 (как в R); bogus-проверки срабатывают. Не проверено на радио, не собиралось под Windows.
 
+## 711. Сборка 727 — Hermes-Lite 2, этап 5: сверка байтов с Thetis MI0BOT, deskHPSDR и Quisk
+
+Оператор: проверить ещё раз; дальше тестируют пользователи.
+
+**Ротация C&C HL2 (`p1CcHl2`), пример: 384 кГц, 4 DDC, 14,074 МГц, MOX, PA, усиление приёма +20, TX −12, drive 240:**
+
+| addr (C0) | наши C1..C4 | Thetis MI0BOT | deskHPSDR | Quisk | решение |
+|---|---|---|---|---|---|
+| 0x00 (01) | 03 10 00 1c | = (C3 dither/random/Alex из настроек, у HL2 0) | C1 |= 0x40 (Mercury, на HL2 не читается); C3 — dither / AK4951 | C3 бит 3 PWM, бит 4 sync; C3 биты 5-7 — антенна IO-платы | Quisk; антенна IO-платы — ANT1 |
+| 0x01..0x08 | частоты | = | = | = | — |
+| 0x0E (1d) | 00 00 c0 00 | C3 = tx_att & 0x1F (без бита разрешения) | C3 = 0xC0 \| код | C3 = 0xC0 \| (LNA TX + 12) | deskHPSDR / Quisk |
+| 0x09 (13) | f0 08 00 00 | C2 = mic \| Apollo \| 0x40; C3 бит 7 = pa | C2 = 0x08 (PA) / 0x10 (AH-4), C3 = C4 = 0 | бит 19 PA, 18 T/R, 20 AH-4; C3/C4 — фильтры J16 и антенна | deskHPSDR + Quisk (T/R) |
+| 0x0A (15) | 00 00 00 60 | C4 = att \| 0x40 (на TX — TX) | C1 — биты микрофона, C2 — line-in; C4 на TX меняется | C4 = (LNA + 12) \| 0x40 всегда | Quisk |
+| 0x0B (17) | 00 00 94 32 | C1 = 0x20 \| (TX ? 0x1F), C2 \| 0x20 | один АЦП: C1 = 0 | — | deskHPSDR |
+| 0x0F (1f) | 00 00 2d 00 | C3 = RF delay | C3 ≤ 900 / WPM («ошибка ключа в FPGA») | — | deskHPSDR |
+| 0x10, 0x11, 0x12 | как у ANAN, нули | = | = (0x12: C1 бит 7 на TX, C2 бит 1 XVTR — у HL2 нет) | — | — |
+| 0x17 (2f) | 00 00 04 0a | hang 12, latency 20 | hang 20, latency 40 | hang 4, latency 10 (настройки) | Quisk, в настройках |
+| 0x3A (75) | 00 00 00 00 | в ротации | — | разовая запись | в ротации (MI0BOT) |
+| 0x39 | разово: 08 / 09 | — | — | разово: сторожевой таймер | Quisk |
+| I2C2 0x1D | разово | — | рег. 0..4, 11, 13, 14 | рег. 0..4, 11, 12, 13, 31 | рег. 0..4 (частота TX), 11 (вход), **13 (код частоты RX1 — добавлен)** |
+
+**Исправлено / добавлено в 727:**
+- Hermes-Lite 1 (плата 6, гейтвер < 40) не принимается: `p2BoardIdForP1(board, gateware)` (deskHPSDR `old_discovery.c`, Quisk `ChangeLNA`) — во всех четырёх местах разбора ответа Discovery.
+- Код частоты RX1 для IO-платы N2ADR (регистр 13, `hl2IoBoardFreqCode` = 0,5 + 15,47·ln(f / 18748,1), как Quisk `hertz2code`) — при смене кода.
+- RF delay ключа на HL2 не больше 900 / WPM мс (deskHPSDR).
+
+**Приём от радио (EP6):** адрес 0 C1 бит 0 — перегрузка АЦП, C0 бит 0 — PTT (все трое); адрес 1 C1/C2 — температура, C3/C4 — прямая мощность; адрес 2 C1/C2 — обратная, C3/C4 — ток PA (Quisk: AIN5, AIN1, AIN2, AIN3; формулы температуры и тока Quisk = MI0BOT = наши). Кадры ACK (C0 бит 7) не приходят — ответ мы не запрашиваем. Таблица мощности Quisk «HL2FilterE3» совпадает с подбором deskHPSDR.
+
+**Не сделано:** ток смещения PA и IP/MAC в EEPROM; антенна IO-платы (регистр 31) и вентилятор (12); PureSignal на HL2.
+
+errcheck P1Protocol / P2Transport / AnanDiscovery 0, ConnectionPanel 2 (как в R); тест ротации — таблица выше; коды частоты 7,074 / 14,074 МГц = 92 / 102 (как в Quisk). Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

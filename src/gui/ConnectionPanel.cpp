@@ -2411,7 +2411,7 @@ ConnectionPanel::AnanProbeResult ConnectionPanel::probeAnan(
             if (!reply) {
                 // Build 221: a Protocol 1 reply, mapped as AnanDiscovery does.
                 if (const auto r1 = hl2::parseDiscoveryReply(bytes)) {
-                    if (const auto id = anan::p2BoardIdForP1(r1->boardId)) {
+                    if (const auto id = anan::p2BoardIdForP1(r1->boardId, r1->gatewareVersion)) {
                         anan::DiscoveryReply r;
                         r.streaming = r1->streaming;
                         r.mac = r1->mac;

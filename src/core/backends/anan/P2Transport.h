@@ -568,6 +568,7 @@ private:
     // in place of the rotation's second bank (sendP1Ep2).
     std::deque<hl2::Cc> m_hl2Once;
     bool m_hl2OnceGap = false;
+    std::uint8_t m_hl2IobRxCode = 0xFF;   // build 727: last IO board RX1 code sent
     [[nodiscard]] bool isHl2Session() const noexcept
     {
         return m_p1 && m_profile.boardId == kBoardIdHermesLite;

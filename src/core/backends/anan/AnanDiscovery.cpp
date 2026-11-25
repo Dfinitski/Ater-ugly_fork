@@ -379,7 +379,7 @@ void AnanDiscovery::onReadyRead()
             // layout, its board type mapped to the Protocol 2 id (so the
             // model, the serial and the settings are the same radio's).
             if (const auto r1 = hl2::parseDiscoveryReply(bytes)) {
-                if (const auto id = p2BoardIdForP1(r1->boardId)) {
+                if (const auto id = p2BoardIdForP1(r1->boardId, r1->gatewareVersion)) {
                     DiscoveryReply r;
                     r.streaming = r1->streaming;
                     r.mac = r1->mac;
