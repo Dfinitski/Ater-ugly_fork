@@ -510,6 +510,10 @@ class CenteredLinesLabel : public QLabel
 {
 public:
     using QLabel::QLabel;
+    // Build 714: a strip at the right that stays empty -- the gap to the
+    // frequency field, inside the label so the row's spacing does not add.
+    void setRightPad(int px) { m_rightPad = std::max(0, px); update(); }
+    int rightPad() const { return m_rightPad; }
 
 protected:
     void paintEvent(QPaintEvent*) override
@@ -524,11 +528,15 @@ protected:
         const QStringList lines = t.split(QLatin1Char('\n'));
         const double lineH = fm.lineSpacing();
         double y = (height() - lineH * lines.size()) / 2.0 + fm.ascent();
+        const double area = std::max(0, width() - m_rightPad);
         for (const QString& line : lines) {
-            p.drawText(QPointF((width() - fm.horizontalAdvance(line)) / 2.0, y), line);
+            p.drawText(QPointF((area - fm.horizontalAdvance(line)) / 2.0, y), line);
             y += lineH;
         }
     }
+
+private:
+    int m_rightPad{0};
 };
 
 static const char* kTabLblColor = "#c8d8e8";
@@ -1406,9 +1414,18 @@ void VfoWidget::buildUI()
         m_smartMtrValueLabel->setStyleSheet(
             "QLabel { color: #a8b5c3; font-size: 11px; font-weight: bold;"
             " background: transparent; border: none; padding: 0; margin: 0; }");
-        freqRow->addWidget(m_smartMtrValueLabel);
+        // ANAN fork build 714 (operator, 25.11: "on the expanded flag centre
+        // both lines over each other and bring them up to the frequency
+        // field, two spaces from it, for the flag on the left and on the
+        // right"; receive and transmit). The stretch now goes before the
+        // label, so the label ends at the frequency field; the gap is two
+        // spaces of the label's font, kept inside the label (CenteredLinesLabel
+        // right pad) with no row spacing between the two.
+        freqRow->setSpacing(0);
         freqRow->addStretch(1);
+        freqRow->addWidget(m_smartMtrValueLabel);
         freqRow->addWidget(m_freqStack);
+        m_freqRow = freqRow;
         // Build 472: the TX button over the VFO name, right of the frequency,
         // on the SPLIT VFO's flag only (setSplitVfoMode).
         m_splitSideBox = new QWidget(this);
@@ -5083,10 +5100,11 @@ void VfoWidget::updateSmartMtrValueText()
         // power. Build 677: the power is always there (0.0 W from the start
         // of a transmission), so the two lines never vanish.
         if (!sUnit.isEmpty())
+            // Build 714 (operator, 25.11): the number alone, no ":1"; the
+            // placeholder in the same form.
             level = (std::isfinite(m_txValSwr) && m_txValSwr >= 1.0)
                 ? QStringLiteral("SWR ") + QString::number(m_txValSwr, 'f', 1)
-                      + QStringLiteral(":1")
-                : QStringLiteral("SWR __:_");
+                : QStringLiteral("SWR _._");
     } else if (m_smartMtrWidget && m_smartMtr && m_smartMtrWidget->showsSignalValues()
         && std::isfinite(m_smartValDbm)) {
         m_smartMtrWidget->valueStrings(m_smartValDbm, sUnit, level);
@@ -5115,17 +5133,31 @@ void VfoWidget::updateSmartMtrValueText()
         m_smartMtrValueLabel->setText(text);
         // Build 556: as wide as the widest line, within the gap left of the
         // frequency (known once the row has been laid out).
+        // Build 714: plus the gap of two spaces to the frequency field, and
+        // never wider than the row's room left of the frequency field.
         int w = 0;
+        int pad = 0;
         if (!text.isEmpty()) {
             m_smartMtrValueLabel->ensurePolished();
             const QFontMetrics fm = m_smartMtrValueLabel->fontMetrics();
             const QStringList lines = text.split(QLatin1Char('\n'));
             for (const QString& line : lines)
                 w = qMax(w, fm.horizontalAdvance(line));
-            w += 2;
-            if (m_freqStack && m_freqStack->x() > m_smartMtrValueLabel->x())
-                w = qMin(w, m_freqStack->x() - m_smartMtrValueLabel->x() - 4);
+            pad = 2 * fm.horizontalAdvance(QLatin1Char(' '));
+            w += 2 + pad;
+            if (m_freqStack && m_freqRow && m_freqRow->geometry().isValid()) {
+                int left = m_freqRow->geometry().left();
+#ifdef HAVE_RADE
+                if (m_radeStatusLabel && !m_radeStatusLabel->isHidden())
+                    left = m_radeStatusLabel->geometry().right() + 1;
+#endif
+                const int room = m_freqStack->x() - left;
+                if (room > 0)
+                    w = qMin(w, room);
+            }
         }
+        if (auto* centred = dynamic_cast<CenteredLinesLabel*>(m_smartMtrValueLabel))
+            centred->setRightPad(pad);
         m_smartMtrValueLabel->setFixedWidth(qMax(0, w));
     }
 
