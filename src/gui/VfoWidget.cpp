@@ -5032,7 +5032,25 @@ void VfoWidget::updateSmartMtrValueText()
     // (smartMtrValueTick()), no longer the needle's position or its extremes.
     QString sUnit, level;
     const double opacity = 1.0;
-    if (m_smartMtrWidget && m_smartMtr && m_smartMtrWidget->showsSignalValues()
+    if (txValuesShown()) {
+        // ANAN fork build 675 (operator, 24.11): while this flag transmits,
+        // the place of the S unit and the level shows the forward power
+        // (tenths of a watt below 10 W, whole watts from 10 W) over the SWR
+        // ("SWR 2.0:1"); the collapsed flag shows them in one line under its
+        // frequency, as on receive.
+        if (std::isfinite(m_txValPowerW)) {
+            const double w = std::max(0.0, m_txValPowerW);
+            sUnit = (w < 9.95) ? QString::number(w, 'f', 1) + QStringLiteral(" W")
+                               : QString::number(std::lround(w)) + QStringLiteral(" W");
+        }
+        if (std::isfinite(m_txValSwr) && m_txValSwr >= 1.0)
+            level = QStringLiteral("SWR ") + QString::number(m_txValSwr, 'f', 1)
+                + QStringLiteral(":1");
+        if (sUnit.isEmpty()) {
+            sUnit = level;
+            level.clear();
+        }
+    } else if (m_smartMtrWidget && m_smartMtr && m_smartMtrWidget->showsSignalValues()
         && std::isfinite(m_smartValDbm)) {
         m_smartMtrWidget->valueStrings(m_smartValDbm, sUnit, level);
         if (sUnit.isEmpty()) {   // a level without an S unit: one line
@@ -5108,7 +5126,24 @@ void VfoWidget::smartMtrValueTick()
 {
     m_smartValDbm = m_smartValWindowMax;
     m_smartValWindowMax = std::numeric_limits<double>::quiet_NaN();
+    // Build 675: the TX numbers on the same clock -- the highest forward power
+    // and the highest SWR of the last 0.5 s.
+    m_txValPowerW = m_txWindowPowerMax;
+    m_txValSwr = m_txWindowSwrMax;
+    m_txWindowPowerMax = std::numeric_limits<double>::quiet_NaN();
+    m_txWindowSwrMax = std::numeric_limits<double>::quiet_NaN();
     updateSmartMtrValueText();
+}
+
+// Build 675: the TX numbers take the place of the receive numbers when the
+// receive numbers would be shown there (SmartMTR view with values on) and
+// this flag is the transmitting TX slice -- the flag whose SmartMTR shows the
+// TX meter.
+bool VfoWidget::txValuesShown() const
+{
+    return m_transmitting && m_slice && m_slice->isTxSlice()
+        && m_smartMtrWidget && m_smartMtr
+        && MeterViewController::instance().showValues() != DisplaySettings::MeterValues::None;
 }
 
 void VfoWidget::drawSmartMtrLabels(QPainter& p) const
@@ -5129,6 +5164,11 @@ void VfoWidget::setMicLevel(float micDbfs, float micPeakDbfs)
 void VfoWidget::setTxSwr(float swr)
 {
     m_swr = swr;
+    // Build 675: the 0.5 s peak for the flag's numbers (1.0 at least: an
+    // absent SWR comes as 0).
+    if (m_transmitting && m_slice && m_slice->isTxSlice() && swr >= 1.0f
+        && !(swr <= m_txWindowSwrMax))
+        m_txWindowSwrMax = swr;
     if (m_transmitting && m_slice && m_slice->isTxSlice())
         pushSmartMtrInput();
 }
@@ -5136,6 +5176,9 @@ void VfoWidget::setTxSwr(float swr)
 void VfoWidget::setTxPower(float fwdPowerW)
 {
     m_fwdPowerW = fwdPowerW;
+    if (m_transmitting && m_slice && m_slice->isTxSlice()
+        && std::isfinite(fwdPowerW) && !(fwdPowerW <= m_txWindowPowerMax))
+        m_txWindowPowerMax = fwdPowerW;   // build 675
     if (m_transmitting && m_slice && m_slice->isTxSlice())
         pushSmartMtrInput();
 }
@@ -5173,6 +5216,12 @@ void VfoWidget::setTransmitting(bool tx)
         return;
     m_transmitting = tx;
     pushSmartMtrInput(); // switch the SmartMTR kind (signal <-> mic)
+    // Build 675: each transmission starts its TX numbers afresh, and the
+    // receive numbers come back with the next tick of their own.
+    constexpr double nan = std::numeric_limits<double>::quiet_NaN();
+    m_txValPowerW = m_txValSwr = m_txWindowPowerMax = m_txWindowSwrMax = nan;
+    m_smartValDbm = m_smartValWindowMax = nan;
+    updateSmartMtrValueText();
 }
 
 void VfoWidget::setReceiveMeterReading(

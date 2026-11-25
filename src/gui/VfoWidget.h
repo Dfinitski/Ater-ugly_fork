@@ -448,6 +448,13 @@ private:
     void smartMtrValueTick();         // build 562
     double m_smartValDbm = std::numeric_limits<double>::quiet_NaN();        // shown
     double m_smartValWindowMax = std::numeric_limits<double>::quiet_NaN();  // of this 0.5 s
+    // ANAN fork build 675: the same place while this flag transmits -- forward
+    // power over SWR, on the same 0.5 s peak (smartMtrValueTick()).
+    double m_txValPowerW = std::numeric_limits<double>::quiet_NaN();     // shown
+    double m_txValSwr = std::numeric_limits<double>::quiet_NaN();        // shown
+    double m_txWindowPowerMax = std::numeric_limits<double>::quiet_NaN(); // of this 0.5 s
+    double m_txWindowSwrMax = std::numeric_limits<double>::quiet_NaN();   // of this 0.5 s
+    bool txValuesShown() const;
     bool usesUnavailableSignalMeter() const;
     static float signalDbmToMeterFraction(float dbm);
 
