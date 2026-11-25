@@ -3967,6 +3967,39 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
         *result = DefWindowProc(msg->hwnd, WM_NCACTIVATE, msg->wParam, -1);
         return true;
     }
+    // ANAN fork build 705 (operator, 25.11: the 1-pixel stripe -- a missing
+    // column -- that hid the + of the rate button). Windows 11, normal state:
+    // Qt's own answer left the native client area 8 px in from the window on
+    // the left, right and bottom (ResizeDiag of build 698: GetClientRect 1621
+    // of a 1637 window), while Qt takes the window's frame from the style
+    // (QWindowsGeometryHint::frame -> AdjustWindowRectExForDpi: 5 px) and
+    // draws the window 1627 wide; the blit swap chain (build 461) is
+    // stretched by Windows onto the 1621 client area, dropping 6 columns.
+    // Claiming the whole window as client (build 699) or the flip model made
+    // the window shake while its edge was dragged. Here the client area is
+    // inset by exactly the frame Qt counts with -- AdjustWindowRectExForDpi
+    // of the window's own style and DPI, left / right / bottom; the top stays
+    // the window's top, as under Qt's expanded client area -- so Windows and
+    // Qt agree on the size and nothing is stretched. Maximized and full
+    // screen keep Qt's answer.
+    if (msg && result && msg->message == WM_NCCALCSIZE && msg->wParam
+        && windowFlags().testFlag(Qt::ExpandedClientAreaHint)
+        && !WindowChrome::claimsWholeWindowAsClient(windowFlags(),
+                                                    QOperatingSystemVersion::current())
+        && !IsZoomed(msg->hwnd) && !isFullScreen()) {
+        const UINT dpi = GetDpiForWindow(msg->hwnd);
+        const DWORD style = static_cast<DWORD>(GetWindowLongPtr(msg->hwnd, GWL_STYLE));
+        const DWORD exStyle = static_cast<DWORD>(GetWindowLongPtr(msg->hwnd, GWL_EXSTYLE));
+        RECT frame{0, 0, 0, 0};
+        if (AdjustWindowRectExForDpi(&frame, style, FALSE, exStyle, dpi)) {
+            RECT& client = reinterpret_cast<NCCALCSIZE_PARAMS*>(msg->lParam)->rgrc[0];
+            client.left -= frame.left;      // frame.left is negative
+            client.right -= frame.right;
+            client.bottom -= frame.bottom;
+            *result = 0;
+            return true;
+        }
+    }
     // The whole window is client area, inset only while maximized so nothing
     // sits past the screen edge; the WM_NCHITTEST above keeps the edges resizable.
     if (msg && result && msg->message == WM_NCCALCSIZE && msg->wParam

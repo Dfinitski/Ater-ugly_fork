@@ -11848,6 +11848,18 @@ errcheck SpectrumWidget 12, MainWindow 42 = база.
 
 errcheck SpectrumWidget 12, MainWindow 42 = база.
 
+## 688. Сборка 705 — на Windows 11 рамка окна ровно такая, как считает Qt
+
+Последний не опробованный вариант против полосы. Qt берёт рамку окна из стиля: `QWindowsGeometryHint::frame()` вызывает `AdjustWindowRectExForDpi` и даёт 5 px. Windows по ответу Qt оставляла 8 px. Теперь на `WM_NCCALCSIZE` отвечаем сами.
+
+**Изменение** (`MainWindow::nativeEvent`). Условия: Windows 11 (то есть не `claimsWholeWindowAsClient`), `ExpandedClientAreaHint`, обычное состояние окна (не развёрнуто, не на весь экран), `wParam` TRUE. Клиентская область сужается слева, справа и снизу ровно на `AdjustWindowRectExForDpi(стиль окна, FALSE, exStyle, DPI окна)`; верх остаётся у верхнего края окна, как при expanded client area у Qt. Развёрнутое окно и полный экран по-прежнему обрабатывает Qt.
+
+По `calculateFullFrameMargins` Qt при равных левом, правом и нижнем отступах считает верх как `yDiff - bottom`, то есть 0, а левый и правый берёт из того же `AdjustWindowRectExForDpi`. Размеры должны совпасть, и blit (461) ничего не растягивает.
+
+ResizeDiag (698) включён на время проверки: `native client` должен совпасть с `top`.
+
+errcheck SpectrumWidget 12, MainWindow 42 = база (блок под `Q_OS_WIN`, Linux-проверка его не компилирует).
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
