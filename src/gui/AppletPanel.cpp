@@ -6,6 +6,7 @@
 #include "ComboStyle.h"
 #include "RxApplet.h"
 #include "SMeterWidget.h"
+#include "AnanMultiMeterWidget.h"
 #include "CrossNeedleMeterApplet.h"
 #include "CrossNeedleMeterSettings.h"
 #include "VuMeterSettings.h"
@@ -387,6 +388,32 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
                 showStandardMeterContextMenu(m_sMeter, position);
             });
 
+    // ANAN fork build 680 (operator, 24.11): Thetis's ANAN Multi Meter as the
+    // other face of this S-meter, chosen in its right-click menu ("Meter").
+    // Both widgets get every reading; only the chosen one is shown.
+    {
+        auto& st = AppSettings::instance();
+        m_ananMm = new AnanMultiMeterWidget(sMeterContent);
+        m_ananMm->setContextMenuPolicy(Qt::CustomContextMenu);
+        m_ananMm->setFace(st.value(QStringLiteral("AnanMmFace"), QStringLiteral("Light")).toString()
+                              == QLatin1String("Dark")
+                          ? AnanMultiMeterWidget::Face::Dark : AnanMultiMeterWidget::Face::Light);
+        m_ananMm->setDisplayGroup(st.value(QStringLiteral("AnanMmGroup"), 0).toInt());
+        contentLayout->addWidget(m_ananMm);
+        connect(m_ananMm, &QWidget::customContextMenuRequested,
+                this, [this](const QPoint& position) {
+                    showStandardMeterContextMenu(m_ananMm, position);
+                });
+        connect(m_ananMm, &AnanMultiMeterWidget::displayGroupChanged, this, [](int group) {
+            auto& s = AppSettings::instance();
+            s.setValue(QStringLiteral("AnanMmGroup"), group);
+            s.save();
+        });
+        m_ananMmShown = st.value(QStringLiteral("AnanMeterStyle"), QStringLiteral("Aether")).toString()
+                        == QLatin1String("AnanMM");
+        applyMeterStyle();
+    }
+
     // One-shot migration: legacy Applet_ANLG visibility key → Applet_VU.
     // Run before reading Applet_VU so the first launch after upgrade
     // picks up the user's prior on/off state.
@@ -412,6 +439,8 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
                 // must fill the rect the operator drew, exactly as it
                 // fills a pop-out window).
                 m_sMeter->setFloating(
+                    mode != ContainerWidget::DockMode::PanelDocked);
+                m_ananMm->setFloating(   // build 680
                     mode != ContainerWidget::DockMode::PanelDocked);
                 // ANAN-100D port: width clamp only while docked (see eventFilter).
                 if (mode != ContainerWidget::DockMode::PanelDocked)
@@ -1307,12 +1336,16 @@ void AppletPanel::setMeterTxValues(float forwardWatts, float swr)
 void AppletPanel::setStandardMeterTxValues(float forwardWatts, float swr)
 {
     m_sMeter->setTxMeters(forwardWatts, swr);
+    if (m_ananMm)
+        m_ananMm->setTxMeters(forwardWatts, swr);   // build 680
 }
 
 void AppletPanel::setStandardRadioMeterTxValues(
     float forwardWatts, float forwardWattsInstant, float swr)
 {
     m_sMeter->setRadioTxMeters(forwardWatts, forwardWattsInstant, swr);
+    if (m_ananMm)
+        m_ananMm->setTxMeters(forwardWatts, swr);   // build 680
 }
 
 void AppletPanel::setCrossNeedleDirectionalValues(
@@ -1329,6 +1362,8 @@ void AppletPanel::setCrossNeedleDirectionalValues(
 void AppletPanel::setMeterTransmitting(bool transmitting)
 {
     m_sMeter->setTransmitting(transmitting);
+    if (m_ananMm)
+        m_ananMm->setTransmitting(transmitting);   // build 680
     m_crossNeedleApplet->setTransmitting(transmitting);
 }
 
@@ -1353,6 +1388,15 @@ void AppletPanel::persistVuMeterSettings() const
     appSettings.save();
 }
 
+void AppletPanel::applyMeterStyle()
+{
+    // Build 680: one of the two faces in the S-meter's place.
+    if (!m_ananMm)
+        return;
+    m_sMeter->setVisible(!m_ananMmShown);
+    m_ananMm->setVisible(m_ananMmShown);
+}
+
 void AppletPanel::showStandardMeterContextMenu(QWidget* source,
                                                const QPoint& position)
 {
@@ -1373,6 +1417,52 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
         action->setEnabled(false);
         menu.addAction(action);
     };
+
+    // ANAN fork build 680: which meter -- this S-meter or Thetis's ANAN Multi
+    // Meter. The ANAN Multi Meter's own options are its face; the options
+    // below it are this S-meter's and are not shown for it.
+    if (m_ananMm) {
+        addHeader(QStringLiteral("Meter"));
+        QActionGroup* styleGroup = new QActionGroup(&menu);
+        const auto addStyle = [&](const QString& text, bool mm) {
+            QAction* action = menu.addAction(text);
+            action->setCheckable(true);
+            action->setChecked(m_ananMmShown == mm);
+            styleGroup->addAction(action);
+            connect(action, &QAction::triggered, this, [this, mm]() {
+                m_ananMmShown = mm;
+                applyMeterStyle();
+                auto& s = AppSettings::instance();
+                s.setValue(QStringLiteral("AnanMeterStyle"),
+                           mm ? QStringLiteral("AnanMM") : QStringLiteral("Aether"));
+                s.save();
+            });
+        };
+        addStyle(QStringLiteral("S-Meter"), false);
+        addStyle(QStringLiteral("ANAN Multi Meter"), true);
+        if (m_ananMmShown) {
+            addHeader(QStringLiteral("Face"));
+            QActionGroup* faceGroup = new QActionGroup(&menu);
+            const auto addFace = [&](const QString& text, AnanMultiMeterWidget::Face face) {
+                QAction* action = menu.addAction(text);
+                action->setCheckable(true);
+                action->setChecked(m_ananMm->face() == face);
+                faceGroup->addAction(action);
+                connect(action, &QAction::triggered, this, [this, face]() {
+                    m_ananMm->setFace(face);
+                    auto& s = AppSettings::instance();
+                    s.setValue(QStringLiteral("AnanMmFace"),
+                               face == AnanMultiMeterWidget::Face::Dark
+                                   ? QStringLiteral("Dark") : QStringLiteral("Light"));
+                    s.save();
+                });
+            };
+            addFace(QStringLiteral("Light"), AnanMultiMeterWidget::Face::Light);
+            addFace(QStringLiteral("Dark"), AnanMultiMeterWidget::Face::Dark);
+            menu.exec(source->mapToGlobal(position));
+            return;
+        }
+    }
 
     addHeader(QStringLiteral("Face theme"));
     QActionGroup* faceThemeGroup = new QActionGroup(&menu);

@@ -1459,6 +1459,7 @@ set(GUI_SOURCES
     src/gui/RadioSwrValidityFilter.cpp
     src/gui/SMeterGeometry.cpp
     src/gui/SMeterWidget.cpp
+    src/gui/AnanMultiMeterWidget.cpp
     src/gui/CrossNeedleMeterGeometry.cpp
     src/gui/CrossNeedleMeterWidget.cpp
     src/gui/CrossNeedleMeterApplet.cpp

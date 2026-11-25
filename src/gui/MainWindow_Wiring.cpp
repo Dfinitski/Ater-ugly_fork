@@ -29,6 +29,7 @@
 #include "Ax25HfPacketDecodeDialog.h"
 #include "AccessoryPanelWidgets.h"   // kRelayMeterFreshnessMs
 #include "AppletPanel.h"
+#include "AnanMultiMeterWidget.h"
 #include "DbmRangeTransition.h"
 #include "MainWindowHelpers.h"
 #include "OwnedSingleShotTimer.h"
@@ -7174,6 +7175,8 @@ void MainWindow::wireMeters()
                         return;
                     }
                     m_appletPanel->sMeterWidget()->setLevel(dbm);
+                    if (auto* mm = m_appletPanel->ananMultiMeter())
+                        mm->setLevel(dbm);   // build 680
 #ifdef HAVE_HIDAPI
                     m_tmate2SmeterDbm = dbm;
                     updateTMate2Display();
@@ -7233,6 +7236,19 @@ void MainWindow::wireMeters()
     });
     connect(&m_radioModel.transmitModel(), &TransmitModel::moxChanged,
             m_appletPanel, &AppletPanel::setMeterTransmitting);
+    // ANAN fork build 680: the ANAN Multi Meter's other scales -- Vd (supply
+    // volts), Id (PA current), COMP (the ALC's gain reduction) and ALC (the
+    // post-ALC peak; Thetis's ALC_GROUP adds the reduction to it).
+    if (auto* mm = m_appletPanel->ananMultiMeter()) {
+        connect(&m_radioModel.meterModel(), &MeterModel::hwTelemetryChanged,
+                mm, [mm](float, float supplyVolts) { mm->setSupplyVolts(supplyVolts); });
+        connect(&m_radioModel.meterModel(), &MeterModel::paCurrentChanged,
+                mm, &AnanMultiMeterWidget::setPaCurrent);
+        connect(&m_radioModel.meterModel(), &MeterModel::swAlcChanged,
+                mm, &AnanMultiMeterWidget::setAlcLevel);
+        connect(&m_radioModel.meterModel(), &MeterModel::alcGainChanged,
+                mm, &AnanMultiMeterWidget::setAlcGain);
+    }
 
     // ── Tuner: MeterModel TX meters → TunerApplet gauges ────────────────
     // Use TGXL-specific meters when available (disambiguated from PGXL by handle)
@@ -8405,6 +8421,12 @@ void MainWindow::wireMeters()
         if (!selection.highPowerAmplifier && selection.maxWatts <= 100) {
             if (const int rated = ananRatedWatts(m_radioModel); rated > 0)
                 m_appletPanel->sMeterWidget()->setRatedPowerScale(rated);
+        }
+        // Build 680: the ANAN Multi Meter's PO scale is 0..150 % of the
+        // radio's power (Thetis NormaliseTo100W / MaxPower).
+        if (auto* mm = m_appletPanel->ananMultiMeter()) {
+            const int rated = ananRatedWatts(m_radioModel);
+            mm->setMaxPower(rated > 0 ? rated : (radioMaxWatts > 0 ? radioMaxWatts : 100));
         }
     };
     connect(&m_kxpa100Model, &Kxpa100Model::statusUpdated, this, updatePowerScale);

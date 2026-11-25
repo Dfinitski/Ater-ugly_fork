@@ -11436,6 +11436,38 @@ Thetis (console.cs `ZoomToBand`, `zoomToBandBandwidth`): панорама на �
 
 Файлы: `src/gui/SpectrumWidget.cpp`, `src/gui/SpectrumWidget.h`, `src/core/ForkBuild.h`. errcheck 12 (базовый), bogus +1.
 
+## 663. Сборка 680 — ANAN Multi Meter из Thetis как вариант S-метра боковой панели
+
+**Просьба оператора (24.11):** взять из Thetis мультиметр (контейнерный MultiMeter) и поставить как опцию S-метра, выбираемую правой кнопкой на S-метре боковой панели. Шкалу рисовать самому, без картинок Thetis: на них водяной знак OE3IDE, лицензия не указана.
+
+**Что взято из Thetis.** Целиком MeterManager.cs (44,5 тыс. строк, WinForms + SharpDX/Direct2D, связан с console.cs) не переносится. Перенесён один прибор: «Anan Multi Meter» (`clsMeter::AddAnanMM`, Richard Samphire MW0LGE, GPL v2 or later). Как в Thetis:
+- **Таблицы калибровки стрелок:** S −127…−13 dBm, Vd 10…15 V, Id 0…20 A, PO 0…150 % (NormaliseTo100W, MaxPower), SWR 1…10, COMP (ALC_G) 0…30 dB, ALC (ALC_GROUP) −30…+25 dB.
+- **Геометрия стрелки** (`renderNeedle`): ось ниже лицевой части в (0.504, 1.236), RadiusRatio (1, 0.58), LengthFactor каждой стрелки, толщина 3·diag/450, тень из 8 штрихов.
+- **Поведение стрелок.** Attack/decay по отношению на каждое обновление (100 мс). История 4 с у S, PO и SWR, с пропуском первых 2 с после смены приём/передача.
+- **Группы.** ALL, PWR/SWR, Comp, ALC, Volts/Amps. Кнопка группы на нижней полосе только на передаче: левый клик — следующая группа.
+- **Подписи мощности** (`clsNeedleScalePwrItem`): 0, 5, 10, 25, 50, 100, 150 W от номинала, повёрнуты как в Thetis.
+- **Пропорции:** прибор 1 : 0,441, полоса 75/900.
+
+**Шкала нарисована своя.** Дуги — эллипсы вокруг оси, сняты с картинки ananMM 900×450 (отклонение 1–2 px). Деления стоят на лучах калибровки (совпадают с делениями картинки в пределах ~1°). Центры подписей, клин и рамка ALC, скоба Vd — по координатам картинки. Две раскраски: светлая (бумага, чёрные шкалы) и тёмная (матовый металл, белые шкалы). На тёмной чёрные стрелки Thetis светло-серые, иначе их не видно.
+
+**Данные.**
+- S — `sLevelChanged` (активный приёмник, как у S-метра).
+- PO/SWR — `setStandardRadioMeterTxValues`.
+- Vd — `hwTelemetryChanged` (supply volts).
+- Id — `paCurrentChanged`.
+- COMP = max(0, −alcGainDb).
+- ALC = max(−30, swAlc) + COMP, как ALC_GROUP в Thetis.
+- MaxPower = номинал радио (`ananRatedWatts`), иначе `maxPowerLevel`.
+- Передача — `setMeterTransmitting`.
+
+**Интеграция (`AppletPanel`).** `AnanMultiMeterWidget` стоит в том же контейнере, что `SMeterWidget`; показан один из двух. В меню правой кнопки раздел «Meter»: S-Meter / ANAN Multi Meter. Для мультиметра — раздел «Face»: Light / Dark; разделы S-метра (Face theme, TX/RX select, Peak hold…) для него не показываются. Настройки: `AnanMeterStyle`, `AnanMmFace`, `AnanMmGroup`. В панели высота = ширина × 0,524; в отдельном окне прибор заполняет окно, сохраняя пропорции.
+
+**Не сделано:** сдвиг S9 на +20 dB выше 30 МГц (Thetis `dbmOffsetForAboveS9Frequency`, опция), как и у нашего S-метра.
+
+Проверка: лицевая часть отрисована тестом offscreen (Qt 6) и сверена наложением с картинками ananMM; раскладка в QVBoxLayout проверена (300 → 158 px, 420 → 221 px). errcheck: AnanMultiMeterWidget 0, AppletPanel 8 (базовый, заглушки QtMultimedia), MainWindow_Wiring 24, bogus +1.
+
+Файлы: `src/gui/AnanMultiMeterWidget.{h,cpp}` (новые), `src/gui/AppletPanel.{h,cpp}`, `src/gui/MainWindow_Wiring.cpp`, `CMakeLists.txt`, `src/core/ForkBuild.h`.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -20,6 +20,7 @@ class QGridLayout;
 
 namespace AetherSDR {
 class ContainerManager;
+class AnanMultiMeterWidget;
 class ContainerWidget;
 } // namespace AetherSDR
 
@@ -92,6 +93,9 @@ public:
 
     RxApplet*     rxApplet()      { return m_rxApplet; }
     SMeterWidget* sMeterWidget()  { return m_sMeter; }
+    // ANAN fork build 680: Thetis's ANAN Multi Meter, the other face of the
+    // side panel's S-meter (right-click menu, "Meter").
+    AnanMultiMeterWidget* ananMultiMeter() { return m_ananMm; }
     CrossNeedleMeterWidget* crossNeedleMeterWidget() const;
     void setMeterTxValues(float forwardWatts, float swr);
     void setStandardMeterTxValues(float forwardWatts, float swr);
@@ -419,6 +423,9 @@ private:
     ContainerWidget* m_sMeterContainer{nullptr};
     QPushButton*     m_vuBtn{nullptr};
     SMeterWidget*    m_sMeter{nullptr};
+    AnanMultiMeterWidget* m_ananMm{nullptr};   // build 680
+    bool             m_ananMmShown{false};      // build 680: "Meter" = ANAN Multi Meter
+    void applyMeterStyle();                     // build 680
     CrossNeedleMeterApplet* m_crossNeedleApplet{nullptr};
     int              m_vuTxSelect{0};
     int              m_vuRxSelect{0};
