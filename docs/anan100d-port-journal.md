@@ -11623,6 +11623,16 @@ P1 берёт состояние в каждой ротации C&C, отдел�
 
 Файлы: `src/gui/WidebandMonitorDialog.{cpp,h}`, `src/core/ForkBuild.h`. errcheck 4 (базовый), bogus +1.
 
+## 673. Сборка 690 — шапка окна FTX/JS8 при повторном открытии: серая, а не белая
+
+**Оператор (24.11):** при втором включении окна FTX шапка белая, а должна быть серая, как у WB.
+
+**Причина (предположение, на радио не проверено).** `FtxCaptionColour` (сборка 408) задаёт цвет заголовка Windows 11 (`DWMWA_CAPTION/TEXT/BORDER_COLOR`, середина градиента `FramelessWindowTitleBar` #384e68, текст #e0ecf4) только на `QEvent::Show` и `WinIdChange`. `Show` приходит до нативного показа окна. При повторном показе после `hide()` (`FtPanel::hideWindow` / `showWindow`) окно, по словам оператора, вышло с цветом по умолчанию.
+
+**Исправление.** Тот же вызов `apply()` повторяется ещё раз после нативного показа (`QTimer::singleShot(0)` из `Show`) и на каждой активации окна (`QEvent::WindowActivate`). Действует для окон FTX и JS8. Цвета не менялись.
+
+Файлы: `src/gui/MainWindow_Ftx.cpp`, `src/core/ForkBuild.h`. errcheck 23 (базовый), bogus +1.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

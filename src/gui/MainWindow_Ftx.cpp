@@ -64,6 +64,15 @@ protected:
     {
         if (o == m_w && (e->type() == QEvent::Show || e->type() == QEvent::WinIdChange))
             apply();
+        // ANAN fork build 690 (operator, 24.11: "the FTX window's header is
+        // white the second time it opens; it must be grey as WB's"). At
+        // QEvent::Show the native window is not shown yet; shown again after
+        // a hide it came up with the default caption. So once more after the
+        // native show (next event-loop pass), and on every activation.
+        if (o == m_w && e->type() == QEvent::Show)
+            QTimer::singleShot(0, this, [this] { apply(); });
+        if (o == m_w && e->type() == QEvent::WindowActivate)
+            apply();
         return false;
     }
 
