@@ -43,6 +43,11 @@ public:
     // at most kMaxWidth x kMaxHeight, centred.
     void setFloating(bool floating);
 
+    // Build 739 (operator, 25.11: "Shadow TX scales" in the right-click
+    // menu): dim the transmit scales on receive, or not.
+    void setShadowTxScales(bool on);
+    bool shadowTxScales() const { return m_shadowTx; }
+
     bool hasHeightForWidth() const override { return true; }
     int heightForWidth(int width) const override;
     QSize sizeHint() const override;
@@ -58,7 +63,8 @@ public slots:
     void setTransmitting(bool transmitting);
     void setMaxPower(float watts);                // PO scale: 0..1.5 x this
     void setAlcLevel(float dbfs);                 // post-ALC peak level
-    void setAlcGain(float db);                    // ALC gain (0 = unity, < 0 = reducing)
+    // Build 739: the compression the mic applet's gauge shows (dB, >= 0).
+    void setCompression(float db);
     void setSwrValid(bool valid);                 // build 738: the radio measured an SWR
 
 protected:
@@ -76,6 +82,7 @@ private:
     struct Scale {
         QVector<Mark> marks;
         double redFrom{2.0};   // 0..1; red above this (2 = none)
+        bool reversed{false};  // build 739: the bar fills from the right
     };
 
     bool rowActive(Row row) const;
@@ -89,6 +96,7 @@ private:
     void drawDynamic(QPainter& p, const QRectF& meter);
     static double rowLineY(int index, double step);
     double valueColumnLeft(Row row) const;
+    double nameColumnRight(Row row) const;
     void tick();
 
     Face m_face{Face::Light};
@@ -103,7 +111,8 @@ private:
     bool m_swrValid{false};
     float m_maxPower{100.0f};
     float m_alcDbfs{-30.0f};
-    float m_alcGainDb{0.0f};
+    float m_compDb{0.0f};
+    bool m_shadowTx{true};
     // What the pointers show (smoothed), one per Row.
     float m_shown[kRows]{};
 

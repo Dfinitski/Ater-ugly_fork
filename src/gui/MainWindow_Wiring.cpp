@@ -7260,14 +7260,12 @@ void MainWindow::wireMeters()
     });
     connect(&m_radioModel.transmitModel(), &TransmitModel::moxChanged,
             m_appletPanel, &AppletPanel::setMeterTransmitting);
-    // ANAN fork build 680 / 735 / 736: the multi meter's other scales -- COMP
-    // (the ALC's gain reduction) and ALC (the post-ALC peak plus that
-    // reduction). Build 736: no Id / Vd on it (the bottom bar shows them).
+    // ANAN fork build 680 / 735 / 736 / 739: the multi meter's ALC -- the
+    // post-ALC peak, as the mic applet's ALC gauge (its COMP comes with the
+    // applet's Compression gauge, MainWindow_DspApplets). No Id / Vd on it.
     if (auto* mm = m_appletPanel->ananMultiMeter()) {
         connect(&m_radioModel.meterModel(), &MeterModel::swAlcChanged,
                 mm, &AnanMultiMeterWidget::setAlcLevel);
-        connect(&m_radioModel.meterModel(), &MeterModel::alcGainChanged,
-                mm, &AnanMultiMeterWidget::setAlcGain);
     }
 
     // ── Tuner: MeterModel TX meters → TunerApplet gauges ────────────────

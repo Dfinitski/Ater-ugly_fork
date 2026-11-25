@@ -400,6 +400,9 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
         m_ananMm->setFace(st.value(QStringLiteral("AnanMmFace"), QStringLiteral("Light")).toString()
                               == QLatin1String("Dark")
                           ? AnanMultiMeterWidget::Face::Dark : AnanMultiMeterWidget::Face::Light);
+        // Build 739: "Shadow TX scales" (right-click menu), on by default.
+        m_ananMm->setShadowTxScales(
+            st.value(QStringLiteral("AnanMmShadowTx"), QStringLiteral("True")).toString() == QLatin1String("True"));
         contentLayout->addWidget(m_ananMm);
         connect(m_ananMm, &QWidget::customContextMenuRequested,
                 this, [this](const QPoint& position) {
@@ -1491,6 +1494,19 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
             };
             addFace(QStringLiteral("Light"), AnanMultiMeterWidget::Face::Light);
             addFace(QStringLiteral("Dark"), AnanMultiMeterWidget::Face::Dark);
+            // Build 739 (operator, 25.11): the dimming of the transmit scales
+            // on receive can be switched off.
+            menu.addSeparator();
+            QAction* shadow = menu.addAction(QStringLiteral("Shadow TX scales"));
+            shadow->setCheckable(true);
+            shadow->setChecked(m_ananMm->shadowTxScales());
+            connect(shadow, &QAction::toggled, this, [this](bool on) {
+                m_ananMm->setShadowTxScales(on);
+                auto& s = AppSettings::instance();
+                s.setValue(QStringLiteral("AnanMmShadowTx"),
+                           on ? QStringLiteral("True") : QStringLiteral("False"));
+                s.save();
+            });
             menu.exec(source->mapToGlobal(position));
             return;
         }

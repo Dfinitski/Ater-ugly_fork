@@ -12344,6 +12344,20 @@ errcheck AppletPanel 8 = база. Не проверено на радио, не
 
 errcheck: AnanMultiMeterWidget 0, MainWindow_Wiring 24, PhoneCwApplet 0 (= до правки). Не проверено на радио, не собиралось под Windows.
 
+## 726. Сборка 739 — мультиметр: названия по первой цифре, «Shadow TX scales», ALC и COMP как в аплете микрофона
+
+Оператор: названия шкал центрировать относительно левого края первых цифр; в меню ПКМ — «Shadow TX scales», притемнение шкал передачи отключаемое; шкалу COMP привести к шкале компрессора аплета микрофона (−25 … 0, «наоборот»), название COMP оставить на месте; ALC — от −20, как в аплете.
+
+**`AnanMultiMeterWidget`:**
+- `nameColumnRight(row)`: левый край первой цифры шкалы (`QFontMetricsF`); название по центру между краем окна и им. COMP — как раньше, по центру до начала шкалы.
+- `setShadowTxScales(bool)` / `shadowTxScales()`: при выключенном притемнении шкалы передачи на приёме яркие (показывают минимум). Ключ в кэше статики.
+- ALC — как гауж ALC аплета микрофона (`m_alcGaugePhone`): пост-ALC пик −20 … 0 dBFS, деления −20 −15 −10 −5 0, красное от −3; показание «−6 dBFS», на приёме −20 dBFS. Прежний ALC_GROUP (+ снижение усиления) убран.
+- COMP — как гауж Compression аплета (`m_compGauge`): −25 … 0 dB, деления −25 … −5, 0, без красной зоны, полоса растёт справа налево (`Scale::reversed`); показание «−8 dB», на приёме «0 dB». Источник тот же, что у аплета: `compPeak` при передаче и включённом PROC (`MainWindow_DspApplets`, `setCompression`). `setAlcGain` и подключение `alcGainChanged` убраны.
+
+**`AppletPanel`:** пункт «Shadow TX scales» (галка) в меню мультиметра после Face; ключ `AnanMmShadowTx`, по умолчанию True.
+
+Проверка: отрисовка offscreen (Qt 6). errcheck: AnanMultiMeterWidget 0, AppletPanel 8, MainWindow_Wiring 24, MainWindow_DspApplets 24 = базы. Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

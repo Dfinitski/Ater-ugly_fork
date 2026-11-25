@@ -8,6 +8,7 @@
 
 #include "AetherDspWidget.h"
 #include "AppletPanel.h"
+#include "AnanMultiMeterWidget.h"   // build 739
 #include "AetherialAudioStrip.h"
 #include "ClientCompApplet.h"
 #include "ClientCompEditor.h"
@@ -362,6 +363,9 @@ void MainWindow::wireDspApplets()
                     m_radioModel.isRadioTransmitting() && tx.speechProcessorEnable();
                 m_appletPanel->phoneCwApplet()->updateCompression(
                     showCompression ? compPeak : 0.0f);
+                // ANAN fork build 739: the multi meter's COMP, the same value.
+                if (auto* mm = m_appletPanel->ananMultiMeter())
+                    mm->setCompression(showCompression ? compPeak : 0.0f);
             }
         });
     }

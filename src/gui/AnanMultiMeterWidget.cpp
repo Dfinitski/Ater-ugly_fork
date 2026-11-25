@@ -152,7 +152,15 @@ void AnanMultiMeterWidget::setMaxPower(float watts)
     update();
 }
 void AnanMultiMeterWidget::setAlcLevel(float dbfs) { if (std::isfinite(dbfs)) m_alcDbfs = dbfs; }
-void AnanMultiMeterWidget::setAlcGain(float db) { if (std::isfinite(db)) m_alcGainDb = db; }
+void AnanMultiMeterWidget::setCompression(float db) { if (std::isfinite(db)) m_compDb = std::max(0.0f, db); }
+
+void AnanMultiMeterWidget::setShadowTxScales(bool on)
+{
+    if (m_shadowTx == on)
+        return;
+    m_shadowTx = on;
+    update();
+}
 
 void AnanMultiMeterWidget::setTransmitting(bool transmitting)
 {
@@ -166,7 +174,7 @@ bool AnanMultiMeterWidget::rowActive(Row row) const
 {
     // Build 738 (operator, 25.11): S is live always; the transmit scales
     // are dimmed on receive (still showing their minimum).
-    return row == Row::S || m_transmitting;
+    return row == Row::S || m_transmitting || !m_shadowTx;
 }
 
 void AnanMultiMeterWidget::setSwrValid(bool valid) { m_swrValid = valid; }
@@ -194,8 +202,11 @@ double AnanMultiMeterWidget::position(Row row, float value) const
         return clamp01(std::sqrt(std::max(0.0, double(value)) / top));
     }
     case Row::Swr:  return swrPosition(value);
-    case Row::Alc:  return linear(value, -30.0, 25.0);
-    case Row::Comp: return linear(value, 0.0, 30.0);
+    // Build 739 (operator: "as in the applet"): ALC as the mic applet's ALC
+    // gauge, the post-ALC peak -20..0 dBFS; COMP as its Compression gauge,
+    // -25..0 dB, the compression a negative offset read from the right.
+    case Row::Alc:  return linear(value, -20.0, 0.0);
+    case Row::Comp: return linear(-value, -25.0, 0.0);
     }
     return 0.0;
 }
@@ -225,15 +236,16 @@ AnanMultiMeterWidget::Scale AnanMultiMeterWidget::scaleOf(Row row) const
         s.redFrom = swrPosition(2.0);
         break;
     case Row::Alc:
-        s.marks = {{0.0, QString::fromUtf8("\xE2\x88\x92" "30")},
-                   {linear(-15, -30, 25), QString::fromUtf8("\xE2\x88\x92" "15")},
-                   {linear(0, -30, 25), QStringLiteral("0")}, {1.0, QStringLiteral("+25")}};
-        s.redFrom = linear(0, -30, 25);
+        for (int a : {-20, -15, -10, -5})
+            s.marks.append({linear(a, -20, 0), QString::fromUtf8("\xE2\x88\x92%1").arg(-a)});
+        s.marks.append({1.0, QStringLiteral("0")});
+        s.redFrom = linear(-3, -20, 0);   // the applet's red from -3 dBFS
         break;
     case Row::Comp:
-        for (int c : {0, 10, 20, 30})
-            s.marks.append({linear(c, 0, 30), QString::number(c)});
-        s.redFrom = linear(20, 0, 30);
+        for (int c : {-25, -20, -15, -10, -5})
+            s.marks.append({linear(c, -25, 0), QString::fromUtf8("\xE2\x88\x92%1").arg(-c)});
+        s.marks.append({1.0, QStringLiteral("0")});
+        s.reversed = true;                 // no red zone, as the applet
         break;
     }
     return s;
@@ -247,9 +259,8 @@ float AnanMultiMeterWidget::reading(Row row) const
     case Row::Po:   return m_transmitting ? m_fwdWatts : 0.0f;
     case Row::Swr:  return (m_transmitting && m_swrValid) ? m_swr : 1.0f;
     // ALC: the post-ALC peak plus the ALC's own gain reduction.
-    case Row::Alc:  return m_transmitting
-                        ? std::max(-30.0f, m_alcDbfs) + std::max(0.0f, -m_alcGainDb) : -30.0f;
-    case Row::Comp: return m_transmitting ? std::max(0.0f, -m_alcGainDb) : 0.0f;
+    case Row::Alc:  return m_transmitting ? std::clamp(m_alcDbfs, -20.0f, 0.0f) : -20.0f;
+    case Row::Comp: return m_transmitting ? std::min(m_compDb, 25.0f) : 0.0f;
     }
     return 0.0f;
 }
@@ -274,10 +285,13 @@ QString AnanMultiMeterWidget::valueText(Row row, float v) const
     case Row::Alc: {
         const int db = int(std::lround(v));
         if (db < 0)
-            return QString::fromUtf8("\xE2\x88\x92%1 dB").arg(-db);
-        return (db > 0 ? QStringLiteral("+%1 dB") : QStringLiteral("%1 dB")).arg(db);
+            return QString::fromUtf8("\xE2\x88\x92%1 dBFS").arg(-db);
+        return QStringLiteral("%1 dBFS").arg(db);
     }
-    case Row::Comp: return QStringLiteral("%1 dB").arg(int(std::lround(v)));
+    case Row::Comp: {
+        const int db = int(std::lround(v));   // shown as on the scale: -8 dB
+        return db > 0 ? QString::fromUtf8("\xE2\x88\x92%1 dB").arg(db) : QStringLiteral("0 dB");
+    }
     }
     return {};
 }
@@ -329,7 +343,7 @@ void AnanMultiMeterWidget::render(QPainter& p, const QRectF& area)
     const QSize px(qMax(1, qRound(meter.width() * dpr)), qMax(1, qRound(meter.height() * dpr)));
     const QString key = QStringLiteral("%1x%2/%3/%4/%5/%6")
                             .arg(px.width()).arg(px.height()).arg(dpr).arg(int(m_face))
-                            .arg(m_maxPower).arg(int(m_transmitting));
+                            .arg(m_maxPower).arg(int(m_transmitting) + 2 * int(m_shadowTx));
     if (m_staticCache.isNull() || m_staticKey != key) {
         m_staticCache = QPixmap(px);
         m_staticCache.setDevicePixelRatio(dpr);
@@ -389,7 +403,9 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
         p.setFont(row == Row::Comp ? nameSmall : nameFont);
         p.setPen(on ? c.accent : c.sub);
         // Build 738: centred between the window's edge and the scale.
-        p.drawText(QRectF(0.0, y - 12.0, kScaleX0, 24.0),
+        // Build 739: ... and its first figure; COMP stays where it was.
+        const double nameRight = row == Row::Comp ? kScaleX0 : nameColumnRight(row);
+        p.drawText(QRectF(0.0, y - 12.0, nameRight, 24.0),
                    Qt::AlignHCenter | Qt::AlignVCenter, rowName(row));
 
         // The line: ink, red over its red part (thicker).
@@ -417,6 +433,20 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
         }
     }
     p.setOpacity(1.0);
+}
+
+double AnanMultiMeterWidget::nameColumnRight(Row row) const
+{
+    // Build 739: the left edge of the scale's first figure.
+    const Scale s = scaleOf(row);
+    if (s.marks.isEmpty())
+        return kScaleX0;
+    const Mark& m = s.marks.first();
+    QFont f = font();
+    f.setBold(true);
+    f.setPixelSize(int(kMarkPx));
+    const double x = kScaleX0 + (kScaleX1 - kScaleX0) * m.pos;
+    return std::min(kScaleX0, x - QFontMetricsF(f).horizontalAdvance(m.text) / 2.0);
 }
 
 double AnanMultiMeterWidget::valueColumnLeft(Row row) const
@@ -470,7 +500,9 @@ void AnanMultiMeterWidget::drawDynamic(QPainter& p, const QRectF& meter)
         const double y = rowLineY(i, step);
         const double f = std::clamp(double(m_shown[i]), 0.0, 1.0);
         // The bar up to the pointer.
-        p.fillRect(QRectF(X(0.0), y + kLineW / 2.0 + 1.0, X(f) - X(0.0), 6.0), c.bar);
+        const double barFrom = scaleOf(row).reversed ? X(1.0) : X(0.0);   // build 739
+        p.fillRect(QRectF(std::min(barFrom, X(f)), y + kLineW / 2.0 + 1.0,
+                          std::abs(X(f) - barFrom), 6.0), c.bar);
         // The pointer: a triangle under the line, its tip on the value.
         QPainterPath tri;
         tri.moveTo(X(f), y + 1.0);
