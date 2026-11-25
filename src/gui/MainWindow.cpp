@@ -222,6 +222,8 @@
 #include <QFontMetrics>
 #include <QWidgetAction>
 #include <QPainter>
+#include <QPainterPath>
+#include <QtMath>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -6482,14 +6484,58 @@ void MainWindow::buildUI()
         // antenna -- "Tx Ant" in yellow -- and another click goes back; the
         // chosen receive antenna is not changed. With the two the same it is
         // grey and drops back to "Rx Ant".
-        auto* trxBtn = new QLabel(QStringLiteral("Rx Ant"));
+        //
+        // Build 731 (operator, 25.11: the "Rx Ant" text "looks bad and is
+        // unclear"; mock-up variant 1 chosen): a right-angle arrow drawn next
+        // to the two antenna lines -- out of the TX line, up, and pointing at
+        // the RX line ("receive takes the transmit antenna"). Same colours
+        // and tooltips as the text had.
+        auto* trxBtn = new QLabel;
         trxBtn->setObjectName(QStringLiteral("ananRxOnTxAnt"));
         trxBtn->setAccessibleName(QStringLiteral("Receive on the transmit antenna"));
         trxBtn->setCursor(Qt::PointingHandCursor);
-        trxBtn->setContentsMargins(8, 0, 0, 0);
+        trxBtn->setContentsMargins(5, 0, 0, 0);
         trxBtn->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        applyStatusBarCompactLabelStyle(trxBtn, QStringLiteral("{{color.text.secondary}}"));
         hbox->addWidget(trxBtn);
+        // One line of the antenna indicator is rxLbl's height; the arrow
+        // spans both lines, its ends at their centres.
+        auto trxIcon = [trxBtn, rxLbl](const QColor& color) {
+            const int line = std::max(10, rxLbl->sizeHint().height());
+            const qreal s = line / 13.0;
+            const int w = qRound(12 * s);
+            const int h = 2 * line;
+            const qreal dpr = trxBtn->devicePixelRatioF();
+            QPixmap pm(QSize(qCeil(w * dpr), qCeil(h * dpr)));
+            pm.setDevicePixelRatio(dpr);
+            pm.fill(Qt::transparent);
+            QPainter p(&pm);
+            p.setRenderHint(QPainter::Antialiasing);
+            const qreal yRx = line * 0.5;
+            const qreal yTx = line * 1.5;
+            const qreal xr = 9.5 * s;
+            QPen pen(color, 1.6 * s);
+            pen.setCapStyle(Qt::FlatCap);
+            pen.setJoinStyle(Qt::MiterJoin);
+            p.setPen(pen);
+            p.setBrush(Qt::NoBrush);
+            QPainterPath path;
+            path.moveTo(1 * s, yTx);
+            path.lineTo(xr, yTx);
+            path.lineTo(xr, yRx);
+            path.lineTo(4 * s, yRx);
+            p.drawPath(path);
+            QPainterPath head;
+            head.moveTo(0.5 * s, yRx);
+            head.lineTo(5 * s, yRx - 3.2 * s);
+            head.lineTo(5 * s, yRx + 3.2 * s);
+            head.closeSubpath();
+            p.setPen(Qt::NoPen);
+            p.setBrush(color);
+            p.drawPath(head);
+            p.end();
+            trxBtn->setPixmap(pm);
+            trxBtn->setFixedSize(w + trxBtn->contentsMargins().left(), h);
+        };
         struct ClickFilter : QObject {
             std::function<void()> onClick;
             using QObject::QObject;
@@ -6506,7 +6552,7 @@ void MainWindow::buildUI()
         };
         auto* click = new ClickFilter(trxBtn);
         trxBtn->installEventFilter(click);
-        auto trxRefresh = [trxBtn] {
+        auto trxRefresh = [trxBtn, trxIcon] {
             auto& st = AppSettings::instance();
             const int rxAnt = std::clamp(st.value(QStringLiteral("AnanRxAnt"), 0).toInt(), 0, 2);
             const int txAnt = std::clamp(st.value(QStringLiteral("AnanTxAnt"), 0).toInt(), 0, 2);
@@ -6515,17 +6561,22 @@ void MainWindow::buildUI()
             if (!differ)
                 ui.rxOnTxAnt = false;   // Thetis: unchecked when they are the same
             const bool on = ui.rxOnTxAnt;
-            const QString text = on ? QStringLiteral("Tx Ant") : QStringLiteral("Rx Ant");
             const int state = on ? 2 : differ ? 1 : 0;
-            if (trxBtn->text() != text)
-                trxBtn->setText(text);
+            // Thetis' colours: yellow on, spring green available; grey (the
+            // theme's secondary text) when the two antennas are the same.
+            const QColor color = state == 2 ? QColor(0xff, 0xff, 0x00)
+                               : state == 1 ? QColor(0x00, 0xff, 0x7f)
+                                            : AetherSDR::ThemeManager::instance().color(
+                                                  QStringLiteral("color.text.secondary"));
+            // Redrawn on a colour change (state or theme) or a new scale.
+            const QString key = QStringLiteral("%1/%2/%3").arg(color.rgba())
+                                    .arg(trxBtn->devicePixelRatioF()).arg(trxBtn->font().pointSizeF());
+            if (trxBtn->property("ananTrxIconKey").toString() != key) {
+                trxBtn->setProperty("ananTrxIconKey", key);
+                trxIcon(color);
+            }
             if (trxBtn->property("ananTrxState").toInt() != state + 1) {
                 trxBtn->setProperty("ananTrxState", state + 1);
-                // Thetis' colours: yellow on, spring green available.
-                applyStatusBarCompactLabelStyle(
-                    trxBtn, state == 2 ? QStringLiteral("#ffff00")
-                            : state == 1 ? QStringLiteral("#00ff7f")
-                                         : QStringLiteral("{{color.text.secondary}}"));
                 trxBtn->setToolTip(state == 0
                     ? QStringLiteral("The receive and transmit antennas are the same.")
                     : state == 1
