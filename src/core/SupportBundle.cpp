@@ -305,7 +305,9 @@ void SupportBundle::openEmailClient(const QString& bundlePath,
     body += QString("\nPlease attach the support bundle saved at:\n  %1\n").arg(bundlePath);
     body += "\nDescribe the issue below:\n---\n\n";
 
-    QUrl url("mailto:support@aethersdr.com");
+    // Build 730 (operator, 25.11): no AetherSDR support address -- the
+    // operator fills in the recipient.
+    QUrl url("mailto:");
     QUrlQuery query;
     query.addQueryItem("subject", subject);
     query.addQueryItem("body", body);

@@ -1903,7 +1903,7 @@ void TitleBar::showFeatureRequestDialog()
     // holding the manager and the lambda's captures with it.
     nam->setTransferTimeout(kTransferTimeoutMs);
     auto* reply = nam->get(QNetworkRequest(
-        QUrl("https://api.github.com/repos/aethersdr/AetherSDR/releases/latest")));
+        QUrl("https://api.github.com/repos/Dfinitski/Ater-ugly_fork/releases/latest")));
     NetworkDiagnostics::watch(reply, "feature request release lookup");
     connect(reply, &QNetworkReply::finished, this, [this, reply, nam] {
         reply->deleteLater();
@@ -1932,14 +1932,15 @@ void TitleBar::showFeatureRequestDialogImpl()
     static const QString kPrompt =
         "IMPORTANT — before doing anything else, fetch the complete list of open\n"
         "issues by reading pages sequentially until you get fewer than 100 results:\n"
-        "  Page 1: https://github.com/aethersdr/AetherSDR/issues?state=open&per_page=100&page=1\n"
-        "  Page 2: https://github.com/aethersdr/AetherSDR/issues?state=open&per_page=100&page=2\n"
+        "  Page 1: https://github.com/Dfinitski/Ater-ugly_fork/issues?state=open&per_page=100&page=1\n"
+        "  Page 2: https://github.com/Dfinitski/Ater-ugly_fork/issues?state=open&per_page=100&page=2\n"
         "  ... continue until a page returns fewer than 100 issues.\n"
         "Do NOT rely on cached or training data for the issue list.\n\n"
         "Also fetch AGENTS.md fresh (do not use cached versions):\n"
-        "  https://raw.githubusercontent.com/aethersdr/AetherSDR/main/AGENTS.md\n\n"
+        "  https://raw.githubusercontent.com/Dfinitski/Ater-ugly_fork/main/AGENTS.md\n\n"
         "I want to report an issue or request a feature for AetherSDR, a cross-platform\n"
-        "Qt6/C++20 client for FlexRadio transceivers. It uses the FlexLib API over TCP/UDP.\n\n"
+        "Qt6/C++20 client; this is the AetherSDR for OpenHPSDR by N7DDC fork for ANAN /\n"
+        "openHPSDR and Hermes-Lite 2 radios (Protocol 1 / Protocol 2 over UDP).\n\n"
         "DUPLICATE CHECK — this is mandatory. Search the fetched issue list for keywords\n"
         "related to my description below. Check titles AND bodies. If you find an existing\n"
         "issue that covers the same thing, STOP and tell me:\n"
@@ -2051,7 +2052,7 @@ void TitleBar::showFeatureRequestDialogImpl()
         "QPushButton:hover { background: {{color.accent.bright}}; }");
     connect(submitBtn, &QPushButton::clicked, dlg, [dlg] {
         QDesktopServices::openUrl(QUrl(
-            "https://github.com/aethersdr/AetherSDR/issues/new?template=feature_request.yml"));
+            "https://github.com/Dfinitski/Ater-ugly_fork/issues/new"));
         QTimer::singleShot(500, dlg, &QDialog::close);
     });
     btnRow2->addWidget(submitBtn);
@@ -2062,7 +2063,7 @@ void TitleBar::showFeatureRequestDialogImpl()
         "QPushButton:hover { background: #dd5050; }");
     connect(bugBtn, &QPushButton::clicked, dlg, [dlg] {
         QDesktopServices::openUrl(QUrl(
-            "https://github.com/aethersdr/AetherSDR/issues/new?template=bug_report.yml"));
+            "https://github.com/Dfinitski/Ater-ugly_fork/issues/new"));
         QTimer::singleShot(500, dlg, &QDialog::close);
     });
     btnRow2->addWidget(bugBtn);

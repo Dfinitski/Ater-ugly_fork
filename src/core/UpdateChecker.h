@@ -40,7 +40,7 @@ class UpdateChecker : public QObject {
     Q_OBJECT
 public:
     static constexpr char kReleasesPageUrl[] =
-        "https://github.com/aethersdr/AetherSDR/releases/latest";
+        "https://github.com/Dfinitski/Ater-ugly_fork/releases";
 
     // Manual is Help → Check for Updates and reports every outcome to the
     // operator; Automatic is the background startup check, which only lights
@@ -96,7 +96,7 @@ public:
     // Reads the release JSON GitHub returns. Pure: no network, no settings.
     static ReleaseInfo parseRelease(const QByteArray& json);
 
-    // Only https://github.com/aethersdr/AetherSDR/releases/download/... may
+    // Only https://github.com/Dfinitski/Ater-ugly_fork/releases/download/... may
     // reach the browser from a release's asset list.
     static bool isTrustedDownloadUrl(const QUrl& url);
 

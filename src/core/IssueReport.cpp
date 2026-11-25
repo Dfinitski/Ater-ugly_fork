@@ -30,7 +30,7 @@ QString buildIssueReport(const SupportBundle::SystemInfo& sys,
     // Release builds ship symbols as release assets, so the OS crash report is
     // what turns "it crashed" into a stack trace (docs/debugging-crashes.md).
     body += "_If AetherSDR crashed, please attach the crash report your system "
-            "kept: [where to find it](https://github.com/aethersdr/AetherSDR/blob/"
+            "kept: [where to find it](https://github.com/Dfinitski/Ater-ugly_fork/blob/"
             "main/docs/debugging-crashes.md#for-users-what-to-attach-to-the-issue)._\n\n";
 
     body += "### Radio model & firmware\n";

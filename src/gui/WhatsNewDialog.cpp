@@ -34,7 +34,7 @@ namespace AetherSDR {
 namespace {
 
 constexpr auto kReleaseApiBase =
-    "https://api.github.com/repos/aethersdr/AetherSDR/releases/tags/%1";
+    "https://api.github.com/repos/Dfinitski/Ater-ugly_fork/releases/tags/%1";
 
 QString normalizedTag(const QString& version)
 {
@@ -87,7 +87,7 @@ QString enrichGitHubReferences(QString markdown)
     markdown.replace('\r', '\n');
     markdown.replace(
         QRegularExpression(QStringLiteral(R"((?<![\w\]/\[])#(\d+))")),
-        QStringLiteral("[#\\1](https://github.com/aethersdr/AetherSDR/issues/\\1)"));
+        QStringLiteral("[#\\1](https://github.com/Dfinitski/Ater-ugly_fork/issues/\\1)"));
     markdown.replace(
         QRegularExpression(QStringLiteral(R"((?<![\w\]/\[])@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}[A-Za-z0-9])?))")),
         QStringLiteral("[@\\1](https://github.com/\\1)"));
@@ -118,7 +118,7 @@ QString releaseErrorText(QNetworkReply* reply, const QByteArray& payload)
         return QStringLiteral(
             "GitHub is rate-limiting requests from your network — try again "
             "in a few minutes.  You can also read the release notes directly "
-            "at github.com/aethersdr/AetherSDR/releases.");
+            "at github.com/Dfinitski/Ater-ugly_fork/releases.");
     }
 
     if (status.isValid())

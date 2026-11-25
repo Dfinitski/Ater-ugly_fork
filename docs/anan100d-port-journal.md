@@ -12226,6 +12226,20 @@ Inno Setup на машине оператора не установлен — с
 - `installer-anan.iss`: скрипт сверен со списком изменений Inno Setup 7 (последняя 7.1.1) — ничего из используемого не изменилось; `AppVerName` задан явно. Обновлён только комментарий.
 - Номер сборки программы не менялся (729).
 
+## 715. Сборка 730 — без ссылок на исходный проект; установщик без AetherSDRUpdater.exe
+
+Оператор: убрать из установщика `AetherSDRUpdater.exe` и любые ссылки на исходный проект. Объём (ответ оператора): всё видимое плюс проверка/загрузка обновлений, перевести на наш GitHub (Dfinitski/Ater-ugly_fork). Скрытые загрузки (модели ASR, NVIDIA AFX, Tailnet shim, каталог прошивок ESP, User-Agent карт погоды, PSK Reporter) не трогались.
+
+- `installer-anan.iss`: `Excludes` дополнен `AetherSDRUpdater.exe`.
+- `DocsLinks.h`: база — `github.com/Dfinitski/Ater-ugly_fork/blob/main/docs/user/docs`, к слагу добавляется `.md`; PDF-руководства и Log Analyzer у нас нет — ведут на `index.md`. В (скрытом) меню Help остался один пункт «Documentation (GitHub)». Ссылки в Radio Setup (Automation Bridge) теперь ведут туда же.
+- `SupportDialog` (Tools → Log Settings): убрана кнопка Log Analyzer; шаг 4 инструкции — кликабельная ссылка на наши issues и подсказка Tools → Open Logs (меню Help в форке не показывается). Текст подсказки для ИИ и ссылка «новый issue» — на наш репозиторий.
+- `SupportBundle`: `mailto:` без адреса AetherSDR.
+- `TitleBar` (диалог идей/ошибок), `WhatsNewDialog`, `WhatsNewLinks`, `IssueReport`: все github.com/aethersdr → наш репозиторий; issue/new без шаблонов.
+- Обновления: `UpdateChecker` (API releases/latest, страница релизов), `UpdateReleaseNotes` (префикс доверенных загрузок; страница релиза — всегда список релизов, теги у нас `build-N`), `UpdateStager` (манифест и база загрузок) — на наш репозиторий. Тег `build-N` не разбирается `VersionNumber` (null), поэтому старый механизм никогда не объявит «устарело»; рабочая проверка — собственная проверка форка в строке состояния (сборки 211/247).
+- Help-меню (скрыто): «AetherSDR Website» → «Project Page (GitHub)», «Donate» убран.
+- Атрибуция в About («Based on AetherSDR…», копирайт) оставлена: это не ссылки, и GPL требует сохранять уведомления об авторстве.
+- Тесты `docs_links_test`, `whats_new_links_test`, `update_release_notes_test`, `update_stager_test` сверяют старые адреса и в ctest упадут; сборку программы это не затрагивает.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

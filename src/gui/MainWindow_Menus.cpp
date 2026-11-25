@@ -1970,11 +1970,10 @@ void MainWindow::buildMenuBar()
     // ── Community & feedback ──────────────────────────────────────────────
     // Outward-facing links: the website, donations, feature ideas, bug
     // reports, and how to contribute back.
-    helpMenu->addAction("AetherSDR Website", this, []() {
-        QDesktopServices::openUrl(QUrl("https://www.aethersdr.com"));
-    });
-    helpMenu->addAction("Donate to AetherSDR", this, []() {
-        QDesktopServices::openUrl(QUrl("https://www.aethersdr.com/#sponsor"));
+    // Build 730 (operator, 25.11): the fork's own repository; no donation
+    // link to the AetherSDR site.
+    helpMenu->addAction("Project Page (GitHub)", this, []() {
+        QDesktopServices::openUrl(QUrl("https://github.com/Dfinitski/Ater-ugly_fork"));
     });
     helpMenu->addAction(QString::fromUtf8("Submit your Idea... \xF0\x9F\x92\xA1"),
                         this, [this]() {

@@ -14,7 +14,7 @@ namespace AetherSDR {
 inline std::optional<QUrl> whatsNewLinkTarget(const QUrl& url)
 {
     const QUrl target = url.isRelative()
-        ? QUrl(QStringLiteral("https://github.com/aethersdr/AetherSDR/")).resolved(url)
+        ? QUrl(QStringLiteral("https://github.com/Dfinitski/Ater-ugly_fork/")).resolved(url)
         : url;
     const QString scheme = target.scheme().toLower();
     if (!target.isValid() || target.host().isEmpty()

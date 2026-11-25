@@ -17,17 +17,21 @@
 
 namespace AetherSDR::DocsLinks {
 
-inline constexpr QLatin1StringView kBaseUrl{"https://docs.aethersdr.com"};
+// Build 730 (operator, 25.11): no links to docs.aethersdr.com -- the same
+// pages are read from this fork's repository on GitHub (docs/user/docs/*.md).
+// There is no PDF manual and no Log Analyzer there: both lead to the index.
+inline constexpr QLatin1StringView kBaseUrl{
+    "https://github.com/Dfinitski/Ater-ugly_fork/blob/main/docs/user/docs"};
 
-// Absolute docs URL for a site path such as "/troubleshooting".
+// Absolute docs URL for a page slug such as "/troubleshooting".
 inline QString url(QLatin1StringView path)
 {
-    return QString(kBaseUrl).append(path);
+    return QString(kBaseUrl).append(path).append(QLatin1StringView{".md"});
 }
 
-inline QString home()              { return url(QLatin1StringView{"/"}); }
-inline QString manualPdf()         { return url(QLatin1StringView{"/AetherSDR-Manual.pdf"}); }
-inline QString logAnalyzer()       { return url(QLatin1StringView{"/log-analyzer"}); }
+inline QString home()              { return url(QLatin1StringView{"/index"}); }
+inline QString manualPdf()         { return home(); }
+inline QString logAnalyzer()       { return home(); }
 inline QString troubleshooting()   { return url(QLatin1StringView{"/troubleshooting"}); }
 inline QString automationBridge()  { return url(QLatin1StringView{"/automation-bridge-and-mcp"}); }
 
@@ -46,9 +50,7 @@ inline void addHelpMenuActions(QMenu* menu)
         QObject::connect(action, &QAction::triggered, menu,
                          [docsUrl] { open(docsUrl); });
     };
-    add(QStringLiteral("AetherSDR Documentation"), home());
-    add(QStringLiteral("Printable Manual (PDF)"), manualPdf());
-    add(QStringLiteral("Log Analyzer"), logAnalyzer());
+    add(QStringLiteral("Documentation (GitHub)"), home());
 }
 
 } // namespace AetherSDR::DocsLinks

@@ -36,13 +36,13 @@ namespace fs = std::filesystem;
 
 namespace AetherSDR {
 
-const char* const UpdateStager::kManifestUrl = "https://updates.aethersdr.com/latest/manifest.json";
+const char* const UpdateStager::kManifestUrl = "https://github.com/Dfinitski/Ater-ugly_fork/releases/latest/download/manifest.json";
 
 namespace {
 
 // Every URL a manifest may name: a download of the release it describes, on
 // the one repository the app trusts (UpdateChecker::isTrustedDownloadUrl).
-const QString kDownloadBase = QStringLiteral("https://github.com/aethersdr/AetherSDR/releases/download/");
+const QString kDownloadBase = QStringLiteral("https://github.com/Dfinitski/Ater-ugly_fork/releases/download/");
 
 // packaging/update-signing.pub's raw Ed25519 key (key_id 788fb6e31f7ecba4).
 // update_stager_test checks it against that file.

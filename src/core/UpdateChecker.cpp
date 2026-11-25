@@ -24,7 +24,7 @@
 namespace AetherSDR {
 
 static constexpr char kReleasesApiUrl[] =
-    "https://api.github.com/repos/aethersdr/AetherSDR/releases/latest";
+    "https://api.github.com/repos/Dfinitski/Ater-ugly_fork/releases/latest";
 
 namespace {
 // A real answer is tens of KB (the release body plus its asset list). The

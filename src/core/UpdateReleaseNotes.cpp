@@ -22,7 +22,7 @@ constexpr int kMaxChapterChars = 80;
 constexpr int kMaxChapters = 12;
 constexpr int kMaxAssets = 64;
 
-const QString kDownloadPathPrefix = QStringLiteral("/aethersdr/AetherSDR/releases/download/");
+const QString kDownloadPathPrefix = QStringLiteral("/Dfinitski/Ater-ugly_fork/releases/download/");
 
 // Release-prep boilerplate, not a chapter of what changed.
 bool isBoilerplateHeading(const QString& heading)
@@ -178,12 +178,10 @@ ReleaseAsset UpdateChecker::assetForThisComputer(const ReleaseInfo& release)
 
 QUrl UpdateChecker::releasePageUrl(const QString& version)
 {
-    const VersionNumber parsed = VersionNumber::parse(version);
-    if (parsed.isNull()) {
-        return QUrl(QString::fromLatin1(kReleasesPageUrl));
-    }
-    return QUrl(QStringLiteral("https://github.com/aethersdr/AetherSDR/releases/tag/v")
-                + parsed.toString());
+    // Build 730 (operator, 25.11): this fork's releases are tagged
+    // "build-N", not "vX.Y.Z", so every version opens the release list.
+    Q_UNUSED(version);
+    return QUrl(QString::fromLatin1(kReleasesPageUrl));
 }
 
 } // namespace AetherSDR

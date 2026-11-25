@@ -87,7 +87,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Type: filesandordirs; Name: "{app}\*"; Check: IsOurPreviousFolder
 
 [Files]
-Source: "{#DEPLOY_DIR}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.zip,*.log,*.pdb"
+Source: "{#DEPLOY_DIR}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.zip,*.log,*.pdb,AetherSDRUpdater.exe"
 
 [Icons]
 Name: "{group}\{#APP_NAME}"; Filename: "{app}\{#APP_EXE}"

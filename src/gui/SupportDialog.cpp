@@ -160,25 +160,27 @@ void SupportDialog::buildUI()
         QStringLiteral("supportTroubleshootingGuideButton"),
         QStringLiteral("Open the troubleshooting guide in your browser"),
         DocsLinks::troubleshooting());
-    addDocsButton(
-        QStringLiteral("Log Analyzer"),
-        QStringLiteral("supportLogAnalyzerButton"),
-        QStringLiteral("Open the Log Analyzer in your browser"),
-        DocsLinks::logAnalyzer());
+    // Build 730 (operator, 25.11): no Log Analyzer -- it is a web tool of
+    // the AetherSDR site, and this fork links only to its own repository.
     docsRow->addStretch();
     layout->addLayout(docsRow);
 
     // ── Instructions ──────────────────────────────────────────────────────
     // "File an Issue" lives on Help and "Reset Settings" on Settings;
     // point the user there rather than duplicating the buttons here.
+    // Build 730 (operator, 25.11): the Help menu is not shown in this fork,
+    // so step 4 leads to the fork's own issue tracker.
     auto* instructions = new QLabel(
         "<p style='color:#c8d8e8; font-size: 13px;'>"
         "To report an issue:<br>"
         "1. Enable logging for the relevant module(s) above<br>"
         "2. <b>Restart AetherSDR</b> (logging changes take effect on next launch)<br>"
         "3. Reproduce the problem<br>"
-        "4. Choose <b>Help \xE2\x86\x92 File an Issue\xE2\x80\xA6</b> and drag your log file into the GitHub form</p>");
+        "4. Open <a style='color:#4fc3f7;' href='https://github.com/Dfinitski/Ater-ugly_fork/issues'>"
+        "github.com/Dfinitski/Ater-ugly_fork/issues</a>, create an issue and drag your log file "
+        "(<b>Tools \xE2\x86\x92 Open Logs</b>) into the GitHub form</p>");
     instructions->setTextFormat(Qt::RichText);
+    instructions->setOpenExternalLinks(true);
     layout->addWidget(instructions);
 
     // ── Close button ──────────────────────────────────────────────────────
@@ -379,14 +381,15 @@ void SupportDialog::fileIssue(QWidget* parent, RadioModel* radioModel)
     // Diagnostic prompt for AI
     static const QString kPromptTemplate =
         "I'm experiencing an issue with AetherSDR, a Linux/macOS/Windows SDR client\n"
-        "for FlexRadio transceivers (https://github.com/aethersdr/AetherSDR).\n\n"
+        "for ANAN / openHPSDR and Hermes-Lite 2 radios -- AetherSDR for OpenHPSDR by N7DDC\n"
+        "(https://github.com/Dfinitski/Ater-ugly_fork).\n\n"
         "My system:\n"
         "- AetherSDR version: %1\n"
         "- Qt version: %2\n"
         "- OS: %3\n"
         "- Radio: %4\n\n"
         "Before writing the bug report, please read the AetherSDR project context at\n"
-        "https://raw.githubusercontent.com/aethersdr/AetherSDR/main/AGENTS.md\n"
+        "https://raw.githubusercontent.com/Dfinitski/Ater-ugly_fork/main/AGENTS.md\n"
         "for architecture overview, data flow, protocol details, and known issues.\n\n"
         "Based on my description below, write a complete GitHub bug report.\n"
         "Do NOT ask me follow-up questions — just write the best report you can\n"
@@ -474,7 +477,7 @@ void SupportDialog::fileIssue(QWidget* parent, RadioModel* radioModel)
             : QString("[bug] AetherSDR v%1 \xE2\x80\x94 ").arg(sys.aetherVersion);
 
         const auto makeUrl = [&title](const QString& body) {
-            QUrl url("https://github.com/aethersdr/AetherSDR/issues/new");
+            QUrl url("https://github.com/Dfinitski/Ater-ugly_fork/issues/new");
             QUrlQuery query;
             query.addQueryItem("labels", "bug");
             query.addQueryItem("title", title);
