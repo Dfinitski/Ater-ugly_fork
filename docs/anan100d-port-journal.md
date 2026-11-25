@@ -11952,6 +11952,17 @@ errcheck: RadioSetupDialog 23, Wiring 24, MainWindow 42, TxApplet 4, SMeterWidge
 
 errcheck VfoWidget 4 = база; bogus +.
 
+## 696. Сборка 713 — перед релизом: Max Level округляется до десятков; временный код убран
+
+Оператор: «убрать, и я забыл: введённое число для максимальной мощности округлять до десятков».
+
+- **Max Level** (`RadioSetupDialog`): шаг 10 W, `keyboardTracking` выключен, то есть введённое значение принимается по Enter или при уходе фокуса. Значение округляется до ближайших десяти, но не меньше 10; если округление что-то изменило, поле само выставляет округлённое число. `ananPowerMaxLevel()` округляет и уже сохранённое значение.
+- **FrameDiag** (709) убран из `MainWindow::resizeEvent`; `resizeEvent` такой же, как до 709.
+- **Вариант В** (708, `AETHER_PAN_NATIVE_WINDOW`) убран: `SpectrumWidget.cpp/.h` и `PanadapterStack.cpp` возвращены к состоянию до 708.
+- Исправление рамки окна на Windows 11 (`WM_NCCALCSIZE`, 705/706/709/710) остаётся.
+
+errcheck: MainWindow 42, RadioSetupDialog 23, SpectrumWidget 12, PanadapterStack 0, Wiring 24, VfoWidget 4 = база.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

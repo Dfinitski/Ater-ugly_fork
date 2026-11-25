@@ -48,25 +48,6 @@ static void refreshAfterReparent(AetherSDR::SpectrumWidget* sw)
         sw->show();
     }
     QTimer::singleShot(50, sw, [sw]() { sw->update(); });
-#elif defined(Q_OS_WIN) && defined(AETHER_GPU_SPECTRUM)
-    // ANAN fork build 708: with the panadapter in its own native child window
-    // (AETHER_PAN_NATIVE_WINDOW=1, test) a reparent re-realizes it as on
-    // macOS; otherwise as before.
-    if (AetherSDR::SpectrumWidget::windowsNativeWindowRequested()) {
-        const bool wasHidden = sw->isHidden();
-        sw->hide();
-        sw->resetGpuResources();
-        if (QWindow* windowHandle = sw->windowHandle()) {
-            windowHandle->destroy();
-        }
-        sw->applyNativeWindowIsolationPolicy();
-        if (!wasHidden) {
-            sw->show();
-        }
-        QTimer::singleShot(50, sw, [sw]() { sw->update(); });
-    } else {
-        sw->resetGpuResources();
-    }
 #else
     sw->resetGpuResources();
 #endif

@@ -4889,6 +4889,8 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
         auto* lbl = new QLabel(QStringLiteral("Max Level"));
         auto* spin = new QSpinBox;
         spin->setRange(10, 2000);
+        spin->setSingleStep(10);           // build 713: in tens of watts
+        spin->setKeyboardTracking(false);  // a typed value counts once entered
         spin->setSuffix(QStringLiteral(" W"));
         spin->setFixedWidth(90);
         spin->setAccessibleName(QStringLiteral("Power meter max level"));
@@ -4902,7 +4904,13 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
                   .arg(m_model->backendCapabilities().model)
                   .arg(ananDefaultPowerMaxLevel(*m_model))
             : QStringLiteral("Connect an ANAN radio to set its power meters' top."));
-        connect(spin, qOverload<int>(&QSpinBox::valueChanged), this, [this](int v) {
+        connect(spin, qOverload<int>(&QSpinBox::valueChanged), this, [this, spin](int v) {
+            // Build 713 (operator, 25.11: "round the entered number to tens").
+            const int rounded = std::max(10, (v + 5) / 10 * 10);
+            if (rounded != v) {
+                spin->setValue(rounded);   // comes back here with the rounded value
+                return;
+            }
             if (!m_model || !ananPowerModelKnown(*m_model))
                 return;
             auto& st = AppSettings::instance();

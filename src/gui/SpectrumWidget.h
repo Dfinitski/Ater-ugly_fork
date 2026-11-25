@@ -207,19 +207,6 @@ public:
             qEnvironmentVariableIntValue("AETHER_PAN_NO_NATIVE_WINDOW") == 1;
         return !noNative;
     }
-    // ANAN fork build 708 (operator, 25.11: "variant C -- the panadapter in a
-    // native child window of its own"). Windows, test only:
-    // AETHER_PAN_NATIVE_WINDOW=1 applies the same isolation policy as macOS
-    // (WA_NativeWindow + WA_DontCreateNativeAncestors). The QRhiWidget then
-    // presents in its own child HWND, and the main window with its controls
-    // need not be composited through D3D11 any more -- the composition was
-    // what made the frame-size question (flip shaking, blit stretching) a
-    // whole-window one. Default off: the window behaves as in build 707.
-    static bool windowsNativeWindowRequested() {
-        static const bool on =
-            qEnvironmentVariableIntValue("AETHER_PAN_NATIVE_WINDOW") == 1;
-        return on;
-    }
     // macOS: apply the native-window isolation policy as one unit — request the
     // native Metal leaf (WA_NativeWindow) *and* block ancestor promotion
     // (WA_DontCreateNativeAncestors), gated on nativeWindowPreferred(). Kept as a

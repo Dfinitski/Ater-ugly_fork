@@ -4248,34 +4248,6 @@ void MainWindow::reapplyStartupGeometryAfterShow()
 void MainWindow::resizeEvent(QResizeEvent* event)
 {
     QMainWindow::resizeEvent(event);
-#ifdef Q_OS_WIN
-    // ANAN fork build 709: frame diagnostics for the Windows 11 frame work
-    // (builds 705..709) -- where Qt has its client area against the window,
-    // and where Windows has it; logged once per change.
-    if (windowHandle()) {
-        HWND hwnd = reinterpret_cast<HWND>(winId());
-        RECT win{};
-        RECT cli{};
-        POINT origin{0, 0};
-        if (hwnd && GetWindowRect(hwnd, &win) && GetClientRect(hwnd, &cli)
-            && ClientToScreen(hwnd, &origin)) {
-            const QRect qg = windowHandle()->geometry();
-            const QString line = QStringLiteral(
-                "window %1,%2 %3x%4 | native client +%5,+%6 %7x%8 | qt client +%9,+%10 %11x%12")
-                .arg(win.left).arg(win.top)
-                .arg(win.right - win.left).arg(win.bottom - win.top)
-                .arg(origin.x - win.left).arg(origin.y - win.top)
-                .arg(cli.right - cli.left).arg(cli.bottom - cli.top)
-                .arg(qg.left() - win.left).arg(qg.top() - win.top)
-                .arg(qg.width()).arg(qg.height());
-            static QString last;
-            if (line != last) {
-                last = line;
-                qInfo().noquote() << "FrameDiag:" << line;
-            }
-        }
-    }
-#endif
     // Anchor the frameless-mode size grip to the bottom-right corner,
     // overlaying the status bar.  Direct child of MainWindow so the
     // grip's native dotted-texture paint isn't suppressed by the

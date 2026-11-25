@@ -11,6 +11,7 @@
 #include "models/RadioModel.h"
 
 #include <QByteArray>
+#include <algorithm>
 #include <QString>
 
 namespace AetherSDR {
@@ -53,7 +54,8 @@ inline int ananPowerMaxLevel(const RadioModel& radio)
     if (!ananPowerModelKnown(radio))
         return 0;
     const int v = AppSettings::instance().value(ananPowerMaxLevelKey(radio), 0).toInt();
-    return v > 0 ? v : ananDefaultPowerMaxLevel(radio);
+    // Build 713 (operator: "round the entered number to tens").
+    return v > 0 ? std::max(10, (v + 5) / 10 * 10) : ananDefaultPowerMaxLevel(radio);
 }
 
 } // namespace AetherSDR
