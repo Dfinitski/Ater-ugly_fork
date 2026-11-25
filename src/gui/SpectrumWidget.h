@@ -1845,6 +1845,10 @@ private:
     QTimer* m_squelchLineHideTimer{nullptr};
     QTimer* m_ananOverlayPoll{nullptr};   // ANAN noise line / overload warning -> overlay dirty
     bool m_dupTxHold{false};   // build 315: a DUP over is on the air
+    // Build 721: the DUP over's scale top (+10 dBm) and the scale it replaced.
+    bool m_dupTopActive{false};
+    float m_dupSavedRefLevel{0.0f};
+    float m_dupSavedDynamicRange{0.0f};
     bool m_dupStopWaterfall{false};   // build 670: Stop Waterfall when TX (DUP)
     int m_dupTxHoldGen{0};
     QString m_ananOverlayStateSig;        // build 308: overload/visibility part

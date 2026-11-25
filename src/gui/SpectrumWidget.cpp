@@ -8659,8 +8659,8 @@ void SpectrumWidget::setSpectrumFrac(float f)
 void SpectrumWidget::setDbmRange(float minDbm, float maxDbm)
 {
     // ANAN-100D port: the fixed TX scale holds; a range set meanwhile is
-    // applied at unkey instead.
-    if (m_txFixedActive) {
+    // applied at unkey instead. Build 721: so does the DUP over's top.
+    if (m_txFixedActive || m_dupTopActive) {
         m_txFixedDeferredValid = true;
         m_txFixedDeferredMin = minDbm;
         m_txFixedDeferredMax = maxDbm;
@@ -8891,13 +8891,42 @@ void SpectrumWidget::setDuplexTxHold(bool hold)
     const int gen = ++m_dupTxHoldGen;
     if (hold) {
         m_dupTxHold = true;
+        // ANAN fork build 721 (operator, 25.11: "in duplex while transmitting
+        // the panadapter's upper limit must be set to +10, then put back as it
+        // was"): the top of the scale goes to +10 dBm for the over, the bottom
+        // stays; the operator's scale comes back with the hold's end (the
+        // over's receive tail included). A range set meanwhile (the radio's
+        // echo, the model) is kept and applied then, as with the fixed TX
+        // scale. Display only: nothing is sent to the radio.
+        if (!m_dupTopActive) {
+            constexpr float kDupTopDbm = 10.0f;
+            m_dupSavedRefLevel = m_refLevel;
+            m_dupSavedDynamicRange = m_dynamicRange;
+            m_txFixedDeferredValid = false;
+            m_dupTopActive = true;
+            const float bottom = m_refLevel - m_dynamicRange;
+            m_refLevel = kDupTopDbm;
+            m_dynamicRange = std::max(10.0f, kDupTopDbm - bottom);
+            markOverlayDirty();
+        }
         return;
     }
     if (!m_dupTxHold)
         return;
     QTimer::singleShot(500, this, [this, gen] {
-        if (gen == m_dupTxHoldGen)
-            m_dupTxHold = false;
+        if (gen != m_dupTxHoldGen)
+            return;
+        m_dupTxHold = false;
+        if (m_dupTopActive) {   // build 721: the operator's scale back
+            m_dupTopActive = false;
+            m_refLevel = m_dupSavedRefLevel;
+            m_dynamicRange = m_dupSavedDynamicRange;
+            markOverlayDirty();
+            if (m_txFixedDeferredValid) {
+                m_txFixedDeferredValid = false;
+                applyDbmRangeImmediate(m_txFixedDeferredMin, m_txFixedDeferredMax);
+            }
+        }
     });
 }
 
