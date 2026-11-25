@@ -3981,21 +3981,36 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
     // of the window's own style and DPI, left / right / bottom; the top stays
     // the window's top, as under Qt's expanded client area -- so Windows and
     // Qt agree on the size and nothing is stretched. Maximized and full
-    // screen keep Qt's answer.
+    // screen keep Qt's answer. (Build 706: the insets are now Qt's own, see
+    // below.)
     if (msg && result && msg->message == WM_NCCALCSIZE && msg->wParam
         && windowFlags().testFlag(Qt::ExpandedClientAreaHint)
         && !WindowChrome::claimsWholeWindowAsClient(windowFlags(),
                                                     QOperatingSystemVersion::current())
         && !IsZoomed(msg->hwnd) && !isFullScreen()) {
-        const UINT dpi = GetDpiForWindow(msg->hwnd);
-        const DWORD style = static_cast<DWORD>(GetWindowLongPtr(msg->hwnd, GWL_STYLE));
-        const DWORD exStyle = static_cast<DWORD>(GetWindowLongPtr(msg->hwnd, GWL_EXSTYLE));
-        RECT frame{0, 0, 0, 0};
-        if (AdjustWindowRectExForDpi(&frame, style, FALSE, exStyle, dpi)) {
-            RECT& client = reinterpret_cast<NCCALCSIZE_PARAMS*>(msg->lParam)->rgrc[0];
-            client.left -= frame.left;      // frame.left is negative
-            client.right -= frame.right;
-            client.bottom -= frame.bottom;
+        // Build 706: AdjustWindowRectExForDpi gave 7 px here (ResizeDiag of
+        // build 705: client 1300 of a 1314 window) while Qt still counted 5
+        // (QWindow 1304) -- Qt's margins are not that call. So the insets are
+        // taken from Qt itself: where Qt has the client (QWindow::geometry())
+        // inside the window rectangle it is being resized from (rgrc[1], the
+        // old window rect, which that geometry belongs to). Taken only when
+        // they are plausible (0..32 px, the geometry inside the rectangle);
+        // otherwise (first creation, ...) Qt answers as before.
+        auto* params = reinterpret_cast<NCCALCSIZE_PARAMS*>(msg->lParam);
+        const QRect qtClient = windowHandle() ? windowHandle()->geometry() : QRect();
+        const RECT& oldWindow = params->rgrc[1];
+        const int insetLeft = qtClient.left() - oldWindow.left;
+        const int insetRight = oldWindow.right - (qtClient.right() + 1);
+        const int insetTop = qtClient.top() - oldWindow.top;
+        const int insetBottom = oldWindow.bottom - (qtClient.bottom() + 1);
+        auto plausible = [](int v) { return v >= 0 && v <= 32; };
+        if (qtClient.isValid() && plausible(insetLeft) && plausible(insetRight)
+            && plausible(insetTop) && plausible(insetBottom)) {
+            RECT& client = params->rgrc[0];
+            client.left += insetLeft;
+            client.right -= insetRight;
+            client.top += insetTop;
+            client.bottom -= insetBottom;
             *result = 0;
             return true;
         }
