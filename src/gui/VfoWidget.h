@@ -335,6 +335,10 @@ public:
     // live beside it on the spectrum (buttons, the collapsed flag's
     // frequency and SmartMTR lines), overlaps `area` (parent coordinates).
     [[nodiscard]] bool flagCovers(const QRect& area) const;
+    // ANAN fork build 682: the flag with its parts round it (close / lock /
+    // record / play buttons, the collapsed flag's lines), in the parent's
+    // coordinates -- the area flagCovers() tests.
+    [[nodiscard]] QRect footprint() const;
 
     // Which side of the slice marker the flag panel is currently rendered on.
     // Tracked by updatePosition() via m_lastOnLeft.  Used by panFollowVfo()

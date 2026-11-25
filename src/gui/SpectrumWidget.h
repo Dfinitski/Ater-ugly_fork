@@ -2519,6 +2519,15 @@ private:
     void rateGroupGeometry(bool twoRows, QRect& zoom, QRect& down,
                            QRect& label, QRect& up) const;
     void placeRateGroup();
+    // Build 682 (operator, 24.11: "first the lines regroup, then, running
+    // further on, the flag turns to the other side, and only once the
+    // filter runs onto them do the buttons hide"). Whether a receiver's
+    // filter (or its marker) lies across `area` horizontally -- the filter
+    // shading runs the full height of the panadapter.
+    [[nodiscard]] bool filterCovers(const QRect& area) const;
+    // The rate group's two-line place (the place a flag turns away from),
+    // empty when there is no rate group.
+    [[nodiscard]] QRect rateGroupFlipPlace() const;
     bool m_rateCoverPending{false};
     void scheduleRateGroupCover();
     void updateRateGroupCover();

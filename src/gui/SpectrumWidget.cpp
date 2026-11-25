@@ -14216,6 +14216,13 @@ void SpectrumWidget::updateRateGroupCover()
                 return true;
         return false;
     };
+    // Build 682: the group's stages count a receiver's filter as well as the
+    // flags: the filter over the one-line place makes two lines, over the
+    // two-line place it hides the group (a flag itself turns away from the
+    // two-line place: repositionVfoFlags()).
+    auto coveredOrFiltered = [&](const QRect& area) {
+        return covered(area) || filterCovers(area);
+    };
     // Build 679: the indicator strip left of the group (WIDE, K/A/SFI, ...)
     // simply hides under a flag and comes back once no flag covers its place.
     const bool indCovered = !m_indicatorStripPlace.isEmpty()
@@ -14226,8 +14233,8 @@ void SpectrumWidget::updateRateGroupCover()
         update();
     }
     // Without the zoom there is nothing to rearrange: one line or hidden.
-    const int stage = !covered(oneLine) ? 0
-                    : (withZoom && !covered(twoLines)) ? 1 : 2;
+    const int stage = !coveredOrFiltered(oneLine) ? 0
+                    : (withZoom && !coveredOrFiltered(twoLines)) ? 1 : 2;
     if (stage == m_rateStage)
         return;
     m_rateStage = stage;
@@ -14279,6 +14286,37 @@ QRect SpectrumWidget::indicatorStripBounds(const QFontMetrics& fm, int rightEdge
         leftEdge = x;
     }
     return r | QRect(leftEdge, baselineY - fm.ascent(), rightEdge - leftEdge, fm.height());
+}
+
+bool SpectrumWidget::filterCovers(const QRect& area) const
+{
+    if (area.isEmpty())
+        return false;
+    for (const SliceOverlay& so : m_sliceOverlays) {
+        const double f = so.sliceId == m_centerLockSliceId ? so.freqMhz - glideOffsetMhz()
+                                                           : so.freqMhz;
+        const int xm = mhzToX(f);
+        const int xa = mhzToX(f + so.filterLowHz / 1.0e6);
+        const int xb = mhzToX(f + so.filterHighHz / 1.0e6);
+        const int lo = std::min({xm, xa, xb});
+        const int hi = std::max({xm, xa, xb});
+        if (hi >= area.left() && lo <= area.right())
+            return true;
+    }
+    return false;
+}
+
+QRect SpectrumWidget::rateGroupFlipPlace() const
+{
+    if (!m_rateLabel || !m_rateDownBtn || !m_rateUpBtn)
+        return {};
+    QRect zoom, down, label, up;
+    const bool withZoom = m_zoomLabel && m_zoomLabelWanted;
+    rateGroupGeometry(withZoom, zoom, down, label, up);
+    QRect place = down | label | up;
+    if (withZoom)
+        place |= zoom;
+    return place;
 }
 
 void SpectrumWidget::rateGroupGeometry(bool twoRows, QRect& zoom, QRect& down,
@@ -18265,6 +18303,43 @@ void SpectrumWidget::repositionVfoFlags(const QRect& specRect)
     assignSplitPairDirections(vfos, directionBySlice, specW);
     assignModeForcedDirections(m_sliceOverlays, directionBySlice);
 
+    // ANAN fork build 682 (operator, 24.11): a flag that would run onto the
+    // rate group's two-line place turns to the other side of its marker, if
+    // there it stays clear of the group. Only a free side (not Lock*, not a
+    // FreeDV flag), and not while the receiver's filter itself lies over the
+    // group (then the group hides, updateRateGroupCover()). The choice rests
+    // on where the marker is, not on the side the flag is on now, so it does
+    // not swing back and forth.
+    const QRect rateFlipPlace = rateGroupFlipPlace();
+    auto avoidRateGroup = [&](const VfoPos& v, VfoWidget::FlagDir dir) {
+        if (rateFlipPlace.isEmpty() || !v.w || !v.overlay
+            || dir == VfoWidget::LockLeft || dir == VfoWidget::LockRight
+            || v.overlay->fdvCenterHz != 0 || filterCovers(rateFlipPlace))
+            return dir;
+        const bool defaultOnLeft = VfoWidget::defaultFlagOnLeftForMode(v.overlay->mode);
+        const int parentW = v.w->parentWidget() ? v.w->parentWidget()->width() : 0;
+        const int top = specRect.top() + flagTopPad();
+        // The flag's parts round it, as now, carried to a new place.
+        const QRect geo = v.w->geometry();
+        const QRect fp = v.w->footprint();
+        const int side = std::max(geo.left() - fp.left(), fp.right() - geo.right());
+        const int above = geo.top() - fp.top(), below = fp.bottom() - geo.bottom();
+        auto footAt = [&](VfoWidget::FlagDir d, bool* onLeft) {
+            const auto pl = VfoWidget::placementForMarker(
+                v.x, top, v.w->width(), v.w->height(), parentW, d, defaultOnLeft);
+            *onLeft = pl.onLeft;
+            return pl.rect.adjusted(-side, -above, side, below);
+        };
+        bool onLeft = false;
+        if (!footAt(dir, &onLeft).intersects(rateFlipPlace))
+            return dir;
+        const VfoWidget::FlagDir other = onLeft ? VfoWidget::ForceRight : VfoWidget::ForceLeft;
+        bool otherOnLeft = false;
+        if (!footAt(other, &otherOnLeft).intersects(rateFlipPlace) && otherOnLeft != onLeft)
+            return other;
+        return dir;
+    };
+
     if (vfos.size() == 1) {
         VfoWidget::FlagDir direction =
             directionBySlice.value(vfos[0].sliceId, VfoWidget::Auto);
@@ -18273,6 +18348,7 @@ void SpectrumWidget::repositionVfoFlags(const QRect& specRect)
             direction = singleVfoFlagDirectionForOverlay(
                 *vfos[0].overlay, vfos[0].w, vfos[0].x, specW);
         }
+        direction = avoidRateGroup(vfos[0], direction);   // build 682
         if (!placeFdvFlag(vfos[0]))
             vfos[0].w->updatePosition(
                 vfos[0].x, specRect.top() + flagTopPad(), direction);
@@ -18287,6 +18363,7 @@ void SpectrumWidget::repositionVfoFlags(const QRect& specRect)
             direction =
                 deconflictedVfoFlagDirection(vfos, index, panelW, specW);
         }
+        direction = avoidRateGroup(vfos[index], direction);   // build 682
         if (!placeFdvFlag(vfos[index]))
             vfos[index].w->updatePosition(
                 vfos[index].x, specRect.top() + flagTopPad(), direction);

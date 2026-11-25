@@ -8590,6 +8590,23 @@ bool VfoWidget::flagCovers(const QRect& area) const
     return false;
 }
 
+QRect VfoWidget::footprint() const
+{
+    QRect r = isHidden() ? QRect() : geometry();
+    const QWidget* parent = parentWidget();
+    const std::initializer_list<QWidget*> satellites = {
+        m_closeSliceBtn.data(), m_lockVfoBtn.data(),
+        m_recordBtn.data(), m_playBtn.data(),
+        m_collapsedFreqLabel.data(), m_collapsedValueLabel.data(),
+        m_fdvTextLabel.data(),
+    };
+    for (const QWidget* sat : satellites) {
+        if (sat && !sat->isHidden() && sat->parentWidget() == parent)
+            r |= sat->geometry();
+    }
+    return r;
+}
+
 void VfoWidget::reparentFlagSatellites(QWidget* newParent)
 {
     if (!newParent) {
