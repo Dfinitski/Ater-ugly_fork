@@ -840,7 +840,22 @@ void MainWindow::applySpeechProcessorToClientComp(bool operatorIntent)
     // operator's strip settings.
     const bool levelChanged = level != m_lastAppliedProcLevel;
     const bool switchedOn = on && !m_lastAppliedProcEnable;
-    if (operatorIntent && on && (levelChanged || switchedOn)) {
+    // ANAN fork build 695 (operator, 24.11: "the compressor slider does not
+    // change the Aether TX compressor's parameters"). Two errors of ours:
+    //  - setSpeechProcessorLevel() emits micStateChanged BEFORE
+    //    speechProcessorCommandIssued, and the observe call (below) stored the
+    //    new level as applied -- so the operator call that followed saw no
+    //    level change and wrote no preset; the 50 ms mirror (build 688) then
+    //    found the old preset on the compressor and put the slider back;
+    //  - with PROC off a slider move wrote nothing either, and the mirror put
+    //    the slider back the same way.
+    // Since build 688 PROC and the Aether compressor are one compressor: an
+    // operator move of the slider writes its preset, PROC on or off; the
+    // observe path syncs the enable only and leaves the applied level alone.
+    // The connect re-push (applied level reset to -1) still writes only with
+    // PROC on, as before: it must not overwrite the strip's own settings.
+    const bool sliderMoved = levelChanged && m_lastAppliedProcLevel >= 0;
+    if (operatorIntent && ((on && (levelChanged || switchedOn)) || sliderMoved)) {
         // NOR / DX / DX+. Progressively lower thresholds and higher ratios, with
         // makeup chosen to keep the average level rising with the setting rather
         // than merely squashing peaks — "more processing" has to sound louder or
@@ -867,7 +882,8 @@ void MainWindow::applySpeechProcessorToClientComp(bool operatorIntent)
         comp->setEnabled(on);
 
     m_lastAppliedProcEnable = on;
-    m_lastAppliedProcLevel = level;
+    if (operatorIntent)
+        m_lastAppliedProcLevel = level;   // build 695: only what was written
 
     // OPERATOR INTENT ONLY claims the shared compressor.
     //
