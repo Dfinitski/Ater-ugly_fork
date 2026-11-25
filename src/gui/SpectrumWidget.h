@@ -135,14 +135,6 @@ class SpectrumWidget : public SPECTRUM_BASE_CLASS {
     Q_PROPERTY(double wfRowHighMhz READ wfRowHighMhz)
 
 public:
-    // ANAN fork build 700: while the main window's edge is dragged
-    // (MainWindow::nativeEvent, WM_SIZING .. WM_EXITSIZEMOVE) this
-    // panadapter requests no frames of its own: update() -- every request of
-    // this class and of the render scheduler -- is held and made once on
-    // release. Qt's own resize repaints (QWidget::update) are not affected.
-    using SPECTRUM_BASE_CLASS::update;
-    void update();
-    void setResizeHold(bool held);
     explicit SpectrumWidget(QWidget* parent = nullptr);
     ~SpectrumWidget() override;
 
@@ -2012,10 +2004,6 @@ private:
     qint64 m_resizeBufferCommitLastNs{0};
     qint64 m_resizeBufferCommitMaxNs{0};
     QSize  m_resizePresentationSize;
-    // ANAN fork build 697: the last line of the resize diagnostics (render()).
-    QString m_resizeDiagLast;
-    bool m_resizeHold{false};          // build 700
-    bool m_resizeHoldPending{false};   // build 700: an update() came while held
     QSize  m_waterfallStreamSizeHint;
     QSize  m_waterfallHistoryStreamSizeHint;
     QVector<qint64> m_wfHistoryTimestamps;
