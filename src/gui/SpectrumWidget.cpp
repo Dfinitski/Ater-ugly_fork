@@ -14036,6 +14036,31 @@ void SpectrumWidget::applySettledResizeBuffers()
     update();
 }
 
+void SpectrumWidget::update()
+{
+    // Build 700: held while the main window's edge is dragged. ResizeDiag
+    // (builds 697..699) showed this widget's own frames making Qt put the
+    // window's picture together with the backing store still at the previous
+    // size, which the blit swap chain (build 461) showed stretched over the
+    // whole window -- the whole window shook.
+    if (m_resizeHold) {
+        m_resizeHoldPending = true;
+        return;
+    }
+    SPECTRUM_BASE_CLASS::update();
+}
+
+void SpectrumWidget::setResizeHold(bool held)
+{
+    if (m_resizeHold == held)
+        return;
+    m_resizeHold = held;
+    if (!held && m_resizeHoldPending) {
+        m_resizeHoldPending = false;
+        SPECTRUM_BASE_CLASS::update();
+    }
+}
+
 void SpectrumWidget::resizeEvent(QResizeEvent* ev)
 {
     SPECTRUM_BASE_CLASS::resizeEvent(ev);

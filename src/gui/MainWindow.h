@@ -378,6 +378,10 @@ protected:
     // Windows 11: colour the DWM window border to color.background.app.
     void applyWindowsFrameColor();
     bool nativeEvent(const QByteArray& eventType, void* message, qintptr* result) override;
+    // ANAN fork build 700: the panadapters hold their frames while the main
+    // window's edge is dragged (WM_SIZING .. WM_EXITSIZEMOVE, nativeEvent).
+    void setPanadaptersHeldForResize(bool held);
+    bool m_panadaptersHeldForResize{false};
 #endif
     void closeEvent(QCloseEvent* event) override;
     void changeEvent(QEvent* event) override;
