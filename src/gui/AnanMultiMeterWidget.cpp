@@ -411,8 +411,13 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
         // name at that x, fixed; no more centring"): PWR as build 739 centred
         // it (between the window's edge and its first figure), the others
         // left-aligned at that x.
-        p.drawText(QRectF(nameLeft, y - 12.0, kScaleX0 - nameLeft, 24.0),
-                   Qt::AlignLeft | Qt::AlignVCenter, rowName(row));
+        // Build 741 (operator): S stays where build 739 centred it.
+        if (row == Row::S)
+            p.drawText(QRectF(0.0, y - 12.0, nameColumnRight(row), 24.0),
+                       Qt::AlignHCenter | Qt::AlignVCenter, rowName(row));
+        else
+            p.drawText(QRectF(nameLeft, y - 12.0, kScaleX0 - nameLeft, 24.0),
+                       Qt::AlignLeft | Qt::AlignVCenter, rowName(row));
 
         // The line: ink, red over its red part (thicker).
         const double redFrom = std::min(s.redFrom, 1.0);
