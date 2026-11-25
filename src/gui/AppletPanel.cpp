@@ -449,30 +449,62 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
                 // ANAN-100D port: width clamp only while docked (see eventFilter).
                 if (mode != ContainerWidget::DockMode::PanelDocked)
                     m_sMeterContainer->setMaximumWidth(QWIDGETSIZE_MAX);
-                else if (m_scrollArea) {
+                else if (m_scrollArea)
                     m_sMeterContainer->setMaximumWidth(m_scrollArea->viewport()->width());
-                    // Build 733: re-docking re-inserts the container into the
-                    // layout without its alignment; set it once it is back.
-                    QTimer::singleShot(0, this, [this] { alignSMeterToApplets(); });
-                }
             });
     const bool sMeterOn = AppSettings::instance()
         .value("Applet_VU", "True").toString() == "True";
     m_sMeterContainer->setContainerVisible(sMeterOn);
-    root->addWidget(m_sMeterContainer);
+    // ANAN fork build 734 (operator, 25.11: "it would be right if the scroll
+    // bar went up to the top of the S-meter panel -- then this problem
+    // [build 733: docked left, the applets shifted by the bar while the
+    // S-Meter kept the edge] would not exist"; the S-Meter stays put). The
+    // S-Meter and the scroll area are one column, the scroll bar runs beside
+    // the whole column: [column | bar] docked right, [bar | column] docked
+    // left. The S-Meter is docked in the column (ContainerManager re-docks
+    // into its parent's box layout, i.e. the column).
+    m_meterColumn = new QWidget(this);
+    auto* meterCol = new QVBoxLayout(m_meterColumn);
+    meterCol->setContentsMargins(0, 0, 0, 0);
+    meterCol->setSpacing(0);
+    meterCol->addWidget(m_sMeterContainer);
+    m_scrollRow = new QHBoxLayout;
+    m_scrollRow->setContentsMargins(0, 0, 0, 0);
+    m_scrollRow->setSpacing(0);
+    m_scrollRow->addWidget(m_meterColumn, 1);
+    root->addLayout(m_scrollRow, 1);
 
     // ── Scrollable applet stack (drop-aware) ────────────────────────────────
-    m_scrollArea = new AppletDropArea(this);
+    m_scrollArea = new AppletDropArea(this);   // reparented into the column by addWidget
     m_scrollArea->setFrameShape(QFrame::NoFrame);
     m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     // ANAN-100D port (operator, 31.10): the scroll bar always shown and lit
     // (the handle no longer dims at rest; hover/drag brightens it further),
     // 1.5x wider (12 -> 18 px).
-    m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    // Build 734: the area's own bar is off -- it still carries the range and
+    // the value -- and m_vBar, beside the S-Meter too, shows and drives it.
+    m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_scrollArea->setWidgetResizable(true);
+    m_vBar = new QScrollBar(Qt::Vertical, this);
+    m_vBar->setObjectName(QStringLiteral("appletPanelScrollBar"));
+    m_scrollRow->addWidget(m_vBar);
+    if (auto* inner = m_scrollArea->verticalScrollBar()) {
+        const auto syncRange = [this, inner] {
+            m_vBar->setRange(inner->minimum(), inner->maximum());
+            m_vBar->setPageStep(inner->pageStep());
+            m_vBar->setSingleStep(inner->singleStep());
+            // Nothing to scroll: the handle fills the track, as the
+            // always-on bar showed it before.
+            m_vBar->setEnabled(inner->maximum() > inner->minimum());
+        };
+        connect(inner, &QScrollBar::rangeChanged, m_vBar, syncRange);
+        connect(inner, &QScrollBar::valueChanged, m_vBar, &QScrollBar::setValue);
+        connect(m_vBar, &QScrollBar::valueChanged, inner, &QScrollBar::setValue);
+        syncRange();
+    }
     // Handle dims to #2a3a4a at rest, brightens to #4a6880 on hover/drag.
     // 500 ms delay before dimming back so quick drags don't flicker.
-    AetherSDR::ThemeManager::instance().applyStyleSheet(m_scrollArea, "QScrollBar:vertical { background: {{color.background.0}}; width: 18px; }"
+    AetherSDR::ThemeManager::instance().applyStyleSheet(m_vBar, "QScrollBar:vertical { background: {{color.background.0}}; width: 18px; }"
         // ANAN fork build 467 (operator, 16.11): the handle 10 % narrower on each
         // side (2 of the bar's 18 px), the background showing in the gap.
         // Build 468 ("still wide, again 10 %"): 4 px each side, a 10 px handle.
@@ -481,7 +513,7 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
         "QScrollBar::handle:vertical[active=\"true\"] { background: #6a90b0; }"
         "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }");
 
-    if (auto* sb = m_scrollArea->verticalScrollBar()) {
+    if (auto* sb = m_vBar) {
         sb->setProperty("active", false);
         sb->installEventFilter(this);
     }
@@ -536,7 +568,7 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     m_scrollArea->viewport()->installEventFilter(this);
     // ANAN-100D port: a child's minimum changing posts LayoutRequest here.
     container->installEventFilter(this);
-    root->addWidget(m_scrollArea, 1);
+    meterCol->addWidget(m_scrollArea, 1);
 
     // Drop indicator line (cyan, hidden by default)
     m_dropIndicator = new QWidget(container);
@@ -1826,40 +1858,13 @@ void AppletPanel::setTxAudioPathBlocked(bool blocked)
 void AppletPanel::setScrollBarOnLeft(bool onLeft)
 {
     if (!m_scrollArea) return;
-    // Flip the QScrollArea's layout direction — vertical scroll bar moves
-    // to the opposite edge.  Force the inner content widget back to LTR
-    // so the applets themselves don't mirror.
-    m_scrollArea->setLayoutDirection(onLeft ? Qt::RightToLeft : Qt::LeftToRight);
-    if (auto* content = m_scrollArea->widget())
-        content->setLayoutDirection(Qt::LeftToRight);
-    alignSMeterToApplets();
-}
-
-void AppletPanel::alignSMeterToApplets()
-{
-    // ANAN fork build 733 (operator, 25.11: "with the applet panel moved to
-    // the left, all applets line up to the right and the S-meter stays on
-    // the left"). The docked S-Meter is held to the viewport's width (see
-    // eventFilter) and sits above the scroll area, outside it. Docked left,
-    // the scroll bar goes to the window edge (setScrollBarOnLeft), the
-    // viewport -- and every applet in it -- moves right by the bar's width,
-    // while the S-Meter kept the left edge. Put it over the viewport: at the
-    // right with the bar on the left, at the left (as before) otherwise.
-    if (!m_sMeterContainer || !m_scrollArea || m_sMeterContainer->parentWidget() != this)
-        return;
-    auto* box = qobject_cast<QBoxLayout*>(layout());
-    if (!box)
-        return;
-    const Qt::Alignment want = m_scrollArea->layoutDirection() == Qt::RightToLeft
-        ? (Qt::AlignRight | Qt::AlignAbsolute)
-        : Qt::Alignment();
-    for (int i = 0; i < box->count(); ++i) {
-        QLayoutItem* item = box->itemAt(i);
-        if (item && item->widget() == m_sMeterContainer) {
-            if (item->alignment() != want)
-                box->setAlignment(m_sMeterContainer, want);
-            return;
-        }
+    // Scroll bar to the outside edge (against the window edge when docked
+    // left). Build 734: the bar is its own widget beside the S-Meter / applet
+    // column; it moves to the other side of the column instead of the area
+    // mirroring itself.
+    if (m_scrollRow && m_vBar) {
+        m_scrollRow->removeWidget(m_vBar);
+        m_scrollRow->insertWidget(onLeft ? 0 : -1, m_vBar);
     }
 }
 
@@ -2396,11 +2401,10 @@ bool AppletPanel::eventFilter(QObject* obj, QEvent* ev)
     if (m_scrollArea && obj == m_scrollArea->viewport() && ev->type() == QEvent::Resize) {
         const int vw = m_scrollArea->viewport()->width();
         // Only while docked in this panel; floating or on the canvas it sizes freely.
-        if (m_sMeterContainer && m_sMeterContainer->parentWidget() != this) {
+        if (m_sMeterContainer && m_sMeterContainer->parentWidget() != m_meterColumn) {
             if (m_sMeterContainer->maximumWidth() != QWIDGETSIZE_MAX)
                 m_sMeterContainer->setMaximumWidth(QWIDGETSIZE_MAX);
         } else if (m_sMeterContainer && vw > 0 && m_sMeterContainer->maximumWidth() != vw) {
-            alignSMeterToApplets();   // build 733
             m_sMeterContainer->setMaximumWidth(vw);
             qInfo().noquote() << "AppletPanel: width" << width() << "viewport" << vw
                               << "S-Meter min" << m_sMeterContainer->minimumSizeHint().width()
@@ -2408,7 +2412,7 @@ bool AppletPanel::eventFilter(QObject* obj, QEvent* ev)
                               << "screen" << (screen() ? screen()->availableGeometry().width() : -1);
         }
     }
-    if (m_scrollArea && obj == m_scrollArea->verticalScrollBar()) {
+    if (m_vBar && obj == m_vBar) {
         switch (ev->type()) {
         case QEvent::Enter:
         case QEvent::MouseButtonPress:
@@ -2428,8 +2432,7 @@ bool AppletPanel::eventFilter(QObject* obj, QEvent* ev)
 
 void AppletPanel::setScrollHandleActive(bool active)
 {
-    if (!m_scrollArea) return;
-    auto* sb = m_scrollArea->verticalScrollBar();
+    auto* sb = m_vBar;   // build 734: the visible bar
     if (!sb) return;
     if (sb->property("active").toBool() == active) return;
     sb->setProperty("active", active);

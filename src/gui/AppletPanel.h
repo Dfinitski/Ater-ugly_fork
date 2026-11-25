@@ -13,6 +13,7 @@
 class QComboBox;
 class QPushButton;
 class QScrollArea;
+class QScrollBar;
 class QTimer;
 class QVBoxLayout;
 class QHBoxLayout;
@@ -355,7 +356,6 @@ protected:
     static constexpr int kPanelWidth = 266;
     void scheduleFitWidth();
     void fitWidthToApplets();
-    void alignSMeterToApplets();
     bool m_fitWidthPending{false};
 
 private:
@@ -495,6 +495,12 @@ private:
     QPushButton* m_ssBtn{nullptr};
     QVBoxLayout* m_stack{nullptr};
     QScrollArea* m_scrollArea{nullptr};
+    // Build 734: the S-Meter and the scroll area share one column; the
+    // vertical scroll bar is a separate bar beside the whole column (from
+    // the S-Meter's top), mirroring the scroll area's own hidden bar.
+    QWidget*     m_meterColumn{nullptr};
+    QHBoxLayout* m_scrollRow{nullptr};
+    QScrollBar*  m_vBar{nullptr};
     QTimer*      m_scrollDimTimer{nullptr};
     QWidget*     m_dropIndicator{nullptr};
     QPushButton* m_lockBtn{nullptr};   // controls-lock toggle (#745)
