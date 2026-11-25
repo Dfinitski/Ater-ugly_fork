@@ -878,6 +878,15 @@ bool TransmitModel::applySpeechProcessorState(bool on, int level)
     return true;
 }
 
+bool TransmitModel::adoptSpeechProcessorFromChain(bool on, int level)
+{
+    if (!applySpeechProcessorState(on, level))
+        return false;
+    emit controlRequested({TransmitControlRequest::Field::ProcessorEnabled,
+                           ProcessorSetting{m_speechProcEnable, m_speechProcLevel}});
+    return true;
+}
+
 bool TransmitModel::applyMicSelectionState(const QString& input)
 {
     if (input.isEmpty() || m_micSelection == input) {

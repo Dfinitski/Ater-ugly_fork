@@ -1161,8 +1161,39 @@ void MainWindow::wireHostModulatedVoiceChain()
         // does not leave the button lying. applySpeechProcessorState() emits
         // micStateChanged but NOT speechProcessorCommandIssued, so this settles
         // in one pass and can never be mistaken for the operator moving PROC.
-        m_radioModel.transmitModel().applySpeechProcessorState(
-            comp->isEnabled(), m_radioModel.transmitModel().speechProcessorLevel());
+        // ANAN fork build 688 (operator, 24.11: "the microphone compressor --
+        // is it one and the same again? then unite it as the EQ"): it is the
+        // same ClientComp, so the enable was mirrored already; now also
+        //  - the NOR / DX / DX+ position follows the Aether compressor when
+        //    its threshold / ratio / makeup are one of the three presets
+        //    (set elsewhere they leave the slider where it is), and
+        //  - the backend hears it (adoptSpeechProcessorFromChain): on ANAN
+        //    PROC also sets the radio-side TXA compressor (10 dB off, 14 /
+        //    17 / 20 dB NOR / DX / DX+), which stayed behind when the
+        //    compressor was switched from the Aether side.
+        {
+            struct Preset { float thresholdDb; float ratio; float makeupDb; };
+            static constexpr Preset kPresets[3] = {
+                { -18.0f, 2.5f,  4.0f },   // NOR  (as applySpeechProcessorToClientComp)
+                { -24.0f, 4.0f,  8.0f },   // DX
+                { -30.0f, 6.0f, 12.0f },   // DX+
+            };
+            auto& tx = m_radioModel.transmitModel();
+            int level = tx.speechProcessorLevel();
+            for (int i = 0; i < 3; ++i) {
+                if (std::abs(comp->thresholdDb() - kPresets[i].thresholdDb) < 0.05f
+                    && std::abs(comp->ratio() - kPresets[i].ratio) < 0.05f
+                    && std::abs(comp->makeupDb() - kPresets[i].makeupDb) < 0.05f) {
+                    level = i;
+                    break;
+                }
+            }
+            if (tx.speechProcessorLevelMaximum() > 2)
+                level = tx.speechProcessorLevel();   // a continuous control: leave it
+            else
+                m_lastAppliedProcLevel = level;   // what is there is that preset already
+            tx.adoptSpeechProcessorFromChain(comp->isEnabled(), level);
+        }
     });
 }
 

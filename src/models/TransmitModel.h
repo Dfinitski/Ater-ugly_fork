@@ -413,6 +413,12 @@ public:
     // operator intent, and mirroring engine state through them would echo and
     // oscillate with the strip. Returns true when something changed.
     bool applySpeechProcessorState(bool on, int level);
+    // ANAN fork build 688: the same adoption, and the backend told as well
+    // (controlRequested, NOT speechProcessorCommandIssued): on ANAN PROC also
+    // sets the radio-side TXA compressor, which must follow the Aether
+    // compressor's enable / preset when they change there. The client-side
+    // compressor is not written back (no preset overwrite, no echo).
+    bool adoptSpeechProcessorFromChain(bool on, int level);
     // Adopt a mic selection the OPERATOR did not choose — a radio whose input
     // this client cannot select forces the source, and the model must agree
     // with what the UI is showing. Like applySpeechProcessorState this updates

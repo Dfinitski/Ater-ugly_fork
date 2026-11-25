@@ -11594,6 +11594,27 @@ P1 берёт состояние в каждой ротации C&C, отдел�
 
 Файлы: `src/gui/MainWindow_DspApplets.cpp`, `src/gui/MainWindow.h`, `src/gui/EqApplet.{cpp,h}` (возврат к 685), `src/core/ForkBuild.h`. errcheck: MainWindow_DspApplets 24, MainWindow 42, EqApplet 0 (базовые), bogus +1.
 
+## 671. Сборка 688 — PROC и компрессор Aether TX: одно и то же, синхронизированы полностью
+
+**Просьба оператора (24.11):** компрессор микрофона — «опять одно и то же?» Если да — объединить, как EQ; если разное — взаимно блокировать.
+
+**Что выяснилось.** На ANAN PROC делает две вещи:
+1. Включает тот же `ClientComp`, что и компрессор Aether TX. Пресеты NOR/DX/DX+ пишут в него порог, ratio и makeup (`applySpeechProcessorToClientComp`). Enable уже зеркалился обратно на PROC (таймер 50 мс).
+2. Через бэкенд (`Hl2Backend::applyCodecProcessor` → `pushTxCompressor`) задаёт силу радиосторонного компрессора WDSP TXA: 10 дБ при выключенном PROC, 14/17/20 дБ при NOR/DX/DX+.
+
+Значит, это один и тот же компрессор, плюс TXA. Сделано объединение.
+
+**Расхождения до 688.**
+- Включение/выключение компрессора в Aether зажигало PROC, но бэкенд об этом не узнавал (`applySpeechProcessorState` не шлёт `controlRequested`): TXA оставался на прежней силе.
+- Положение NOR/DX/DX+ не отражало настройки компрессора Aether.
+
+**Сделано.**
+- **`TransmitModel::adoptSpeechProcessorFromChain(on, level)`** — как `applySpeechProcessorState`, плюс `controlRequested(ProcessorEnabled, {on, level})` при изменении. Без `speechProcessorCommandIssued`, поэтому пресет поверх Aether не пишется и эха нет. Бэкенд получает `applyCodecProcessor` → TXA следует.
+- **Зеркало** (`m_hostVoiceChainTimer`, 50 мс): если порог, ratio и makeup `ClientComp` совпадают с одним из пресетов (±0,05), ползунок PROC встаёт на этот пресет (`m_lastAppliedProcLevel` = он же, чтобы его не перезаписать). Иначе положение не меняется. Затем `adoptSpeechProcessorFromChain(enabled, level)`.
+- Непрерывный регулятор (`speechProcessorLevelMaximum > 2`, не ANAN) — уровень не трогается.
+
+Файлы: `src/gui/MainWindow_DspApplets.cpp`, `src/models/TransmitModel.{cpp,h}`, `src/core/ForkBuild.h`. errcheck: MainWindow_DspApplets 24 (базовый), TransmitModel 0, bogus +1.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
