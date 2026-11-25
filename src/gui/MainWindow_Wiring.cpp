@@ -7257,14 +7257,10 @@ void MainWindow::wireMeters()
     });
     connect(&m_radioModel.transmitModel(), &TransmitModel::moxChanged,
             m_appletPanel, &AppletPanel::setMeterTransmitting);
-    // ANAN fork build 680 / 735: the multi meter's other scales -- Vd (supply
-    // volts), Id (PA current), COMP (the ALC's gain reduction) and ALC (the
-    // post-ALC peak plus that reduction).
+    // ANAN fork build 680 / 735 / 736: the multi meter's other scales -- COMP
+    // (the ALC's gain reduction) and ALC (the post-ALC peak plus that
+    // reduction). Build 736: no Id / Vd on it (the bottom bar shows them).
     if (auto* mm = m_appletPanel->ananMultiMeter()) {
-        connect(&m_radioModel.meterModel(), &MeterModel::hwTelemetryChanged,
-                mm, [mm](float, float supplyVolts) { mm->setSupplyVolts(supplyVolts); });
-        connect(&m_radioModel.meterModel(), &MeterModel::paCurrentChanged,
-                mm, &AnanMultiMeterWidget::setPaCurrent);
         connect(&m_radioModel.meterModel(), &MeterModel::swAlcChanged,
                 mm, &AnanMultiMeterWidget::setAlcLevel);
         connect(&m_radioModel.meterModel(), &MeterModel::alcGainChanged,

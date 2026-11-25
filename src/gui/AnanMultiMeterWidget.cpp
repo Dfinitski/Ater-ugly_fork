@@ -18,10 +18,13 @@ namespace {
 constexpr double kW = AnanMultiMeterWidget::kMaxWidth;
 constexpr double kH = AnanMultiMeterWidget::kMaxHeight;
 constexpr double kAspect = kH / kW;            // 0.75
-constexpr double kTop = 14.0;                  // above the first row
-constexpr double kBottom = 10.0;               // below the last row
-constexpr double kScaleX0 = 46.0;              // where the scales start
-constexpr double kScaleX1 = kW - 58.0;         // ... and end
+constexpr double kTop = 16.0;                  // above the first row
+constexpr double kBottom = 8.0;                // below the last row
+// Build 736: five rows (no Id / Vd) take the room of seven -- everything in
+// a row is 1.3 x the build 735 size.
+constexpr double kScaleX0 = 60.0;              // where the scales start
+constexpr double kScaleX1 = kW - 68.0;         // ... and end
+constexpr double kNamePx = 13.0, kMarkPx = 10.0, kValuePx = 13.0;
 constexpr int kTickMs = 50;
 
 struct Palette {
@@ -30,10 +33,11 @@ struct Palette {
 
 Palette paletteFor(AnanMultiMeterWidget::Face face)
 {
+    // Build 736: on paper, dark opaque inks (drawn in the Multiply mode).
     if (face == AnanMultiMeterWidget::Face::Light)
-        return {QColor(0x2a, 0x1d, 0x12), QColor(0x6b, 0x56, 0x40), QColor(0xa3, 0x24, 0x1c),
-                QColor(0x1d, 0x4f, 0x86), QColor(0x14, 0x14, 0x14), QColor(0x1d, 0x4f, 0x86, 72),
-                QColor(0x8a, 0x6a, 0x3e, 115)};
+        return {QColor(0x14, 0x0c, 0x05), QColor(0x33, 0x24, 0x14), QColor(0x8c, 0x16, 0x10),
+                QColor(0x10, 0x33, 0x66), QColor(0x0d, 0x09, 0x06), QColor(0x10, 0x33, 0x66, 120),
+                QColor(0x6a, 0x4a, 0x24, 170)};
     return {QColor(0xe8, 0xee, 0xf4), QColor(0x8a, 0x9a, 0xa8), QColor(0xff, 0x5a, 0x4e),
             QColor(0x4f, 0xc3, 0xf7), QColor(0xff, 0xb3, 0x40), QColor(0x4f, 0xc3, 0xf7, 90),
             QColor(0x2c, 0x3a, 0x47)};
@@ -119,15 +123,6 @@ QSize AnanMultiMeterWidget::minimumSizeHint() const
     return {200, heightForWidth(200)};
 }
 
-void AnanMultiMeterWidget::setTelemetryRows(bool supplyVolts, bool paCurrent)
-{
-    if (m_hasVolts == supplyVolts && m_hasAmps == paCurrent)
-        return;
-    m_hasVolts = supplyVolts;
-    m_hasAmps = paCurrent;
-    update();
-}
-
 void AnanMultiMeterWidget::setLevel(float dbm) { if (std::isfinite(dbm)) m_rxDbm = dbm; }
 void AnanMultiMeterWidget::setTxMeters(float forwardWatts, float swr)
 {
@@ -142,8 +137,6 @@ void AnanMultiMeterWidget::setMaxPower(float watts)
     m_maxPower = watts;
     update();
 }
-void AnanMultiMeterWidget::setSupplyVolts(float volts) { if (std::isfinite(volts)) m_volts = volts; }
-void AnanMultiMeterWidget::setPaCurrent(float amps) { if (std::isfinite(amps)) m_amps = std::max(0.0f, amps); }
 void AnanMultiMeterWidget::setAlcLevel(float dbfs) { if (std::isfinite(dbfs)) m_alcDbfs = dbfs; }
 void AnanMultiMeterWidget::setAlcGain(float db) { if (std::isfinite(db)) m_alcGainDb = db; }
 
@@ -155,22 +148,10 @@ void AnanMultiMeterWidget::setTransmitting(bool transmitting)
     update();
 }
 
-QVector<AnanMultiMeterWidget::Row> AnanMultiMeterWidget::rows() const
-{
-    QVector<Row> r{Row::S, Row::Po, Row::Swr, Row::Alc, Row::Comp};
-    if (m_hasAmps)
-        r.append(Row::Id);
-    if (m_hasVolts)
-        r.append(Row::Vd);
-    return r;
-}
-
 bool AnanMultiMeterWidget::rowActive(Row row) const
 {
     switch (row) {
     case Row::S:    return !m_transmitting;
-    case Row::Id:
-    case Row::Vd:   return true;
     default:        return m_transmitting;
     }
 }
@@ -183,8 +164,6 @@ QString AnanMultiMeterWidget::rowName(Row row)
     case Row::Swr:  return QStringLiteral("SWR");
     case Row::Alc:  return QStringLiteral("ALC");
     case Row::Comp: return QStringLiteral("COMP");
-    case Row::Id:   return QStringLiteral("Id");
-    case Row::Vd:   return QStringLiteral("Vd");
     }
     return {};
 }
@@ -202,8 +181,6 @@ double AnanMultiMeterWidget::position(Row row, float value) const
     case Row::Swr:  return swrPosition(value);
     case Row::Alc:  return linear(value, -30.0, 25.0);
     case Row::Comp: return linear(value, 0.0, 30.0);
-    case Row::Id:   return linear(value, 0.0, 20.0);
-    case Row::Vd:   return linear(value, 10.0, 15.0);
     }
     return 0.0;
 }
@@ -243,16 +220,6 @@ AnanMultiMeterWidget::Scale AnanMultiMeterWidget::scaleOf(Row row) const
             s.marks.append({linear(c, 0, 30), QString::number(c)});
         s.redFrom = linear(20, 0, 30);
         break;
-    case Row::Id:
-        for (int a : {0, 5, 10, 15, 20})
-            s.marks.append({linear(a, 0, 20), QString::number(a)});
-        s.redFrom = linear(18, 0, 20);
-        break;
-    case Row::Vd:
-        for (int v = 10; v <= 15; ++v)
-            s.marks.append({linear(v, 10, 15), QString::number(v)});
-        s.redBelow = linear(11.5, 10, 15);
-        break;
     }
     return s;
 }
@@ -266,8 +233,6 @@ float AnanMultiMeterWidget::reading(Row row) const
     // ALC: the post-ALC peak plus the ALC's own gain reduction.
     case Row::Alc:  return std::max(-30.0f, m_alcDbfs) + std::max(0.0f, -m_alcGainDb);
     case Row::Comp: return std::max(0.0f, -m_alcGainDb);
-    case Row::Id:   return m_amps;
-    case Row::Vd:   return m_volts;
     }
     return 0.0f;
 }
@@ -291,8 +256,6 @@ QString AnanMultiMeterWidget::valueText(Row row, float v) const
         return (db > 0 ? QStringLiteral("+%1 dB") : QStringLiteral("%1 dB")).arg(db);
     }
     case Row::Comp: return QStringLiteral("%1 dB").arg(int(std::lround(v)));
-    case Row::Id:   return QStringLiteral("%1 A").arg(v, 0, 'f', 1);
-    case Row::Vd:   return QStringLiteral("%1 V").arg(v, 0, 'f', 1);
     }
     return {};
 }
@@ -302,7 +265,7 @@ void AnanMultiMeterWidget::tick()
     if (!isVisible())
         return;
     // Quick up, slower down.
-    for (Row row : {Row::S, Row::Po, Row::Swr, Row::Alc, Row::Comp, Row::Id, Row::Vd}) {
+    for (Row row : {Row::S, Row::Po, Row::Swr, Row::Alc, Row::Comp}) {
         float& shown = m_shown[int(row)];
         const float target = float(position(row, reading(row)));
         shown += (target - shown) * (target > shown ? 0.55f : 0.22f);
@@ -342,9 +305,9 @@ void AnanMultiMeterWidget::render(QPainter& p, const QRectF& area)
         return;
     const qreal dpr = p.device() ? p.device()->devicePixelRatioF() : 1.0;
     const QSize px(qMax(1, qRound(meter.width() * dpr)), qMax(1, qRound(meter.height() * dpr)));
-    QString key = QStringLiteral("%1x%2/%3/%4/%5/%6/%7%8")
-                      .arg(px.width()).arg(px.height()).arg(dpr).arg(int(m_face))
-                      .arg(m_maxPower).arg(int(m_transmitting)).arg(int(m_hasAmps)).arg(int(m_hasVolts));
+    const QString key = QStringLiteral("%1x%2/%3/%4/%5/%6")
+                            .arg(px.width()).arg(px.height()).arg(dpr).arg(int(m_face))
+                            .arg(m_maxPower).arg(int(m_transmitting));
     if (m_staticCache.isNull() || m_staticKey != key) {
         m_staticCache = QPixmap(px);
         m_staticCache.setDevicePixelRatio(dpr);
@@ -379,55 +342,50 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
     p.setBrush(Qt::NoBrush);
     p.drawRect(meter.adjusted(0.5, 0.5, -0.5, -0.5));
 
-    // Everything else in design units.
+    // Everything else in design units; on paper, printed (Multiply).
     p.translate(meter.topLeft());
     p.scale(meter.width() / kW, meter.width() / kW);
+    const bool paper = m_face == Face::Light;
+    if (paper)
+        p.setCompositionMode(QPainter::CompositionMode_Multiply);
+    const double dim = paper ? 0.55 : 0.38;   // the other direction's rows
 
     QFont nameFont = font();
-    nameFont.setPixelSize(10);
+    nameFont.setPixelSize(int(kNamePx));
     nameFont.setBold(true);
     QFont markFont = font();
-    markFont.setPixelSize(8);
-    markFont.setBold(false);
+    markFont.setPixelSize(int(kMarkPx));
+    markFont.setBold(paper);   // build 736: heavier print on paper
 
-    const QVector<Row> list = rows();
-    const double step = (kH - kTop - kBottom) / list.size();
+    const double step = (kH - kTop - kBottom) / kRows;
     const auto X = [](double f) { return kScaleX0 + (kScaleX1 - kScaleX0) * f; };
-    for (int i = 0; i < list.size(); ++i) {
-        const Row row = list[i];
-        const double y = kTop + (i + 0.5) * step + 2.0;   // the scale line
+    for (int i = 0; i < kRows; ++i) {
+        const Row row = Row(i);
+        const double y = kTop + (i + 0.5) * step + 4.0;   // the scale line
         const bool on = rowActive(row);
         const Scale s = scaleOf(row);
 
-        p.setOpacity(1.0);
+        p.setOpacity(on ? 1.0 : dim);
         p.setFont(nameFont);
-        QColor nameCol = on ? c.accent : c.sub;
-        if (!on)
-            nameCol.setAlphaF(0.6);
-        p.setPen(nameCol);
-        p.drawText(QPointF(8.0, y + 3.5), rowName(row));
+        p.setPen(on ? c.accent : c.sub);
+        p.drawText(QPointF(8.0, y + 4.5), rowName(row));
 
-        p.setOpacity(on ? 1.0 : 0.38);
         // The line: ink, red over its red part (thicker).
         const double redFrom = std::min(s.redFrom, 1.0);
-        const double inkFrom = s.redBelow > 0.0 ? s.redBelow : 0.0;
-        const double inkTo = s.redFrom <= 1.0 ? redFrom : 1.0;
-        p.setPen(QPen(c.ink, 1.2, Qt::SolidLine, Qt::FlatCap));
-        p.drawLine(QPointF(X(inkFrom), y), QPointF(X(inkTo), y));
-        p.setPen(QPen(c.red, 2.4, Qt::SolidLine, Qt::FlatCap));
-        if (s.redFrom <= 1.0)
+        p.setPen(QPen(c.ink, 1.6, Qt::SolidLine, Qt::FlatCap));
+        p.drawLine(QPointF(X(0.0), y), QPointF(X(redFrom), y));
+        if (s.redFrom <= 1.0) {
+            p.setPen(QPen(c.red, 3.2, Qt::SolidLine, Qt::FlatCap));
             p.drawLine(QPointF(X(redFrom), y), QPointF(X(1.0), y));
-        if (s.redBelow > 0.0)
-            p.drawLine(QPointF(X(0.0), y), QPointF(X(s.redBelow), y));
+        }
 
         p.setFont(markFont);
         for (const Mark& m : s.marks) {
-            const bool red = (s.redFrom <= 1.0 && m.pos >= redFrom - 1e-6)
-                          || (s.redBelow > 0.0 && m.pos < s.redBelow);
-            p.setPen(QPen(red ? c.red : c.ink, 1.0));
-            p.drawLine(QPointF(X(m.pos), y - 4.0), QPointF(X(m.pos), y));
+            const bool red = s.redFrom <= 1.0 && m.pos >= redFrom - 1e-6;
+            p.setPen(QPen(red ? c.red : c.ink, 1.3));
+            p.drawLine(QPointF(X(m.pos), y - 5.5), QPointF(X(m.pos), y));
             p.setPen(red ? c.red : c.sub);
-            const QRectF tr(X(m.pos) - 20.0, y - 15.0, 40.0, 10.0);
+            const QRectF tr(X(m.pos) - 24.0, y - 20.0, 48.0, 13.0);
             p.drawText(tr, Qt::AlignHCenter | Qt::AlignBottom, m.text);
         }
     }
@@ -441,35 +399,36 @@ void AnanMultiMeterWidget::drawDynamic(QPainter& p, const QRectF& meter)
     p.setRenderHint(QPainter::TextAntialiasing, true);
     p.translate(meter.topLeft());
     p.scale(meter.width() / kW, meter.width() / kW);
+    if (m_face == Face::Light)
+        p.setCompositionMode(QPainter::CompositionMode_Multiply);
 
     QFont valueFont = font();
-    valueFont.setPixelSize(10);
+    valueFont.setPixelSize(int(kValuePx));
     valueFont.setBold(true);
     p.setFont(valueFont);
 
-    const QVector<Row> list = rows();
-    const double step = (kH - kTop - kBottom) / list.size();
+    const double step = (kH - kTop - kBottom) / kRows;
     const auto X = [](double f) { return kScaleX0 + (kScaleX1 - kScaleX0) * f; };
-    for (int i = 0; i < list.size(); ++i) {
-        const Row row = list[i];
+    for (int i = 0; i < kRows; ++i) {
+        const Row row = Row(i);
         if (!rowActive(row))
             continue;
-        const double y = kTop + (i + 0.5) * step + 2.0;
-        const double f = std::clamp(double(m_shown[int(row)]), 0.0, 1.0);
+        const double y = kTop + (i + 0.5) * step + 4.0;
+        const double f = std::clamp(double(m_shown[i]), 0.0, 1.0);
         // The bar up to the pointer.
-        p.fillRect(QRectF(X(0.0), y + 2.0, X(f) - X(0.0), 3.5), c.bar);
+        p.fillRect(QRectF(X(0.0), y + 2.5, X(f) - X(0.0), 4.5), c.bar);
         // The pointer: a triangle under the line, its tip on the value.
         QPainterPath tri;
-        tri.moveTo(X(f), y + 1.5);
-        tri.lineTo(X(f) - 4.0, y + 8.5);
-        tri.lineTo(X(f) + 4.0, y + 8.5);
+        tri.moveTo(X(f), y + 2.0);
+        tri.lineTo(X(f) - 5.5, y + 11.5);
+        tri.lineTo(X(f) + 5.5, y + 11.5);
         tri.closeSubpath();
         p.setPen(Qt::NoPen);
         p.setBrush(c.pointer);
         p.drawPath(tri);
         // The value, right.
         p.setPen(c.ink);
-        p.drawText(QRectF(kScaleX1 + 4.0, y - 8.0, kW - kScaleX1 - 12.0, 14.0),
+        p.drawText(QRectF(kScaleX1 + 4.0, y - 10.0, kW - kScaleX1 - 10.0, 18.0),
                    Qt::AlignRight | Qt::AlignVCenter, valueText(row, reading(row)));
     }
 }

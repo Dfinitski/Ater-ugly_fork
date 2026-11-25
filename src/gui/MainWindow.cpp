@@ -72,7 +72,6 @@
 #include "SpectrumOverlayMenu.h"
 #include "VfoWidget.h"
 #include "AppletPanel.h"
-#include "AnanMultiMeterWidget.h"   // build 735
 #include "CwApplet.h"
 #include "PsApplet.h"
 #include "containers/ContainerManager.h"
@@ -8932,14 +8931,6 @@ void MainWindow::applyCapabilitiesToUi(bool live, const RadioCapabilities& liveC
         && !caps.hasPaCurrentTelemetry;
     if (m_paTempLabel) {
         m_paTempLabel->setVisible(!paTemperatureWithdrawn);
-    }
-    // ANAN fork build 735 (operator, 25.11: "not every radio shows current
-    // and voltage -- hide them"): the multi meter's Id / Vd rows only for a
-    // radio whose capability record says it reports them.
-    if (m_appletPanel) {
-        if (auto* mm = m_appletPanel->ananMultiMeter())
-            mm->setTelemetryRows(live && caps.hasSupplyVoltageTelemetry,
-                                 live && caps.hasPaCurrentTelemetry);
     }
     if (m_supplyVoltLabel) {
         m_supplyVoltLabel->setVisible(!connected || caps.hasSupplyVoltageTelemetry);
