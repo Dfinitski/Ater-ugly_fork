@@ -243,7 +243,7 @@ private:
     void updateHoldDelayAffordance();
 
     QString m_alcMeterUnit{QStringLiteral("dBFS")};
-    float m_compressionMaximumDb{25.0f};
+    float m_compressionMaximumDb{30.0f};   // ANAN fork build 742
     int m_pitchMinHz{100};
     int m_pitchMaxHz{6000};
     int m_pitchStepHz{10};

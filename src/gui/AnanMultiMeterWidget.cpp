@@ -77,6 +77,48 @@ double swrPosition(double swr)
     return clamp01((1.0 - 1.0 / std::max(1.0, swr)) / 0.9);
 }
 
+// Build 742 (operator, 25.11: "when centring a label, a minus sign counts
+// with half its width"): the left x of `s` centred on `cx` that way.
+double centredLeft(const QFontMetricsF& fm, const QString& s, double cx)
+{
+    const double w = fm.horizontalAdvance(s);
+    if (!s.isEmpty() && (s.at(0) == QChar(0x2212) || s.at(0) == QLatin1Char('-'))) {
+        const double sign = fm.horizontalAdvance(s.left(1));
+        return cx - (w - sign / 2.0) / 2.0 - sign / 2.0;
+    }
+    return cx - w / 2.0;
+}
+
+// Text drawn as outlines (build 742: even letter spacing at any scale --
+// hinted glyph advances round differently per letter under the painter's
+// scale, "COMP" showed uneven gaps).
+void drawTextAt(QPainter& p, const QFont& font, const QColor& colour,
+                double left, double baseline, const QString& s)
+{
+    QPainterPath path;
+    path.addText(QPointF(left, baseline), font, s);
+    p.save();
+    p.setPen(Qt::NoPen);
+    p.setBrush(colour);
+    p.drawPath(path);
+    p.restore();
+}
+
+// Baseline that centres the font's ascent..descent on `cy`.
+double centredBaseline(const QFontMetricsF& fm, double cy)
+{
+    return cy + (fm.ascent() - fm.descent()) / 2.0;
+}
+
+QFont meterFont(double px, bool bold)
+{
+    QFont f;
+    f.setPixelSize(int(px));
+    f.setBold(bold);
+    f.setHintingPreference(QFont::PreferNoHinting);
+    return f;
+}
+
 QString wattsText(double w)
 {
     if (w >= 20.0)
@@ -206,7 +248,9 @@ double AnanMultiMeterWidget::position(Row row, float value) const
     // gauge, the post-ALC peak -20..0 dBFS; COMP as its Compression gauge,
     // -25..0 dB, the compression a negative offset read from the right.
     case Row::Alc:  return linear(value, -20.0, 0.0);
-    case Row::Comp: return linear(-value, -25.0, 0.0);
+    // Build 742 (operator, 25.11): 0 at the left, -30 at the right, the
+    // pointer running right as the compression grows.
+    case Row::Comp: return linear(value, 0.0, 30.0);
     }
     return 0.0;
 }
@@ -242,11 +286,10 @@ AnanMultiMeterWidget::Scale AnanMultiMeterWidget::scaleOf(Row row) const
         s.redFrom = linear(-3, -20, 0);   // the applet's red from -3 dBFS
         break;
     case Row::Comp:
-        for (int c : {-25, -20, -15, -10, -5})
-            s.marks.append({linear(c, -25, 0), QString::fromUtf8("\xE2\x88\x92%1").arg(-c)});
-        s.marks.append({1.0, QStringLiteral("0")});
-        s.reversed = true;                 // no red zone, as the applet
-        break;
+        s.marks.append({0.0, QStringLiteral("0")});
+        for (int c : {5, 10, 15, 20, 25, 30})
+            s.marks.append({linear(c, 0, 30), QString::fromUtf8("\xE2\x88\x92%1").arg(c)});
+        break;                             // no red zone, as the applet
     }
     return s;
 }
@@ -260,7 +303,7 @@ float AnanMultiMeterWidget::reading(Row row) const
     case Row::Swr:  return (m_transmitting && m_swrValid) ? m_swr : 1.0f;
     // ALC: the post-ALC peak plus the ALC's own gain reduction.
     case Row::Alc:  return m_transmitting ? std::clamp(m_alcDbfs, -20.0f, 0.0f) : -20.0f;
-    case Row::Comp: return m_transmitting ? std::min(m_compDb, 25.0f) : 0.0f;
+    case Row::Comp: return m_transmitting ? std::min(m_compDb, 30.0f) : 0.0f;
     }
     return 0.0f;
 }
@@ -385,14 +428,9 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
         p.setCompositionMode(QPainter::CompositionMode_Multiply);
     const double dim = paper ? 0.55 : 0.38;   // the other direction's rows
 
-    QFont nameFont = font();
-    nameFont.setPixelSize(int(kNamePx));
-    nameFont.setBold(true);
-    QFont nameSmall = nameFont;
-    nameSmall.setPixelSize(int(kNameSmallPx));
-    QFont markFont = font();
-    markFont.setPixelSize(int(kMarkPx));
-    markFont.setBold(true);
+    const QFont nameFont = meterFont(kNamePx, true);
+    const QFont nameSmall = meterFont(kNameSmallPx, true);
+    const QFont markFont = meterFont(kMarkPx, true);
 
     const double step = (kH - kTop - kBottom) / kRows;
     const auto X = [](double f) { return kScaleX0 + (kScaleX1 - kScaleX0) * f; };
@@ -405,19 +443,17 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
         const Scale s = scaleOf(row);
 
         p.setOpacity(on ? 1.0 : dim);
-        p.setFont(row == Row::Comp ? nameSmall : nameFont);
-        p.setPen(on ? c.accent : c.sub);
+        const QFont& nf = row == Row::Comp ? nameSmall : nameFont;
+        const QFontMetricsF nfm(nf);
+        const QColor nameCol = on ? c.accent : c.sub;
         // Build 740 (operator, 25.11: "where the P of PWR starts -- every
         // name at that x, fixed; no more centring"): PWR as build 739 centred
         // it (between the window's edge and its first figure), the others
         // left-aligned at that x.
         // Build 741 (operator): S stays where build 739 centred it.
-        if (row == Row::S)
-            p.drawText(QRectF(0.0, y - 12.0, nameColumnRight(row), 24.0),
-                       Qt::AlignHCenter | Qt::AlignVCenter, rowName(row));
-        else
-            p.drawText(QRectF(nameLeft, y - 12.0, kScaleX0 - nameLeft, 24.0),
-                       Qt::AlignLeft | Qt::AlignVCenter, rowName(row));
+        const double nx = row == Row::S
+            ? centredLeft(nfm, rowName(row), nameColumnRight(row) / 2.0) : nameLeft;
+        drawTextAt(p, nf, nameCol, nx, centredBaseline(nfm, y), rowName(row));
 
         // The line: ink, red over its red part (thicker).
         const double redFrom = std::min(s.redFrom, 1.0);
@@ -429,18 +465,16 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
                        QPointF(X(1.0), y - (kRedW - kLineW) / 2.0));
         }
 
-        QFont infFont = markFont;   // build 738: "\u221E" is small in most fonts
-        infFont.setPixelSize(int(kMarkPx * 1.75));
-        p.setFont(markFont);
+        const QFont infFont = meterFont(kMarkPx * 1.75, true);   // build 738: small "\u221E"
         for (const Mark& m : s.marks) {
             const bool red = s.redFrom <= 1.0 && m.pos >= redFrom - 1e-6;
             p.setPen(QPen(red ? c.red : c.ink, kTickW, Qt::SolidLine, Qt::FlatCap));
             p.drawLine(QPointF(X(m.pos), y - kTickLen), QPointF(X(m.pos), y));
-            p.setPen(red ? c.red : c.sub);
             const bool inf = m.text == QString::fromUtf8("\xE2\x88\x9E");
-            p.setFont(inf ? infFont : markFont);
-            const QRectF tr(X(m.pos) - 24.0, y - kTickLen - (inf ? 19.0 : 15.0), 48.0, inf ? 20.0 : 14.0);
-            p.drawText(tr, Qt::AlignHCenter | Qt::AlignBottom, m.text);
+            const QFont& mf = inf ? infFont : markFont;
+            const QFontMetricsF mfm(mf);
+            drawTextAt(p, mf, red ? c.red : c.sub, centredLeft(mfm, m.text, X(m.pos)),
+                       y - kTickLen - 1.0 - mfm.descent(), m.text);
         }
     }
     p.setOpacity(1.0);
@@ -453,11 +487,8 @@ double AnanMultiMeterWidget::nameColumnRight(Row row) const
     if (s.marks.isEmpty())
         return kScaleX0;
     const Mark& m = s.marks.first();
-    QFont f = font();
-    f.setBold(true);
-    f.setPixelSize(int(kMarkPx));
     const double x = kScaleX0 + (kScaleX1 - kScaleX0) * m.pos;
-    return std::min(kScaleX0, x - QFontMetricsF(f).horizontalAdvance(m.text) / 2.0);
+    return std::min(kScaleX0, centredLeft(QFontMetricsF(meterFont(kMarkPx, true)), m.text, x));
 }
 
 double AnanMultiMeterWidget::valueColumnLeft(Row row) const
@@ -468,12 +499,10 @@ double AnanMultiMeterWidget::valueColumnLeft(Row row) const
     double right = kScaleX1;
     if (!s.marks.isEmpty()) {
         const Mark& m = s.marks.last();
-        QFont f = font();
-        f.setBold(true);
         const bool inf = m.text == QString::fromUtf8("\xE2\x88\x9E");
-        f.setPixelSize(int(inf ? kMarkPx * 1.75 : kMarkPx));
+        const QFontMetricsF fm(meterFont(inf ? kMarkPx * 1.75 : kMarkPx, true));
         const double x = kScaleX0 + (kScaleX1 - kScaleX0) * m.pos;
-        right = std::max(right, x + QFontMetricsF(f).horizontalAdvance(m.text) / 2.0);
+        right = std::max(right, centredLeft(fm, m.text, x) + fm.horizontalAdvance(m.text));
     }
     return right;
 }
@@ -495,12 +524,9 @@ void AnanMultiMeterWidget::drawDynamic(QPainter& p, const QRectF& meter)
     if (m_face == Face::Light)
         p.setCompositionMode(QPainter::CompositionMode_Multiply);
 
-    QFont valueFont = font();
-    valueFont.setPixelSize(int(kValuePx));
-    valueFont.setBold(true);
-    QFont unitFont = font();
-    unitFont.setPixelSize(int(kUnitPx));
-    unitFont.setBold(true);
+    const QFont valueFont = meterFont(kValuePx, true);
+    const QFont unitFont = meterFont(kUnitPx, true);
+    const QFontMetricsF vfm(valueFont), ufm(unitFont);
 
     const double step = (kH - kTop - kBottom) / kRows;
     const auto X = [](double f) { return kScaleX0 + (kScaleX1 - kScaleX0) * f; };
@@ -532,17 +558,12 @@ void AnanMultiMeterWidget::drawDynamic(QPainter& p, const QRectF& meter)
         // Build 738: each line centred between the scale's last figure and
         // the window's edge.
         const double left = valueColumnLeft(row);
-        const QRectF col(left, 0.0, kW - left, 0.0);
-        p.setPen(c.ink);
-        p.setFont(valueFont);
-        p.drawText(QRectF(col.x(), y - 17.0, col.width(), 18.0),
-                   Qt::AlignHCenter | Qt::AlignVCenter, number);
-        if (!unit.isEmpty()) {
-            p.setPen(c.sub);
-            p.setFont(unitFont);
-            p.drawText(QRectF(col.x(), y + 1.0, col.width(), 12.0),
-                       Qt::AlignHCenter | Qt::AlignVCenter, unit);
-        }
+        const double cx = (left + kW) / 2.0;
+        drawTextAt(p, valueFont, c.ink, centredLeft(vfm, number, cx),
+                   centredBaseline(vfm, y - 8.0), number);
+        if (!unit.isEmpty())
+            drawTextAt(p, unitFont, c.sub, centredLeft(ufm, unit, cx),
+                       centredBaseline(ufm, y + 7.0), unit);
     }
 }
 

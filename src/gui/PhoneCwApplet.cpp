@@ -88,6 +88,7 @@ static constexpr const char* kInsetEditStyle =
     "QLineEdit:focus { border: 1px solid #00b4d8; }";
 
 static constexpr float kAlcGaugeFloorDbfs = -20.0f;
+static constexpr float kCompGaugeMaxDb = 30.0f;   // ANAN fork build 742
 static constexpr float kLevelGaugeFloorDbfs = -40.0f;
 
 // Mouse-over readout formatter for the ALC gauges — one decimal of dBFS so a
@@ -397,14 +398,17 @@ void PhoneCwApplet::buildPhonePanel()
     m_levelGauge->setHoverValuePopupEnabled(true);
     vbox->addWidget(m_levelGauge);
 
-    // ── Compression gauge (dB: -25 to 0, fills right-to-left) ───────────
-    m_compGauge = new HGauge(-25.0f, 0.0f, 1.0f, "Compression", "",
-        {{-25, "-25dB"}, {-20, "-20"}, {-15, "-15"}, {-10, "-10"}, {-5, "-5"}, {0, "0"}});
-    m_compGauge->setReversed(true);
+    // ── Compression gauge ────────────────────────────────────────────────
+    // ANAN fork build 742 (operator, 25.11: "turn the scale round -- 0 at the
+    // left, -30 at the right, the bar running right as the compression
+    // grows; -30 for both", the multi meter's COMP too): the amount of
+    // compression, 0..30 dB, labelled as the gain taken away (0 .. -30);
+    // no red zone (red from above the top).
+    m_compGauge = new HGauge(0.0f, kCompGaugeMaxDb, kCompGaugeMaxDb + 1.0f, "Compression", "",
+        {{0, "0dB"}, {5, "-5"}, {10, "-10"}, {15, "-15"}, {20, "-20"}, {25, "-25"}, {30, "-30"}});
     m_compGauge->setAccessibleName("Compression gauge");
     m_compGauge->setAccessibleDescription("Speech compression amount in dB");
-    // Mouse-over readout: the gauge stores compression as a negative offset
-    // (-25…0); report it as a positive "amount of compression" in dB. (#3936)
+    // Mouse-over readout, as the face: the gain taken away. (#3936; build 742)
     m_compGauge->setHoverValueFormatter([](float v) {
         return QStringLiteral("%1 dB").arg(QString::number(-v, 'f', 1));
     });
@@ -1934,24 +1938,16 @@ void PhoneCwApplet::resetLevelMeter()
 
 void PhoneCwApplet::setCompressionMaximumDb(float maximum)
 {
-    if (!std::isfinite(maximum) || maximum <= 0.0f || maximum == m_compressionMaximumDb) {
-        return;
-    }
-    m_compressionMaximumDb = maximum;
-    QVector<HGauge::Tick> ticks;
-    for (float value = maximum; value > 0.0f; value -= 5.0f) {
-        ticks.append({-value, value == maximum
-            ? QStringLiteral("-%1dB").arg(value) : QString::number(-value)});
-    }
-    ticks.append({0.0f, QStringLiteral("0")});
-    m_compGauge->setRange(-maximum, 0.0f, 1.0f, ticks);
+    // ANAN fork build 742: the face is fixed at 0 .. -30 dB (operator), the
+    // radio's own maximum is not used.
+    Q_UNUSED(maximum);
 }
 
 void PhoneCwApplet::updateCompression(float compPeak)
 {
     // MeterModel exposes a positive physical amount; the face fills in reverse.
     const float compressionDb = qBound(0.0f, compPeak, m_compressionMaximumDb);
-    m_compGauge->setValue(-compressionDb);
+    m_compGauge->setValue(compressionDb);   // build 742: grows to the right
 }
 
 void PhoneCwApplet::updateAlcGain(float gainDb)
