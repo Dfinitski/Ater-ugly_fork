@@ -4013,10 +4013,21 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
             // window's top. The top stays at the window's top and Qt's top
             // inset is added to the bottom one, so the client area keeps Qt's
             // height (nothing stretched vertically either).
+            // Build 710 (operator: "now the strip is at the bottom"). FrameDiag
+            // of 709: window 987 high, client 973 (top 0, bottom 14 -- 9 + 5),
+            // Qt's client at +5,+9: Qt's own margins are 5 left / right /
+            // bottom, and it takes the top as (window - client height) minus
+            // its bottom (QWindowsWindow::calculateFullFrameMargins, the
+            // "typical frame" rule). The 9 at the top was only that rule fed
+            // back from our own earlier answer; the 14 at the bottom showed
+            // past the invisible resize border. Bottom = Qt's bottom alone and
+            // top 0: then Qt's rule gives a top of 0 itself, its client equals
+            // Windows' (+5,+0) in place and size, and the bottom stays inside
+            // the invisible border.
             RECT& client = params->rgrc[0];
             client.left += insetLeft;
             client.right -= insetRight;
-            client.bottom -= insetTop + insetBottom;
+            client.bottom -= insetBottom;
             *result = 0;
             return true;
         }
