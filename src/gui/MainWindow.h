@@ -716,6 +716,7 @@ private:
     // TX or RX instance.
     void syncGraphicEqFromClientEq();   // ANAN fork build 687; 717: exclusion only
     int m_aetherEqLastOn[2] = {-1, -1};  // build 717: ClientEq RX / TX enable last seen
+    int m_aetherCompLastOn = -1;  // build 719: ClientComp TX enable last seen
     void applyGraphicEqToClientEq(bool transmit);
     void wireExternalControllers(); // MainWindow_Controllers.cpp
     void setupCtr2Proxy();          // MainWindow_Controllers.cpp

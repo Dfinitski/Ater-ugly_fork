@@ -834,72 +834,39 @@ void MainWindow::applySpeechProcessorToClientComp(bool operatorIntent)
 
     const auto& tx = m_radioModel.transmitModel();
     const bool on = tx.speechProcessorEnable();
-    const int level = qBound(0, tx.speechProcessorLevel(), 2);
 
-    // ANAN fork build 696 (operator, 24.11: "these are presets, so: the
-    // operator switches the Aether compressor on -- the applet's button goes
-    // off; switches it on in the applet -- the Aether one goes on and gets
-    // the preset of the slider; switches anything off -- everything goes
-    // off"; the slider with PROC off writes nothing). Replaces the rules of
-    // builds 688 / 695:
-    //  - only the operator's PROC moves act here (speechProcessorCommandIssued);
-    //    the observe call (micStateChanged, also emitted by the mirror below)
-    //    does nothing -- PROC off with the Aether compressor on is a state of
-    //    its own now, which the observe call must not "correct";
-    //  - PROC on: the compressor on + the slider's preset; PROC off: the
-    //    compressor off; the slider with PROC on: its preset; with PROC off:
-    //    nothing (the preset is written when PROC goes on);
-    //  - the Aether side switching the compressor on or off: the mirror below.
-    // The applied state is kept here, not in the observe call:
-    // setSpeechProcessor*() emit micStateChanged before the command signal.
+    // ANAN fork build 719 (operator, 25.11: "a simple compressor for the
+    // microphone, used by PROC, so that this is separated too; the settings
+    // as close as possible to the three presets"). Replaces builds 688 / 695 /
+    // 696, which wrote the NOR / DX / DX+ presets into the Aether strip's
+    // compressor: PROC has its own compressor now, in the backend
+    // (Hl2Backend::applyCodecProcessor / procCompProcess, the same presets),
+    // and the two are mutually exclusive, as the equalisers (build 717):
+    //  - PROC switched on by the operator switches the Aether compressor off;
+    //  - the Aether compressor switched on switches PROC off (the mirror in
+    //    wireHostModulatedVoiceChain);
+    //  - the slider and PROC off touch nothing here.
+    // Only the operator's PROC moves act (speechProcessorCommandIssued); the
+    // observe call (micStateChanged, also emitted by the mirror) does nothing.
     if (!operatorIntent)
         return;
-    const bool switched = on != m_lastAppliedProcEnable;
-    const bool levelChanged = level != m_lastAppliedProcLevel;
-    if (on && (switched || levelChanged)) {
-        // NOR / DX / DX+. Progressively lower thresholds and higher ratios, with
-        // makeup chosen to keep the average level rising with the setting rather
-        // than merely squashing peaks — "more processing" has to sound louder or
-        // the control reads as broken.
-        //
-        // The makeup comes from this stage alone: the modulator's ALC
-        // (Hl2TxAlc), downstream, only reduces level.
-        struct Preset { float thresholdDb; float ratio; float makeupDb; };
-        static constexpr Preset kPresets[3] = {
-            { -18.0f, 2.5f,  4.0f },   // NOR
-            { -24.0f, 4.0f,  8.0f },   // DX
-            { -30.0f, 6.0f, 12.0f },   // DX+
-        };
-        const Preset& p = kPresets[level];
-        comp->setThresholdDb(p.thresholdDb);
-        comp->setRatio(p.ratio);
-        comp->setMakeupDb(p.makeupDb);
-        // Fast enough to catch a syllable, slow enough not to pump on speech.
-        comp->setAttackMs(5.0f);
-        comp->setReleaseMs(120.0f);
-        comp->setKneeDb(6.0f);
-        m_lastAppliedProcLevel = level;
-    }
-    // Only on a PROC edge: the connect re-push (cache reset to off) with PROC
-    // off leaves the strip's own compressor as it is.
-    if (switched && comp->isEnabled() != on)
-        comp->setEnabled(on);
+    const bool switchedOn = on && !m_lastAppliedProcEnable;
     m_lastAppliedProcEnable = on;
-
-    // OPERATOR INTENT ONLY claims the shared compressor.
-    //
-    // The observe path reaches here too, from the 20 Hz mirror below reporting a
-    // STRIP-originated enable. That must not count: claiming ownership from it
-    // would arm the family-swap unwind against settings this code never made, so
-    // the operator's own strip compressor would be switched off the next time
-    // they connected a Flex. See core/HostVoiceChainPolicy.h.
-    if (operatorIntent)
-        m_hostVoiceChainOwned = true;
-
+    m_lastAppliedProcLevel = qBound(0, tx.speechProcessorLevel(), 2);
+    if (!switchedOn || !comp->isEnabled())
+        return;
+    comp->setEnabled(false);
+    m_audio->saveClientCompSettings();
+    m_aetherCompLastOn = 0;
+    qInfo() << "PROC on: the Aether TX compressor switched off";
     // The strip's own compressor tile reads its checked state from the engine,
     // so it has to be told the object underneath it changed.
-    if (m_appletPanel && m_appletPanel->clientCompTxApplet())
-        m_appletPanel->clientCompTxApplet()->refreshEnableFromEngine();
+    if (m_appletPanel) {
+        if (m_appletPanel->clientCompTxApplet())
+            m_appletPanel->clientCompTxApplet()->refreshEnableFromEngine();
+        if (m_appletPanel->clientChainApplet())
+            m_appletPanel->clientChainApplet()->refreshFromEngine();
+    }
 }
 
 // ANAN fork build 717 (operator, 25.11: "we have to separate the equalisers
@@ -1144,27 +1111,32 @@ void MainWindow::wireHostModulatedVoiceChain()
         // ClientComp reports gain reduction as a value <= 0. Negate, do not
         // abs(): a positive gainReductionDb would be a bug upstream and
         // abs() would render it as heavy compression.
-        const float reduction = comp->isEnabled() ? -comp->gainReductionDb() : 0.0f;
-        m_radioModel.meterModel().updateValueByName(
-            QStringLiteral("TX"), QStringLiteral("COMPPEAK"),
-            qBound(0.0f, reduction, 25.0f));
+        // Build 719: the Aether compressor's while it is on; while PROC is on
+        // and the radio transmits, the backend publishes PROC's compressor
+        // (Hl2Backend::procCompProcess); otherwise nothing is compressed.
+        auto& tx = m_radioModel.transmitModel();
+        const bool aetherOn = comp->isEnabled();
+        if (aetherOn || !tx.speechProcessorEnable() || !tx.isTransmitting()) {
+            const float reduction = aetherOn ? -comp->gainReductionDb() : 0.0f;
+            m_radioModel.meterModel().updateValueByName(
+                QStringLiteral("TX"), QStringLiteral("COMPPEAK"),
+                qBound(0.0f, reduction, 25.0f));
+        }
 
-        // Mirror the strip back onto PROC. applySpeechProcessorState() emits
-        // micStateChanged but NOT speechProcessorCommandIssued, so this can
-        // never be mistaken for the operator moving PROC.
-        // ANAN fork build 696 (operator, 24.11, see
-        // applySpeechProcessorToClientComp): PROC on means the compressor on
-        // with the slider's preset. The Aether side switching the compressor
-        // off switches PROC off ("switches anything off -- everything goes
-        // off"); switching it on there leaves PROC off (its own settings, not
-        // a preset). So the one thing to mirror: PROC on, compressor off.
-        // The backend hears it (adoptSpeechProcessorFromChain -> controlRequested):
-        // on ANAN PROC also drives the radio-side TXA compressor. This
-        // replaces build 688's mirroring of the enable and of the preset
-        // position (the slider no longer follows the Aether knobs).
+        // Build 719: the Aether compressor switched on by its own controls
+        // switches PROC off (mutually exclusive, see
+        // applySpeechProcessorToClientComp). applySpeechProcessorState()
+        // emits micStateChanged but NOT speechProcessorCommandIssued, so this
+        // is never mistaken for the operator moving PROC; the backend hears it
+        // (adoptSpeechProcessorFromChain -> controlRequested) and switches its
+        // PROC compressor and the TXA compressor's PROC gain off. At the first
+        // look, both on keeps the Aether compressor. Replaces build 696's
+        // "PROC on, compressor off -> PROC off": that is PROC's normal state now.
         {
-            auto& tx = m_radioModel.transmitModel();
-            if (tx.speechProcessorEnable() && !comp->isEnabled()) {
+            const int last = m_aetherCompLastOn;
+            m_aetherCompLastOn = aetherOn ? 1 : 0;
+            if (aetherOn && last != 1 && tx.speechProcessorEnable()) {
+                qInfo() << "Aether TX compressor on: PROC switched off";
                 tx.adoptSpeechProcessorFromChain(false, tx.speechProcessorLevel());
                 m_lastAppliedProcEnable = false;
             }

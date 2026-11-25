@@ -825,6 +825,10 @@ Hl2Backend::Hl2Backend(QObject* parent)
     m_codecMicDown = std::make_unique<fdv::HalfbandResampler>();
     m_codecComp = std::make_unique<ClientComp>();
     m_codecComp->prepare(24000.0);
+    m_procComp = std::make_unique<ClientComp>();
+    m_procComp->prepare(24000.0);
+    m_procComp->setLimiterEnabled(true);
+    m_procComp->setLimiterCeilingDb(-1.0f);
     applyCodecProcessor(false, 0);
     // ANAN-100D port (01.11): the radio microphone no longer comes here (it
     // crossed the GUI thread: every window stall emptied the DUC queue, a
@@ -7440,6 +7444,9 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
     }
 
     const bool keyChanged = m_keyed != key;
+    // Build 719: PROC's compressor starts each over from a clean envelope.
+    if (keyChanged && key)
+        m_procCompResetIo.store(true, std::memory_order_release);
     // ANAN-100D port: FDV over. Key-down starts the modulator; a key-up that
     // was not deferred for the end-of-over (MainWindow holds PTT through it
     // via the PTT-off hook) still tells libfdv the over has ended.
@@ -8605,6 +8612,24 @@ void Hl2Backend::applyCodecProcessor(bool on, int level)
     m_codecComp->setKneeDb(6.0f);
     if (m_codecComp->isEnabled())
         m_codecComp->setEnabled(false);   // TXA's compressor does PROC (above)
+    // ANAN fork build 719 (operator, 25.11: "a simple compressor for the
+    // microphone, used by PROC, so that this is separated too; the settings as
+    // close as possible to the three presets"). Until now PROC wrote these
+    // presets into the Aether strip's compressor (MainWindow, builds 688 / 696);
+    // now PROC has a compressor of its own -- the same ClientComp, the same
+    // presets, attack, release and knee, its limiter at -1 dBFS -- on the
+    // computer microphone where the strip's one sat (ahead of MIC gain), and
+    // the Aether compressor is left to the operator (mutually exclusive with
+    // PROC, MainWindow). The radio microphone keeps PROC = the TXA compressor.
+    if (m_procComp) {
+        m_procComp->setThresholdDb(p.thresholdDb);
+        m_procComp->setRatio(p.ratio);
+        m_procComp->setMakeupDb(p.makeupDb);
+        m_procComp->setAttackMs(5.0f);
+        m_procComp->setReleaseMs(120.0f);
+        m_procComp->setKneeDb(6.0f);
+        m_procComp->setEnabled(on);
+    }
     qInfo() << "Hl2Backend: codec-mic PROC" << (on ? "on" : "off") << "level" << level;
 }
 
@@ -8629,6 +8654,31 @@ void Hl2Backend::fdvSpeechProcess(std::vector<float>& mono)
     m_codecComp->process(mono.data(), static_cast<int>(mono.size()), 1);
     for (float& v : mono)
         v = std::clamp(v, -1.0f, 1.0f);
+}
+
+// ANAN fork build 719: PROC's compressor on the computer microphone, at the
+// level the Aether strip's compressor saw it (before MIC gain, which
+// Hl2TxDsp applies). Its gain reduction feeds the compression gauge
+// (TX:COMPPEAK, a positive amount in dB) every 50 ms while PROC is on;
+// MainWindow publishes the Aether compressor's when that one is on.
+void Hl2Backend::procCompProcess(std::vector<float>& mono)
+{
+    if (!m_procComp || mono.empty())
+        return;
+    if (m_procCompResetIo.exchange(false, std::memory_order_acq_rel))
+        m_procComp->reset();
+    if (!m_procComp->isEnabled()) {
+        m_procCompMeterSamples = 0;
+        return;
+    }
+    m_procComp->process(mono.data(), static_cast<int>(mono.size()), 1);
+    m_procCompMeterSamples += mono.size();
+    if (m_procCompMeterSamples >= 1200) {   // 50 ms at 24 kHz
+        m_procCompMeterSamples = 0;
+        const double reduction =
+            std::clamp(-static_cast<double>(m_procComp->gainReductionDb()), 0.0, 25.0);
+        emit meterUpdate(QStringLiteral("TX:COMPPEAK"), reduction);   // queued to the receivers
+    }
 }
 
 // ANAN fork build 350 (operator, 13.11: "how do I see the microphone level in
@@ -9360,6 +9410,8 @@ void Hl2Backend::submitTxAudio(const QByteArray& int16Stereo, int sampleRateHz,
     // ALC stays, as in MicronSDR (DspUnit::SetMode: "without the speech
     // processing -- the ALC stays"); libfdv's output peaks near full scale
     // for it (fdv_engine.cpp RADE_TX_GAIN / C2_TX_GAIN), so no gain is added.
+    if (!(m_fdv && m_fdv->txRunning()) && source == TxAudioSource::Microphone)
+        procCompProcess(mono);   // build 719; FreeDV has its own (fdvSpeechProcess)
     if (m_fdv && m_fdv->txRunning()) {
         if (source != TxAudioSource::EngineGenerated) {
             const float g = m_micGainIo.load(std::memory_order_relaxed);

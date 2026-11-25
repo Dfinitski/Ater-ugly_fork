@@ -716,6 +716,8 @@ private:
     // the radio's, anan-audio for the computer's), under m_fdvTxMutex -- as
     // are fdvPublishMod() and the encoder call that follows them.
     void fdvSpeechProcess(std::vector<float>& mono);
+    // ANAN fork build 719: PROC's own compressor on the computer microphone.
+    void procCompProcess(std::vector<float>& mono);
     std::mutex m_fdvTxMutex;
     // The radio microphone's FreeDV block: process, encode, modulate. On the
     // transmit thread (build 374; it crossed the GUI thread before).
@@ -817,6 +819,13 @@ private:
     // codec microphone never passes there, so it gets its own compressor with
     // the same NOR / DX / DX+ presets (applyCodecProcessor()).
     std::unique_ptr<ClientComp> m_codecComp;
+    // Build 719: PROC's compressor (NOR / DX / DX+), separate from the Aether
+    // strip's. Processed on the thread that submits the computer's mic audio;
+    // set (atomics) from the backend's. The envelope restarts at each key-down
+    // through the flag, never by a reset() racing process().
+    std::unique_ptr<ClientComp> m_procComp;
+    std::atomic<bool> m_procCompResetIo{false};
+    std::size_t m_procCompMeterSamples = 0;
     void applyCodecProcessor(bool on, int level);
     // ANAN-100D port: MON. The receivers are muted while keyed, so the
     // operator's own (processed) microphone is played to the computer speaker
