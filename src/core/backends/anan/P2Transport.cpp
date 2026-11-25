@@ -2386,7 +2386,8 @@ void P2Transport::setWbBypass(int adcMask)
     if (adcMask == m_wbBypassMask)
         return;
     m_wbBypassMask = adcMask;
-    qCInfo(lcAnanP2T) << "ANAN P2 transport: Wideband BPF Bypass"
+    // Protocol 1 takes it from p1State() in the C&C rotation (build 685).
+    qCInfo(lcAnanP2T) << "ANAN transport: Wideband BPF Bypass"
                       << (adcMask == 0 ? QStringLiteral("off")
                                        : QStringLiteral("ADC%1").arg(adcMask == 2 ? 2 : 1));
     if (m_run && m_configured)
@@ -3321,22 +3322,27 @@ P1CcState P2Transport::p1State() const
         // ORION MkII: band-pass banks per ADC, the LPF on the TX frequency.
         const AlexRxFilter f0 = bank0.used ? bank0.filter : alexRxFilterFor(filterHz);
         // Build 396: Thetis' "BPF ByPass on PS", as on Protocol 2.
-        s.alexHpf = p1AlexHpfBits(psBypassesBank(0) ? AlexRxFilter::Bypass : f0);
-        s.alex2Hpf = p1AlexHpfBits(psBypassesBank(1) ? AlexRxFilter::Bypass
-                                                     : (bank1.used ? bank1.filter : f0));
+        // Build 685: the Wideband Monitor's BPF Bypass on Protocol 1 as well
+        // (the window works on both protocols; build 683 did Protocol 2 only).
+        s.alexHpf = p1AlexHpfBits((psBypassesBank(0) || (m_wbBypassMask & 1))
+                                      ? AlexRxFilter::Bypass : f0);
+        s.alex2Hpf = p1AlexHpfBits((psBypassesBank(1) || (m_wbBypassMask & 2))
+                                       ? AlexRxFilter::Bypass
+                                       : (bank1.used ? bank1.filter : f0));
         s.alexLpf = p1AlexLpfBitsFor(static_cast<double>(tx));
         s.rx2GroundOnTx = m_adc1GndOnTx;
     } else {
         // ANAN-10/100/100D/200D: high-pass ahead of ADC0, and the receive
         // path through the TX low-pass bank, which therefore follows the
         // receive frequency while receiving (as on Protocol 2).
-        s.alexHpf = p1AlexHpfBits(psBypassesBank(0) ? AlexRxFilter::Bypass   // build 502
+        const bool wbBypass0 = (m_wbBypassMask & 1) != 0;   // build 685
+        s.alexHpf = p1AlexHpfBits((psBypassesBank(0) || wbBypass0) ? AlexRxFilter::Bypass   // build 502
                                   : bank0.used ? bank0.filter : legacyAlexHpfFor(filterHz));
         // The PA's harmonic filter on the TX frequency while transmitting;
         // receiving, ADC1's receiver's band, or (build 280) the widest when
         // the bank is bypassed -- as Protocol 2 sends it (deskHPSDR).
         s.alexLpf = p1AlexLpfBitsFor(m_mox ? static_cast<double>(tx)
-                                   : bank0.spanned ? std::numeric_limits<double>::infinity()
+                                   : (bank0.spanned || wbBypass0) ? std::numeric_limits<double>::infinity()
                                    : (bank0.used ? bank0.lpfHz : filterHz));
     }
     if (m_lna && !m_mox)

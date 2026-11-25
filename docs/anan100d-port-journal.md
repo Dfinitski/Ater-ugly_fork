@@ -11538,6 +11538,20 @@ Thetis (console.cs `ZoomToBand`, `zoomToBandBandwidth`): панорама на �
 
 Файлы: `src/gui/WidebandMonitorDialog.{cpp,h}`, `src/core/ForkBuild.h`. errcheck 4 (базовый), bogus +1.
 
+## 668. Сборка 685 — «BPF Bypass» окна WB и на Protocol 1
+
+**Оператор (24.11):** «WB работает и в первом протоколе, я это уже говорил».
+
+**Наша ошибка в 683:** байпас шёл только в P2 High Priority (`sendHighPriority`, который на P1 сразу возвращается). Окно WB работает и на P1: тот же `P2Transport`, wideband по EP4 (`widebandFrame(0, …)`).
+
+**Исправление (`P2Transport::p1State`, C&C ротация P1):**
+- **ORION MkII (Orion2BandPass).** `alexHpf` = Bypass при `m_wbBypassMask & 1`, `alex2Hpf` = Bypass при `& 2` — вместе с правилом PS (`psBypassesBank`).
+- **Старый Alex (10/100/100D/200D).** `alexHpf` = Bypass при `& 1`; на приёме LPF самый широкий, как при байпасе банка из-за разнесённых диапазонов (сборка 280) и как на P2.
+
+P1 берёт состояние в каждой ротации C&C, отдельная отправка не нужна. На P1 wideband есть только по АЦП1 (EP4). Комментарии в `P2Transport.h` и `WidebandMonitorDialog.cpp` исправлены.
+
+Файлы: `src/core/backends/anan/P2Transport.{cpp,h}`, `src/gui/WidebandMonitorDialog.cpp`, `src/core/ForkBuild.h`. errcheck: P2Transport 0, WidebandMonitorDialog 4 (базовый), bogus +1.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

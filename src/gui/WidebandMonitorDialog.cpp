@@ -369,6 +369,8 @@ WidebandMonitorDialog::WidebandMonitorDialog(RadioModel* model, QWidget* parent)
     // ANAN fork build 683 (operator, 24.11): "BPF Bypass" -- the receive
     // filter bank of the ADC shown bypassed while on, so the whole range
     // comes through. Off whenever the window opens or closes; not stored.
+    // Build 685: on Protocol 1 too (OUR ERROR in 683: it went to Protocol 2
+    // only, though the window works on both).
     m_bypassBtn = new QPushButton(QStringLiteral("BPF Bypass"));
     m_bypassBtn->setCheckable(true);
     m_bypassBtn->setToolTip(QStringLiteral(

@@ -203,6 +203,7 @@ public:
     // Bypass" -- the receive filter bank of each ADC in `adcMask` (bit 0 =
     // ADC1, bit 1 = ADC2) bypassed while the window asks for it; 0 = off.
     // Not stored anywhere: the window clears it when it closes.
+    // Build 685: both protocols (Protocol 1 through p1State()).
     Q_INVOKABLE void setWbBypass(int adcMask);
     Q_INVOKABLE void setPsCouplerOnTx(bool on);
     // Build 396: Thetis' "BPF ByPass on PS" (Setup, ORION MkII / Saturn
