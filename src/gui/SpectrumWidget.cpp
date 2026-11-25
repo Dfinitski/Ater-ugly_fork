@@ -109,6 +109,15 @@
 #include "core/ThemeManager.h"
 #include "core/WaterfallRate.h"
 
+#ifdef Q_OS_WIN
+// ANAN fork build 698: the two user32 calls of the resize diagnostics
+// (ResizeDiag), declared here rather than through <windows.h> (its min/max
+// macros), as TitleBar.cpp does (build 520).
+struct AetherWinRect { long left; long top; long right; long bottom; };
+extern "C" __declspec(dllimport) int __stdcall GetClientRect(void* hWnd, AetherWinRect* rect);
+extern "C" __declspec(dllimport) int __stdcall GetWindowRect(void* hWnd, AetherWinRect* rect);
+#endif
+
 namespace AetherSDR {
 
 bool SpectrumWidget::s_starstruckMode = false;
@@ -17890,9 +17899,32 @@ void SpectrumWidget::render(QRhiCommandBuffer* cb)
             .arg(upAt.x()).arg(upAt.y())
             .arg(m_rateUpBtn ? m_rateUpBtn->width() : 0)
             .arg(m_rateUpBtn ? m_rateUpBtn->height() : 0);
-        if (line != m_resizeDiagLast) {
-            m_resizeDiagLast = line;
-            qInfo().noquote() << "ResizeDiag:" << line;
+#ifdef Q_OS_WIN
+        // Build 698: the native window's own client and window rectangles.
+        // With the blit swap chain (build 461) Windows stretches the
+        // presented picture to the client area, so a client area a pixel off
+        // Qt's window size ("handle") would drop one column of the whole
+        // window -- the stripe; the flip model (no stretch) showed none.
+        QString nativeSizes;
+        if (top && top->windowHandle()) {
+            AetherWinRect client{};
+            AetherWinRect frame{};
+            void* hwnd = reinterpret_cast<void*>(top->winId());
+            const bool haveClient = GetClientRect(hwnd, &client) != 0;
+            const bool haveFrame = GetWindowRect(hwnd, &frame) != 0;
+            nativeSizes = QStringLiteral(" | native client %1x%2 window %3x%4")
+                .arg(haveClient ? client.right - client.left : -1)
+                .arg(haveClient ? client.bottom - client.top : -1)
+                .arg(haveFrame ? frame.right - frame.left : -1)
+                .arg(haveFrame ? frame.bottom - frame.top : -1);
+        }
+        const QString lineAll = line + nativeSizes;
+#else
+        const QString& lineAll = line;
+#endif
+        if (lineAll != m_resizeDiagLast) {
+            m_resizeDiagLast = lineAll;
+            qInfo().noquote() << "ResizeDiag:" << lineAll;
         }
     }
     if (m_rhiFailureForcedForAutomation) {
