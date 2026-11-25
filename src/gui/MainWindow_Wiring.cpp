@@ -5003,6 +5003,23 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
                 if (tuneMhz > 0.0 && m_radioModel.backendDeclaresExtension(QStringLiteral("hl2"))
                     && !locked->isLocked()) {
                     SpectrumWidget* dragSw = m_panStack ? m_panStack->spectrum(dragPanId) : nullptr;
+                    // ANAN fork build 673 (operator, 24.11: "the step is always
+                    // a multiple of ten, yet the frequency display runs through
+                    // every value, units of hertz included -- it must show the
+                    // set step at once; the animation does harm"). Build 657
+                    // glides the VIEW of a knob step, and the receiver went
+                    // with the view's centre through every value of the glide.
+                    // A knob's step now tunes the receiver straight to its
+                    // target (the step's frequency); only the view glides.
+                    if (dragSw) {
+                        const double knobMhz = dragSw->knobTuneTargetMhz();
+                        if (std::isfinite(knobMhz) && knobMhz > 0.0) {
+                            tuneMhz = knobMhz;
+                            if (m_tciIqCenterLockPans.contains(dragPanId))
+                                tuneMhz -= (locked->filterLow() + locked->filterHigh()) / 2.0e6;
+                            tuneMhz = std::round(tuneMhz * 1.0e6) / 1.0e6;
+                        }
+                    }
                     holdCenterLockTuneTarget(locked, tuneMhz);
                     m_radioModel.invokeBackendExtension(QStringLiteral("hl2"), QStringLiteral("anan.lockdrag"), 0,
                         QVariantMap{{QStringLiteral("slice"), lockId},

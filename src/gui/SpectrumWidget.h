@@ -747,6 +747,14 @@ public:
     int   fftFps() const               { return m_fftFps; }
     bool  fftWeightedAvg() const       { return m_fftWeightedAvg; }
     bool panDragActive() const { return m_draggingPan; }
+    // ANAN fork build 673: while a knob drives the drag (knobPanDragTo), the
+    // frequency its last step asked for -- the view glides there, the
+    // receiver goes there at once (MainWindow, anan.lockdrag). NaN otherwise.
+    double knobTuneTargetMhz() const
+    {
+        return (m_knobDragActive && m_draggingPan) ? m_knobGlideTargetMhz
+                                                   : std::numeric_limits<double>::quiet_NaN();
+    }
     bool frequencyRangeGestureActive() const
     {
         return m_draggingBandwidth || m_frequencyRangeSettlePending;
