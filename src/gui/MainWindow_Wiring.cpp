@@ -3956,8 +3956,18 @@ void MainWindow::ananBandMemTick()
             continue;
         const QString band = BandSettings::bandForFrequency(s->frequency());
         AnanBandMemSlot& slot = m_ananBandMem[s->sliceId()];
+        // ANAN fork build 693 (operator, 24.11: "after closing the FTX window
+        // the receiver had no sound"). OUR ERROR: the band memory recorded
+        // the FTX mode's state as the band's own. Log 24.11 22:43-22:48: FTX
+        // on 40 m, its dial to 30 m and 20 m (DIGU 14.074, the 38.4 kHz FTX
+        // view); FTX off went back to 40 m LSB -- "leaving 20 m" stored DIGU
+        // 14.074 as 20 m's memory; the 20 m band button then brought back
+        // DIGU, whose AGC is off: no audible receive (audio peak 0.3 -> 5e-5).
+        // While FTX holds this receiver nothing it does is remembered as a
+        // band's state; the band's antennas / LNA still follow its dial.
+        const bool ftx = s->sliceId() == m_ftxSliceId;
         if (band == slot.band) {
-            slot.live = snap;
+            slot.live = ftx ? QJsonObject() : snap;
             continue;
         }
         // Left the band: its last state is what it is remembered as; the new
@@ -3992,7 +4002,7 @@ void MainWindow::ananBandMemTick()
             }
         }
         slot.band = band;
-        slot.live = snap;
+        slot.live = ftx ? QJsonObject() : snap;   // build 693: not FTX's state
         if (!firstSample)
             ananBandMemApplyHardware(s, ananBandMemLoad(s->sliceId(), band));
     }
