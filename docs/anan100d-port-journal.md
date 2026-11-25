@@ -11944,6 +11944,14 @@ FrameDiag остаётся для проверки: `native client` и `qt clien
 
 errcheck: RadioSetupDialog 23, Wiring 24, MainWindow 42, TxApplet 4, SMeterWidget 0 = база; bogus +1 в каждом изменённом месте.
 
+## 695. Сборка 712 — Max Level и для SmartMTR на флаге
+
+Оператор: «нужно, я думал, ты назвал её S-метром на флаге. А это SmartMTR вообще-то».
+
+`VfoWidget::txPowerFullScaleW()`: для ANAN возвращает Max Level (`ananPowerMaxLevel`). Красную зону SmartMtrConfig и так ставит с верха / `kPowerHeadroom`, то есть с Max Level / 1.2, как на остальных измерителях. Для других радио всё как раньше. Значение перечитывается при каждом обновлении измерителя, поэтому правка в Setup действует сразу.
+
+errcheck VfoWidget 4 = база; bogus +.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

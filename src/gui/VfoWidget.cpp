@@ -5244,6 +5244,13 @@ double VfoWidget::txPowerFullScaleW() const
     // applet). Rated power comes from the same source the radio gauges use, with
     // the Aurora model-name bump MainWindow_Wiring applies; the scale top then
     // sits kPowerHeadroom above rated (red zone begins at rated, in buildPowerConfig).
+    // ANAN fork build 712 (operator, 25.11: "the SmartMTR on the flag too"):
+    // Max Level of Power Meter Calibration is the top; SmartMtrConfig puts
+    // the red zone at top / kPowerHeadroom (Max Level / 1.2), as on the others.
+    if (m_radioModel) {
+        if (const int maxLevel = ananPowerMaxLevel(*m_radioModel); maxLevel > 0)
+            return static_cast<double>(maxLevel);
+    }
     int ratedW = m_txModel ? m_txModel->maxPowerLevel() : 100;
     if (ratedW <= 100 && m_radioModel
         && m_radioModel->model().startsWith(QStringLiteral("AU-")))
