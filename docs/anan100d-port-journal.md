@@ -11615,6 +11615,14 @@ P1 берёт состояние в каждой ротации C&C, отдел�
 
 Файлы: `src/gui/MainWindow_DspApplets.cpp`, `src/models/TransmitModel.{cpp,h}`, `src/core/ForkBuild.h`. errcheck: MainWindow_DspApplets 24 (базовый), TransmitModel 0, bogus +1.
 
+## 672. Сборка 689 — «BPF Bypass» в окне WB: галка в конце группы
+
+**Оператор (24.11):** «я думал, ты поставишь в конце группы и сделаешь в виде галки. Переделай».
+
+**Сделано.** `m_bypassBtn` теперь `QCheckBox` «BPF Bypass» и стоит последним в верхней группе, после «Bottom», перед растяжкой и строкой подсказки; раньше это была кнопка после «Update». Поведение 683/685 не менялось: галка следует за выбранным АЦП, при закрытии окна снимается без сигнала и шлёт 0, не запоминается.
+
+Файлы: `src/gui/WidebandMonitorDialog.{cpp,h}`, `src/core/ForkBuild.h`. errcheck 4 (базовый), bogus +1.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

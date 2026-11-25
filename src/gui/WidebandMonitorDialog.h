@@ -18,8 +18,8 @@
 
 #include <vector>
 
+class QCheckBox;
 class QComboBox;
-class QPushButton;
 class QLabel;
 class QSpinBox;
 
@@ -97,7 +97,7 @@ private:
     WidebandView* m_view = nullptr;
     QComboBox* m_adcCombo = nullptr;
     QComboBox* m_rateCombo = nullptr;
-    QPushButton* m_bypassBtn = nullptr;   // build 683: BPF Bypass
+    QCheckBox* m_bypassBtn = nullptr;   // build 683: BPF Bypass (689: a check box)
     QSpinBox* m_avgSpin = nullptr;
     QSpinBox* m_topSpin = nullptr;
     QSpinBox* m_bottomSpin = nullptr;

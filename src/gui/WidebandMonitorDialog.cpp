@@ -6,6 +6,7 @@
 #include "models/RadioModel.h"
 #include "models/SliceModel.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QHBoxLayout>
 #include <QHideEvent>
@@ -371,11 +372,11 @@ WidebandMonitorDialog::WidebandMonitorDialog(RadioModel* model, QWidget* parent)
     // comes through. Off whenever the window opens or closes; not stored.
     // Build 685: on Protocol 1 too (OUR ERROR in 683: it went to Protocol 2
     // only, though the window works on both).
-    m_bypassBtn = new QPushButton(QStringLiteral("BPF Bypass"));
-    m_bypassBtn->setCheckable(true);
+    // Build 689 (operator, 24.11): a check box, at the end of the group (after
+    // Bottom), not a button after Update.
+    m_bypassBtn = new QCheckBox(QStringLiteral("BPF Bypass"));
     m_bypassBtn->setToolTip(QStringLiteral(
         "Bypass the receive band-pass filters of the ADC shown (off when the window closes)"));
-    row->addWidget(m_bypassBtn);
     addLabel(QStringLiteral("Average:"));
     m_avgSpin = new QSpinBox;
     m_avgSpin->setRange(1, 50);
@@ -394,6 +395,7 @@ WidebandMonitorDialog::WidebandMonitorDialog(RadioModel* model, QWidget* parent)
     m_bottomSpin->setSuffix(QStringLiteral(" dB"));
     m_bottomSpin->setValue(st.value(QStringLiteral("AnanWbBottomDb"), -130).toInt());
     row->addWidget(m_bottomSpin);
+    row->addWidget(m_bypassBtn);   // build 689: the last of the group
     row->addStretch(1);
     m_info = new QLabel;
     m_info->setMinimumWidth(190);
@@ -464,7 +466,7 @@ WidebandMonitorDialog::WidebandMonitorDialog(RadioModel* model, QWidget* parent)
     };
     connect(m_adcCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, streamChanged);
     // Build 683: the bypass follows the ADC shown.
-    connect(m_bypassBtn, &QPushButton::toggled, this, [this] { pushBypass(); });
+    connect(m_bypassBtn, &QCheckBox::toggled, this, [this] { pushBypass(); });
     connect(m_adcCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this] { pushBypass(); });
     connect(m_rateCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, streamChanged);
