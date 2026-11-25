@@ -89,6 +89,18 @@ double centredLeft(const QFontMetricsF& fm, const QString& s, double cx)
     return cx - w / 2.0;
 }
 
+// Build 743 (operator, 25.11): a scale's last figure, when it has three
+// digits (150), stands where a two-digit one would -- its last digit (always
+// 0) where the "50" of a centred "50" would be, the rest to the left of it.
+double markLeft(const QFontMetricsF& fm, const QString& s, double cx, bool last)
+{
+    const bool threeDigits = last && s.size() == 3 && s.at(0).isDigit()
+                             && s.at(1).isDigit() && s.at(2).isDigit();
+    if (threeDigits)
+        return cx + fm.horizontalAdvance(s.right(2)) / 2.0 - fm.horizontalAdvance(s);
+    return centredLeft(fm, s, cx);
+}
+
 // Text drawn as outlines (build 742: even letter spacing at any scale --
 // hinted glyph advances round differently per letter under the painter's
 // scale, "COMP" showed uneven gaps).
@@ -466,14 +478,16 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
         }
 
         const QFont infFont = meterFont(kMarkPx * 1.75, true);   // build 738: small "\u221E"
-        for (const Mark& m : s.marks) {
+        for (int mi = 0; mi < s.marks.size(); ++mi) {
+            const Mark& m = s.marks[mi];
             const bool red = s.redFrom <= 1.0 && m.pos >= redFrom - 1e-6;
             p.setPen(QPen(red ? c.red : c.ink, kTickW, Qt::SolidLine, Qt::FlatCap));
             p.drawLine(QPointF(X(m.pos), y - kTickLen), QPointF(X(m.pos), y));
             const bool inf = m.text == QString::fromUtf8("\xE2\x88\x9E");
             const QFont& mf = inf ? infFont : markFont;
             const QFontMetricsF mfm(mf);
-            drawTextAt(p, mf, red ? c.red : c.sub, centredLeft(mfm, m.text, X(m.pos)),
+            drawTextAt(p, mf, red ? c.red : c.sub,
+                       markLeft(mfm, m.text, X(m.pos), mi == s.marks.size() - 1),
                        y - kTickLen - 1.0 - mfm.descent(), m.text);
         }
     }
@@ -502,7 +516,7 @@ double AnanMultiMeterWidget::valueColumnLeft(Row row) const
         const bool inf = m.text == QString::fromUtf8("\xE2\x88\x9E");
         const QFontMetricsF fm(meterFont(inf ? kMarkPx * 1.75 : kMarkPx, true));
         const double x = kScaleX0 + (kScaleX1 - kScaleX0) * m.pos;
-        right = std::max(right, centredLeft(fm, m.text, x) + fm.horizontalAdvance(m.text));
+        right = std::max(right, markLeft(fm, m.text, x, true) + fm.horizontalAdvance(m.text));
     }
     return right;
 }
