@@ -9,6 +9,7 @@ Protocol 2 and Protocol 1, and now the Hermes-Lite 2 again. Windows, Linux and m
 | System | File | Notes |
 |---|---|---|
 | Windows 10 / 11 x64 | `AetherSDR-ANAN-build732-win64-portable.zip` | unpack anywhere, run `AetherSDR.exe` |
+| Windows 10 / 11 x64 | `AetherSDR-OpenHPSDR-N7DDC-build732-win64-setup.exe` | installer: Start menu, desktop shortcut, Apps entry; settings kept on reinstall |
 | Linux x86_64 | `AetherSDR-ANAN-build-732-x86_64.AppImage` | `chmod +x`, run; glibc 2.35+ (Ubuntu 22.04+) |
 | macOS 14.4+ on Apple silicon (M1 ... M5) | `AetherSDR-ANAN-build-732-macOS-arm64.dmg` | not notarized: right click → **Open** the first time |
 
@@ -77,9 +78,10 @@ the whole archive.
 ## Not tested on a radio
 
 Most of the above was written without a radio at hand. Confirmed by the operator on screen:
-the flag's SWR / power lines, the receive-on-transmit-antenna arrow. Not confirmed yet: all of
-the Hermes-Lite 2 support (no HL2 was available — please report what you see), the WDSP graphic
-EQ, the PROC compressor, the DUP transmit scale, Autostart Radio, the installer.
+the flag's SWR / power lines, the receive-on-transmit-antenna arrow, the Windows installer
+(install, run, install again over it). Not confirmed yet: all of the Hermes-Lite 2 support (no
+HL2 was available — please report what you see), the WDSP graphic EQ, the PROC compressor, the
+DUP transmit scale, Autostart Radio.
 
 ## Reporting a problem
 
