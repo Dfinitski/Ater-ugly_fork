@@ -11353,6 +11353,16 @@ Thetis (console.cs `ZoomToBand`, `zoomToBandBandwidth`): панорама на �
 
 Файлы: `src/gui/SpectrumWidget.h`, `src/gui/MainWindow_Wiring.cpp`, `src/core/ForkBuild.h`. Ошибки errcheck на базовом уровне (Wiring 24, SpectrumWidget 12), bogus +1.
 
+## 657. Сборка 674 — кнопка TUNE в покое выглядит как MON
+
+**Просьба оператора (24.11):** «кнопку Tune сделай такую же, как и у MON». Уточнено: только вид в покое.
+
+**Было.** При старте TUNE синяя (общий `btnStyle` ряда TUNE/MOX/MON/DUP). После первого цикла настройки обработчик `tuneChanged(false)` ставил серый тематический стиль (`{{color.background.2}}`), и кнопка переставала совпадать с MON.
+
+**Стало.** При выключении настройки TUNE возвращается к тому же стилю, что и MON/DUP в покое: фон #1a3a5a, рамка #205070, текст #c8d8e8, hover #204060, тот же стиль disabled. Стиль ставится через `ThemeManager::applyStyleSheet`, чтобы перерисовка темы не вернула записанный «красный» шаблон. Вид во время настройки (красная, «TUNING...») не менялся.
+
+Файлы: `src/gui/TxApplet.cpp`, `src/core/ForkBuild.h`. errcheck: 4 ошибки из заголовка WanConnection.h (заглушки QSsl, не наши), bogus +1.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

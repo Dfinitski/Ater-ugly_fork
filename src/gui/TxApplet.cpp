@@ -620,10 +620,19 @@ void TxApplet::setTransmitModel(TransmitModel* model)
                 "padding: 2px; }");
             m_tuneBtn->setText("TUNING...");
         } else {
-            AetherSDR::ThemeManager::instance().applyStyleSheet(m_tuneBtn, "QPushButton { background: {{color.background.2}}; border: 1px solid {{color.background.2}}; "
-                "border-radius: 3px; color: {{color.text.primary}}; font-size: 10px; font-weight: bold; "
+            // ANAN fork build 674 (operator, 24.11: "make TUNE like MON" --
+            // at rest only): after a tune cycle the button returns to the
+            // same idle look it starts with and MON/DUP have (btnStyle),
+            // not to the grey theme style. The tuning look is unchanged.
+            // Through ThemeManager so a theme repaint keeps this sheet
+            // instead of re-applying the recorded tuning template.
+            AetherSDR::ThemeManager::instance().applyStyleSheet(m_tuneBtn,
+                "QPushButton { background: #1a3a5a; border: 1px solid #205070; "
+                "border-radius: 3px; color: #c8d8e8; font-size: 10px; font-weight: bold; "
                 "padding: 2px; }"
-                "QPushButton:hover { background: {{color.background.1}}; }");
+                "QPushButton:hover { background: #204060; }"
+                "QPushButton:disabled { background-color: #1a1a2a; color: #556070; "
+                "border: 1px solid #2a3040; }");
             m_tuneBtn->setText("TUNE");
         }
     });
