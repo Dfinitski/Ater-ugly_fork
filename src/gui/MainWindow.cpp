@@ -6446,8 +6446,9 @@ void MainWindow::buildUI()
                 return st.value(QStringLiteral("AnanAntName%1").arg(ant + 1), QString())
                     .toString().trimmed();
             };
-            const int rxAnt = antOf("AnanRxAnt");
             const int txAnt = antOf("AnanTxAnt");
+            // Build 728: the antenna the receivers listen on ("Tx Ant").
+            const int rxAnt = anan::AnanUiState::instance().rxOnTxAnt ? txAnt : antOf("AnanRxAnt");
             const QString rxText = QStringLiteral("RX: ANT%1").arg(rxAnt + 1);
             const QString txText = QStringLiteral("TX: ANT%1").arg(txAnt + 1);
             if (rxLbl->text() != rxText)
@@ -6471,6 +6472,82 @@ void MainWindow::buildUI()
         connect(antTimer, &QTimer::timeout, antStack, refresh);
         antTimer->start();
         refresh();
+
+        // ANAN fork build 728 (operator, 25.11: "look how Thetis sets the
+        // receive antenna to the transmit one in one click, for quick
+        // control; a button on the bottom bar after the antenna indicator, in
+        // its style; as in Thetis"). Thetis' chkRxAnt (console.cs
+        // UpdateTRXAnt): "Rx Ant" in green when the receive and transmit
+        // antennas differ, a click makes the receivers listen on the transmit
+        // antenna -- "Tx Ant" in yellow -- and another click goes back; the
+        // chosen receive antenna is not changed. With the two the same it is
+        // grey and drops back to "Rx Ant".
+        auto* trxBtn = new QLabel(QStringLiteral("Rx Ant"));
+        trxBtn->setObjectName(QStringLiteral("ananRxOnTxAnt"));
+        trxBtn->setAccessibleName(QStringLiteral("Receive on the transmit antenna"));
+        trxBtn->setCursor(Qt::PointingHandCursor);
+        trxBtn->setContentsMargins(8, 0, 0, 0);
+        trxBtn->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        applyStatusBarCompactLabelStyle(trxBtn, QStringLiteral("{{color.text.secondary}}"));
+        hbox->addWidget(trxBtn);
+        struct ClickFilter : QObject {
+            std::function<void()> onClick;
+            using QObject::QObject;
+            bool eventFilter(QObject* o, QEvent* e) override
+            {
+                if (e->type() == QEvent::MouseButtonRelease
+                    && static_cast<QMouseEvent*>(e)->button() == Qt::LeftButton) {
+                    if (onClick)
+                        onClick();
+                    return true;
+                }
+                return QObject::eventFilter(o, e);
+            }
+        };
+        auto* click = new ClickFilter(trxBtn);
+        trxBtn->installEventFilter(click);
+        auto trxRefresh = [trxBtn] {
+            auto& st = AppSettings::instance();
+            const int rxAnt = std::clamp(st.value(QStringLiteral("AnanRxAnt"), 0).toInt(), 0, 2);
+            const int txAnt = std::clamp(st.value(QStringLiteral("AnanTxAnt"), 0).toInt(), 0, 2);
+            auto& ui = anan::AnanUiState::instance();
+            const bool differ = rxAnt != txAnt;
+            if (!differ)
+                ui.rxOnTxAnt = false;   // Thetis: unchecked when they are the same
+            const bool on = ui.rxOnTxAnt;
+            const QString text = on ? QStringLiteral("Tx Ant") : QStringLiteral("Rx Ant");
+            const int state = on ? 2 : differ ? 1 : 0;
+            if (trxBtn->text() != text)
+                trxBtn->setText(text);
+            if (trxBtn->property("ananTrxState").toInt() != state + 1) {
+                trxBtn->setProperty("ananTrxState", state + 1);
+                // Thetis' colours: yellow on, spring green available.
+                applyStatusBarCompactLabelStyle(
+                    trxBtn, state == 2 ? QStringLiteral("#ffff00")
+                            : state == 1 ? QStringLiteral("#00ff7f")
+                                         : QStringLiteral("{{color.text.secondary}}"));
+                trxBtn->setToolTip(state == 0
+                    ? QStringLiteral("The receive and transmit antennas are the same.")
+                    : state == 1
+                        ? QStringLiteral("Receiving on ANT%1. Click to receive on the transmit "
+                                         "antenna ANT%2.").arg(rxAnt + 1).arg(txAnt + 1)
+                        : QStringLiteral("Receiving on the transmit antenna ANT%1. Click to go "
+                                         "back to ANT%2.").arg(txAnt + 1).arg(rxAnt + 1));
+            }
+        };
+        click->onClick = [trxRefresh] {
+            auto& st = AppSettings::instance();
+            const int rxAnt = std::clamp(st.value(QStringLiteral("AnanRxAnt"), 0).toInt(), 0, 2);
+            const int txAnt = std::clamp(st.value(QStringLiteral("AnanTxAnt"), 0).toInt(), 0, 2);
+            auto& ui = anan::AnanUiState::instance();
+            if (rxAnt == txAnt)
+                return;
+            ui.rxOnTxAnt = !ui.rxOnTxAnt;
+            qInfo() << "ANAN: receive on" << (ui.rxOnTxAnt ? "the transmit antenna" : "the receive antenna");
+            trxRefresh();
+        };
+        connect(antTimer, &QTimer::timeout, trxBtn, trxRefresh);
+        trxRefresh();
     }
 
     // ANAN fork build 564 (operator, 21.11: "TX goes where UTC Time is, UTC

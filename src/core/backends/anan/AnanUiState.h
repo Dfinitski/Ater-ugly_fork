@@ -143,6 +143,12 @@ public:
     // Build 724: the radio is a Hermes-Lite 2 (written by the backend): the
     // attenuator control is its LNA, shown as gain; no Alex LNA button.
     bool hermesLite = false;
+    // Build 728 (Thetis "Rx Ant" / "Tx Ant", chkRxAnt): the receivers listen
+    // on the transmit antenna while this is on and the two differ; the
+    // receive antenna chosen is kept. Written by the status bar button, read
+    // by the backend. Not remembered across starts (Thetis' is a console
+    // toggle).
+    bool rxOnTxAnt = false;
     bool adcOverloadTest = false;
     // What the panadapter adds to a per-bin level to draw it (06.11: the
     // referral of a bin to 500 Hz plus the meter's calibration); lines that

@@ -845,8 +845,14 @@ Hl2Backend::Hl2Backend(QObject* parent)
         // Build 248: the VFO flag's antenna buttons show these too (slice
         // state), so a change from the ANT panel is published to them.
         bool antChanged = false;
-        const int rxAnt = std::clamp(
+        // Build 728 (Thetis Alex.UpdateAlexAntSelection: `if (TRxAnt)
+        // trx_ant = TxAnt[idx]`): with "Tx Ant" on the status bar, receive
+        // on the transmit antenna while the two differ.
+        const int storedRxAnt = std::clamp(
             AppSettings::instance().value(QStringLiteral("AnanRxAnt"), 0).toInt(), 0, 2);
+        const int storedTxAnt = std::clamp(
+            AppSettings::instance().value(QStringLiteral("AnanTxAnt"), 0).toInt(), 0, 2);
+        const int rxAnt = anan::AnanUiState::instance().rxOnTxAnt ? storedTxAnt : storedRxAnt;
         if (rxAnt != m_ananRxAntPushed) {
             m_ananRxAntPushed = rxAnt;
             antChanged = true;
