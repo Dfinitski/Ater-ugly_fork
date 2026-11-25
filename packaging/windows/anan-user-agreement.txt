@@ -1,0 +1,60 @@
+AetherSDR for OpenHPSDR by N7DDC -- USER AGREEMENT
+
+Please read this agreement carefully. By installing or using the software you
+accept it. If you do not accept it, do not install or use the software.
+
+1. What this software is
+
+   AetherSDR for OpenHPSDR by N7DDC (the "Software") is an unofficial,
+   independently maintained fork of AetherSDR for the Apache Labs ANAN
+   transceivers and other openHPSDR radios (Protocol 1 and Protocol 2,
+   including the Hermes-Lite 2). It is not made, endorsed or supported by the
+   AetherSDR project, Apache Labs, FlexRadio Systems or the Hermes-Lite
+   project. Product names are the property of their owners and are used only
+   to describe compatibility.
+
+2. Licence
+
+   The Software is free software, distributed under the GNU General Public
+   License version 3 (shown on the previous page), and includes third-party
+   components under their own licences (the "licenses" folder of the
+   installation). Nothing in this agreement limits the rights the GPL gives
+   you.
+
+3. No warranty
+
+   The Software is provided "AS IS", WITHOUT WARRANTY OF ANY KIND, express or
+   implied, including the warranties of merchantability, fitness for a
+   particular purpose and non-infringement. Much of it has been written and
+   released without being tested on every supported radio. The entire risk as
+   to its quality and performance is with you.
+
+4. Transmitting
+
+   The Software controls a radio transmitter: it can key it, set its output
+   power and select its antennas and filters. You alone are responsible for
+   every transmission made with it -- for holding the licence it requires,
+   for the frequencies, power, modes and emissions you use, and for
+   complying with the regulations that apply where you operate. Check the
+   transmitter's output, filters and antenna before transmitting, and do not
+   leave a transmitting station unattended.
+
+5. Equipment
+
+   A wrong setting or a fault in the Software can damage a radio, an
+   amplifier, an antenna system or other equipment connected to it. You use
+   the Software with your equipment at your own risk.
+
+6. Limitation of liability
+
+   To the extent permitted by law, in no event shall the authors, the
+   maintainers or the copyright holders be liable for any claim, damages or
+   other liability -- including damage to equipment, loss of data, or
+   interference caused by a transmission -- arising from, out of or in
+   connection with the Software or its use.
+
+7. Your settings
+
+   The Software keeps its settings in your user profile
+   (%LOCALAPPDATA%\AetherSDR_ugly_fork). Installing a newer version or
+   uninstalling the Software does not remove them.
