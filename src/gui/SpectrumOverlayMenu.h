@@ -448,6 +448,10 @@ private:
     bool         m_attOwnerShown{true};
     void syncAttOwnership();
     bool         m_rfGainIsAttenuator{false};
+    // Build 724: the attenuator control drives a Hermes-Lite 2's LNA (shown
+    // as gain, 48 + value dB, "LNA:"; the Alex LNA button hidden).
+    bool         m_rfGainIsHl2Lna{false};
+    void applyHl2LnaLook();
     [[nodiscard]] QString rfGainReadout(int value) const;
     // RFC #5535's condition. Born hidden with the checkbox above it.
     FrontEndOverloadIndicator* m_frontEndIndicator{nullptr};

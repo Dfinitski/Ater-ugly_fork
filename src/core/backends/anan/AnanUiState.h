@@ -140,6 +140,9 @@ public:
     // the board profile). With one, the ADC1/ADC2 choice is not offered.
     int numAdcs = 2;
     bool protocol1 = false;   // build 439: written by the backend (Dither / Random per ADC only on P2)
+    // Build 724: the radio is a Hermes-Lite 2 (written by the backend): the
+    // attenuator control is its LNA, shown as gain; no Alex LNA button.
+    bool hermesLite = false;
     bool adcOverloadTest = false;
     // What the panadapter adds to a per-bin level to draw it (06.11: the
     // referral of a bin to 500 Hz plus the meter's calibration); lines that

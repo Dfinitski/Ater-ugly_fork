@@ -2180,7 +2180,9 @@ void P2Transport::setAdcAttenuation(int adc, int db)
 {
     if (adc < 0 || adc > 1)
         return;
-    db = std::clamp(db, 0, kMaxStepAttenuationDb);
+    // Build 724: up to 60 for the Hermes-Lite 2's LNA (the ANAN encoders clamp
+    // to 31 themselves).
+    db = std::clamp(db, 0, kHl2MaxAttenuationDb);
     if (m_adcAtt[static_cast<std::size_t>(adc)] == db)
         return;
     m_adcAtt[static_cast<std::size_t>(adc)] = db;
@@ -3401,8 +3403,12 @@ P1CcState P2Transport::p1State() const
         // backend chooses per frequency (Hl2Backend::applyBandFilter ->
         // setBandFilter), not the ANAN User Out matrix.
         s.openCollector = static_cast<std::uint8_t>(m_p.ocFilterByte & 0x7F);
-        s.hl2RxGainDb = std::clamp(m_p.lnaGainDb, -12, 48);
-        s.hl2TxGainDb = s.hl2RxGainDb;
+        // Build 724: the LNA is the attenuator engine's ADC0 value, 48 - att
+        // (Hl2Backend::ananPushAttenuators -> setAdcAttenuation).
+        s.hl2RxGainDb = std::clamp(kHl2GainAtZeroAttDb - m_adcAtt[0], -12, 48);
+        // deskHPSDR (old_protocol.c, C0 0x14 / 0x1C): while transmitting with
+        // the PA on, the LNA at its bottom (code 0, -12 dB); else as receiving.
+        s.hl2TxGainDb = s.paEnabled ? -12 : s.hl2RxGainDb;
     }
     return s;
 }

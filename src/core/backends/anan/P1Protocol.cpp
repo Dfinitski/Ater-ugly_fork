@@ -91,12 +91,13 @@ hl2::Cc p1CcHl2(int index, const P1CcState& s) noexcept
     case 1:  c[0] |= 0x02; freqBytes(c, s.txHz); break;       // TX NCO
     case 2:  c[0] |= 0x04; freqBytes(c, s.ddcHz[0]); break;   // DDC0
     case 3:  c[0] |= 0x06; freqBytes(c, s.ddcHz[1]); break;   // DDC1
-    case 4:   // addr 0x0E: ADC assignment (one ADC: 0), the TX attenuator
+    case 4:   // addr 0x0E: ADC assignment (one ADC: 0), the LNA while transmitting
         c[0] |= 0x1C;
-        // C3: Thetis' tx_step_attn & 0x1F. On the HL2 0x0E[15] (C3 bit 7)
-        // enables the hardware-managed transmit gain; it stays clear, so
-        // this byte is inert there.
-        c[3] = static_cast<std::uint8_t>(txCode & 0x1F);
+        // Build 724, deskHPSDR (old_protocol.c case 6): C3 = 0xC0 | code --
+        // 0x0E[15] enables the gateware's transmit gain, [14] its six-bit
+        // value, [13:8] the gain code (MI0BOT's Thetis sends tx_step_attn
+        // & 0x1F without the enable bits).
+        c[3] = static_cast<std::uint8_t>(0xC0 | (txCode & 0x3F));
         break;
     case 5:  c[0] |= 0x08; freqBytes(c, s.ddcHz[2]); break;   // DDC2
     case 6:  c[0] |= 0x0A; freqBytes(c, s.ddcHz[3]); break;   // DDC3
@@ -119,8 +120,8 @@ hl2::Cc p1CcHl2(int index, const P1CcState& s) noexcept
         break;
     case 12:  // addr 0x0B: ADC1 / ADC2 attenuators (none here), keyer
         c[0] |= 0x16;
-        c[1] = static_cast<std::uint8_t>((s.mox ? 0x1F : 0x00) | 0x20);
-        c[2] = static_cast<std::uint8_t>(0x20 | (s.cwPaddleSwap ? 0x40 : 0));
+        // Build 724, deskHPSDR (case 5): one ADC -- no attenuator bytes.
+        c[2] = static_cast<std::uint8_t>(s.cwPaddleSwap ? 0x40 : 0);
         c[3] = static_cast<std::uint8_t>((std::clamp(s.cwSpeedWpm, 1, 60) & 0x3F)
                                          | (s.cwMode == 0 ? 0x00 : s.cwMode == 1 ? 0x40 : 0x80));
         c[4] = static_cast<std::uint8_t>((std::clamp(s.cwWeight, 0, 100) & 0x7F) | (s.cwStrictSpacing ? 0x80 : 0));
@@ -147,7 +148,7 @@ hl2::Cc p1CcHl2(int index, const P1CcState& s) noexcept
         c[0] |= 0x24;
         c[2] = static_cast<std::uint8_t>((s.xvtrEnable ? 0x01 : 0) | (s.pureSignal ? 0x40 : 0));
         break;
-    case 17:  // addr 0x17: PTT hang and TX buffer latency
+    case 17:  // addr 0x17: PTT hang and TX buffer latency (build 724: deskHPSDR's 20 / 40 ms)
         c[0] |= 0x2E;
         c[3] = static_cast<std::uint8_t>(std::clamp(s.hl2PttHangMs, 0, 31) & 0x1F);
         c[4] = static_cast<std::uint8_t>(std::clamp(s.hl2TxLatencyMs, 0, 127) & 0x7F);

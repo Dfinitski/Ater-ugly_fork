@@ -123,9 +123,10 @@ struct P1CcState {
     int hl2RxGainDb = 20;
     int hl2TxGainDb = 20;
     // C0 0x2E (addr 0x17): PTT hang (C3, 5 bits, ms) and TX buffer latency
-    // (C4, 7 bits, ms); Thetis' defaults 12 / 20.
-    int hl2PttHangMs = 12;
-    int hl2TxLatencyMs = 20;
+    // (C4, 7 bits, ms). Build 724: deskHPSDR's 20 / 40 ms (MI0BOT's Thetis:
+    // 12 / 20; deskHPSDR measured the HL2's TX FIFO at ~75 ms and keeps 40).
+    int hl2PttHangMs = 20;
+    int hl2TxLatencyMs = 40;
     // C0 0x74 (addr 0x3A) C4: the radio resets when the host disconnects.
     bool hl2ResetOnDisconnect = false;
 };

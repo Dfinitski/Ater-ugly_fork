@@ -6,6 +6,7 @@
 #include "FrontEndOverloadIndicator.h"
 #include "core/AppSettings.h"
 #include "core/backends/anan/AnanUiState.h"
+#include "core/backends/anan/P2Protocol.h"   // build 724: kHl2GainAtZeroAttDb
 #include "core/TxKeyingMarker.h"
 #include "AntennaChoiceGate.h"
 #include "DeclaredBandMenuPolicy.h"
@@ -3584,8 +3585,36 @@ QString SpectrumOverlayMenu::attMarginToolTip()
               "Lower = more attenuation, more headroom against overload.");
 }
 
+// ANAN fork build 724 (operator, 25.11: "let our attenuator engine be called
+// LNA and drive that LNA, automatically too; our LNA button can be hidden"):
+// on a Hermes-Lite 2 the attenuator row is its LNA -- "LNA:", the gain on the
+// readout (48 dB less the attenuation), more gain to the right -- and the
+// Alex preamp button, which it does not have, is hidden. The engine
+// underneath (manual, AUTO, per band) is the attenuator's.
+void SpectrumOverlayMenu::applyHl2LnaLook()
+{
+    const bool hl2 = m_rfGainIsAttenuator && AetherSDR::anan::AnanUiState::instance().hermesLite;
+    if (m_ananLnaBtn)
+        m_ananLnaBtn->setVisible(!AetherSDR::anan::AnanUiState::instance().hermesLite);
+    if (hl2 == m_rfGainIsHl2Lna || !m_rfGainSlider)
+        return;
+    m_rfGainIsHl2Lna = hl2;
+    if (m_rfGainCaption)
+        m_rfGainCaption->setText(hl2 ? QStringLiteral("LNA:")
+                                     : m_rfGainIsAttenuator ? QStringLiteral("ATT:")
+                                                            : QStringLiteral("RF Gain:"));
+    m_rfGainSlider->setInvertedAppearance(m_rfGainIsAttenuator && !hl2);
+    m_rfGainSlider->setInvertedControls(m_rfGainIsAttenuator && !hl2);
+    m_rfGainSlider->setAccessibleName(hl2 ? QStringLiteral("LNA gain")
+                                          : m_rfGainIsAttenuator ? QStringLiteral("Attenuator")
+                                                                 : QStringLiteral("RF gain"));
+    if (m_rfGainLabel)
+        m_rfGainLabel->setText(rfGainReadout(m_rfGainSlider->value()));
+}
+
 void SpectrumOverlayMenu::syncAttOwnership()
 {
+    applyHl2LnaLook();   // build 724
     if (m_rfGainIsAttenuator)
         syncAnanAntennas();
     // Build 437: RF Delay is one transmitter setting -- every pan's field
@@ -3681,6 +3710,8 @@ void SpectrumOverlayMenu::syncAttOwnership()
 
 QString SpectrumOverlayMenu::rfGainReadout(int value) const
 {
+    if (m_rfGainIsHl2Lna)   // build 724: the LNA's gain, -12..+48 dB
+        return QStringLiteral("%1 dB").arg(AetherSDR::anan::kHl2GainAtZeroAttDb + value);
     if (m_rfGainIsAttenuator)
         return QStringLiteral("%1 dB").arg(-value);
     return QStringLiteral("%1%2").arg(value).arg(m_rfGainUnitSuffix);
@@ -3723,6 +3754,8 @@ void SpectrumOverlayMenu::setRfGainRange(int low, int high, int step,
     m_rfGainSlider->setInvertedControls(m_rfGainIsAttenuator);
     m_rfGainSlider->setAccessibleName(m_rfGainIsAttenuator ? QStringLiteral("Attenuator")
                                                            : QStringLiteral("RF gain"));
+    m_rfGainIsHl2Lna = false;
+    applyHl2LnaLook();
     m_rfGainSlider->setRange(low, high);
     m_rfGainSlider->setSingleStep(step);
     m_rfGainSlider->setPageStep(step);

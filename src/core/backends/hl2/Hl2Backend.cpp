@@ -460,6 +460,18 @@ void Hl2Backend::resolveAnanModel()
                       << (forced ? "(forcedly assigned by the operator)" : "");
     }
     m_ananModel = m;
+    // Build 724: the Hermes-Lite 2's level references. Its LNA stands where
+    // the ANAN's attenuator does (attenuation = 48 - gain): with the display
+    // not following it, as on the ANAN, the trace and S-meter read the
+    // antenna at the top gain and drop with the attenuation -- the floor the
+    // AUTO loop holds. 0 dBFS = +3 dBm at 0 dB gain (Hl2DbReference), so
+    // -45 dBm at +48 dB. The AGC ceiling: the law the HL2 was tuned on
+    // (no extra; the ANAN needs +40 for its colder IQ).
+    const bool hl2 = ananIsHl2();
+    m_dbRef.setDefaultFullScaleDbm(hl2 ? Hl2DbReference::kFullScaleDbmAtZeroGain - anan::kHl2GainAtZeroAttDb
+                                       : 10.0);
+    m_dbRef.setExtraAgcCeilingDb(hl2 ? 0.0 : 40.0);
+    anan::AnanUiState::instance().hermesLite = hl2;
 }
 
 void Hl2Backend::pushAnanForcedBoard()
@@ -6803,7 +6815,7 @@ void Hl2Backend::setPanRfGain(const QString& panId, int gainDb)
         return;
     }
     if (rx == 1) {
-        m_ananRx2ManualAtt = std::clamp(-gainDb, 0, anan::kMaxStepAttenuationDb);
+        m_ananRx2ManualAtt = std::clamp(-gainDb, 0, ananAttMax());
         m_ananPanEcho.remove(panId);
         ananPushAttenuators();
         return;
@@ -12400,10 +12412,10 @@ int Hl2Backend::ananRxAtt(int rx) const
     if (rx < 0 || rx > 1)
         return 0;
     if (m_ananCapture.running && m_ananCapture.wanted[rx])
-        return anan::kMaxStepAttenuationDb;   // own-noise capture (Setup > Receive)
+        return ananAttMax();   // own-noise capture (Setup > Receive)
     if (m_ananAutoOn[rx])
         return m_ananAutoAtt[rx];
-    return rx == 0 ? std::clamp(-m_lnaGainDb, 0, anan::kMaxStepAttenuationDb)
+    return rx == 0 ? std::clamp(-m_lnaGainDb, 0, ananAttMax())
                    : m_ananRx2ManualAtt;
 }
 
@@ -12718,7 +12730,7 @@ void Hl2Backend::ananAutoAttStep(int rx, double floorCalDbm, qint64 t)
     const double e = avg - target;   // > 0: the floor too high -> more attenuation
     const int att = m_ananAutoAtt[rx];
     auto apply = [&](int next) {
-        next = std::clamp(next, 0, anan::kMaxStepAttenuationDb);
+        next = std::clamp(next, 0, ananAttMax());
         if (next == att)
             return false;
         m_ananAutoAtt[rx] = next;
@@ -12755,7 +12767,7 @@ void Hl2Backend::ananAutoAttStep(int rx, double floorCalDbm, qint64 t)
         L.moving = false;
         return;
     }
-    const int next = std::clamp(att + step, 0, anan::kMaxStepAttenuationDb);
+    const int next = std::clamp(att + step, 0, ananAttMax());
     if (step == 0 || next == att) {
         L.moving = false;   // within half a dB, or at the end of the range
         return;
@@ -12860,8 +12872,8 @@ void Hl2Backend::ananOwnNoiseCaptureStep(int rx, qint64 t)
             m_ananNoiseRestartUntilMs[r] = t + kAnanAttSettleMs;
         }
         ananPushAttenuators();
-        ui.ownNoiseStatus = tr("Measuring (ATT %1 dB)...").arg(anan::kMaxStepAttenuationDb);
-        qCInfo(lcHl2) << "ANAN own noise: capture, ATT" << anan::kMaxStepAttenuationDb << "dB for"
+        ui.ownNoiseStatus = tr("Measuring (ATT %1 dB)...").arg(ananAttMax());
+        qCInfo(lcHl2) << "ANAN own noise: capture, ATT" << ananAttMax() << "dB for"
                       << kAnanAttSettleMs + kAnanOwnNoiseMeasureMs << "ms";
         return;
     }

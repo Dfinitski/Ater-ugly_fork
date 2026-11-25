@@ -2096,9 +2096,21 @@ private:
     // attenuator shown as gain: -31..0 dB (attenuation = -gain), default 0.
     static constexpr int kAnanGainMinDb = -31;
     static constexpr int kAnanGainMaxDb = 0;
-    [[nodiscard]] int gainMinDb() const noexcept { return kAnanGainMinDb; }
+    // Build 724 (operator, 25.11: "let our attenuator engine be called LNA
+    // and drive that LNA, automatically too"): on a Hermes-Lite 2 the same
+    // control is its LNA as an attenuation below +48 dB, 0..60 (gain =
+    // 48 - attenuation, -12..+48 dB); default +20 dB, the gateware's.
+    [[nodiscard]] bool ananIsHl2() const noexcept { return m_ananBoardId == anan::kBoardIdHermesLite; }
+    [[nodiscard]] int ananAttMax() const noexcept
+    {
+        return ananIsHl2() ? anan::kHl2MaxAttenuationDb : anan::kMaxStepAttenuationDb;
+    }
+    [[nodiscard]] int gainMinDb() const noexcept { return -ananAttMax(); }
     [[nodiscard]] int gainMaxDb() const noexcept { return kAnanGainMaxDb; }
-    [[nodiscard]] int gainDefaultDb() const noexcept { return 0; }
+    [[nodiscard]] int gainDefaultDb() const noexcept
+    {
+        return ananIsHl2() ? -(anan::kHl2GainAtZeroAttDb - hl2::kLnaDefaultGainDb) : 0;
+    }
 
     // TX passband ceiling: Nyquist of the 24 kHz TX AUDIO rate (AudioEngine), not
     // the 48 kHz EP2 rate. Shared by setTxFilter() and applyRestoredState() so a

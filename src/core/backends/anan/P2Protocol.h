@@ -736,6 +736,11 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
 // The step attenuators' range (spec pp.34,36), shared by the encoder's clamp and
 // by the backend that offers the control.
 inline constexpr int kMaxStepAttenuationDb = 31;
+// ANAN fork build 724: the Hermes-Lite 2 has no attenuator but the AD9866 LNA,
+// -12..+48 dB. The attenuator engine (manual and AUTO) drives it as an
+// attenuation 0..60 dB below its top: gain = 48 - attenuation.
+inline constexpr int kHl2MaxAttenuationDb = 60;
+inline constexpr int kHl2GainAtZeroAttDb = 48;
 
 // ---- DDC Audio, PC -> radio (spec p.36) ----
 // The only outbound data path here. Fixed geometry: 64 stereo frames/packet,

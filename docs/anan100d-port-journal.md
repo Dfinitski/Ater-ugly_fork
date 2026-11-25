@@ -12102,6 +12102,27 @@ errcheck SpectrumWidget 12, MainWindow_Wiring 24, MainWindow_Session 24 (баз�
 
 errcheck P1Protocol / P2Protocol / P2Transport / AnanDiscovery 0 (как в R), Hl2Backend 2, RadioSetupDialog 23, ConnectionPanel 2 (базы); bogus-проверки срабатывают; тест ротации HL2 (19 банков, 0x14 C4 = 0x60 при +20 дБ). Не проверено на радио, не собиралось под Windows.
 
+## 708. Сборка 724 — Hermes-Lite 2, этап 2: LNA вместо аттенюатора; ротация по deskHPSDR
+
+Оператор: устройства под рукой нет — перепроверить по deskHPSDR (полная поддержка HL2); движок аттенюатора пусть называется LNA и управляет LNA HL2, в том числе автоматически; кнопку нашего LNA (Alex 6M preamp) можно прятать.
+
+**deskHPSDR** (github dl1bz/deskhpsdr, `src/old_protocol.c`, `old_discovery.c`) взят вторым образцом. Что из него:
+- Определение: плата 6 и версия гейтвера ≥ 40 (байт 9; младшая версия в байте 21) — HL2; < 40 — Hermes-Lite 1 (у нас не поддерживается; пока принимается как HL2 — проверить на этапе сверки).
+- Ротация HL2 приведена к deskHPSDR там, где Thetis MI0BOT и deskHPSDR расходятся:
+  - addr 0x0E (C0 0x1C) C3 = 0xC0 | код усиления передачи (биты включения аппаратного усиления TX и 6-битного значения), у MI0BOT — `tx_step_attn & 0x1F` без них;
+  - addr 0x0A (C0 0x14) C4 при передаче с включённым PA — код 0 (−12 дБ), иначе как на приёме;
+  - addr 0x0B (C0 0x16): у платы с одним АЦП байты аттенюаторов не шлются (C1 = 0, C2 только перестановка манипулятора);
+  - addr 0x17: PTT hang 20 мс, TX latency 40 мс (deskHPSDR измерил TX FIFO HL2 ~75 мс), у MI0BOT 12 / 20;
+  - addr 0x09: C2 = 0x08 (PA) / 0x10 (запрос тюнера AH-4), C3 = C4 = 0 — совпадает с выбранным в 723.
+
+**LNA.** Движок аттенюатора (ручной, AUTO, память по диапазонам) остаётся как есть; на HL2 его значение — ослабление ниже вершины LNA: усиление = 48 − ATT, ATT 0..60 (−12..+48 дБ).
+- `P2Protocol.h`: `kHl2MaxAttenuationDb = 60`, `kHl2GainAtZeroAttDb = 48`.
+- `Hl2Backend`: `ananIsHl2()`, `ananAttMax()` (31 / 60) вместо `kMaxStepAttenuationDb` во всех местах движка; диапазон «RF gain» −60..0 на HL2; по умолчанию +20 дБ (ATT 28, как гейтвер). В `resolveAnanModel()` — опорные уровни HL2: полная шкала 0 дБFS = +3 дБм при 0 дБ усиления → −45 при +48 (дисплей, как на ANAN, показывает антенну при ATT 0 и падает с ослаблением — это пол, который держит AUTO); потолок АРУ без добавки +40 (у HL2 IQ «горячее»). Значения расчётные, не измерены. `AnanUiState::hermesLite`.
+- `P2Transport`: `setAdcAttenuation` до 60; для HL2 усиление приёма = 48 − ATT АЦП0.
+- `SpectrumOverlayMenu` (меню ANT): на HL2 строка называется «LNA:», показывает усиление в дБ, больше усиления — вправо; кнопка LNA (Alex) скрыта. AUTO — тот же.
+
+errcheck P1Protocol / P2Transport 0, Hl2Backend 2, SpectrumOverlayMenu 4 (как в R); тест ротации (0x1C C3 = E0 при +20 дБ, 0x2E 14 / 28). Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
