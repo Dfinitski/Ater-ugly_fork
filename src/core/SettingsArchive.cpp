@@ -122,7 +122,8 @@ QString defaultFileName()
 
 QString fileSuffix()
 {
-    return QStringLiteral("aethersettings");
+    // Build 692 (operator, 24.11): ".ats".
+    return QStringLiteral("ats");
 }
 
 bool exportTo(const QString& path, QString* error)

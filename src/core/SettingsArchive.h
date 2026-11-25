@@ -12,7 +12,7 @@
 // (Nothing of this program goes to the Windows registry; credentials stay in
 // the system's credential store and are not part of a settings file.)
 //
-// Format: QDataStream -- magic "AETHERSETTINGS", version, then (name, bytes)
+// The file: *.ats (build 692). Format: QDataStream -- magic "AETHERSETTINGS", version, then (name, bytes)
 // entries. A restore is staged into <configDir>/settings-restore-pending and
 // applied by the next start, before anything opens a store, so nothing the
 // closing program writes can overwrite it.

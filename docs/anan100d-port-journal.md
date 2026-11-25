@@ -11656,6 +11656,14 @@ P1 берёт состояние в каждой ротации C&C, отдел�
 
 Файлы: `src/core/SettingsArchive.{h,cpp}` (новые), `src/core/AppSettings.{h,cpp}`, `src/gui/MainWindow_Menus.cpp`, `src/main.cpp`, `CMakeLists.txt`, `src/core/ForkBuild.h`. errcheck: SettingsArchive 0, AppSettings 0, MainWindow_Menus 24, main 26 (базовые), bogus +1.
 
+## 675. Сборка 692 — файл настроек с расширением .ats
+
+**Оператор (24.11):** расширение файла настроек сделать ats.
+
+**Сделано.** `SettingsArchive::fileSuffix()` = `ats`. Save Settings предлагает `aether_settings_yyyy-MM-dd.ats`, фильтр диалогов — `*.ats`. Формат файла не менялся. Файлы `*.aethersettings` из сборки 691 по-прежнему открываются через фильтр «All files».
+
+Файлы: `src/core/SettingsArchive.{cpp,h}`, `src/core/ForkBuild.h`. errcheck 0.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
