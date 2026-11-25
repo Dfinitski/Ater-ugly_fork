@@ -7257,9 +7257,9 @@ void MainWindow::wireMeters()
     });
     connect(&m_radioModel.transmitModel(), &TransmitModel::moxChanged,
             m_appletPanel, &AppletPanel::setMeterTransmitting);
-    // ANAN fork build 680: the ANAN Multi Meter's other scales -- Vd (supply
+    // ANAN fork build 680 / 735: the multi meter's other scales -- Vd (supply
     // volts), Id (PA current), COMP (the ALC's gain reduction) and ALC (the
-    // post-ALC peak; Thetis's ALC_GROUP adds the reduction to it).
+    // post-ALC peak plus that reduction).
     if (auto* mm = m_appletPanel->ananMultiMeter()) {
         connect(&m_radioModel.meterModel(), &MeterModel::hwTelemetryChanged,
                 mm, [mm](float, float supplyVolts) { mm->setSupplyVolts(supplyVolts); });
@@ -8435,7 +8435,7 @@ void MainWindow::wireMeters()
         m_appletPanel->txApplet()->setRatedWatts(ananRatedWatts(m_radioModel));
         // ANAN fork build 711: Max Level (Power Meter Calibration) -- the top
         // of the TX applet's gauge, the needle S-meter's power scale and the
-        // ANAN Multi Meter's PO scale; red from Max Level / 1.2. 0 = not ANAN.
+        // multi meter's PO scale; red from Max Level / 1.2. 0 = not ANAN.
         const int maxLevel = ananPowerMaxLevel(m_radioModel);
         m_appletPanel->txApplet()->setMaxLevelWatts(maxLevel);
         m_appletPanel->txApplet()->setPowerScale(radioMaxWatts, integratedAmp);
@@ -8451,9 +8451,8 @@ void MainWindow::wireMeters()
             else if (const int rated = ananRatedWatts(m_radioModel); rated > 0)
                 m_appletPanel->sMeterWidget()->setRatedPowerScale(rated);
         }
-        // Build 680: the ANAN Multi Meter's PO scale is 0..150 % of the
-        // radio's power (Thetis NormaliseTo100W / MaxPower). Build 711: with
-        // Max Level the face's top (150 %) is Max Level.
+        // Build 680 / 735: the multi meter's PO scale is 0..150 % of the
+        // radio's power. Build 711: with Max Level its top (150 %) is Max Level.
         if (auto* mm = m_appletPanel->ananMultiMeter()) {
             const int rated = ananRatedWatts(m_radioModel);
             if (maxLevel > 0)

@@ -27,6 +27,9 @@
              to 22 px and clips it circular at paint time so HiDPI keeps the
              full source resolution. -->
         <file alias="logo-96.png">images/logo-96.png</file>
+        <!-- ANAN fork build 735: the light face of the multi meter (operator's
+             paper background, 320 x 240 = the meter's largest size). -->
+        <file alias="meter-paper-light.png">images/meter-paper-light.png</file>
     </qresource>
     <qresource prefix="/themes">
         <file alias="default-dark.json">themes/default-dark.json</file>

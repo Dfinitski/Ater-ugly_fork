@@ -388,9 +388,11 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
                 showStandardMeterContextMenu(m_sMeter, position);
             });
 
-    // ANAN fork build 680 (operator, 24.11): Thetis's ANAN Multi Meter as the
-    // other face of this S-meter, chosen in its right-click menu ("Meter").
-    // Both widgets get every reading; only the chosen one is shown.
+    // ANAN fork build 680 (operator, 24.11): a multi meter as the other face
+    // of this S-meter, chosen in its right-click menu ("Meter"). Both widgets
+    // get every reading; only the chosen one is shown. Build 735: the fork's
+    // own linear multi meter (AnanMultiMeterWidget.h) -- every reading at
+    // once, so no TX Select of its own.
     {
         auto& st = AppSettings::instance();
         m_ananMm = new AnanMultiMeterWidget(sMeterContent);
@@ -398,21 +400,11 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
         m_ananMm->setFace(st.value(QStringLiteral("AnanMmFace"), QStringLiteral("Light")).toString()
                               == QLatin1String("Dark")
                           ? AnanMultiMeterWidget::Face::Dark : AnanMultiMeterWidget::Face::Light);
-        m_ananMm->setTxSelect(m_vuTxSelect);   // build 681: the S-meter's TX Select
         contentLayout->addWidget(m_ananMm);
         connect(m_ananMm, &QWidget::customContextMenuRequested,
                 this, [this](const QPoint& position) {
                     showStandardMeterContextMenu(m_ananMm, position);
                 });
-        // Build 681: the box on the strip steps the shared TX Select.
-        connect(m_ananMm, &AnanMultiMeterWidget::txSelectClicked, this, [this](int i) {
-            if (i < 0 || i >= MeterSettings::txMeterItems().size())
-                return;
-            m_vuTxSelect = i;
-            m_sMeter->setTxMode(MeterSettings::txMeterItems()[i]);
-            m_ananMm->setTxSelect(i);
-            persistVuMeterSettings();
-        });
         m_ananMmShown = st.value(QStringLiteral("AnanMeterStyle"), QStringLiteral("Aether")).toString()
                         == QLatin1String("AnanMM");
         applyMeterStyle();
@@ -1458,9 +1450,9 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
         menu.addAction(action);
     };
 
-    // ANAN fork build 680: which meter -- this S-meter or Thetis's ANAN Multi
-    // Meter. The ANAN Multi Meter's own options are its face; the options
-    // below it are this S-meter's and are not shown for it.
+    // ANAN fork build 680: which meter -- this S-meter or the multi meter
+    // (build 735: the fork's own). The multi meter's own option is its face;
+    // the options below it are this S-meter's and are not shown for it.
     if (m_ananMm) {
         addHeader(QStringLiteral("Meter"));
         QActionGroup* styleGroup = new QActionGroup(&menu);
@@ -1479,7 +1471,7 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
             });
         };
         addStyle(QStringLiteral("S-Meter"), false);
-        addStyle(QStringLiteral("ANAN Multi Meter"), true);
+        addStyle(QStringLiteral("Multi Meter"), true);
         if (m_ananMmShown) {
             addHeader(QStringLiteral("Face"));
             QActionGroup* faceGroup = new QActionGroup(&menu);
@@ -1499,21 +1491,6 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
             };
             addFace(QStringLiteral("Light"), AnanMultiMeterWidget::Face::Light);
             addFace(QStringLiteral("Dark"), AnanMultiMeterWidget::Face::Dark);
-            // Build 681: TX Select, the same choice as the S-meter's.
-            addHeader(QStringLiteral("TX Select"));
-            QActionGroup* mmTxGroup = new QActionGroup(&menu);
-            for (int i = 0; i < MeterSettings::txMeterItems().size(); ++i) {
-                QAction* action = menu.addAction(MeterSettings::txMeterItems()[i]);
-                action->setCheckable(true);
-                action->setChecked(i == m_vuTxSelect);
-                mmTxGroup->addAction(action);
-                connect(action, &QAction::triggered, this, [this, i]() {
-                    m_vuTxSelect = i;
-                    m_sMeter->setTxMode(MeterSettings::txMeterItems()[i]);
-                    m_ananMm->setTxSelect(i);
-                    persistVuMeterSettings();
-                });
-            }
             menu.exec(source->mapToGlobal(position));
             return;
         }
@@ -1557,8 +1534,6 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
         connect(action, &QAction::triggered, this, [this, i]() {
             m_vuTxSelect = i;
             m_sMeter->setTxMode(MeterSettings::txMeterItems()[i]);
-            if (m_ananMm)
-                m_ananMm->setTxSelect(i);   // build 681: shared
             persistVuMeterSettings();
         });
     }

@@ -94,7 +94,7 @@ public:
 
     RxApplet*     rxApplet()      { return m_rxApplet; }
     SMeterWidget* sMeterWidget()  { return m_sMeter; }
-    // ANAN fork build 680: Thetis's ANAN Multi Meter, the other face of the
+    // ANAN fork build 680 / 735: the multi meter (the fork's own), the other face of the
     // side panel's S-meter (right-click menu, "Meter").
     AnanMultiMeterWidget* ananMultiMeter() { return m_ananMm; }
     CrossNeedleMeterWidget* crossNeedleMeterWidget() const;
@@ -425,7 +425,7 @@ private:
     QPushButton*     m_vuBtn{nullptr};
     SMeterWidget*    m_sMeter{nullptr};
     AnanMultiMeterWidget* m_ananMm{nullptr};   // build 680
-    bool             m_ananMmShown{false};      // build 680: "Meter" = ANAN Multi Meter
+    bool             m_ananMmShown{false};      // build 680: "Meter" = Multi Meter
     void applyMeterStyle();                     // build 680
     CrossNeedleMeterApplet* m_crossNeedleApplet{nullptr};
     int              m_vuTxSelect{0};

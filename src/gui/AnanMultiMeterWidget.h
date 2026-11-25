@@ -1,23 +1,25 @@
 #pragma once
 
-// ANAN fork build 680 (operator, 24.11: "take the multi meter of Thetis and
-// put it in as an option of the S-meter, chosen with the right button on the
-// S-meter of the side panel"). The "Anan Multi Meter" of Thetis
-// (MeterManager.cs, clsMeter::AddAnanMM, Richard Samphire MW0LGE, GPL v2 or
-// later): its needles -- the calibration tables, the needle geometry, the
-// attack and decay ratios, the 4 s history, the display groups and the group
-// click box -- carried over as they are. The face is drawn here (the operator:
-// "draw the scale yourself"), on the layout of Thetis's ananMM images; none of
-// those images is used.
+// ANAN fork build 735 (operator, 25.11): the fork's own multi meter, the
+// other face of the side panel's S-meter (right click -> Meter -> Multi
+// Meter). It replaces the meter of builds 680..734, whose face followed the
+// layout of another program's meter images; that design is its author's and
+// is not used any more. This one is a linear ("edgewise") meter designed
+// here: one horizontal scale per reading -- S, PO, SWR, ALC, COMP, and the
+// PA's Id and Vd where the radio reports them -- with a triangular pointer,
+// a bar up to it and the value at the right; all readings at once, those of
+// the other direction (receive / transmit) dimmed. The scales, their
+// calibration and the drawing are this file's own.
+//
+// The light face is drawn on the operator's paper background (320 x 240,
+// :/images/meter-paper-light.png); that size is also the largest the meter
+// grows to (operator: "the resolution the stretched applet can go up to").
 
 #include <QWidget>
 #include <QTimer>
 #include <QPixmap>
-#include <QPointF>
-#include <QColor>
+#include <QString>
 #include <QVector>
-#include <QPair>
-#include <deque>
 
 class QPainter;
 
@@ -33,8 +35,9 @@ public:
     void setFace(Face face);
     Face face() const { return m_face; }
 
-    // Docked: as wide as the panel, as high as the meter needs for that width;
-    // floating: fills the window (the meter keeps its proportions, centred).
+    // Docked: as wide as the panel (at most kMaxWidth), as high as the meter
+    // needs for that width; floating: the largest meter that fits the window,
+    // at most kMaxWidth x kMaxHeight, centred.
     void setFloating(bool floating);
 
     bool hasHeightForWidth() const override { return true; }
@@ -42,21 +45,13 @@ public:
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
 
-    // Build 681 (operator, 24.11: "connect the transmit options -- as TX
-    // Select of the S-meter"): the TX needle is the one chosen in the
-    // S-meter's TX Select, shared with it (MeterSettings::txMeterItems(),
-    // in this order): 0 Power (PO), 1 SWR, 2 Level (the ALC scale, Thetis's
-    // ALC group), 3 Compression (COMP). It replaces Thetis's display groups;
-    // the box on the strip shows it and a left click steps to the next one.
-    int txSelect() const { return m_txSelect; }
-    void setTxSelect(int index);
-    static QString txSelectName(int index);
-    static constexpr int kTxSelects = 4;
+    // The paper background's size: the meter's design size and its largest.
+    static constexpr int kMaxWidth = 320;
+    static constexpr int kMaxHeight = 240;
 
-    // Thetis's face proportions: the meter 1 : 0.441, the strip under it
-    // 75/900 of the width.
-    static constexpr double kFaceAspect = 0.441;
-    static constexpr double kStripAspect = 75.0 / 900.0;
+    // Whether the radio reports PA current / supply volts (its capability
+    // record); a row the radio cannot fill is not drawn.
+    void setTelemetryRows(bool supplyVolts, bool paCurrent);
 
 public slots:
     void setLevel(float dbm);                     // RX signal (dBm)
@@ -68,56 +63,41 @@ public slots:
     void setAlcLevel(float dbfs);                 // post-ALC peak level
     void setAlcGain(float db);                    // ALC gain (0 = unity, < 0 = reducing)
 
-signals:
-    void txSelectClicked(int index);   // build 681: the box asked for this one
-
 protected:
     void paintEvent(QPaintEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
 public:
-    // The painting itself, for any target (also used by the face test).
+    // The painting itself, for any target.
     void render(QPainter& p, const QRectF& area);
 
 private:
-    enum class Source { Signal, Volts, Amps, Power, Swr, AlcComp, AlcGroup };
-    struct Needle {
-        Source source;
-        bool onlyRx{false};
-        bool onlyTx{false};
-        int group{0};
-        float attack{0.8f};
-        float decay{0.2f};
-        int historyMs{500};
-        bool showHistory{false};
-        QColor colour;            // empty (invalid) = the face's ink colour
-        QColor historyColour;
-        float lengthFactor{1.0f};
-        QVector<QPair<float, QPointF>> calibration;   // value -> point (0..1 of the face)
-        float value{0.0f};
-        std::deque<float> history;
-        int ignoreNext{0};
+    enum class Row { S, Po, Swr, Alc, Comp, Id, Vd };
+    struct Mark { double pos; QString text; };
+    struct Scale {
+        QVector<Mark> marks;
+        double redFrom{2.0};   // 0..1; red above this (2 = none)
+        double redBelow{-1.0}; // 0..1; red below this (-1 = none)
     };
 
-    void buildNeedles();
-    void tick();
-    float reading(Source source) const;
-    QPointF calibrationPoint(const Needle& n, float value) const;
-    bool needleShown(const Needle& n) const;
+    QVector<Row> rows() const;
+    bool rowActive(Row row) const;
+    static QString rowName(Row row);
+    Scale scaleOf(Row row) const;
+    double position(Row row, float value) const;   // 0..1 along the scale
+    float reading(Row row) const;
+    QString valueText(Row row, float value) const;
     QRectF meterArea(const QRectF& area) const;
-    QRectF boxRect(const QRectF& meter) const;
-    void drawFace(QPainter& p, const QRectF& face);
-    void drawStrip(QPainter& p, const QRectF& strip);
-    void drawNeedle(QPainter& p, const QRectF& face, const Needle& n) const;
-    void drawPowerLabels(QPainter& p, const QRectF& face) const;
+    void drawStatic(QPainter& p, const QRectF& meter);
+    void drawDynamic(QPainter& p, const QRectF& meter);
+    void tick();
 
     Face m_face{Face::Light};
-    QVector<Needle> m_needles;
-    QTimer m_tick;
-    int m_txSelect{0};
     bool m_floating{false};
     bool m_transmitting{false};
+    bool m_hasVolts{false};
+    bool m_hasAmps{false};
+    QTimer m_tick;
 
     // Latest readings.
     float m_rxDbm{-127.0f};
@@ -128,12 +108,12 @@ private:
     float m_amps{0.0f};
     float m_alcDbfs{-30.0f};
     float m_alcGainDb{0.0f};
+    // What the pointers show (smoothed), one per Row.
+    float m_shown[7]{};
 
-    QPixmap m_faceCache;
-    QSize m_faceCacheSize;
-    qreal m_faceCacheDpr{0.0};
-    Face m_faceCacheFace{Face::Light};
-    float m_faceCacheMaxPower{0.0f};
+    QPixmap m_paper;          // the light face's background
+    QPixmap m_staticCache;    // background + scales
+    QString m_staticKey;
 };
 
 } // namespace AetherSDR

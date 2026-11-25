@@ -5035,7 +5035,7 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     // corrected by -50..+50 %; SWR is computed from the uncorrected readings.
     // ANAN fork build 711 (operator, 25.11): Max Level above the sliders --
     // the top of the power meters while transmitting (TX applet gauge,
-    // needle S-meter, ANAN Multi Meter), red from Max Level / 1.2. Per ANAN
+    // needle S-meter, Multi Meter), red from Max Level / 1.2. Per ANAN
     // model (AnanRatedPower.h); default 120 W, Odyssey-3 60 W.
     const auto maxLevelRow = [this](QGridLayout* grid) {
         auto* lbl = new QLabel(QStringLiteral("Max Level"));
@@ -5051,7 +5051,7 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
         spin->setEnabled(known);
         spin->setToolTip(known
             ? QStringLiteral("Top of the power meters while transmitting on this %1 "
-                             "(TX applet, S-meter, ANAN Multi Meter); the red zone starts "
+                             "(TX applet, S-meter, Multi Meter); the red zone starts "
                              "at Max Level / 1.2. Default %2 W.")
                   .arg(m_model->backendCapabilities().model)
                   .arg(ananDefaultPowerMaxLevel(*m_model))
