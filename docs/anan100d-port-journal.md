@@ -11633,6 +11633,29 @@ P1 берёт состояние в каждой ротации C&C, отдел�
 
 Файлы: `src/gui/MainWindow_Ftx.cpp`, `src/core/ForkBuild.h`. errcheck 23 (базовый), bogus +1.
 
+## 674. Сборка 691 — Settings: Save Settings / Restore Settings
+
+**Просьба оператора (24.11):** в меню Settings перед Reset Settings (сверху вниз) добавить Save Settings и Restore Settings. Для сохранения и восстановления открывается окно проводника с выбором имени файла. В файл должны попасть все настройки, что пишутся в реестр и, возможно, в другие места. Имя по умолчанию — aether_settings_<дата>.
+
+**Где программа хранит настройки.** В реестр Windows программа ничего не пишет (единственный нативный `QSettings` — plist TCI на macOS). Хранилища:
+- база настроек `<configDir>/AetherSDR.db` (SQLite: все AppSettings, станционные и радио-настройки);
+- `midi.settings` (привязки MIDI) в той же папке;
+- `~/AetherSDR-FTX/Options.ini` (окна FTX и JS8).
+
+Пароли и ключи лежат в хранилище учётных данных системы и в файл не входят.
+
+**Сделано.**
+- **`core/SettingsArchive`** (новый, в `AETHER_SETTINGS_SOURCES`). Один файл `*.aethersettings`: `QDataStream` (Qt 6.0), магия `AETHERSETTINGS`, версия 1, записи (имя, байты): `AetherSDR.db`, `midi.settings`, `AetherSDR-FTX/Options.ini` — последние два, если они есть.
+  - `exportTo` — база через новый `AppSettings::exportSnapshot()`: сначала `save()`, затем `VACUUM INTO` с проверкой `verifyBackupFile`.
+  - `stageRestore` — проверяет файл: магию, версию, наличие базы; база должна пройти `verifyBackupFile`. Затем раскладывает записи в `<configDir>/settings-restore-pending`.
+  - `applyPendingRestore` — вызывается в `main()` сразу после `copyFromUpstreamOnce()`, до открытия любого хранилища. Текущая база сохраняется в `settings-backups/AetherSDR-<время>-prerestore.db`; удаляются `-wal`/`-shm`; файлы ставятся на места; папка ожидания удаляется.
+  - Восстановление отложено до следующего запуска, чтобы закрывающаяся программа (сохранение базы, MIDI, FTX) не перезаписала восстановленное.
+- **Меню Settings:** Save Settings… и Restore Settings… перед Reset Settings… (NoRole, как Reset).
+  - **Save:** диалог сохранения в «Документах», имя `aether_settings_yyyy-MM-dd.aethersettings`; расширение добавляется, если его не ввели.
+  - **Restore:** диалог открытия → подтверждение («программа закроется и запустится с этими настройками, текущие — в резервных копиях») → `stageRestore` → `QApplication::quit()`. Ошибки показываются в `FramelessMessageBox`.
+
+Файлы: `src/core/SettingsArchive.{h,cpp}` (новые), `src/core/AppSettings.{h,cpp}`, `src/gui/MainWindow_Menus.cpp`, `src/main.cpp`, `CMakeLists.txt`, `src/core/ForkBuild.h`. errcheck: SettingsArchive 0, AppSettings 0, MainWindow_Menus 24, main 26 (базовые), bogus +1.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

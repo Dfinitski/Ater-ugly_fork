@@ -11,6 +11,7 @@
 #include "core/SettingsCredentialPolicy.h"
 #include "core/SettingsDatabase.h"
 #include "core/SettingsPaths.h"
+#include "core/SettingsArchive.h"
 #include "core/SettingsSanitizer.h"
 #include "models/Nr2SettingsModel.h"
 #include "core/AutomationBridgeSettings.h"
@@ -278,6 +279,9 @@ int main(int argc, char* argv[])
     // (AetherSDR_ugly_fork); the first start copies the user's settings from
     // the original program's directory. Before anything opens the store.
     AetherSDR::SettingsPaths::copyFromUpstreamOnce();
+    // Build 691: a Restore Settings staged by the last run goes in place
+    // before anything opens a settings store.
+    AetherSDR::SettingsArchive::applyPendingRestore();
 
     if (argc >= 2 && qstrcmp(argv[1], "--config") == 0) {
         return runConfigCli(argc, argv);

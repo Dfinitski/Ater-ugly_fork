@@ -157,6 +157,11 @@ public:
     // or an empty string if the backup could not be written.
     QString shutdownForReset();
 
+    // ANAN fork build 691: everything pending saved, then a consistent,
+    // verified single-file copy of the store at `destPath` (Save Settings,
+    // core/SettingsArchive.h). False when it could not be written.
+    bool exportSnapshot(const QString& destPath);
+
 private:
     enum class LoadState {
         NotAttempted,

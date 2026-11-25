@@ -75,6 +75,12 @@
 
 #include <QActionGroup>
 #include <QApplication>
+#include <QDir>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QStandardPaths>
+#include "core/SettingsArchive.h"
+#include "FramelessMessageBox.h"
 #include <QColor>
 #include <QCoreApplication>
 #include <QCheckBox>
@@ -1630,6 +1636,51 @@ void MainWindow::buildMenuBar()
     // Destructive client-store reset: a Settings action, not a Help one (#5570).
     // NoRole is required — macOS would otherwise read "Settings" as a
     // Preferences action and reparent it into the application menu (#883).
+    // ANAN fork build 691 (operator, 24.11): Save Settings / Restore Settings
+    // above Reset Settings -- every settings store of the program in one file
+    // (core/SettingsArchive.h), named aether_settings_<date> by default. A
+    // restore takes effect at the next start: the program closes, as after
+    // Reset Settings, and puts the file's settings in place when started.
+    auto* saveSettingsAction = settingsMenu->addAction("Save Settings...", this, [this] {
+        const QString dir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+        const QString suffix = SettingsArchive::fileSuffix();
+        QString path = QFileDialog::getSaveFileName(
+            this, QStringLiteral("Save Settings"),
+            dir + QLatin1Char('/') + SettingsArchive::defaultFileName(),
+            QStringLiteral("AetherSDR settings (*.%1)").arg(suffix));
+        if (path.isEmpty())
+            return;
+        if (!path.endsWith(QLatin1Char('.') + suffix, Qt::CaseInsensitive))
+            path += QLatin1Char('.') + suffix;
+        QString error;
+        if (!SettingsArchive::exportTo(path, &error))
+            FramelessMessageBox::warning(this, QStringLiteral("Save Settings"), error);
+    });
+    saveSettingsAction->setMenuRole(QAction::NoRole);
+    auto* restoreSettingsAction = settingsMenu->addAction("Restore Settings...", this, [this] {
+        const QString dir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+        const QString path = QFileDialog::getOpenFileName(
+            this, QStringLiteral("Restore Settings"), dir,
+            QStringLiteral("AetherSDR settings (*.%1);;All files (*)").arg(SettingsArchive::fileSuffix()));
+        if (path.isEmpty())
+            return;
+        if (FramelessMessageBox::question(
+                this, QStringLiteral("Restore Settings"),
+                QStringLiteral("Restore all settings from\n%1 ?\n\n"
+                               "AetherSDR will close now and start with these settings the "
+                               "next time it is opened. The current settings are kept in the "
+                               "settings backups.").arg(QDir::toNativeSeparators(path)),
+                QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
+            return;
+        QString error;
+        if (!SettingsArchive::stageRestore(path, &error)) {
+            FramelessMessageBox::warning(this, QStringLiteral("Restore Settings"), error);
+            return;
+        }
+        QApplication::quit();
+    });
+    restoreSettingsAction->setMenuRole(QAction::NoRole);
+
     auto* resetSettingsAction = settingsMenu->addAction("Reset Settings...", this, [this] {
         SupportDialog::resetSettings(this);
     });

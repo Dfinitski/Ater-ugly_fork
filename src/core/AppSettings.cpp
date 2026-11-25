@@ -946,6 +946,21 @@ QString AppSettings::shutdownForReset()
     return backupPath;
 }
 
+bool AppSettings::exportSnapshot(const QString& destPath)
+{
+    save();
+    QMutexLocker ioLocker(&m_saveMutex);
+    if (!m_db || !m_db->isOpen())
+        return false;
+    if (!m_db->backupTo(destPath))
+        return false;
+    if (!SettingsDatabase::verifyBackupFile(destPath)) {
+        QFile::remove(destPath);
+        return false;
+    }
+    return true;
+}
+
 QString AppSettings::loadNotice() const
 {
     QReadLocker locker(&m_lock);

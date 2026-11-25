@@ -888,6 +888,7 @@ set(AETHER_SETTINGS_SOURCES
     src/core/AppSettings.cpp
     src/core/SettingsDatabase.cpp
     src/core/SettingsPaths.cpp
+    src/core/SettingsArchive.cpp
     src/core/SettingsBootstrap.cpp
     src/core/SettingsSanitizer.cpp
 )
