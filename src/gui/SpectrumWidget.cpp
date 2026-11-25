@@ -14216,6 +14216,15 @@ void SpectrumWidget::updateRateGroupCover()
                 return true;
         return false;
     };
+    // Build 679: the indicator strip left of the group (WIDE, K/A/SFI, ...)
+    // simply hides under a flag and comes back once no flag covers its place.
+    const bool indCovered = !m_indicatorStripPlace.isEmpty()
+        && covered(m_indicatorStripPlace);
+    if (indCovered != m_indicatorsCovered) {
+        m_indicatorsCovered = indCovered;
+        markOverlayDirty("indicatorsCovered");
+        update();
+    }
     // Without the zoom there is nothing to rearrange: one line or hidden.
     const int stage = !covered(oneLine) ? 0
                     : (withZoom && !covered(twoLines)) ? 1 : 2;
@@ -14231,6 +14240,45 @@ void SpectrumWidget::updateRateGroupCover()
         m_zoomLabel->setVisible(!hidden && m_zoomLabelWanted);
     placeRateGroup();
     update();   // the indicators drawn left of the group
+}
+
+// Build 679: the place of the indicator strip, as the two draw passes lay it
+// out (from rightEdge leftwards: WIDE chip, preamp, RF gain, WNB, K/A/SFI).
+QRect SpectrumWidget::indicatorStripBounds(const QFontMetrics& fm, int rightEdge,
+                                           int baselineY, bool showRfGain,
+                                           bool showProp) const
+{
+    int x = rightEdge;
+    int leftEdge = rightEdge;
+    QRect r;
+    auto text = [&](const QString& t) {
+        x -= fm.horizontalAdvance(t);
+        leftEdge = x;
+        x -= 10;
+    };
+    if (m_wideActive) {
+        QFont f;
+        f.setPixelSize(12);
+        f.setBold(true);
+        const int w = QFontMetrics(f).horizontalAdvance(QStringLiteral("WIDE")) + 12;
+        r = QRect(x - w, 4, w, 20);   // drawWideChip()
+        leftEdge = x - w;
+        x = leftEdge - 10;
+    }
+    if (!m_preampIndicator.isEmpty())
+        text(m_preampIndicator);
+    if (showRfGain)
+        text(formatRfGainIndicator(m_rfGainValue, m_rfGainUnitSuffix));
+    if (m_wnbActive)
+        text(QStringLiteral("WNB"));
+    if (showProp) {
+        x -= fm.horizontalAdvance(QString("K%1  A%2  SFI %3")
+                                      .arg(m_propKIndex, 0, 'f', 2)
+                                      .arg(m_propAIndex)
+                                      .arg(m_propSfi));
+        leftEdge = x;
+    }
+    return r | QRect(leftEdge, baselineY - fm.ascent(), rightEdge - leftEdge, fm.height());
 }
 
 void SpectrumWidget::rateGroupGeometry(bool twoRows, QRect& zoom, QRect& down,
@@ -16797,6 +16845,13 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                     const int y = specRect.top() + fm.ascent() + 4;
                     const int rightEdge = specRect.right()
                         - std::max(DBM_STRIP_W, m_topRightReserve) - 8 - rateGroupWidth();
+                    // Build 679: under a flag the strip is not drawn.
+                    m_indicatorStripPlace = indicatorStripBounds(fm, rightEdge, y,
+                                                                 showRfGain, showProp);
+                    if (m_indicatorsCovered) {
+                        m_indicatorStripRect = QRect();
+                        m_propClickRect = QRect();
+                    } else {
                     int x = rightEdge;
                     int leftEdge = rightEdge;
                     auto drawSegment = [&](const QString& text, const QColor& color) {
@@ -16845,8 +16900,10 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                     m_indicatorStripRect = QRect(leftEdge, y - fm.ascent(),
                                                  rightEdge - leftEdge,
                                                  fm.height());
+                    }   // build 679: not covered
                 } else {
                     m_indicatorStripRect = QRect();
+                    m_indicatorStripPlace = QRect();   // build 679
                 }
 
                 // MQTT device status overlay (#699)
@@ -18000,7 +18057,13 @@ void SpectrumWidget::paintEvent(QPaintEvent* ev)
             const int rightEdge = specRect.right()
                 - std::max(DBM_STRIP_W, m_topRightReserve) - 6 - rateGroupWidth();
             const int topY = specRect.top() + fm.ascent() + 2;
-
+            // Build 679: under a flag the strip is not drawn.
+            m_indicatorStripPlace = indicatorStripBounds(fm, rightEdge, topY,
+                                                         showRfGain, showProp);
+            if (m_indicatorsCovered) {
+                m_indicatorStripRect = QRect();
+                m_propClickRect = QRect();
+            } else {
             int x = rightEdge;
             int leftEdge = rightEdge;
             auto drawSegment = [&](const QString& text, const QColor& color) {
@@ -18056,8 +18119,10 @@ void SpectrumWidget::paintEvent(QPaintEvent* ev)
             // used to suppress single-click-to-tune within (#1564).
             m_indicatorStripRect = QRect(leftEdge, topY - fm.ascent(),
                                          rightEdge - leftEdge, fm.height());
+            }   // build 679: not covered
         } else {
             m_indicatorStripRect = QRect();
+            m_indicatorStripPlace = QRect();   // build 679
         }
     }
 

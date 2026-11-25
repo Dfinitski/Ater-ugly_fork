@@ -11425,6 +11425,17 @@ Thetis (console.cs `ZoomToBand`, `zoomToBandBandwidth`): панорама на �
 
 Файлы: `src/gui/SpectrumWidget.cpp`, `src/gui/SpectrumWidget.h`, `src/core/ForkBuild.h`. errcheck 12 (базовый), bogus +1.
 
+## 662. Сборка 679 — индикаторы слева от группы зума прячутся под флагом
+
+**Просьба оператора (24.11):** индикаторы слева от группы зума и рейта (WIDE, K/A/SFI и прочие) не важны. Пусть при наезде флага просто исчезают и потом возвращаются.
+
+**Сделано (`SpectrumWidget`).**
+- `indicatorStripBounds()` считает место полосы индикаторов так же, как оба прохода рисования (QPainter `paintEvent` и GPU-слой `renderGpuFrame`). Справа налево: рамка WIDE (как `drawWideChip`), preamp, RF gain, WNB, K/A/SFI.
+- Каждый проход сохраняет место в `m_indicatorStripPlace` (даже когда не рисует). Если `m_indicatorsCovered`, полоса не рисуется, а `m_indicatorStripRect` и `m_propClickRect` пустые: клик по пустому месту снова настраивает частоту.
+- `updateRateGroupCover()` (на движение и размер флага и 4 раза в секунду) проверяет, задевает ли какой-нибудь флаг это место. При смене состояния — `markOverlayDirty` и `update()`. Место полосы от её видимости не зависит, поэтому мерцания нет.
+
+Файлы: `src/gui/SpectrumWidget.cpp`, `src/gui/SpectrumWidget.h`, `src/core/ForkBuild.h`. errcheck 12 (базовый), bogus +1.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

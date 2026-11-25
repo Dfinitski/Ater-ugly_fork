@@ -2220,6 +2220,14 @@ private:
     double m_propKIndex{-1.0};
     QRect  m_propClickRect;  // bounding rect of rendered prop text for click detection
     QRect  m_indicatorStripRect;  // bounding rect of full top-right indicator strip
+    // ANAN fork build 679 (operator, 24.11: "they are not important -- let
+    // them simply vanish when a flag runs onto them and come back after").
+    // The strip's place whether drawn or not, and whether a flag covers it
+    // (updateRateGroupCover()); covered, the strip is not drawn.
+    QRect  m_indicatorStripPlace;
+    bool   m_indicatorsCovered{false};
+    QRect  indicatorStripBounds(const QFontMetrics& fm, int rightEdge, int baselineY,
+                                bool showRfGain, bool showProp) const;
                                   // (prop + WNB + RF Gain + WIDE) — single-click tune
                                   // is suppressed inside this rect (#1564)
     int  m_propAIndex{-1};
