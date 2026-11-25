@@ -834,28 +834,27 @@ void MainWindow::applySpeechProcessorToClientComp(bool operatorIntent)
     const bool on = tx.speechProcessorEnable();
     const int level = qBound(0, tx.speechProcessorLevel(), 2);
 
-    // The preset is written only for operator intent. The compressor is shared
-    // with the Aetherial strip, and the 20 Hz mirror reports a strip-originated
-    // enable back as an off→on transition, which must not overwrite the
-    // operator's strip settings.
+    // ANAN fork build 696 (operator, 24.11: "these are presets, so: the
+    // operator switches the Aether compressor on -- the applet's button goes
+    // off; switches it on in the applet -- the Aether one goes on and gets
+    // the preset of the slider; switches anything off -- everything goes
+    // off"; the slider with PROC off writes nothing). Replaces the rules of
+    // builds 688 / 695:
+    //  - only the operator's PROC moves act here (speechProcessorCommandIssued);
+    //    the observe call (micStateChanged, also emitted by the mirror below)
+    //    does nothing -- PROC off with the Aether compressor on is a state of
+    //    its own now, which the observe call must not "correct";
+    //  - PROC on: the compressor on + the slider's preset; PROC off: the
+    //    compressor off; the slider with PROC on: its preset; with PROC off:
+    //    nothing (the preset is written when PROC goes on);
+    //  - the Aether side switching the compressor on or off: the mirror below.
+    // The applied state is kept here, not in the observe call:
+    // setSpeechProcessor*() emit micStateChanged before the command signal.
+    if (!operatorIntent)
+        return;
+    const bool switched = on != m_lastAppliedProcEnable;
     const bool levelChanged = level != m_lastAppliedProcLevel;
-    const bool switchedOn = on && !m_lastAppliedProcEnable;
-    // ANAN fork build 695 (operator, 24.11: "the compressor slider does not
-    // change the Aether TX compressor's parameters"). Two errors of ours:
-    //  - setSpeechProcessorLevel() emits micStateChanged BEFORE
-    //    speechProcessorCommandIssued, and the observe call (below) stored the
-    //    new level as applied -- so the operator call that followed saw no
-    //    level change and wrote no preset; the 50 ms mirror (build 688) then
-    //    found the old preset on the compressor and put the slider back;
-    //  - with PROC off a slider move wrote nothing either, and the mirror put
-    //    the slider back the same way.
-    // Since build 688 PROC and the Aether compressor are one compressor: an
-    // operator move of the slider writes its preset, PROC on or off; the
-    // observe path syncs the enable only and leaves the applied level alone.
-    // The connect re-push (applied level reset to -1) still writes only with
-    // PROC on, as before: it must not overwrite the strip's own settings.
-    const bool sliderMoved = levelChanged && m_lastAppliedProcLevel >= 0;
-    if (operatorIntent && ((on && (levelChanged || switchedOn)) || sliderMoved)) {
+    if (on && (switched || levelChanged)) {
         // NOR / DX / DX+. Progressively lower thresholds and higher ratios, with
         // makeup chosen to keep the average level rising with the setting rather
         // than merely squashing peaks — "more processing" has to sound louder or
@@ -877,13 +876,13 @@ void MainWindow::applySpeechProcessorToClientComp(bool operatorIntent)
         comp->setAttackMs(5.0f);
         comp->setReleaseMs(120.0f);
         comp->setKneeDb(6.0f);
+        m_lastAppliedProcLevel = level;
     }
-    if (comp->isEnabled() != on)
+    // Only on a PROC edge: the connect re-push (cache reset to off) with PROC
+    // off leaves the strip's own compressor as it is.
+    if (switched && comp->isEnabled() != on)
         comp->setEnabled(on);
-
     m_lastAppliedProcEnable = on;
-    if (operatorIntent)
-        m_lastAppliedProcLevel = level;   // build 695: only what was written
 
     // OPERATOR INTENT ONLY claims the shared compressor.
     //
@@ -1173,42 +1172,25 @@ void MainWindow::wireHostModulatedVoiceChain()
             QStringLiteral("TX"), QStringLiteral("COMPPEAK"),
             qBound(0.0f, reduction, 25.0f));
 
-        // Mirror the strip back onto PROC, so toggling the compressor there
-        // does not leave the button lying. applySpeechProcessorState() emits
-        // micStateChanged but NOT speechProcessorCommandIssued, so this settles
-        // in one pass and can never be mistaken for the operator moving PROC.
-        // ANAN fork build 688 (operator, 24.11: "the microphone compressor --
-        // is it one and the same again? then unite it as the EQ"): it is the
-        // same ClientComp, so the enable was mirrored already; now also
-        //  - the NOR / DX / DX+ position follows the Aether compressor when
-        //    its threshold / ratio / makeup are one of the three presets
-        //    (set elsewhere they leave the slider where it is), and
-        //  - the backend hears it (adoptSpeechProcessorFromChain): on ANAN
-        //    PROC also sets the radio-side TXA compressor (10 dB off, 14 /
-        //    17 / 20 dB NOR / DX / DX+), which stayed behind when the
-        //    compressor was switched from the Aether side.
+        // Mirror the strip back onto PROC. applySpeechProcessorState() emits
+        // micStateChanged but NOT speechProcessorCommandIssued, so this can
+        // never be mistaken for the operator moving PROC.
+        // ANAN fork build 696 (operator, 24.11, see
+        // applySpeechProcessorToClientComp): PROC on means the compressor on
+        // with the slider's preset. The Aether side switching the compressor
+        // off switches PROC off ("switches anything off -- everything goes
+        // off"); switching it on there leaves PROC off (its own settings, not
+        // a preset). So the one thing to mirror: PROC on, compressor off.
+        // The backend hears it (adoptSpeechProcessorFromChain -> controlRequested):
+        // on ANAN PROC also drives the radio-side TXA compressor. This
+        // replaces build 688's mirroring of the enable and of the preset
+        // position (the slider no longer follows the Aether knobs).
         {
-            struct Preset { float thresholdDb; float ratio; float makeupDb; };
-            static constexpr Preset kPresets[3] = {
-                { -18.0f, 2.5f,  4.0f },   // NOR  (as applySpeechProcessorToClientComp)
-                { -24.0f, 4.0f,  8.0f },   // DX
-                { -30.0f, 6.0f, 12.0f },   // DX+
-            };
             auto& tx = m_radioModel.transmitModel();
-            int level = tx.speechProcessorLevel();
-            for (int i = 0; i < 3; ++i) {
-                if (std::abs(comp->thresholdDb() - kPresets[i].thresholdDb) < 0.05f
-                    && std::abs(comp->ratio() - kPresets[i].ratio) < 0.05f
-                    && std::abs(comp->makeupDb() - kPresets[i].makeupDb) < 0.05f) {
-                    level = i;
-                    break;
-                }
+            if (tx.speechProcessorEnable() && !comp->isEnabled()) {
+                tx.adoptSpeechProcessorFromChain(false, tx.speechProcessorLevel());
+                m_lastAppliedProcEnable = false;
             }
-            if (tx.speechProcessorLevelMaximum() > 2)
-                level = tx.speechProcessorLevel();   // a continuous control: leave it
-            else
-                m_lastAppliedProcLevel = level;   // what is there is that preset already
-            tx.adoptSpeechProcessorFromChain(comp->isEnabled(), level);
         }
     });
 }
