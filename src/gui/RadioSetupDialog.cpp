@@ -82,6 +82,7 @@
 #include <QSlider>
 #include <QComboBox>
 #include <QSpinBox>
+#include "AnanRatedPower.h"
 #include <QCheckBox>
 #include <QDoubleValidator>
 #include <QTimer>
@@ -4730,11 +4731,16 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     // Hl2Backend reads it on its next drive / meter update.
     auto bandCalGroup = [this, vbox](const QString& title, const QString& prefix,
                                      int lo, int hi, int def, bool signedValue,
-                                     const QString& tip) {
+                                     const QString& tip,
+                                     const std::function<void(QGridLayout*)>& header = {}) {
         auto* calGroup = new QGroupBox(title);
         auto* grid = new QGridLayout(calGroup);
         grid->setHorizontalSpacing(8);
         grid->setVerticalSpacing(4);
+        // Build 711: an optional first row above the band sliders.
+        const int rowBase = header ? 1 : 0;
+        if (header)
+            header(grid);
         static const char* kBands[] = {"160m", "80m", "60m", "40m", "30m", "20m",
                                        "17m", "15m", "12m", "10m", "6m"};
         auto text = [signedValue](int v) {
@@ -4743,7 +4749,7 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
         };
         int idx = 0;
         for (const char* band : kBands) {
-            const int row = idx / 3;
+            const int row = rowBase + idx / 3;
             const int col = (idx % 3) * 3;
             ++idx;
             const QString b = QString::fromLatin1(band);
@@ -4875,10 +4881,46 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     }
     // Power Meter Calibration: per band, the displayed forward power is
     // corrected by -50..+50 %; SWR is computed from the uncorrected readings.
+    // ANAN fork build 711 (operator, 25.11): Max Level above the sliders --
+    // the top of the power meters while transmitting (TX applet gauge,
+    // needle S-meter, ANAN Multi Meter), red from Max Level / 1.2. Per ANAN
+    // model (AnanRatedPower.h); default 120 W, Odyssey-3 60 W.
+    const auto maxLevelRow = [this](QGridLayout* grid) {
+        auto* lbl = new QLabel(QStringLiteral("Max Level"));
+        auto* spin = new QSpinBox;
+        spin->setRange(10, 2000);
+        spin->setSuffix(QStringLiteral(" W"));
+        spin->setFixedWidth(90);
+        spin->setAccessibleName(QStringLiteral("Power meter max level"));
+        const bool known = m_model && ananPowerModelKnown(*m_model);
+        spin->setValue(known ? ananPowerMaxLevel(*m_model) : 120);
+        spin->setEnabled(known);
+        spin->setToolTip(known
+            ? QStringLiteral("Top of the power meters while transmitting on this %1 "
+                             "(TX applet, S-meter, ANAN Multi Meter); the red zone starts "
+                             "at Max Level / 1.2. Default %2 W.")
+                  .arg(m_model->backendCapabilities().model)
+                  .arg(ananDefaultPowerMaxLevel(*m_model))
+            : QStringLiteral("Connect an ANAN radio to set its power meters' top."));
+        connect(spin, qOverload<int>(&QSpinBox::valueChanged), this, [this](int v) {
+            if (!m_model || !ananPowerModelKnown(*m_model))
+                return;
+            auto& st = AppSettings::instance();
+            st.setValue(ananPowerMaxLevelKey(*m_model), v);
+            st.save();
+            emit ananPowerMaxLevelChanged();
+        });
+        auto* row = new QHBoxLayout;
+        row->addWidget(lbl);
+        row->addWidget(spin);
+        row->addStretch(1);
+        grid->addLayout(row, 0, 0, 1, 9);
+    };
     bandCalGroup(QStringLiteral("Power Meter Calibration"), QStringLiteral("AnanPwrCal_"),
                  -50, 50, 0, true,
                  QStringLiteral("Correction of the forward power shown while transmitting on %1, "
-                                "-50..+50 %. SWR is not affected."));
+                                "-50..+50 %. SWR is not affected."),
+                 maxLevelRow);
 
     vbox->addStretch(1);
     return page;

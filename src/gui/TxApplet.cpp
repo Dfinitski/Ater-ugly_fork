@@ -1054,6 +1054,20 @@ void TxApplet::setRatedWatts(int ratedWatts)
     }
 }
 
+void TxApplet::setMaxLevelWatts(int topWatts)
+{
+    topWatts = std::max(0, topWatts);
+    if (topWatts == m_maxLevelWatts)
+        return;
+    m_maxLevelWatts = topWatts;
+    if (m_havePowerScale) {
+        const int maxWatts = m_lastMaxWatts;
+        const bool hasAmplifier = m_lastHasAmplifier;
+        m_havePowerScale = false;
+        setPowerScale(maxWatts, hasAmplifier);
+    }
+}
+
 void TxApplet::setPowerScale(int maxWatts, bool hasAmplifier)
 {
     if (m_havePowerScale && maxWatts == m_lastMaxWatts && hasAmplifier == m_lastHasAmplifier) {
@@ -1068,6 +1082,19 @@ void TxApplet::setPowerScale(int maxWatts, bool hasAmplifier)
     // Amplified output power is shown in the AMP applet.
     auto* gauge = static_cast<HGauge*>(m_fwdGauge);
     float gaugeFullScaleW = 0.0f;
+    // ANAN fork build 711: the ANAN Max Level sets the face -- 0 .. Max Level,
+    // red from Max Level / 1.2, ticks at 0 / 40 / 80 / 100 % of that and the top.
+    if (m_maxLevelWatts > 0 && maxWatts <= 100) {
+        gaugeFullScaleW = static_cast<float>(m_maxLevelWatts);
+        const float ratedW = gaugeFullScaleW / 1.2f;
+        const auto tick = [](float watts) {
+            return HGauge::Tick{watts, QString::number(std::round(watts))};
+        };
+        gauge->setRange(0.0f, gaugeFullScaleW, ratedW,
+            {tick(0.0f), tick(ratedW * 0.4f), tick(ratedW * 0.8f),
+             tick(ratedW), tick(gaugeFullScaleW)});
+        return;
+    }
     // Build 581: a model rated below 100 W uses the rated face below
     // (Odyssey-3: 0 / 20 / 40 / 50 / 60 W, red from 50 W).
     const bool rated = m_ratedWatts > 0 && m_ratedWatts < 100 && maxWatts <= 100;

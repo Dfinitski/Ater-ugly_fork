@@ -11926,6 +11926,24 @@ errcheck MainWindow 42 = база.
 
 FrameDiag остаётся для проверки: `native client` и `qt client` должны совпасть, +5,+0. errcheck MainWindow 42 = база.
 
+## 694. Сборка 711 — Max Level в Power Meter Calibration; профили и Save/Restore
+
+**Профили (решение оператора).** Оператор предложил удалить Save/Restore Settings (691/692): в меню уже есть раздел Profiles. Проверка показала, что Profiles — это профили, которые хранятся в самом радио Flex (Global/TX/Mic, команды `profile …`). Hl2Backend заявляет `hasProfiles = false`, и при подключении ANAN меню прячется целиком (`MainWindow`, раздел «Profiles»). Локальные профили есть только у AetherRX/AetherTX — только цепочка обработки звука. Оператор: «оставить Save/Restore». Ничего не удалено.
+
+**Max Level** (оператор, 25.11): «в Power Meter Calibration добавь поле Max Level выше ползунков: 120 Вт для всех, 60 Вт для Одиссея-3 — максимум на измерителях мощности при передаче». Одно значение: красная зона начинается с Max Level / 1.2, как прежде у шкал «номинал × 1.2». Действует на TX-аплет, стрелочный S-метр и ANAN Multi Meter.
+
+**Изменения:**
+- `AnanRatedPower.h`: функции `ananPowerModelKnown`, `ananPowerMaxLevelKey` (ключ `AnanPwrMaxLevel_<модель>` — у каждого радио свой), `ananDefaultPowerMaxLevel` (1.2 × номинал модели, иначе 120; Odyssey-3 → 60) и `ananPowerMaxLevel` (0 — не ANAN).
+- `RadioSetupDialog`: у `bandCalGroup` появился необязательный первый ряд. В Power Meter Calibration это Max Level (QSpinBox 10..2000 W); без подключённого ANAN поле неактивно. При изменении значение пишется в настройки и выдаётся сигнал `ananPowerMaxLevelChanged()`.
+- `MainWindow`: `m_updatePowerScale` (лямбда `updatePowerScale` из Wiring) перезапускается по этому сигналу.
+- `updatePowerScale`:
+  - `TxApplet::setMaxLevelWatts`: шкала 0..Max, красная зона с Max/1.2, деления 0/40/80/100 % номинала и верх;
+  - `SMeterWidget::setPowerScaleTop(Max, Max/1.2)`;
+  - Multi Meter `setMaxPower(Max/1.5)`: верх лицевой шкалы Thetis (150 %) = Max.
+- Шкала мощности на флаге VFO не менялась: оператор её не выбирал.
+
+errcheck: RadioSetupDialog 23, Wiring 24, MainWindow 42, TxApplet 4, SMeterWidget 0 = база; bogus +1 в каждом изменённом месте.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

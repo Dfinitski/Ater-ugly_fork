@@ -1382,6 +1382,9 @@ private:
     Kat500Model      m_kat500Model;
     Kxpa100Model      m_kxpa100Model;
     class Kxpa100RadioAssociation* m_kxpa100Association = nullptr;
+    // ANAN fork build 711: re-applies the power meters' scales (the
+    // updatePowerScale of MainWindow_Wiring), for Max Level changed in Setup.
+    std::function<void()> m_updatePowerScale;
     QPointer<class AtuPreTuneDialog> m_kat500PreTuneDialog;
     Kpa500Connection  m_kpa500Conn;      // Elecraft KPA500 amplifier, serial or raw TCP
     RfkitConnection   m_rfkitConn;       // RF-KIT amplifier, REST/JSON over HTTP (default port 8080)

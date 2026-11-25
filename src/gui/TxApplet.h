@@ -63,6 +63,8 @@ public slots:
     // below 100 W (Odyssey-3: 50 W) -- the forward power face reads to
     // 1.2 x, red from it. 0 = none.
     void setRatedWatts(int ratedWatts);
+    // Build 711: the forward-power gauge's top in watts (ANAN Max Level); 0 = as before.
+    void setMaxLevelWatts(int topWatts);
 
 private:
     void buildUI();
@@ -184,6 +186,7 @@ private:
     bool m_lastHasAmplifier{false};
     bool m_havePowerScale{false};
     int  m_ratedWatts{0};   // build 581, see setRatedWatts()
+    int  m_maxLevelWatts{0};   // build 711, see setMaxLevelWatts()
 };
 
 } // namespace AetherSDR

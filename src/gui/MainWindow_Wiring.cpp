@@ -8422,6 +8422,11 @@ void MainWindow::wireMeters()
             && m_radioModel.amplifier().operate();
         // Build 581: Odyssey-3's 50 W face on the TX applet too.
         m_appletPanel->txApplet()->setRatedWatts(ananRatedWatts(m_radioModel));
+        // ANAN fork build 711: Max Level (Power Meter Calibration) -- the top
+        // of the TX applet's gauge, the needle S-meter's power scale and the
+        // ANAN Multi Meter's PO scale; red from Max Level / 1.2. 0 = not ANAN.
+        const int maxLevel = ananPowerMaxLevel(m_radioModel);
+        m_appletPanel->txApplet()->setMaxLevelWatts(maxLevel);
         m_appletPanel->txApplet()->setPowerScale(radioMaxWatts, integratedAmp);
         m_appletPanel->tunerApplet()->setPowerScale(selection.maxWatts, selection.highPowerAmplifier);
         m_appletPanel->setMeterPowerScale(selection.maxWatts, selection.highPowerAmplifier);
@@ -8429,16 +8434,24 @@ void MainWindow::wireMeters()
         // Odyssey-3 reads to 60 W, red from 50 W -- the radio itself, with no
         // external amplifier taking over the gauge.
         if (!selection.highPowerAmplifier && selection.maxWatts <= 100) {
-            if (const int rated = ananRatedWatts(m_radioModel); rated > 0)
+            if (maxLevel > 0)   // build 711
+                m_appletPanel->sMeterWidget()->setPowerScaleTop(
+                    static_cast<float>(maxLevel), static_cast<float>(maxLevel) / 1.2f);
+            else if (const int rated = ananRatedWatts(m_radioModel); rated > 0)
                 m_appletPanel->sMeterWidget()->setRatedPowerScale(rated);
         }
         // Build 680: the ANAN Multi Meter's PO scale is 0..150 % of the
-        // radio's power (Thetis NormaliseTo100W / MaxPower).
+        // radio's power (Thetis NormaliseTo100W / MaxPower). Build 711: with
+        // Max Level the face's top (150 %) is Max Level.
         if (auto* mm = m_appletPanel->ananMultiMeter()) {
             const int rated = ananRatedWatts(m_radioModel);
-            mm->setMaxPower(rated > 0 ? rated : (radioMaxWatts > 0 ? radioMaxWatts : 100));
+            if (maxLevel > 0)
+                mm->setMaxPower(static_cast<float>(maxLevel) / 1.5f);
+            else
+                mm->setMaxPower(rated > 0 ? rated : (radioMaxWatts > 0 ? radioMaxWatts : 100));
         }
     };
+    m_updatePowerScale = updatePowerScale;   // build 711: Max Level changed in Setup
     connect(&m_kxpa100Model, &Kxpa100Model::statusUpdated, this, updatePowerScale);
     connect(&m_kxpa100Model, &Kxpa100Model::availabilityChanged, this, updatePowerScale);
     connect(m_kxpa100Association, &Kxpa100RadioAssociation::changed, this, updatePowerScale);

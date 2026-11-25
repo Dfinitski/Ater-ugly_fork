@@ -82,6 +82,8 @@ public slots:
     // top 1.2 x rated, red from rated, labels every 20 W. Call after
     // setPowerScale(); the next setPowerScale() call replaces it.
     void setRatedPowerScale(int ratedWatts);
+    // Build 711: the power scale's top and its red zone, in watts (ANAN Max Level).
+    void setPowerScaleTop(float topWatts, float redFromWatts);
 
     // Peak hold configuration.
     void setPeakHoldEnabled(bool enabled);

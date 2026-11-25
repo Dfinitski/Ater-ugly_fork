@@ -1249,6 +1249,22 @@ void SMeterWidget::setRatedPowerScale(int ratedWatts)
     update();
 }
 
+void SMeterWidget::setPowerScaleTop(float topWatts, float redFromWatts)
+{
+    // ANAN fork build 711: Max Level of Power Meter Calibration.
+    if (!(topWatts > 0.0f))
+        return;
+    m_havePowerScale = false;   // whatever setPowerScale() gets next applies again
+    if (m_powerScaleMax == topWatts && m_powerRedStart == redFromWatts
+        && m_powerLabelStepOverride == 20)
+        return;
+    m_powerScaleMax = topWatts;
+    m_powerRedStart = redFromWatts;
+    m_powerLabelStepOverride = 20;
+    updateNeedleTarget();
+    update();
+}
+
 // --- Peak hold configuration -------------------------------------------------
 
 void SMeterWidget::setPeakHoldEnabled(bool enabled)

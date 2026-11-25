@@ -3652,6 +3652,10 @@ void MainWindow::wireRadioSetupDialogSignals(RadioSetupDialog* dlg, const QStrin
             }
         }
     });
+    connect(dlg, &RadioSetupDialog::ananPowerMaxLevelChanged, this, [this] {
+        if (m_updatePowerScale)   // build 711
+            m_updatePowerScale();
+    });
     connect(dlg, &RadioSetupDialog::txBandSettingsRequested,
             m_txBandAction, &QAction::trigger);
     // Agent automation bridge toggle (#3646). The dialog persists the click as

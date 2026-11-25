@@ -118,6 +118,9 @@ signals:
     // PeripheralSettings before this fires; MainWindow re-reads it and
     // pushes the new scale into VkampApplet::setVariant().
     void vkampVariantChanged();
+    // ANAN fork build 711: Max Level of Power Meter Calibration changed (the
+    // AppSettings value is written first); MainWindow re-applies the scales.
+    void ananPowerMaxLevelChanged();
     // Emitted after a peripheral row has been removed and its settings cleared.
     void peripheralRemoved(const QString& id);
 
