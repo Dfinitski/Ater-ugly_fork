@@ -12220,6 +12220,12 @@ errcheck MainWindow 42, Hl2Backend 2 (базы); bogus-проверки сраб
 
 Inno Setup на машине оператора не установлен — сборка установщика здесь не проверялась. Не проверено на радио, не собиралось под Windows.
 
+## 714. Сборка 729 (доп.) — установщик собирается Inno Setup 7
+
+- `packaging/windows/build-installer-anan.cmd`: ISCC ищется сначала в папках Inno Setup 7 (Program Files, Program Files (x86), %LOCALAPPDATA%\Programs), затем Inno Setup 6.
+- `installer-anan.iss`: скрипт сверен со списком изменений Inno Setup 7 (последняя 7.1.1) — ничего из используемого не изменилось; `AppVerName` задан явно. Обновлён только комментарий.
+- Номер сборки программы не менялся (729).
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

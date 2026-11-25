@@ -6,7 +6,8 @@
 ; previous version except the settings"). Made from AetherSDR's own
 ; packaging\windows\installer.iss, kept unchanged beside it.
 ;
-; Build (Inno Setup 6, https://jrsoftware.org/isinfo.php):
+; Build (Inno Setup 7 or 6, https://jrsoftware.org/isinfo.php; nothing in it
+; is version-specific -- checked against the Inno Setup 7 "what's new"):
 ;   packaging\windows\build-installer-anan.cmd
 ; or by hand:
 ;   ISCC /DAPP_VERSION=729 /DDEPLOY_DIR="C:\Users\...\AetherSDR-Release" installer-anan.iss
