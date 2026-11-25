@@ -572,7 +572,9 @@ void PhoneCwApplet::buildPhonePanel()
         auto* row = new QHBoxLayout;
         row->setSpacing(4);
 
-        m_procBtn = new QPushButton("PROC");
+        // ANAN fork build 738 (operator, 25.11): the button reads COMP (only
+        // its name; it is still the speech processor / PROC compressor).
+        m_procBtn = new QPushButton("COMP");
         m_procBtn->setCheckable(true);
         m_procBtn->setFixedHeight(22);
         m_procBtn->setFixedWidth(56);
@@ -1010,10 +1012,9 @@ void PhoneCwApplet::setSpeechProcessorPresentation(const QString& label, int max
     const bool continuousCompressor = maximum > 2;
     const QString accessibleName = continuousCompressor
         ? tr("Speech compressor") : tr("Speech processor");
-    m_procBtn->setText(label.isEmpty()
-                           ? (continuousCompressor ? QStringLiteral("COMP")
-                                                   : QStringLiteral("PROC"))
-                           : label);
+    // ANAN fork build 738: always "COMP" (operator: rename PROC, the name only).
+    Q_UNUSED(label);
+    m_procBtn->setText(QStringLiteral("COMP"));
     // The four bold glyphs are ambiguous at the legacy button's 48 px width
     // on macOS (the final P renders like F). Give only the continuous IC-9700
     // presentation enough room and a clearer weight; preserve every legacy

@@ -7224,6 +7224,9 @@ void MainWindow::wireMeters()
         m_appletPanel->setStandardRadioMeterTxValues(
             fwd, m_radioModel.meterModel().fwdPowerInstant(),
             swrValid ? swr : 1.0f);
+        // Build 738: the multi meter writes "_._" for an unmeasured SWR.
+        if (auto* mm = m_appletPanel->ananMultiMeter())
+            mm->setSwrValid(swrValid);
 #ifdef HAVE_HIDAPI
         m_tmate2TxWatts = fwd;
         if (m_radioModel.transmitModel().isTransmitting()) {

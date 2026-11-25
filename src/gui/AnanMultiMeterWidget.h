@@ -59,6 +59,7 @@ public slots:
     void setMaxPower(float watts);                // PO scale: 0..1.5 x this
     void setAlcLevel(float dbfs);                 // post-ALC peak level
     void setAlcGain(float db);                    // ALC gain (0 = unity, < 0 = reducing)
+    void setSwrValid(bool valid);                 // build 738: the radio measured an SWR
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -86,6 +87,8 @@ private:
     QRectF meterArea(const QRectF& area) const;
     void drawStatic(QPainter& p, const QRectF& meter);
     void drawDynamic(QPainter& p, const QRectF& meter);
+    static double rowLineY(int index, double step);
+    double valueColumnLeft(Row row) const;
     void tick();
 
     Face m_face{Face::Light};
@@ -97,6 +100,7 @@ private:
     float m_rxDbm{-127.0f};
     float m_fwdWatts{0.0f};
     float m_swr{1.0f};
+    bool m_swrValid{false};
     float m_maxPower{100.0f};
     float m_alcDbfs{-30.0f};
     float m_alcGainDb{0.0f};

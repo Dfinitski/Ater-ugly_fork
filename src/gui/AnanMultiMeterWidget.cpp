@@ -1,6 +1,7 @@
 #include "AnanMultiMeterWidget.h"
 
 #include <QFont>
+#include "core/ThemeManager.h"
 #include <QFontMetricsF>
 #include <QLinearGradient>
 #include <QPainter>
@@ -19,13 +20,16 @@ namespace {
 constexpr double kW = AnanMultiMeterWidget::kMaxWidth;
 constexpr double kH = AnanMultiMeterWidget::kMaxHeight;
 constexpr double kAspect = kH / kW;            // 0.75
-constexpr double kTop = 16.0;                  // above the first row
-constexpr double kBottom = 8.0;                // below the last row
-// Build 736: five rows (no Id / Vd) take the room of seven -- everything in
-// a row is 1.3 x the build 735 size.
-constexpr double kScaleX0 = 60.0;              // where the scales start
-constexpr double kScaleX1 = kW - 72.0;         // ... and end (build 737: room for dBm)
-constexpr double kNamePx = 13.0, kMarkPx = 10.0, kValuePx = 13.0;
+// Build 738 (operator, 25.11: values in two lines, the unit below; COMP in
+// a small font; the room so freed to the scales; bigger, heavier scales and
+// fonts): a narrow name column, a narrow value column, long scales.
+constexpr double kTop = 6.0;                   // above the first row
+constexpr double kBottom = 4.0;                // below the last row
+constexpr double kScaleX0 = 52.0;              // where the scales start
+constexpr double kScaleX1 = kW - 60.0;         // ... and end
+constexpr double kNamePx = 15.0, kNameSmallPx = 11.0, kMarkPx = 11.0;
+constexpr double kValuePx = 15.0, kUnitPx = 10.0;
+constexpr double kLineW = 2.2, kRedW = 4.6, kTickLen = 7.0, kTickW = 1.8;
 constexpr int kTickMs = 50;
 
 struct Palette {
@@ -49,13 +53,22 @@ double linear(double v, double lo, double hi) { return clamp01((v - lo) / (hi - 
 
 // S units: S1..S9 (-121..-73 dBm, 6 dB each) over the first 60 % of the
 // scale, S9 .. S9+60 dB over the rest.
-double sPosition(double dbm)
+double sPositionRaw(double dbm)
 {
     if (dbm <= -127.0)
         return 0.0;
     if (dbm <= -73.0)
         return (dbm + 127.0) / 54.0 * 0.6;
-    return std::min(1.0, 0.6 + (dbm + 73.0) / 60.0 * 0.4);
+    return 0.6 + (dbm + 73.0) / 60.0 * 0.4;
+}
+
+// Build 738 (operator, 25.11): the S line stays, its marks and figures move
+// left until the S1 mark is 2 units from the line's start; the pointer
+// follows the same marks. Above S9+60 the pointer runs on to the line's end.
+double sPosition(double dbm)
+{
+    const double shift = sPositionRaw(-121.0) - 2.0 / (kScaleX1 - kScaleX0);
+    return std::clamp(sPositionRaw(dbm) - shift, 0.0, 1.0);
 }
 
 // SWR: 1 at the start, infinity at the end; 2:1 a little past the middle.
@@ -151,17 +164,18 @@ void AnanMultiMeterWidget::setTransmitting(bool transmitting)
 
 bool AnanMultiMeterWidget::rowActive(Row row) const
 {
-    switch (row) {
-    case Row::S:    return !m_transmitting;
-    default:        return m_transmitting;
-    }
+    // Build 738 (operator, 25.11): S is live always; the transmit scales
+    // are dimmed on receive (still showing their minimum).
+    return row == Row::S || m_transmitting;
 }
+
+void AnanMultiMeterWidget::setSwrValid(bool valid) { m_swrValid = valid; }
 
 QString AnanMultiMeterWidget::rowName(Row row)
 {
     switch (row) {
     case Row::S:    return QStringLiteral("S");
-    case Row::Po:   return QStringLiteral("PO");
+    case Row::Po:   return QStringLiteral("PWR");   // build 738: as SWR
     case Row::Swr:  return QStringLiteral("SWR");
     case Row::Alc:  return QStringLiteral("ALC");
     case Row::Comp: return QStringLiteral("COMP");
@@ -229,11 +243,13 @@ float AnanMultiMeterWidget::reading(Row row) const
 {
     switch (row) {
     case Row::S:    return m_rxDbm;
-    case Row::Po:   return m_fwdWatts;
-    case Row::Swr:  return m_swr;
+    // Build 738: on receive the transmit scales read their minimum.
+    case Row::Po:   return m_transmitting ? m_fwdWatts : 0.0f;
+    case Row::Swr:  return (m_transmitting && m_swrValid) ? m_swr : 1.0f;
     // ALC: the post-ALC peak plus the ALC's own gain reduction.
-    case Row::Alc:  return std::max(-30.0f, m_alcDbfs) + std::max(0.0f, -m_alcGainDb);
-    case Row::Comp: return std::max(0.0f, -m_alcGainDb);
+    case Row::Alc:  return m_transmitting
+                        ? std::max(-30.0f, m_alcDbfs) + std::max(0.0f, -m_alcGainDb) : -30.0f;
+    case Row::Comp: return m_transmitting ? std::max(0.0f, -m_alcGainDb) : 0.0f;
     }
     return 0.0f;
 }
@@ -251,7 +267,10 @@ QString AnanMultiMeterWidget::valueText(Row row, float v) const
     case Row::Po:
         return v < 10.0f ? QStringLiteral("%1 W").arg(v, 0, 'f', 1)
                          : QStringLiteral("%1 W").arg(int(std::lround(v)));
-    case Row::Swr:  return QString::number(std::min(v, 9.9f), 'f', 1);
+    // Build 738: as the VFO flag's SmartMTR -- "_._" while there is no
+    // measured SWR (receive, or too little power).
+    case Row::Swr:  return (m_transmitting && m_swrValid)
+                        ? QString::number(std::min(v, 9.9f), 'f', 1) : QStringLiteral("_._");
     case Row::Alc: {
         const int db = int(std::lround(v));
         if (db < 0)
@@ -332,15 +351,11 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
     p.setRenderHint(QPainter::TextAntialiasing, true);
     p.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-    // Background.
-    if (m_face == Face::Light && !m_paper.isNull()) {
+    // Background: the paper, or (build 738) the applets' own background.
+    if (m_face == Face::Light && !m_paper.isNull())
         p.drawPixmap(meter, m_paper, QRectF(m_paper.rect()));
-    } else {
-        QLinearGradient g(meter.topLeft(), meter.bottomLeft());
-        g.setColorAt(0.0, QColor(0x1b, 0x23, 0x2b));
-        g.setColorAt(1.0, QColor(0x10, 0x16, 0x1c));
-        p.fillRect(meter, g);
-    }
+    else
+        p.fillRect(meter, ThemeManager::instance().color(QStringLiteral("color.background.0")));
     p.setPen(QPen(c.frame, 1.0));
     p.setBrush(Qt::NoBrush);
     p.drawRect(meter.adjusted(0.5, 0.5, -0.5, -0.5));
@@ -356,43 +371,77 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
     QFont nameFont = font();
     nameFont.setPixelSize(int(kNamePx));
     nameFont.setBold(true);
+    QFont nameSmall = nameFont;
+    nameSmall.setPixelSize(int(kNameSmallPx));
     QFont markFont = font();
     markFont.setPixelSize(int(kMarkPx));
-    markFont.setBold(paper);   // build 736: heavier print on paper
+    markFont.setBold(true);
 
     const double step = (kH - kTop - kBottom) / kRows;
     const auto X = [](double f) { return kScaleX0 + (kScaleX1 - kScaleX0) * f; };
     for (int i = 0; i < kRows; ++i) {
         const Row row = Row(i);
-        const double y = kTop + (i + 0.5) * step + 4.0;   // the scale line
+        const double y = rowLineY(i, step);
         const bool on = rowActive(row);
         const Scale s = scaleOf(row);
 
         p.setOpacity(on ? 1.0 : dim);
-        p.setFont(nameFont);
+        p.setFont(row == Row::Comp ? nameSmall : nameFont);
         p.setPen(on ? c.accent : c.sub);
-        p.drawText(QPointF(8.0, y + 4.5), rowName(row));
+        // Build 738: centred between the window's edge and the scale.
+        p.drawText(QRectF(0.0, y - 12.0, kScaleX0, 24.0),
+                   Qt::AlignHCenter | Qt::AlignVCenter, rowName(row));
 
         // The line: ink, red over its red part (thicker).
         const double redFrom = std::min(s.redFrom, 1.0);
-        p.setPen(QPen(c.ink, 1.6, Qt::SolidLine, Qt::FlatCap));
+        p.setPen(QPen(c.ink, kLineW, Qt::SolidLine, Qt::FlatCap));
         p.drawLine(QPointF(X(0.0), y), QPointF(X(redFrom), y));
         if (s.redFrom <= 1.0) {
-            p.setPen(QPen(c.red, 3.2, Qt::SolidLine, Qt::FlatCap));
-            p.drawLine(QPointF(X(redFrom), y), QPointF(X(1.0), y));
+            p.setPen(QPen(c.red, kRedW, Qt::SolidLine, Qt::FlatCap));
+            p.drawLine(QPointF(X(redFrom), y - (kRedW - kLineW) / 2.0),
+                       QPointF(X(1.0), y - (kRedW - kLineW) / 2.0));
         }
 
+        QFont infFont = markFont;   // build 738: "\u221E" is small in most fonts
+        infFont.setPixelSize(int(kMarkPx * 1.75));
         p.setFont(markFont);
         for (const Mark& m : s.marks) {
             const bool red = s.redFrom <= 1.0 && m.pos >= redFrom - 1e-6;
-            p.setPen(QPen(red ? c.red : c.ink, 1.3));
-            p.drawLine(QPointF(X(m.pos), y - 5.5), QPointF(X(m.pos), y));
+            p.setPen(QPen(red ? c.red : c.ink, kTickW, Qt::SolidLine, Qt::FlatCap));
+            p.drawLine(QPointF(X(m.pos), y - kTickLen), QPointF(X(m.pos), y));
             p.setPen(red ? c.red : c.sub);
-            const QRectF tr(X(m.pos) - 24.0, y - 20.0, 48.0, 13.0);
+            const bool inf = m.text == QString::fromUtf8("\xE2\x88\x9E");
+            p.setFont(inf ? infFont : markFont);
+            const QRectF tr(X(m.pos) - 24.0, y - kTickLen - (inf ? 19.0 : 15.0), 48.0, inf ? 20.0 : 14.0);
             p.drawText(tr, Qt::AlignHCenter | Qt::AlignBottom, m.text);
         }
     }
     p.setOpacity(1.0);
+}
+
+double AnanMultiMeterWidget::valueColumnLeft(Row row) const
+{
+    // The right edge of the scale's last figure (it reaches past the scale's
+    // end), the same fonts as drawStatic().
+    const Scale s = scaleOf(row);
+    double right = kScaleX1;
+    if (!s.marks.isEmpty()) {
+        const Mark& m = s.marks.last();
+        QFont f = font();
+        f.setBold(true);
+        const bool inf = m.text == QString::fromUtf8("\xE2\x88\x9E");
+        f.setPixelSize(int(inf ? kMarkPx * 1.75 : kMarkPx));
+        const double x = kScaleX0 + (kScaleX1 - kScaleX0) * m.pos;
+        right = std::max(right, x + QFontMetricsF(f).horizontalAdvance(m.text) / 2.0);
+    }
+    return right;
+}
+
+double AnanMultiMeterWidget::rowLineY(int index, double step)
+{
+    // The scale line sits a little below the row's middle: the labels above
+    // it are taller than the pointer under it.
+    return kTop + index * step + step * 0.56;
 }
 
 void AnanMultiMeterWidget::drawDynamic(QPainter& p, const QRectF& meter)
@@ -409,48 +458,48 @@ void AnanMultiMeterWidget::drawDynamic(QPainter& p, const QRectF& meter)
     valueFont.setPixelSize(int(kValuePx));
     valueFont.setBold(true);
     QFont unitFont = font();
-    unitFont.setPixelSize(9);
-    unitFont.setBold(m_face == Face::Light);
-    p.setFont(valueFont);
+    unitFont.setPixelSize(int(kUnitPx));
+    unitFont.setBold(true);
 
     const double step = (kH - kTop - kBottom) / kRows;
     const auto X = [](double f) { return kScaleX0 + (kScaleX1 - kScaleX0) * f; };
     for (int i = 0; i < kRows; ++i) {
         const Row row = Row(i);
-        if (!rowActive(row))
-            continue;
-        const double y = kTop + (i + 0.5) * step + 4.0;
+        // Build 738: a dimmed row still shows its pointer and value.
+        p.setOpacity(rowActive(row) ? 1.0 : (m_face == Face::Light ? 0.55 : 0.38));
+        const double y = rowLineY(i, step);
         const double f = std::clamp(double(m_shown[i]), 0.0, 1.0);
         // The bar up to the pointer.
-        p.fillRect(QRectF(X(0.0), y + 2.5, X(f) - X(0.0), 4.5), c.bar);
+        p.fillRect(QRectF(X(0.0), y + kLineW / 2.0 + 1.0, X(f) - X(0.0), 6.0), c.bar);
         // The pointer: a triangle under the line, its tip on the value.
         QPainterPath tri;
-        tri.moveTo(X(f), y + 2.0);
-        tri.lineTo(X(f) - 5.5, y + 11.5);
-        tri.lineTo(X(f) + 5.5, y + 11.5);
+        tri.moveTo(X(f), y + 1.0);
+        tri.lineTo(X(f) - 7.0, y + 14.0);
+        tri.lineTo(X(f) + 7.0, y + 14.0);
         tri.closeSubpath();
         p.setPen(Qt::NoPen);
         p.setBrush(c.pointer);
         p.drawPath(tri);
-        // The value, right: the number bold, its unit (dBm, W, dB) smaller
-        // after it (build 737: "-127 dBm" has to fit).
-        p.setPen(c.ink);
+        // The value at the right in two lines (build 738): the number, the
+        // unit under it.
         const QString text = valueText(row, reading(row));
         const int sp = text.lastIndexOf(QLatin1Char(' '));
         const QString number = sp > 0 ? text.left(sp) : text;
         const QString unit = sp > 0 ? text.mid(sp + 1) : QString();
-        const double right = kW - 6.0;
-        double unitW = 0.0;
-        if (!unit.isEmpty()) {
-            p.setFont(unitFont);
-            unitW = QFontMetricsF(unitFont).horizontalAdvance(unit);
-            p.drawText(QRectF(right - unitW, y - 10.0, unitW + 1.0, 18.0),
-                       Qt::AlignRight | Qt::AlignVCenter, unit);
-            unitW += 2.0;
-        }
+        // Build 738: each line centred between the scale's last figure and
+        // the window's edge.
+        const double left = valueColumnLeft(row);
+        const QRectF col(left, 0.0, kW - left, 0.0);
+        p.setPen(c.ink);
         p.setFont(valueFont);
-        p.drawText(QRectF(kScaleX1 + 2.0, y - 10.0, right - unitW - kScaleX1 - 2.0, 18.0),
-                   Qt::AlignRight | Qt::AlignVCenter, number);
+        p.drawText(QRectF(col.x(), y - 17.0, col.width(), 18.0),
+                   Qt::AlignHCenter | Qt::AlignVCenter, number);
+        if (!unit.isEmpty()) {
+            p.setPen(c.sub);
+            p.setFont(unitFont);
+            p.drawText(QRectF(col.x(), y + 1.0, col.width(), 12.0),
+                       Qt::AlignHCenter | Qt::AlignVCenter, unit);
+        }
     }
 }
 
