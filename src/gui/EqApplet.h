@@ -25,12 +25,19 @@ public:
     explicit EqApplet(QWidget* parent = nullptr);
 
     void setEqualizerModel(EqualizerModel* model);
+    // ANAN fork build 686 (operator, 24.11): while the Aether RX / TX EQ is
+    // on for a side, this EQ is locked for that side -- the ON button, the
+    // reset and the sliders of that view are disabled (MainWindow decides).
+    void setSideLocks(bool rxLocked, bool txLocked);
 
 private:
     void buildUI();
     void syncFromModel();
     void updateActiveHighlight();
     void persistViewSelection();
+    void applySideLock();   // build 686
+    bool m_rxLocked{false};
+    bool m_txLocked{false};
 
     EqualizerModel* m_model{nullptr};
     bool m_updatingFromModel{false};

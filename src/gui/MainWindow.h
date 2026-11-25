@@ -2166,6 +2166,11 @@ private:
     // connect-time re-push and the family-swap unwind
     // (core/HostVoiceChainPolicy.h), so neither touches an untouched strip.
     bool m_hostVoiceChainOwned{false};
+    // ANAN fork build 686: whether the graphic EQ (EqApplet) itself last
+    // switched the shared ClientEq of a side on ([0] RX, [1] TX). A ClientEq
+    // that is on without it is the Aether EQ's: the graphic EQ then neither
+    // writes its bands nor its enable there, and is locked for that side.
+    bool m_graphicEqAppliedOn[2]{false, false};
     // True while a graphic EQ restored from settings waits for its first
     // host-modulating connect. It licenses the re-push only; a Flex connect
     // clears it, because the radio then writes the model.

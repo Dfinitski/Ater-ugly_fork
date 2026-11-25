@@ -11552,6 +11552,27 @@ P1 берёт состояние в каждой ротации C&C, отдел�
 
 Файлы: `src/core/backends/anan/P2Transport.{cpp,h}`, `src/gui/WidebandMonitorDialog.cpp`, `src/core/ForkBuild.h`. errcheck: P2Transport 0, WidebandMonitorDialog 4 (базовый), bogus +1.
 
+## 669. Сборка 686 — обычный EQ блокируется, пока для той же стороны включён Aether EQ
+
+**Просьба оператора (24.11):** при включении эквалайзера Aether (отдельно RX и TX) обычный EQ (апплет) выключается и блокируется для того же направления.
+
+**Что выяснилось.** На ANAN обычный EQ — не отдельный прибор. `applyGraphicEqToClientEq` пишет его 8 полос в слоты 0..7 того же `ClientEq`, что у Aether RX/TX, и ставит тот же общий enable. Оператору предложены два пути: разделить эквалайзеры (большая правка AudioEngine) или только блокировка. **Выбрано: только блокировка.**
+
+**Сделано.**
+- **`MainWindow::m_graphicEqAppliedOn[2]`** (RX, TX) — включил ли общий `ClientEq` последним сам обычный EQ.
+  - `applyGraphicEqToClientEq`: если `ClientEq` включён, а обычный EQ его не включал, значит его включил Aether. Тогда ни полосы, ни enable не пишутся (полосы 1–8 Aether больше не затираются).
+  - После записи флаг = enabled.
+- **Таймер 250 мс** (`wireHostModulatedVoiceChain`; enable `ClientEq` переключают несколько мест Aether без сигнала):
+  - выключенный `ClientEq` сбрасывает флаг;
+  - сторона заблокирована, если `ClientEq` включён без обычного EQ;
+  - на первом тике при старте включённый `ClientEq` и сохранённый включённым обычный EQ этой стороны засчитываются обычному EQ, как было;
+  - на Flex (своя аппаратная EQ через командный канал) блокировки нет.
+- **`EqApplet::setSideLocks(rx, tx)`.** Для показанной стороны (RX/TX) кнопка ON, Reset и ползунки недоступны; подсказка на ON: «Locked: the Aether RX/TX EQ is on». При переключении вида RX/TX блокировка обновляется.
+
+**Ограничение общего выключателя.** Включение обычного EQ по-прежнему включает и Aether EQ (это один enable). Отдельная память состояния обычного EQ и его автовключение после выключения Aether при общем выключателе не сделаны: включение снова зажгло бы Aether.
+
+Файлы: `src/gui/EqApplet.{cpp,h}`, `src/gui/MainWindow_DspApplets.cpp`, `src/gui/MainWindow.h`, `src/core/ForkBuild.h`. errcheck: MainWindow_DspApplets 24, EqApplet 0, MainWindow 42 (базовые), bogus +1.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

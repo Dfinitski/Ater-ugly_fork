@@ -900,6 +900,15 @@ void MainWindow::applyGraphicEqToClientEq(bool transmit)
     if (!eq)
         return;
 
+    // ANAN fork build 686 (operator, 24.11: "when the Aether EQ is on for RX
+    // or TX, the ordinary EQ of that side is switched off and locked"). The
+    // two share this ClientEq (slots 0..7, one enable): one that is on, and
+    // not by this EQ, is the Aether EQ's -- leave its bands and its enable
+    // alone (the EqApplet of that side is locked, see the timer below).
+    const int side = transmit ? 1 : 0;
+    if (eq->isEnabled() && !m_graphicEqAppliedOn[side])
+        return;
+
     const auto& model = m_radioModel.equalizerModel();
     const bool enabled = transmit ? model.txEnabled() : model.rxEnabled();
 
@@ -927,6 +936,7 @@ void MainWindow::applyGraphicEqToClientEq(bool transmit)
     if (eq->activeBandCount() < EqualizerModel::BandCount)
         eq->setActiveBandCount(EqualizerModel::BandCount);
     eq->setEnabled(enabled);
+    m_graphicEqAppliedOn[side] = enabled;   // build 686
 
     // The graphic EQ now owns slots 0..7 of a shared object. Both the
     // connect-time re-push and the family-swap unwind key off this — see
@@ -950,6 +960,42 @@ void MainWindow::applyGraphicEqToClientEq(bool transmit)
 
 void MainWindow::wireHostModulatedVoiceChain()
 {
+    // ANAN fork build 686: the graphic EQ's lock per side, from the shared
+    // ClientEq's state (its enable is switched from several Aether places
+    // that send no signal) -- four times a second.
+    {
+        auto* eqLockTimer = new QTimer(this);
+        eqLockTimer->setInterval(250);
+        auto firstTick = std::make_shared<bool>(true);
+        connect(eqLockTimer, &QTimer::timeout, this, [this, firstTick] {
+            if (!m_appletPanel || !m_appletPanel->eqApplet())
+                return;
+            bool locked[2] = {false, false};
+            if (m_audio && !m_radioModel.usesFlexCommandPlane()) {
+                ClientEq* eqs[2] = {m_audio->clientEqRx(), m_audio->clientEqTx()};
+                const auto& model = m_radioModel.equalizerModel();
+                const bool graphicOn[2] = {model.rxEnabled(), model.txEnabled()};
+                for (int side = 0; side < 2; ++side) {
+                    if (!eqs[side])
+                        continue;
+                    // At start the shared ClientEq comes back on from the
+                    // saved strip settings; with the graphic EQ saved on for
+                    // that side it is taken as the graphic EQ's, as it was.
+                    if (*firstTick && graphicOn[side] && eqs[side]->isEnabled())
+                        m_graphicEqAppliedOn[side] = true;
+                    // Switched off from anywhere: the graphic EQ no longer
+                    // holds it on, and whoever switches it on next owns it.
+                    if (!eqs[side]->isEnabled())
+                        m_graphicEqAppliedOn[side] = false;
+                    locked[side] = eqs[side]->isEnabled() && !m_graphicEqAppliedOn[side];
+                }
+            }
+            *firstTick = false;
+            m_appletPanel->eqApplet()->setSideLocks(locked[0], locked[1]);
+        });
+        eqLockTimer->start();
+    }
+
     // The persisted graphic EQ comes back BEFORE the ClientEq binding below, so
     // restoring writes nothing into the shared objects; the connect-edge re-push
     // does, and only on a host-modulating backend. A restored layout licenses
