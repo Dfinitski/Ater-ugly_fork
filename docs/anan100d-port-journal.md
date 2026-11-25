@@ -11880,6 +11880,28 @@ ResizeDiag остаётся: `native client` должен совпасть с `t
 
 errcheck SpectrumWidget 12 = база.
 
+## 691. Сборка 708 (проверочная) — вариант В: панорама в своём нативном окне (Windows, по переменной)
+
+Оператор прислал три варианта против дрожания во flip. Разбор:
+- **А** (синхронный `repaint` в `WM_SIZE`): внутри `nativeEvent` у Qt ещё старый размер; 703 показала, что кадры старого размера даёт сам Qt. Мало надежды.
+- **Б** (`DWMWA_TRANSITIONS_FORCEDISABLED`, `DwmFlush`, `WS_EX_NOREDIRECTIONBITMAP`): анимации DWM к тяге края не относятся, `DwmFlush` только ждёт, `NOREDIRECTIONBITMAP` задаётся при создании окна и с blit несовместим. Не поможет.
+- **В** (`QRhiWidget` в своём HWND): меняет причину. Сейчас из-за QRhiWidget всё главное окно выводится через D3D11; с нативной панорамой главное окно может вернуться к обычному GDI-выводу.
+
+Оператор: «давай».
+
+**Изменения:**
+- `SpectrumWidget::windowsNativeWindowRequested()` — переменная `AETHER_PAN_NATIVE_WINDOW=1`.
+- `applyNativeWindowIsolationPolicy()` на Windows при этой переменной ставит ту же пару, что на macOS (`WA_DontCreateNativeAncestors` + `WA_NativeWindow`). Вызывается в конструкторе (ветка не-macOS) и пишет в лог одну строку.
+- `PanadapterStack::refreshAfterReparent` при этой переменной пересоздаёт нативное окно при выносе и возврате панорамы, как на macOS.
+
+Без переменной всё как в 707.
+
+**Проверка:**
+1. `set AETHER_PAN_NATIVE_WINDOW=1` и запуск: тяга правого и левого края, вынос панорамы в отдельное окно и обратно, меню и подсказки поверх панорамы.
+2. То же с `set QT_D3D_NO_FLIP=0`.
+
+errcheck SpectrumWidget 12, PanadapterStack 0 = база. GPU-ветки Linux-проверка не компилирует.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

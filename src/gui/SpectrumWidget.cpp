@@ -2027,6 +2027,13 @@ void SpectrumWidget::applyNativeWindowIsolationPolicy()
         setAttribute(Qt::WA_NativeWindow);
     }
 #endif
+#if defined(AETHER_GPU_SPECTRUM) && defined(Q_OS_WIN)
+    // Build 708: the same pair on Windows, only when asked for (test).
+    if (windowsNativeWindowRequested()) {
+        setAttribute(Qt::WA_DontCreateNativeAncestors);
+        setAttribute(Qt::WA_NativeWindow);
+    }
+#endif
 }
 
 SpectrumWidget::SpectrumWidget(QWidget* parent)
@@ -2140,6 +2147,15 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
     // QT_OPENGL entirely, making the flag a silent no-op there (#3597). On Linux
     // the default backend is already OpenGL, so this is a harmless explicit
     // restatement that keeps the two platforms on the same code path.
+#    ifdef Q_OS_WIN
+    // Build 708: the panadapter's own native child window (test,
+    // AETHER_PAN_NATIVE_WINDOW=1; a no-op otherwise).
+    applyNativeWindowIsolationPolicy();
+    if (windowsNativeWindowRequested()) {
+        qInfo() << "SpectrumWidget: AETHER_PAN_NATIVE_WINDOW=1 -- the panadapter "
+                   "presents in its own native child window";
+    }
+#    endif
     if (softwareOpenGlRequested()) {
         setApi(QRhiWidget::Api::OpenGL);
         qInfo() << "SpectrumWidget: AETHER_NO_GPU/QT_OPENGL=software — forcing "
