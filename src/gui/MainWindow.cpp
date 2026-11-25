@@ -6562,12 +6562,16 @@ void MainWindow::buildUI()
                 ui.rxOnTxAnt = false;   // Thetis: unchecked when they are the same
             const bool on = ui.rxOnTxAnt;
             const int state = on ? 2 : differ ? 1 : 0;
-            // Thetis' colours: yellow on, spring green available; grey (the
-            // theme's secondary text) when the two antennas are the same.
-            const QColor color = state == 2 ? QColor(0xff, 0xff, 0x00)
-                               : state == 1 ? QColor(0x00, 0xff, 0x7f)
-                                            : AetherSDR::ThemeManager::instance().color(
-                                                  QStringLiteral("color.text.secondary"));
+            // Build 732 (operator, 25.11: "mute the arrow like the other
+            // elements of the bar -- nothing on it is coloured on receive";
+            // brightness chosen): no Thetis green / yellow. The theme's
+            // primary text when on, its secondary text (as "RX: ANT1") when
+            // it can be clicked, and that dimmed when the antennas are the same.
+            auto& tm = AetherSDR::ThemeManager::instance();
+            QColor color = tm.color(state == 2 ? QStringLiteral("color.text.primary")
+                                               : QStringLiteral("color.text.secondary"));
+            if (state == 0)
+                color.setAlphaF(color.alphaF() * 0.35);
             // Redrawn on a colour change (state or theme) or a new scale.
             const QString key = QStringLiteral("%1/%2/%3").arg(color.rgba())
                                     .arg(trxBtn->devicePixelRatioF()).arg(trxBtn->font().pointSizeF());
