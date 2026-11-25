@@ -12137,6 +12137,31 @@ errcheck P1Protocol / P2Transport 0, Hl2Backend 2, SpectrumOverlayMenu 4 (как
 
 errcheck P1Protocol / P2Protocol / P2Transport 0, Hl2Backend 2, RadioSetupDialog 23 (как в R); тест `hl2DriveSplit` совпадает с таблицей deskHPSDR; 1000 отсчётов → 0,457 Вт. Не проверено на радио, не собиралось под Windows.
 
+## 710. Сборка 726 — Hermes-Lite 2, этап 4: группа «Hermes Lite settings» по Quisk
+
+Оператор: у него установлен Quisk — там поддержка HL2 точно правильная; посмотреть и сделать настройки. Кодек — опция; считать, что все опции на устройстве установлены.
+
+**Источник.** Quisk 4.2.54 с машины оператора (`site-packages\quisk`): `hermes/quisk_hardware.py` (регистры), `quisk_conf_defaults.py` (настройки HL2, их описания и значения по умолчанию).
+
+**Найдено у Quisk (и принято):**
+- addr 0x00: бит 11 (C3 бит 3) — выход PWM: скорость вентилятора / индикатор диапазона (`hermes_PWM`); на плате с кодеком AK4951 этот бит включает её динамик; бит 12 (C3 бит 4) — отключить синхронизацию блока питания (`hermes_disable_sync`).
+- addr 0x09: бит 19 — PA (`hermes_power_amp`), бит 18 — T/R-реле в приёме при выключенном PA (`hermes_lowpwr_tr_enable`), бит 20 — запрос тюнеру AH-4 (`OnSpot`).
+- addr 0x0A C4 — LNA приёма всегда (Quisk `ChangeLNA`); addr 0x0E C3 = 0xC0 | (усиление + 12) — LNA на передаче (`hermes_TxLNA_dB`, по умолчанию −12), гейтвер переключается сам. Наш вариант из 724 (LNA приёма в 0x0A на передаче) заменён.
+- addr 0x17: задержка буфера TX (по умолчанию 10 мс), удержание PTT (4 мс) — настраиваются.
+- addr 0x39 C1 = 0x09 / 0x08 — сторожевой таймер выкл / вкл (разовая запись); addr 0x3A — сброс при отключении.
+- Плата IO N2ADR (I2C2, чип 0x1D): регистр 11 — вход приёмника (J10 available / HL2 Rx to J9 / Use J9 and J10), регистры 0..4 — частота TX (младший байт последним).
+
+**Сделано:**
+- `P1Protocol`: поля `hl2Bit11`, `hl2DisableSync`, `hl2LowPwrTrDisable`, `hl2AtuTune`; ротация HL2 по Quisk (0x00 C3, 0x09 C2, 0x0A C4 — приём всегда).
+- `P2Transport`: `setHl2Options(QVariantMap)` (PA, T/R, задержка, удержание, LNA TX, синхронизация, сторожевой таймер, сброс, вход IO-платы); очередь разовых C&C — по одной вместо второго банка ротации в каждом втором пакете EP2 (у Thetis MI0BOT пауза 5 кадров) с битом MOX; в начале сессии — сторожевой таймер, вход IO-платы, CL1; заглушки HL2 стали рабочими: `setCl1RefClock` (24 записи VersaClock по I2C1, `versaClockCl1Banks`), `setAtuTuneRequest` (0x09[20]), `setIoBoardTxFrequencyHz` (5 записей I2C2), `setLocalCodec` (без кодека аудио в EP2 не пишется — на HL2 этот слот не звук).
+- `Hl2Backend`: `hl2Options()` / `applyHl2Options()` / `pushHl2Options()`, ключи `Hl2*`; плата (кодек, бит 11, фильтры N2ADR, CL1, AH-4) — через прежний механизм HL2 `applyHardwareOptions`; при подключении HL2 — до заполнения параметров старта. `hw.get` отдаёт `hl2Options`, `hw.set {"hl2Options": {...}}` их меняет.
+- `RadioSetupDialog` (страница оборудования): группа **«Hermes Lite settings»** — только для HL2 (вместо «Microphone & Connectors»): Enable power amp, Disable T/R in low power, Tx buffer latency, PTT hang time, LNA during Tx, Use PWM volts, Disable power supply sync, Disable watchdog, Reset on disconnect, IO board Rx input, AK4951 audio codec board, N2ADR filter board, CL1 external 10 MHz reference, Antenna tuner (AH-4). Подсказки — по описаниям Quisk.
+- По умолчанию — как в Quisk, кроме «все опции установлены»: PA включён, кодек AK4951 есть, плата фильтров N2ADR есть.
+
+**Не сделано (пишут EEPROM платы):** регулировка тока смещения PA, IP / MAC в EEPROM. Таблица калибровки мощности Quisk «HL2FilterE3» сверена с формулой deskHPSDR из 725 (3173 отсчёта → 4,39 Вт в обоих) — формула оставлена.
+
+errcheck P1Protocol / P2Transport 0, Hl2Backend 2, RadioSetupDialog 23 (как в R); bogus-проверки срабатывают. Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

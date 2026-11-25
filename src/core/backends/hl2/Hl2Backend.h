@@ -558,6 +558,14 @@ private:
     // hw.get / hw.set: the model and its connector options.
     [[nodiscard]] QVariantMap ananHwFields() const;
     void applyAnanHwFields(const QVariantMap& in);
+    // ANAN fork build 726: the Hermes-Lite 2 settings (Radio Setup, "Hermes
+    // Lite settings"; Quisk's set). Stored as "Hl2*" keys; hl2Options() is
+    // what the page shows, applyHl2Options() a partial change from it, and
+    // pushHl2Options() sends the lot (the board options through
+    // applyHardwareOptions, the rest to the transport) at connect.
+    [[nodiscard]] static QVariantMap hl2Options();
+    void applyHl2Options(const QVariantMap& in);
+    void pushHl2Options();
     double m_paVolts = 0.0;
     bool m_havePaVolts = false;
     double m_paAmps = 0.0;

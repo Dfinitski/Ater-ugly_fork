@@ -4477,6 +4477,120 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     vbox->addWidget(modelGroup);
     vbox->addWidget(connGroup);
 
+    // ANAN fork build 726 (operator, 25.11: "look how Quisk does it and make
+    // the settings; the codec is an option, and we must assume every option
+    // is fitted"): the Hermes-Lite 2's own settings, Quisk's set and names
+    // (quisk_conf_defaults.py), shown only for a Hermes-Lite 2. Written
+    // through hw.set {"hl2Options": {...}} (Hl2Backend::applyHl2Options).
+    auto* hl2Group = new QGroupBox("Hermes Lite settings");
+    hl2Group->setVisible(false);
+    struct Hl2Widgets {
+        QCheckBox* powerAmp = nullptr;
+        QCheckBox* lowPwrTr = nullptr;
+        QSpinBox* latency = nullptr;
+        QSpinBox* hang = nullptr;
+        QSpinBox* txLna = nullptr;
+        QComboBox* pwm = nullptr;
+        QCheckBox* sync = nullptr;
+        QCheckBox* watchdog = nullptr;
+        QCheckBox* reset = nullptr;
+        QComboBox* iobRx = nullptr;
+        QCheckBox* codec = nullptr;
+        QCheckBox* filter = nullptr;
+        QCheckBox* cl1 = nullptr;
+        QCheckBox* atu = nullptr;
+    };
+    auto hl2W = std::make_shared<Hl2Widgets>();
+    {
+        auto* grid = new QGridLayout(hl2Group);
+        grid->setHorizontalSpacing(10);
+        grid->setVerticalSpacing(4);
+        auto setHl2 = [apply](const QString& key, const QVariant& v) {
+            apply(QVariantMap{{QStringLiteral("hl2Options"), QVariantMap{{key, v}}}});
+        };
+        int row = 0;
+        auto check = [&](const char* text, const char* key, const char* tip) {
+            auto* c = new QCheckBox(QString::fromLatin1(text));
+            c->setToolTip(QString::fromLatin1(tip));
+            grid->addWidget(c, row++, 0, 1, 2);
+            const QString k = QString::fromLatin1(key);
+            connect(c, &QCheckBox::toggled, this, [setHl2, k](bool on) { setHl2(k, on); });
+            controls->append(c);
+            return c;
+        };
+        auto spin = [&](const char* text, const char* key, int lo, int hi, const char* suffix,
+                        const char* tip) {
+            auto* l = new QLabel(QString::fromLatin1(text));
+            auto* s = new QSpinBox;
+            s->setRange(lo, hi);
+            s->setSuffix(QString::fromLatin1(suffix));
+            s->setKeyboardTracking(false);
+            s->setToolTip(QString::fromLatin1(tip));
+            grid->addWidget(l, row, 0);
+            grid->addWidget(s, row++, 1);
+            const QString k = QString::fromLatin1(key);
+            connect(s, QOverload<int>::of(&QSpinBox::valueChanged), this,
+                    [setHl2, k](int v) { setHl2(k, v); });
+            controls->append(s);
+            return s;
+        };
+        auto combo = [&](const char* text, const char* key, const QStringList& items, const char* tip) {
+            auto* l = new QLabel(QString::fromLatin1(text));
+            auto* c = new QComboBox;
+            AetherSDR::applyComboStyle(c);
+            c->addItems(items);
+            c->setToolTip(QString::fromLatin1(tip));
+            grid->addWidget(l, row, 0);
+            grid->addWidget(c, row++, 1);
+            const QString k = QString::fromLatin1(key);
+            connect(c, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+                    [setHl2, k](int i) { setHl2(k, i); });
+            controls->append(c);
+            return c;
+        };
+        hl2W->powerAmp = check("Enable power amp", "powerAmp",
+            "When on, the power amp is turned on and RF goes to the main antenna connector RF2.\n"
+            "Otherwise low power RF goes to RF1.");
+        hl2W->lowPwrTr = check("Disable T/R in low power", "lowPwrTrDisable",
+            "No effect with the power amp on. With it off, the T/R relay stays in receive:\n"
+            "RF output at RF1 and a separate receive input at RF2.");
+        hl2W->latency = spin("Tx buffer latency", "txLatencyMs", 0, 127, " ms",
+            "Latency of the transmit buffer in the radio (Quisk default 10 ms).");
+        hl2W->hang = spin("PTT hang time", "pttHangMs", 0, 31, " ms",
+            "Hang time for hardware push-to-talk (Quisk default 4 ms).");
+        hl2W->txLna = spin("LNA during Tx", "txLnaDb", -12, 48, " dB",
+            "The receive LNA gain while transmitting, -12..+48 dB. Use -12 for PureSignal.");
+        // Bool kept as an index: 0 fan speed, 1 band indicator.
+        hl2W->pwm = combo("Use PWM volts", "pwmBandIndicator",
+                          {QStringLiteral("Fan speed"), QStringLiteral("Band indicator")},
+            "The PWM variable voltage output: fan speed control or band indicator.\n"
+            "With the AK4951 codec board this bit switches its loudspeaker instead.");
+        hl2W->sync = check("Disable power supply sync", "disableSync",
+            "The FPGA does not generate the switching frequency that moves the\n"
+            "power supply's harmonics out of the amateur bands.");
+        hl2W->watchdog = check("Disable watchdog", "disableWatchdog",
+            "The radio stops sending when the host stops sending commands; this\n"
+            "disables that. Normally off.");
+        hl2W->reset = check("Reset on disconnect", "resetOnDisconnect",
+            "The radio resets on each disconnect from the host. Normally off.");
+        hl2W->iobRx = combo("IO board Rx input", "iobRxIn",
+                            {QStringLiteral("J10 available"), QStringLiteral("HL2 Rx to J9"),
+                             QStringLiteral("Use J9 and J10")},
+            "N2ADR IO board: the receive input J9 and the PureSignal input J10.\n"
+            "J10 available: the HL2 as usual; HL2 Rx to J9: receive from J9;\n"
+            "Use J9 and J10: J9 on receive, J10 on transmit.");
+        hl2W->codec = check("AK4951 audio codec board", "codec",
+            "The HL2+ companion codec: speaker / headphones and the microphone at the radio.");
+        hl2W->filter = check("N2ADR filter board", "filterBoard",
+            "The filter board on the open-collector outputs (J16), switched by band.");
+        hl2W->cl1 = check("CL1 external 10 MHz reference", "cl1",
+            "Reprogram the clock to take a 10 MHz reference at CL1 (and give one at CL2).");
+        hl2W->atu = check("Antenna tuner (AH-4) on the end plate", "atuAh4",
+            "TUNE sends a tune request to an AH-4 compatible tuner on the HL2 end plate.");
+        grid->setColumnStretch(2, 1);
+    }
+    vbox->addWidget(hl2Group);
+
     // Build 498 (operator, 18.11): "Codec Level Compensation" -- one more
     // global level for the audio sent to the radio's codec, under the title
     // bar's Codec volume. An application setting ("AnanCodecLevelCompDb"),
@@ -4522,7 +4636,7 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     m_hl2HardwareReseed = [this, pageGuard, noRadioLbl, controls,
                            modelCombo, psNote, micPttChk, micTipChk, micBiasChk, micXlrChk,
                            gndChk, fullAttChk, fullAtt1Chk, txBypassChk, txBypass2Chk, psCouplerChk, connNone, connGroup, forceModelChk,
-                           forceNote] {
+                           forceNote, hl2Group, hl2W] {
         if (!pageGuard)
             return;
         IRadioBackend* backend = m_model->backend();
@@ -4609,7 +4723,40 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
             // the ANAN-100D / 200D too; only the ground relay needs the bank.
             fullAttChk->setVisible(m.value(QStringLiteral("ananNumAdcs"), 2).toInt() >= 2);
             connNone->setVisible(false);   // build 502: the two TX options are always there
-            connGroup->setVisible(true);
+            // Build 726: a Hermes-Lite 2 has its own group instead of the
+            // ANAN's connector options.
+            const bool hl2 = m.value(QStringLiteral("ananHermesLite")).toBool();
+            connGroup->setVisible(!hl2);
+            hl2Group->setVisible(hl2);
+            if (hl2) {
+                const QVariantMap o = m.value(QStringLiteral("hl2Options")).toMap();
+                const auto setC = [&o](QCheckBox* c, const char* k) {
+                    const QSignalBlocker b(c);
+                    c->setChecked(o.value(QLatin1String(k)).toBool());
+                };
+                const auto setS = [&o](QSpinBox* s, const char* k) {
+                    const QSignalBlocker b(s);
+                    s->setValue(o.value(QLatin1String(k)).toInt());
+                };
+                const auto setI = [](QComboBox* c, int i) {
+                    const QSignalBlocker b(c);
+                    c->setCurrentIndex(i);
+                };
+                setC(hl2W->powerAmp, "powerAmp");
+                setC(hl2W->lowPwrTr, "lowPwrTrDisable");
+                setS(hl2W->latency, "txLatencyMs");
+                setS(hl2W->hang, "pttHangMs");
+                setS(hl2W->txLna, "txLnaDb");
+                setI(hl2W->pwm, o.value(QStringLiteral("pwmBandIndicator")).toBool() ? 1 : 0);
+                setC(hl2W->sync, "disableSync");
+                setC(hl2W->watchdog, "disableWatchdog");
+                setC(hl2W->reset, "resetOnDisconnect");
+                setI(hl2W->iobRx, o.value(QStringLiteral("iobRxIn")).toInt());
+                setC(hl2W->codec, "codec");
+                setC(hl2W->filter, "filterBoard");
+                setC(hl2W->cl1, "cl1");
+                setC(hl2W->atu, "atuAh4");
+            }
             for (const QPointer<QWidget>& w : *controls) {
                 if (w)
                     w->setEnabled(haveRadio);

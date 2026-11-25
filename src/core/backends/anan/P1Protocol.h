@@ -118,8 +118,10 @@ struct P1CcState {
     // networkproto1.c WriteMainLoop_HL2; the HL2 gateware notes in
     // hl2/MetisProtocol.h) ----
     bool hermesLite = false;
-    // AD9866 LNA gain, -12..+48 dB: C0 0x14 C4 = 0x40 | (gain + 12) -- the
-    // receive value, the transmit one while MOX (Thetis rx / tx_step_attn).
+    // AD9866 LNA gain, -12..+48 dB: C0 0x14 C4 = 0x40 | (gain + 12), the
+    // receive value; the transmit one in C0 0x1C C3 = 0xC0 | (gain + 12),
+    // which the gateware switches to by itself while transmitting (Quisk
+    // ChangeTxLNA, "LNA during Tx", default -12 dB).
     int hl2RxGainDb = 20;
     int hl2TxGainDb = 20;
     // C0 0x2E (addr 0x17): PTT hang (C3, 5 bits, ms) and TX buffer latency
@@ -129,6 +131,16 @@ struct P1CcState {
     int hl2TxLatencyMs = 40;
     // C0 0x74 (addr 0x3A) C4: the radio resets when the host disconnects.
     bool hl2ResetOnDisconnect = false;
+    // Build 726, Quisk (hermes/quisk_hardware.py, the HL2 settings):
+    //   0x00[11] (C3 bit 3): the PWM output as band indicator (else fan
+    //     speed); on an AK4951 board the loudspeaker on -- hl2Bit11;
+    //   0x00[12] (C3 bit 4): power supply sync disabled;
+    //   0x09[18] (C2 bit 2): T/R relay held in receive when the PA is off;
+    //   0x09[20] (C2 bit 4): the AH-4 tune request.
+    bool hl2Bit11 = false;
+    bool hl2DisableSync = false;
+    bool hl2LowPwrTrDisable = false;
+    bool hl2AtuTune = false;
 };
 
 // ANAN fork build 725: the Hermes-Lite 2's drive. Its gateware takes only the

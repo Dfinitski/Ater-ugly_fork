@@ -81,10 +81,10 @@ hl2::Cc p1CcHl2(int index, const P1CcState& s) noexcept
         c[1] = static_cast<std::uint8_t>(s.rateCode & 3);
         // C2 bits 1-7: the open-collector byte (the N2ADR filter board).
         c[2] = static_cast<std::uint8_t>((s.openCollector << 1) & 0xFE);
-        // C3: Alex attenuators, preamp, dither (on the HL2: the band-voltage
-        // output / an AK4951's speaker), random and the Alex RX inputs --
-        // all clear, as Thetis has them for an HL2.
-        c[3] = 0;
+        // C3: bit 3 = 0x00[11] (the PWM output as band indicator, or an
+        // AK4951's loudspeaker on), bit 4 = 0x00[12] (power supply sync off)
+        // -- build 726, Quisk. The Alex bits stay clear.
+        c[3] = static_cast<std::uint8_t>((s.hl2Bit11 ? 0x08 : 0) | (s.hl2DisableSync ? 0x10 : 0));
         // C4: ANT1, the duplex bit, the DDC count, no diversity.
         c[4] = static_cast<std::uint8_t>(0x04 | (((std::clamp(s.nddc, 1, 12) - 1) & 0x0F) << 3));
         break;
@@ -108,15 +108,22 @@ hl2::Cc p1CcHl2(int index, const P1CcState& s) noexcept
         c[0] |= 0x12;
         c[1] = static_cast<std::uint8_t>(std::clamp(s.driveLevel, 0, 255));
         // C2 bit 3 (0x09[19]): the HL2's PA enable (Thetis DisablePA ->
-        // EnableApolloTuner on an HL2). Bits 1 / 2 (DATA[17] tuner bypass,
-        // DATA[18] T/R disable) stay clear (hl2/MetisProtocol.cpp ccTxDrive).
-        c[2] = static_cast<std::uint8_t>(s.paEnabled ? 0x08 : 0x00);
+        // EnableApolloTuner on an HL2; Quisk hermes_power_amp). Build 726:
+        // bit 2 (0x09[18]) the T/R relay held in receive with the PA off
+        // (Quisk hermes_lowpwr_tr_enable), bit 4 (0x09[20]) the AH-4 tune
+        // request (Quisk OnSpot, deskHPSDR). Bit 1 (DATA[17], tuner bypass)
+        // stays clear.
+        c[2] = static_cast<std::uint8_t>((s.paEnabled ? 0x08 : 0x00)
+                                         | (s.hl2LowPwrTrDisable ? 0x04 : 0x00)
+                                         | (s.hl2AtuTune ? 0x10 : 0x00));
         break;
     case 11:  // addr 0x0A: the AD9866 LNA gain
         c[0] |= 0x14;
         c[2] = static_cast<std::uint8_t>((s.lineInGain & 0x1F) | (s.pureSignal ? 0x40 : 0));
-        // Bit 6: the gateware's six-bit gain path (ad9866.v).
-        c[4] = static_cast<std::uint8_t>(0x40 | ((s.mox ? txCode : gainCode(s.hl2RxGainDb)) & 0x3F));
+        // Bit 6: the gateware's six-bit gain path (ad9866.v). Build 726: the
+        // receive gain always, as Quisk (ChangeLNA); the transmit gain is
+        // 0x0E's, which the gateware applies by itself while transmitting.
+        c[4] = static_cast<std::uint8_t>(0x40 | (gainCode(s.hl2RxGainDb) & 0x3F));
         break;
     case 12:  // addr 0x0B: ADC1 / ADC2 attenuators (none here), keyer
         c[0] |= 0x16;

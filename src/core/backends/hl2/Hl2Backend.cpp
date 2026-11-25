@@ -492,6 +492,105 @@ void Hl2Backend::pushAnanForcedBoard()
     }
 }
 
+// ---- ANAN fork build 726 (operator, 25.11: "look how Quisk does it and make
+// the settings; the codec is an option, and we must assume every option is
+// fitted on the radio") ----
+//
+// Quisk's Hermes-Lite 2 settings (quisk_conf_defaults.py, hermes/
+// quisk_hardware.py), with its defaults, except where "every option fitted"
+// decides: the AK4951 codec board and the N2ADR filter board present, the
+// PA on. Bias adjustment and the EEPROM IP / MAC are not here (they write the
+// board's EEPROM).
+QVariantMap Hl2Backend::hl2Options()
+{
+    const auto& st = AppSettings::instance();
+    auto b = [&st](const char* k, bool def) {
+        return st.value(QLatin1String(k), def ? QStringLiteral("True") : QStringLiteral("False"))
+                   .toString() == QLatin1String("True");
+    };
+    auto i = [&st](const char* k, int def) { return st.value(QLatin1String(k), def).toInt(); };
+    return QVariantMap{
+        {QStringLiteral("powerAmp"), b("Hl2PowerAmp", true)},
+        {QStringLiteral("lowPwrTrDisable"), b("Hl2LowPwrTrDisable", false)},
+        {QStringLiteral("txLatencyMs"), std::clamp(i("Hl2TxLatencyMs", 10), 0, 127)},
+        {QStringLiteral("pttHangMs"), std::clamp(i("Hl2PttHangMs", 4), 0, 31)},
+        {QStringLiteral("txLnaDb"), std::clamp(i("Hl2TxLnaDb", -12), -12, 48)},
+        {QStringLiteral("disableSync"), b("Hl2DisableSync", false)},
+        {QStringLiteral("disableWatchdog"), b("Hl2DisableWatchdog", false)},
+        {QStringLiteral("resetOnDisconnect"), b("Hl2ResetOnDisconnect", false)},
+        {QStringLiteral("iobRxIn"), std::clamp(i("Hl2IobRxIn", 0), 0, 2)},
+        {QStringLiteral("pwmBandIndicator"), b("Hl2PwmBandIndicator", false)},
+        {QStringLiteral("codec"), b("Hl2CodecAk4951", true)},
+        {QStringLiteral("filterBoard"), b("Hl2FilterBoardN2adr", true)},
+        {QStringLiteral("cl1"), b("Hl2Cl1", false)},
+        {QStringLiteral("atuAh4"), b("Hl2AtuAh4", false)},
+    };
+}
+
+void Hl2Backend::applyHl2Options(const QVariantMap& in)
+{
+    static const QHash<QString, QString> kKeys{
+        {QStringLiteral("powerAmp"), QStringLiteral("Hl2PowerAmp")},
+        {QStringLiteral("lowPwrTrDisable"), QStringLiteral("Hl2LowPwrTrDisable")},
+        {QStringLiteral("txLatencyMs"), QStringLiteral("Hl2TxLatencyMs")},
+        {QStringLiteral("pttHangMs"), QStringLiteral("Hl2PttHangMs")},
+        {QStringLiteral("txLnaDb"), QStringLiteral("Hl2TxLnaDb")},
+        {QStringLiteral("disableSync"), QStringLiteral("Hl2DisableSync")},
+        {QStringLiteral("disableWatchdog"), QStringLiteral("Hl2DisableWatchdog")},
+        {QStringLiteral("resetOnDisconnect"), QStringLiteral("Hl2ResetOnDisconnect")},
+        {QStringLiteral("iobRxIn"), QStringLiteral("Hl2IobRxIn")},
+        {QStringLiteral("pwmBandIndicator"), QStringLiteral("Hl2PwmBandIndicator")},
+        {QStringLiteral("codec"), QStringLiteral("Hl2CodecAk4951")},
+        {QStringLiteral("filterBoard"), QStringLiteral("Hl2FilterBoardN2adr")},
+        {QStringLiteral("cl1"), QStringLiteral("Hl2Cl1")},
+        {QStringLiteral("atuAh4"), QStringLiteral("Hl2AtuAh4")},
+    };
+    auto& st = AppSettings::instance();
+    bool any = false;
+    for (auto it = in.constBegin(); it != in.constEnd(); ++it) {
+        const auto k = kKeys.constFind(it.key());
+        if (k == kKeys.constEnd())
+            continue;
+        // The numbers; every other key is a switch (a combo's index 0 / 1 too).
+        static const QSet<QString> kInts{QStringLiteral("txLatencyMs"), QStringLiteral("pttHangMs"),
+                                         QStringLiteral("txLnaDb"), QStringLiteral("iobRxIn")};
+        if (kInts.contains(it.key()))
+            st.setValue(*k, it.value().toInt());
+        else
+            st.setValue(*k, it.value().toBool() ? QStringLiteral("True") : QStringLiteral("False"));
+        any = true;
+    }
+    if (!any)
+        return;
+    st.save();
+    if (ananIsHl2())
+        pushHl2Options();
+}
+
+void Hl2Backend::pushHl2Options()
+{
+    const QVariantMap o = hl2Options();
+    // The board options go through the machinery the HL2 had (dither bit,
+    // codec gate, CL1, the AH-4 request, the filter board).
+    Hl2HardwareOptions next = m_hw;
+    next.codec = o.value(QStringLiteral("codec")).toBool() ? Hl2HardwareOptions::Codec::Ak4951
+                                                           : Hl2HardwareOptions::Codec::None;
+    // 0x00[11]: an AK4951 board's loudspeaker on; without one the PWM output
+    // as band indicator (else fan speed) -- Quisk hermes_PWM.
+    next.ditherBit = next.codec == Hl2HardwareOptions::Codec::Ak4951
+                     || o.value(QStringLiteral("pwmBandIndicator")).toBool();
+    next.randomBit = false;   // 0x00[12] is the supply sync here: setHl2Options
+    next.filterBoard = o.value(QStringLiteral("filterBoard")).toBool()
+                           ? Hl2HardwareOptions::FilterBoard::N2adrRxTx
+                           : Hl2HardwareOptions::FilterBoard::None;
+    next.cl1RefClock = o.value(QStringLiteral("cl1")).toBool();
+    next.atuGateware = o.value(QStringLiteral("atuAh4")).toBool();
+    applyHardwareOptions(next, /*persist=*/false);
+    if (m_metis)
+        QMetaObject::invokeMethod(m_metis, "setHl2Options", Qt::QueuedConnection, Q_ARG(QVariantMap, o));
+    applyBandFilter("hl2 settings");
+}
+
 QVariantMap Hl2Backend::ananHwFields() const
 {
     const auto& t = ananTraits();
@@ -4635,6 +4734,10 @@ void Hl2Backend::connectRadio(const RadioConnectRequest& request)
     // before the session sends its first Transmitter Specific packet.
     resolveAnanModel();
     pushAnanModelOptions();
+    // Build 726: a Hermes-Lite 2's settings, before mp takes the codec, the
+    // dither (speaker / PWM) bit and CL1 from m_hw below.
+    if (ananIsHl2())
+        pushHl2Options();
     // The filter board must be right from the first config frame: the radio
     // reports no state. All receivers start on one frequency, so this is that
     // frequency's filter (see applyBandFilter()). The receive byte, since some
@@ -10488,12 +10591,23 @@ void Hl2Backend::invokeExtension(const QString& ns, const QString& verb, quint64
                     {QStringLiteral("speakerLevelPercent"), m_hw.speakerLevelPercent},
                 };
                 hwReply.insert(ananHwFields());
+                hwReply.insert(QStringLiteral("hl2Options"), hl2Options());   // build 726
                 emit extensionResult(requestId, hwReply);
             }
             return;
         }
         if (verb == QLatin1String("hw.set")) {
             const QVariantMap in = arg.toMap();
+            // Build 726: the Hermes Lite settings, alone.
+            if (in.contains(QStringLiteral("hl2Options"))) {
+                applyHl2Options(in.value(QStringLiteral("hl2Options")).toMap());
+                if (requestId != 0) {
+                    QVariantMap r = ananHwFields();
+                    r.insert(QStringLiteral("hl2Options"), hl2Options());
+                    emit extensionResult(requestId, r);
+                }
+                return;
+            }
             // PARTIAL BY DESIGN: a caller sets the one field it cares about and
             // every absent key keeps its current value. Defaulting an absent
             // key to false instead would let a bridge command that meant to

@@ -50,6 +50,7 @@
 #include <atomic>
 #include <complex>
 #include <deque>
+#include <QVariantMap>
 #include <functional>
 #include <optional>
 #include <vector>
@@ -111,6 +112,13 @@ public:
     Q_INVOKABLE void setCl1RefClock(bool externalRef) override;
     Q_INVOKABLE void setAtuTuneRequest(bool request) override;
     Q_INVOKABLE void setIoBoardTxFrequencyHz(quint64 hz) override;
+    // ANAN fork build 726: the Hermes-Lite 2's own settings (Radio Setup,
+    // "Hermes Lite settings"; Quisk's names): keys "powerAmp",
+    // "lowPwrTrDisable", "txLatencyMs", "pttHangMs", "txLnaDb",
+    // "disableSync", "disableWatchdog", "resetOnDisconnect", "iobRxIn"
+    // (0 J10 available, 1 HL2 Rx to J9, 2 J9 and J10). A partial map changes
+    // only what it holds.
+    Q_INVOKABLE void setHl2Options(const QVariantMap& in);
     Q_INVOKABLE void requestPipelineReset() override;
     Q_INVOKABLE bool requestRegister(int addr, quint32 data, bool subsystemRead = false) override;
     Q_INVOKABLE void requestIoBoardStatus() override;
@@ -540,6 +548,31 @@ private:
     std::array<int, 2> m_adcAtt{};
     bool m_dither = false;
     bool m_random = false;
+    // ---- Build 726: Hermes-Lite 2 ----
+    struct Hl2Opts {
+        bool powerAmp = true;
+        bool lowPwrTrDisable = false;
+        int txLatencyMs = 10;    // Quisk hermes_tx_buffer_latency
+        int pttHangMs = 4;       // Quisk hermes_PTT_hang_time
+        int txLnaDb = -12;       // Quisk hermes_TxLNA_dB
+        bool disableSync = false;
+        bool disableWatchdog = false;
+        bool resetOnDisconnect = false;
+        int iobRxIn = 0;
+    };
+    Hl2Opts m_hl2;
+    bool m_hl2Codec = false;          // setLocalCodec: an AK4951 board
+    bool m_hl2Cl1 = false;            // setCl1RefClock: last programmed
+    bool m_hl2AtuTune = false;        // setAtuTuneRequest
+    // One-shot C&C (I2C writes, the watchdog), one in every other EP2 packet
+    // in place of the rotation's second bank (sendP1Ep2).
+    std::deque<hl2::Cc> m_hl2Once;
+    bool m_hl2OnceGap = false;
+    [[nodiscard]] bool isHl2Session() const noexcept
+    {
+        return m_p1 && m_profile.boardId == kBoardIdHermesLite;
+    }
+    void queueHl2SessionSetup();
     int m_ditherMask = 0;   // build 439: per ADC
     int m_randomMask = 0;
     std::array<std::uint32_t, kMaxDdcs> m_rxHz{};

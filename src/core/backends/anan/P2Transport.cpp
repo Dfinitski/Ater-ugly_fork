@@ -2205,7 +2205,13 @@ void P2Transport::setAdcAttenuation(int adc, int db)
     }
 }
 
-void P2Transport::setLocalCodec(bool) {}
+void P2Transport::setLocalCodec(bool present)
+{
+    // Build 726: a Hermes-Lite 2 with an AK4951 board. Without one the EP2
+    // audio slot is not audio on the HL2 (hl2/MetisProtocol.h, EADDR) and
+    // stays zero (sendP1Ep2).
+    m_hl2Codec = present;
+}
 
 void P2Transport::submitSpeakerAudio(const QByteArray& interleavedInt16)
 {
@@ -2506,9 +2512,89 @@ BoardProfile P2Transport::forcedProfileOr(const BoardProfile& reported) const
     return *profile;
 }
 
-void P2Transport::setCl1RefClock(bool) {}
-void P2Transport::setAtuTuneRequest(bool) {}
-void P2Transport::setIoBoardTxFrequencyHz(quint64) {}
+// ---- ANAN fork build 726: Hermes-Lite 2 settings (Quisk hermes/
+// quisk_hardware.py; the gateware notes in hl2/MetisProtocol.h) ----
+
+void P2Transport::setCl1RefClock(bool externalRef)
+{
+    // The VersaClock is reprogrammed by 24 I2C1 writes (versaClockCl1Banks,
+    // deskHPSDR / piHPSDR verbatim); the board boots with CL1 off.
+    if (externalRef == m_hl2Cl1)
+        return;
+    m_hl2Cl1 = externalRef;
+    if (!isHl2Session())
+        return;
+    for (const hl2::Cc& cc : hl2::versaClockCl1Banks(externalRef))
+        m_hl2Once.push_back(cc);
+    qCInfo(lcAnanP2T) << "HL2: CL1 external 10 MHz reference" << (externalRef ? "on" : "off");
+}
+
+void P2Transport::setAtuTuneRequest(bool request)
+{
+    m_hl2AtuTune = request;   // 0x09[20] in the rotation (p1CcHl2)
+}
+
+void P2Transport::setIoBoardTxFrequencyHz(quint64 hz)
+{
+    // N2ADR IO board (I2C2 chip 0x1D): the TX frequency in registers 0..4,
+    // the LSB last -- it commits the five (Quisk IOBoard.HeartBeat). Written
+    // whether or not a board answers: an absent chip ignores it.
+    if (!isHl2Session() || hz == 0)
+        return;
+    for (const hl2::Cc& cc : hl2::ccIoBoardTxFrequency(hz))
+        m_hl2Once.push_back(cc);
+}
+
+void P2Transport::setHl2Options(const QVariantMap& in)
+{
+    const Hl2Opts was = m_hl2;
+    auto b = [&in](const char* k, bool cur) {
+        const auto it = in.constFind(QLatin1String(k));
+        return it == in.constEnd() ? cur : it->toBool();
+    };
+    auto i = [&in](const char* k, int cur, int lo, int hi) {
+        const auto it = in.constFind(QLatin1String(k));
+        return it == in.constEnd() ? cur : std::clamp(it->toInt(), lo, hi);
+    };
+    m_hl2.powerAmp = b("powerAmp", m_hl2.powerAmp);
+    m_hl2.lowPwrTrDisable = b("lowPwrTrDisable", m_hl2.lowPwrTrDisable);
+    m_hl2.txLatencyMs = i("txLatencyMs", m_hl2.txLatencyMs, 0, 127);
+    m_hl2.pttHangMs = i("pttHangMs", m_hl2.pttHangMs, 0, 31);
+    m_hl2.txLnaDb = i("txLnaDb", m_hl2.txLnaDb, -12, 48);
+    m_hl2.disableSync = b("disableSync", m_hl2.disableSync);
+    m_hl2.disableWatchdog = b("disableWatchdog", m_hl2.disableWatchdog);
+    m_hl2.resetOnDisconnect = b("resetOnDisconnect", m_hl2.resetOnDisconnect);
+    m_hl2.iobRxIn = i("iobRxIn", m_hl2.iobRxIn, 0, 2);
+    if (!isHl2Session())
+        return;
+    // Quisk ImmediateChange: the watchdog (addr 0x39 C1 0x09 off / 0x08 on)
+    // and the IO board's receive input (register 11) are one-shot writes.
+    if (m_hl2.disableWatchdog != was.disableWatchdog)
+        m_hl2Once.push_back(hl2::Cc{0x72, std::uint8_t(m_hl2.disableWatchdog ? 0x09 : 0x08), 0, 0, 0});
+    if (m_hl2.iobRxIn != was.iobRxIn)
+        m_hl2Once.push_back(hl2::ccI2c2Write(hl2::kIoBoardI2cAddr, 11, std::uint8_t(m_hl2.iobRxIn)));
+}
+
+// At the start of a Hermes-Lite 2 session: what Quisk sends once sound has
+// started (HeartBeat: the watchdog, the IO board's receive input) and the CL1
+// programming when it is on (the board boots with it off).
+void P2Transport::queueHl2SessionSetup()
+{
+    m_hl2Once.clear();
+    m_hl2OnceGap = false;
+    m_hl2Once.push_back(hl2::Cc{0x72, std::uint8_t(m_hl2.disableWatchdog ? 0x09 : 0x08), 0, 0, 0});
+    m_hl2Once.push_back(hl2::ccI2c2Write(hl2::kIoBoardI2cAddr, 11, std::uint8_t(m_hl2.iobRxIn)));
+    if (m_hl2Cl1)
+        for (const hl2::Cc& cc : hl2::versaClockCl1Banks(true))
+            m_hl2Once.push_back(cc);
+    qCInfo(lcAnanP2T).nospace()
+        << "HL2 settings: PA " << (m_hl2.powerAmp ? "on" : "off") << ", T/R off at low power "
+        << m_hl2.lowPwrTrDisable << ", TX latency " << m_hl2.txLatencyMs << " ms, PTT hang "
+        << m_hl2.pttHangMs << " ms, TX LNA " << m_hl2.txLnaDb << " dB, sync off " << m_hl2.disableSync
+        << ", watchdog off " << m_hl2.disableWatchdog << ", reset on disconnect "
+        << m_hl2.resetOnDisconnect << ", IO board RX input " << m_hl2.iobRxIn << ", codec "
+        << m_hl2Codec << ", CL1 " << m_hl2Cl1;
+}
 
 void P2Transport::requestPipelineReset()
 {
@@ -3421,9 +3507,17 @@ P1CcState P2Transport::p1State() const
         // Build 725: the drive byte's hardware step; the rest scales the I/Q
         // (sendP1Ep2).
         s.driveLevel = hl2DriveSplit(s.driveLevel).hwLevel;
-        // deskHPSDR (old_protocol.c, C0 0x14 / 0x1C): while transmitting with
-        // the PA on, the LNA at its bottom (code 0, -12 dB); else as receiving.
-        s.hl2TxGainDb = s.paEnabled ? -12 : s.hl2RxGainDb;
+        // Build 726: the settings (Quisk): the transmit LNA, the PA, the
+        // timings, the config bits.
+        s.hl2TxGainDb = m_hl2.txLnaDb;
+        s.paEnabled = s.paEnabled && m_hl2.powerAmp;
+        s.hl2LowPwrTrDisable = m_hl2.lowPwrTrDisable;
+        s.hl2AtuTune = m_hl2AtuTune;
+        s.hl2PttHangMs = m_hl2.pttHangMs;
+        s.hl2TxLatencyMs = m_hl2.txLatencyMs;
+        s.hl2ResetOnDisconnect = m_hl2.resetOnDisconnect;
+        s.hl2Bit11 = m_dither;   // Hl2Backend: AK4951 -> speaker on, else PWM band indicator
+        s.hl2DisableSync = m_hl2.disableSync;
     }
     return s;
 }
@@ -3441,6 +3535,8 @@ void P2Transport::sendP1Start()
         sendDatagram(*m_sock, hl2::ep2Packet(m_p1Seq++, a, b), m_txHost, kRadioPort,
                      m_counters.txBytes, m_counters.txPackets);
     }
+    if (isHl2Session())
+        queueHl2SessionSetup();   // build 726
     // Bit 0: I/Q + mic; bit 1: the wide bandscope (Metis "How it works").
     sendDatagram(*m_sock, hl2::metisCommand((m_wb.enableMask & 0x01) ? 0x03 : 0x01), m_txHost,
                  kRadioPort, m_counters.txBytes, m_counters.txPackets);
@@ -3456,8 +3552,19 @@ void P2Transport::sendP1Ep2()
     m_p1CcIdx %= ccCount;
     const hl2::Cc a = p1Cc(m_p1CcIdx, st);
     m_p1CcIdx = (m_p1CcIdx + 1) % ccCount;
-    const hl2::Cc b = p1Cc(m_p1CcIdx, st);
-    m_p1CcIdx = (m_p1CcIdx + 1) % ccCount;
+    hl2::Cc b;
+    // Build 726: a Hermes-Lite 2's one-shot (I2C, watchdog) in place of the
+    // second bank, every other packet (the gateware's I2C needs the time;
+    // Thetis MI0BOT waits 5 frames, deskHPSDR sends one per HL2 slot).
+    m_hl2OnceGap = !m_hl2OnceGap;
+    if (st.hermesLite && !m_hl2Once.empty() && m_hl2OnceGap) {
+        b = m_hl2Once.front();
+        m_hl2Once.pop_front();
+        b[0] = static_cast<std::uint8_t>((b[0] & 0xFE) | (st.mox ? 0x01 : 0x00));
+    } else {
+        b = p1Cc(m_p1CcIdx, st);
+        m_p1CcIdx = (m_p1CcIdx + 1) % ccCount;
+    }
     // Build 426 (operator, 15.11: a 7000DLE on Protocol 1, the PS feedback on
     // ADC1, "the bypass relay does not switch"): what the radio is told on
     // transmit, once per transmission -- the board profile and the C&C bytes
@@ -3508,7 +3615,9 @@ void P2Transport::sendP1Ep2()
             have = true;
         }
     }
-    if (have) {
+    // Build 726: not into a Hermes-Lite 2 without a codec board (the slot is
+    // not audio there).
+    if (have && (!st.hermesLite || m_hl2Codec)) {
         hl2::ep2WriteTxAudio(pkt, std::span<const std::int16_t>(audio.data(), audio.size()));
         m_diagSpkPkts.fetch_add(1, std::memory_order_relaxed);
     }
