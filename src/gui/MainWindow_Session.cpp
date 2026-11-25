@@ -2020,13 +2020,21 @@ void MainWindow::wireRadioModel()
         const bool dupStopWf = AppSettings::instance()
             .value(QStringLiteral("AnanDupStopWaterfall"), QStringLiteral("True")).toString()
             == QLatin1String("True");
+        // Build 722: the DUP over's scale is kept per transmit mode.
+        QString dupTxMode;
+        if (dupHold) {
+            if (const SliceModel* txs = m_radioModel.txSlice())
+                dupTxMode = txs->mode().toUpper();
+        }
         for (auto* pan : m_radioModel.panadapters()) {
             if (auto* sw = m_panStack ? m_panStack->spectrum(pan->panId()) : nullptr) {
                 if (panTx)
                     sw->setTxFixedDbmRange(ananTxScale && txZoomWanted);
                 sw->setTxFreezeView(txFreeze);
-                if (dupHold)
+                if (dupHold) {
                     sw->setDupStopWaterfall(dupStopWf);
+                    sw->setDupTxMode(dupTxMode);
+                }
                 sw->setTransmitting(panTx);
                 sw->setDuplexTxHold(dupHold);
             }
@@ -2035,8 +2043,10 @@ void MainWindow::wireRadioModel()
             if (panTx)
                 m_panApplet->spectrumWidget()->setTxFixedDbmRange(ananTxScale && txZoomWanted);
             m_panApplet->spectrumWidget()->setTxFreezeView(txFreeze);
-            if (dupHold)
+            if (dupHold) {
                 m_panApplet->spectrumWidget()->setDupStopWaterfall(dupStopWf);
+                m_panApplet->spectrumWidget()->setDupTxMode(dupTxMode);
+            }
             m_panApplet->spectrumWidget()->setTransmitting(panTx);
             m_panApplet->spectrumWidget()->setDuplexTxHold(dupHold);
         }

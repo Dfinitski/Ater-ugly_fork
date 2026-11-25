@@ -8893,20 +8893,40 @@ void SpectrumWidget::setDuplexTxHold(bool hold)
         m_dupTxHold = true;
         // ANAN fork build 721 (operator, 25.11: "in duplex while transmitting
         // the panadapter's upper limit must be set to +10, then put back as it
-        // was"): the top of the scale goes to +10 dBm for the over, the bottom
-        // stays; the operator's scale comes back with the hold's end (the
-        // over's receive tail included). A range set meanwhile (the radio's
-        // echo, the model) is kept and applied then, as with the fixed TX
-        // scale. Display only: nothing is sent to the radio.
+        // was"); build 722 (operator: "it could be changed while transmitting
+        // anyway -- let +10 be the default, and the top and bottom be kept for
+        // each mode separately, for transmit of course"; only in DUP; the
+        // default bottom that of the receive scale). The over shows the scale
+        // kept for the transmit mode, else top +10 dBm over the receive
+        // bottom; the operator's changes during the over go to that scale
+        // (setDupTxScale) and are kept for the mode when it ends; the receive
+        // scale comes back with the hold's end (the over's receive tail
+        // included). A range set meanwhile from elsewhere (the radio's echo,
+        // the model) is applied then, as with the fixed TX scale. Display
+        // only: nothing is sent to the radio.
         if (!m_dupTopActive) {
             constexpr float kDupTopDbm = 10.0f;
             m_dupSavedRefLevel = m_refLevel;
             m_dupSavedDynamicRange = m_dynamicRange;
             m_txFixedDeferredValid = false;
             m_dupTopActive = true;
-            const float bottom = m_refLevel - m_dynamicRange;
-            m_refLevel = kDupTopDbm;
-            m_dynamicRange = std::max(10.0f, kDupTopDbm - bottom);
+            m_dupScaleEdited = false;
+            float top = kDupTopDbm;
+            float bottom = m_refLevel - m_dynamicRange;
+            if (!m_dupTxMode.isEmpty()) {
+                const QStringList kept = AppSettings::instance()
+                    .value(QStringLiteral("AnanDupTxScale_") + m_dupTxMode).toString()
+                    .split(QLatin1Char(';'));
+                bool okTop = false, okBottom = false;
+                const float t = kept.size() == 2 ? kept.at(0).toFloat(&okTop) : 0.0f;
+                const float b = kept.size() == 2 ? kept.at(1).toFloat(&okBottom) : 0.0f;
+                if (okTop && okBottom && t > b) {
+                    top = t;
+                    bottom = b;
+                }
+            }
+            m_refLevel = top;
+            m_dynamicRange = std::max(10.0f, top - bottom);
             markOverlayDirty();
         }
         return;
@@ -8919,6 +8939,16 @@ void SpectrumWidget::setDuplexTxHold(bool hold)
         m_dupTxHold = false;
         if (m_dupTopActive) {   // build 721: the operator's scale back
             m_dupTopActive = false;
+            // Build 722: the over's scale, if the operator moved it, kept for
+            // the mode.
+            if (m_dupScaleEdited && !m_dupTxMode.isEmpty()) {
+                auto& st = AppSettings::instance();
+                st.setValue(QStringLiteral("AnanDupTxScale_") + m_dupTxMode,
+                            QString::number(m_refLevel, 'f', 1) + QLatin1Char(';')
+                                + QString::number(m_refLevel - m_dynamicRange, 'f', 1));
+                st.save();
+            }
+            m_dupScaleEdited = false;
             m_refLevel = m_dupSavedRefLevel;
             m_dynamicRange = m_dupSavedDynamicRange;
             markOverlayDirty();
@@ -8928,6 +8958,18 @@ void SpectrumWidget::setDuplexTxHold(bool hold)
             }
         }
     });
+}
+
+// Build 722: the operator moved the scale during a DUP over -- the over's
+// scale takes it, the receive range does not.
+void SpectrumWidget::setDupTxScale(float minDbm, float maxDbm)
+{
+    if (!m_dupTopActive || !(maxDbm > minDbm))
+        return;
+    m_refLevel = maxDbm;
+    m_dynamicRange = maxDbm - minDbm;
+    m_dupScaleEdited = true;
+    markOverlayDirty();
 }
 
 void SpectrumWidget::setTransmitting(bool tx)

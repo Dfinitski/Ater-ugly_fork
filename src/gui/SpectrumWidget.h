@@ -1023,6 +1023,13 @@ public:
     void setTransmitting(bool tx);
     // Build 315: DUP over -- the receiver automatics hold, the display does not.
     void setDuplexTxHold(bool hold);
+    // ANAN fork build 722: the DUP over's own scale, kept per transmit mode
+    // (MainWindow sets the mode before setDuplexTxHold(true)). While it is in
+    // force the operator's scale moves (drag, arrows, wheel) change only it:
+    // MainWindow routes them here instead of to the pan's receive range.
+    void setDupTxMode(const QString& mode) { m_dupTxMode = mode; }
+    bool dupTxScaleActive() const { return m_dupTopActive; }
+    void setDupTxScale(float minDbm, float maxDbm);
     // ANAN fork build 670: "Stop Waterfall when TX" -- in DUP no waterfall
     // rows while the over (and its 500 ms receive tail, m_dupTxHold) lasts.
     void setDupStopWaterfall(bool on) { m_dupStopWaterfall = on; }
@@ -1846,7 +1853,10 @@ private:
     QTimer* m_ananOverlayPoll{nullptr};   // ANAN noise line / overload warning -> overlay dirty
     bool m_dupTxHold{false};   // build 315: a DUP over is on the air
     // Build 721: the DUP over's scale top (+10 dBm) and the scale it replaced.
+    // Build 722: per transmit mode, the operator's edits kept.
     bool m_dupTopActive{false};
+    bool m_dupScaleEdited{false};
+    QString m_dupTxMode;
     float m_dupSavedRefLevel{0.0f};
     float m_dupSavedDynamicRange{0.0f};
     bool m_dupStopWaterfall{false};   // build 670: Stop Waterfall when TX (DUP)

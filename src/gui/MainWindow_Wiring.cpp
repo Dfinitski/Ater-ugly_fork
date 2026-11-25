@@ -5077,6 +5077,13 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(sw, &SpectrumWidget::dbmRangeChangeRequested,
             this, [this, applet, sw, setStreamDbmRange, sendDbmRangeCommand]
                   (float minDbm, float maxDbm) {
+        // ANAN fork build 722: during a DUP over the scale is the over's own
+        // (kept per transmit mode): neither the pan's receive range nor the
+        // radio hears of it.
+        if (sw->dupTxScaleActive()) {
+            sw->setDupTxScale(minDbm, maxDbm);
+            return;
+        }
         if (sw->kiwiSdrWaterfallActive()) {
             sw->setDbmRange(minDbm, maxDbm);
             sw->prepareForFftScaleChange();
@@ -5185,6 +5192,10 @@ void MainWindow::wirePanadapter(PanadapterApplet* applet)
     connect(sw, &SpectrumWidget::dbmRangeDragFinished,
             this, [this, applet, sw, setStreamDbmRange,
                    sendDbmRangeCommand](float minDbm, float maxDbm) {
+        if (sw->dupTxScaleActive()) {   // build 722, see dbmRangeChangeRequested
+            sw->setDupTxScale(minDbm, maxDbm);
+            return;
+        }
         if (sw->kiwiSdrWaterfallActive()) {
             sw->setDbmRange(minDbm, maxDbm);
             sw->prepareForFftScaleChange();
