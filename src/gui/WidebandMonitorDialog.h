@@ -69,6 +69,7 @@ private:
     double m_markerHz = 0.0;
     QImage m_wf;
     bool m_dragging = false;
+    Qt::MouseButton m_dragButton = Qt::NoButton;   // build 684: left or right
     int m_dragX = 0;
     double m_dragLo = 0.0;
 };

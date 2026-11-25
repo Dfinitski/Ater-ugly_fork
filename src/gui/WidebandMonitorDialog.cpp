@@ -77,6 +77,7 @@ WidebandView::WidebandView(QWidget* parent)
     setMinimumSize(600, 360);
     setCursor(Qt::CrossCursor);
     setAttribute(Qt::WA_OpaquePaintEvent);
+    setContextMenuPolicy(Qt::PreventContextMenu);   // build 684: the right button drags
 }
 
 QRect WidebandView::plotRect() const
@@ -288,8 +289,11 @@ void WidebandView::mouseMoveEvent(QMouseEvent* event)
 
 void WidebandView::mousePressEvent(QMouseEvent* event)
 {
-    if (event->button() == Qt::LeftButton) {
+    // ANAN fork build 684 (operator, 24.11): the zoomed view drags with the
+    // right button too, as the panadapter does.
+    if (!m_dragging && (event->button() == Qt::LeftButton || event->button() == Qt::RightButton)) {
         m_dragging = true;
+        m_dragButton = event->button();
         m_dragX = int(event->position().x());
         m_dragLo = m_viewLo;
     }
@@ -297,8 +301,9 @@ void WidebandView::mousePressEvent(QMouseEvent* event)
 
 void WidebandView::mouseReleaseEvent(QMouseEvent* event)
 {
-    if (event->button() == Qt::LeftButton && m_dragging) {
+    if (m_dragging && event->button() == m_dragButton) {
         m_dragging = false;
+        m_dragButton = Qt::NoButton;
         if (std::abs(int(event->position().x()) - m_dragX) > 2)
             clearWaterfall();
     }
@@ -400,7 +405,7 @@ WidebandMonitorDialog::WidebandMonitorDialog(RadioModel* model, QWidget* parent)
 
     m_status = new QLabel(QStringLiteral(
         "Raw ADC spectrum, 0 - 61.44 MHz, 7.5 kHz bins (dBFS per bin). Wheel: zoom, "
-        "drag: pan, double-click: tune the active receiver."));
+        "drag (left or right button): pan, double-click: tune the active receiver."));
     m_status->setWordWrap(true);
     vbox->addWidget(m_status);
 
@@ -626,7 +631,7 @@ void WidebandMonitorDialog::onFrame(int adc, const QVector<float>& samples)
     if (++m_frames == 1)
         m_status->setText(QStringLiteral(
             "Raw ADC spectrum, 0 - 61.44 MHz, 7.5 kHz bins (dBFS per bin). Wheel: zoom, "
-            "drag: pan, double-click: tune the active receiver."));
+            "drag (left or right button): pan, double-click: tune the active receiver."));
 }
 
 } // namespace AetherSDR

@@ -11526,6 +11526,18 @@ Thetis (console.cs `ZoomToBand`, `zoomToBandBandwidth`): панорама на �
 
 Файлы: `src/gui/WidebandMonitorDialog.{cpp,h}`, `src/core/backends/anan/P2Transport.{cpp,h}`, `src/core/ForkBuild.h`. errcheck: WidebandMonitorDialog 4 (базовый), P2Transport 0, bogus +1.
 
+## 667. Сборка 684 — WB: перетаскивание зумированной панорамы правой кнопкой
+
+**Просьба оператора (24.11):** перетаскивать панораму WB правой кнопкой, когда она зумирована.
+
+**Сделано (`WidebandView`).**
+- Перетаскивание (было только левой кнопкой) начинается и правой. Кнопка, начавшая перетаскивание, запоминается в `m_dragButton`, и только её отпускание его заканчивает. Вторая кнопка во время перетаскивания ничего не начинает.
+- Как и раньше, вид не выходит за 0…61,44 МГц (`clampView`), поэтому при зуме ×1 сдвига нет.
+- Контекстного меню у вида нет; `Qt::PreventContextMenu`, чтобы правый клик не уходил в окно.
+- Подсказка под панорамой: «drag (left or right button): pan».
+
+Файлы: `src/gui/WidebandMonitorDialog.{cpp,h}`, `src/core/ForkBuild.h`. errcheck 4 (базовый), bogus +1.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
