@@ -398,16 +398,20 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
         m_ananMm->setFace(st.value(QStringLiteral("AnanMmFace"), QStringLiteral("Light")).toString()
                               == QLatin1String("Dark")
                           ? AnanMultiMeterWidget::Face::Dark : AnanMultiMeterWidget::Face::Light);
-        m_ananMm->setDisplayGroup(st.value(QStringLiteral("AnanMmGroup"), 0).toInt());
+        m_ananMm->setTxSelect(m_vuTxSelect);   // build 681: the S-meter's TX Select
         contentLayout->addWidget(m_ananMm);
         connect(m_ananMm, &QWidget::customContextMenuRequested,
                 this, [this](const QPoint& position) {
                     showStandardMeterContextMenu(m_ananMm, position);
                 });
-        connect(m_ananMm, &AnanMultiMeterWidget::displayGroupChanged, this, [](int group) {
-            auto& s = AppSettings::instance();
-            s.setValue(QStringLiteral("AnanMmGroup"), group);
-            s.save();
+        // Build 681: the box on the strip steps the shared TX Select.
+        connect(m_ananMm, &AnanMultiMeterWidget::txSelectClicked, this, [this](int i) {
+            if (i < 0 || i >= MeterSettings::txMeterItems().size())
+                return;
+            m_vuTxSelect = i;
+            m_sMeter->setTxMode(MeterSettings::txMeterItems()[i]);
+            m_ananMm->setTxSelect(i);
+            persistVuMeterSettings();
         });
         m_ananMmShown = st.value(QStringLiteral("AnanMeterStyle"), QStringLiteral("Aether")).toString()
                         == QLatin1String("AnanMM");
@@ -1459,6 +1463,21 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
             };
             addFace(QStringLiteral("Light"), AnanMultiMeterWidget::Face::Light);
             addFace(QStringLiteral("Dark"), AnanMultiMeterWidget::Face::Dark);
+            // Build 681: TX Select, the same choice as the S-meter's.
+            addHeader(QStringLiteral("TX Select"));
+            QActionGroup* mmTxGroup = new QActionGroup(&menu);
+            for (int i = 0; i < MeterSettings::txMeterItems().size(); ++i) {
+                QAction* action = menu.addAction(MeterSettings::txMeterItems()[i]);
+                action->setCheckable(true);
+                action->setChecked(i == m_vuTxSelect);
+                mmTxGroup->addAction(action);
+                connect(action, &QAction::triggered, this, [this, i]() {
+                    m_vuTxSelect = i;
+                    m_sMeter->setTxMode(MeterSettings::txMeterItems()[i]);
+                    m_ananMm->setTxSelect(i);
+                    persistVuMeterSettings();
+                });
+            }
             menu.exec(source->mapToGlobal(position));
             return;
         }
@@ -1502,6 +1521,8 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
         connect(action, &QAction::triggered, this, [this, i]() {
             m_vuTxSelect = i;
             m_sMeter->setTxMode(MeterSettings::txMeterItems()[i]);
+            if (m_ananMm)
+                m_ananMm->setTxSelect(i);   // build 681: shared
             persistVuMeterSettings();
         });
     }

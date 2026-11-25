@@ -42,11 +42,16 @@ public:
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
 
-    // Thetis's display groups: 0 ALL, 1 PWR/SWR, 2 Comp, 3 ALC, 4 Volts/Amps.
-    int displayGroup() const { return m_displayGroup; }
-    void setDisplayGroup(int group);
-    static QString displayGroupName(int group);
-    static constexpr int kDisplayGroups = 5;
+    // Build 681 (operator, 24.11: "connect the transmit options -- as TX
+    // Select of the S-meter"): the TX needle is the one chosen in the
+    // S-meter's TX Select, shared with it (MeterSettings::txMeterItems(),
+    // in this order): 0 Power (PO), 1 SWR, 2 Level (the ALC scale, Thetis's
+    // ALC group), 3 Compression (COMP). It replaces Thetis's display groups;
+    // the box on the strip shows it and a left click steps to the next one.
+    int txSelect() const { return m_txSelect; }
+    void setTxSelect(int index);
+    static QString txSelectName(int index);
+    static constexpr int kTxSelects = 4;
 
     // Thetis's face proportions: the meter 1 : 0.441, the strip under it
     // 75/900 of the width.
@@ -64,7 +69,7 @@ public slots:
     void setAlcGain(float db);                    // ALC gain (0 = unity, < 0 = reducing)
 
 signals:
-    void displayGroupChanged(int group);
+    void txSelectClicked(int index);   // build 681: the box asked for this one
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -110,7 +115,7 @@ private:
     Face m_face{Face::Light};
     QVector<Needle> m_needles;
     QTimer m_tick;
-    int m_displayGroup{0};
+    int m_txSelect{0};
     bool m_floating{false};
     bool m_transmitting{false};
 

@@ -217,24 +217,23 @@ QSize AnanMultiMeterWidget::minimumSizeHint() const
     return {180, heightForWidth(180)};
 }
 
-void AnanMultiMeterWidget::setDisplayGroup(int group)
+void AnanMultiMeterWidget::setTxSelect(int index)
 {
-    group = std::clamp(group, 0, kDisplayGroups - 1);
-    if (group == m_displayGroup)
+    index = std::clamp(index, 0, kTxSelects - 1);
+    if (index == m_txSelect)
         return;
-    m_displayGroup = group;
+    m_txSelect = index;
     update();
-    emit displayGroupChanged(group);
 }
 
-QString AnanMultiMeterWidget::displayGroupName(int group)
+QString AnanMultiMeterWidget::txSelectName(int index)
 {
-    switch (group) {
-    case 1: return QStringLiteral("PWR/SWR");
-    case 2: return QStringLiteral("Comp");
-    case 3: return QStringLiteral("ALC");
-    case 4: return QStringLiteral("Volts/Amps");
-    default: return QStringLiteral("ALL");
+    // The names of the S-meter's TX Select.
+    switch (index) {
+    case 1: return QStringLiteral("SWR");
+    case 2: return QStringLiteral("Level");
+    case 3: return QStringLiteral("Compression");
+    default: return QStringLiteral("Power");
     }
 }
 
@@ -315,7 +314,15 @@ bool AnanMultiMeterWidget::needleShown(const Needle& n) const
         return false;
     if (n.onlyTx && !m_transmitting)
         return false;
-    return m_displayGroup == 0 || n.group == 0 || n.group == m_displayGroup;
+    if (!n.onlyTx)
+        return true;   // S on receive; Vd always
+    // Build 681: on transmit, the needle of the TX Select (Id has none).
+    switch (m_txSelect) {
+    case 1:  return n.source == Source::Swr;
+    case 2:  return n.source == Source::AlcGroup;
+    case 3:  return n.source == Source::AlcComp;
+    default: return n.source == Source::Power;
+    }
 }
 
 QPointF AnanMultiMeterWidget::calibrationPoint(const Needle& n, float value) const
@@ -779,20 +786,27 @@ void AnanMultiMeterWidget::drawStrip(QPainter& p, const QRectF& strip)
         QFont f(QStringLiteral("Arial"));
         f.setBold(true);
         f.setPixelSize(std::max(6, static_cast<int>(box.height() * 0.62)));
+        // Build 681: a longer name ("Compression") smaller, to fit the box.
+        const QString name = txSelectName(m_txSelect);
+        while (f.pixelSize() > 6
+               && QFontMetricsF(f).horizontalAdvance(name) > box.width() * 0.9)
+            f.setPixelSize(f.pixelSize() - 1);
         p.setFont(f);
         p.setPen(QColor(169, 169, 169));   // DarkGray
-        p.drawText(box, Qt::AlignCenter, displayGroupName(m_displayGroup));
+        p.drawText(box, Qt::AlignCenter, name);
     }
     p.restore();
 }
 
 void AnanMultiMeterWidget::mousePressEvent(QMouseEvent* event)
 {
-    // Thetis: a left click on the box (TX) steps to the next display group.
+    // Thetis: a left click on the box (TX) steps to the next display group;
+    // here (build 681) to the next TX Select, which the panel shares with the
+    // S-meter.
     if (event->button() == Qt::LeftButton && m_transmitting) {
         const QRectF meter = meterArea(QRectF(rect()));
         if (boxRect(meter).contains(event->position())) {
-            setDisplayGroup((m_displayGroup + 1) % kDisplayGroups);
+            emit txSelectClicked((m_txSelect + 1) % kTxSelects);
             event->accept();
             return;
         }

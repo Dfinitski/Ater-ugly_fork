@@ -11468,6 +11468,29 @@ Thetis (console.cs `ZoomToBand`, `zoomToBandBandwidth`): панорама на �
 
 Файлы: `src/gui/AnanMultiMeterWidget.{h,cpp}` (новые), `src/gui/AppletPanel.{h,cpp}`, `src/gui/MainWindow_Wiring.cpp`, `CMakeLists.txt`, `src/core/ForkBuild.h`.
 
+## 664. Сборка 681 — ANAN Multi Meter: стрелка передачи по TX Select S-метра
+
+**Просьба оператора (24.11):** подключить опции показаний на передаче. Уточнено: «как TX Select у S-метра» — те же пункты, один общий выбор для обоих приборов.
+
+**Сделано.**
+- Группы отображения Thetis (ALL, PWR/SWR, Comp, ALC, Volts/Amps) из сборки 680 заменены выбором TX Select. Номер — общий `m_vuTxSelect`, порядок `MeterSettings::txMeterItems()`:
+
+  | TX Select | Стрелка мультиметра |
+  |---|---|
+  | Power | PO (красная) |
+  | SWR | SWR |
+  | Level | ALC (ALC_GROUP: уровень после ALC + сжатие) |
+  | Compression | COMP |
+
+- На передаче видна только выбранная стрелка. Vd видна всегда, как в Thetis (группа 0). Для Id отдельного пункта в TX Select нет, его стрелка больше не показывается.
+- В меню ПКМ мультиметра раздел «TX Select» с теми же четырьмя пунктами. Выбор там, в меню S-метра или кнопкой на полосе мультиметра меняет оба прибора и сохраняется в настройки S-метра (`persistVuMeterSettings`).
+- Кнопка на полосе (только на передаче) показывает имя выбранного пункта. Длинное имя («Compression») уменьшается до ширины кнопки. Левый клик — следующий пункт (сигнал `txSelectClicked`, панель меняет общий выбор).
+- Настройка `AnanMmGroup` больше не используется.
+
+Проверка: отрисовка всех четырёх выборов тестом offscreen. errcheck: AnanMultiMeterWidget 0, AppletPanel 8 (базовый), bogus +1.
+
+Файлы: `src/gui/AnanMultiMeterWidget.{h,cpp}`, `src/gui/AppletPanel.cpp`, `src/core/ForkBuild.h`.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
