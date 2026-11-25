@@ -9184,6 +9184,29 @@ void SpectrumWidget::setTxScopeFrame(const QList<float>& dbfs, double centreMhz)
             markOverlayDirty();
         }
     }
+    // ANAN fork build 672 (operator, 24.11: TUNE's carrier without
+    // PureSignal is a perfectly narrow line under the VFO marker -- "make it
+    // at least 3 px wide"). Display only: each bin takes the largest of its
+    // neighbours within one pixel's worth of bins either side, so a line one
+    // bin wide is drawn about 3 px wide; a wide signal grows by a pixel each
+    // side. The frame from the radio is untouched.
+    {
+        const int n = bins.size();
+        const int px = std::max(1, width());
+        const int radius = std::max(1, static_cast<int>(std::lround(double(n) / double(px))));
+        if (n > 2 * radius) {
+            QList<float> widened(n);
+            for (int i = 0; i < n; ++i) {
+                float m = bins[i];
+                const int lo = std::max(0, i - radius);
+                const int hi = std::min(n - 1, i + radius);
+                for (int k = lo; k <= hi; ++k)
+                    m = std::max(m, bins[k]);
+                widened[i] = m;
+            }
+            bins = std::move(widened);
+        }
+    }
     m_txZoomFeeding = true;
     updateSpectrum(bins, SpectrumDecodeScale{});
     m_txZoomFeeding = false;
