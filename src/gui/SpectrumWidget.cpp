@@ -44,6 +44,8 @@
 
 #include <QPainter>
 #include <QPainterPath>
+#include <QStyleOptionButton>
+#include <QStylePainter>
 #include <QResizeEvent>
 #include <QScopeGuard>
 #include <QMouseEvent>
@@ -113,6 +115,44 @@ bool SpectrumWidget::s_starstruckMode = false;
 QSoundEffect* SpectrumWidget::s_starstruckSound = nullptr;
 
 namespace {
+
+// ANAN fork build 694 (operator, 24.11: "the + rate button looks like -").
+// The two signs were font glyphs: U+2212 and "+" of the button font are not
+// the same size (the "+" of the 13 px bold UI font draws small and thin, at
+// the button's alpha it read as a minus). The sign is drawn here instead --
+// two strokes of the same length and weight on both buttons -- in the
+// colours of kRateBtnStyle (normal / hover / pressed); the face and border
+// stay the style sheet's.
+class RateSignButton : public QPushButton {
+public:
+    RateSignButton(bool plus, QWidget* parent) : QPushButton(parent), m_plus(plus) {}
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QStylePainter sp(this);
+        QStyleOptionButton opt;
+        initStyleOption(&opt);
+        opt.text.clear();
+        sp.drawControl(QStyle::CE_PushButton, opt);
+        const QColor ink = isDown() ? QColor(0, 0, 0)
+                         : underMouse() ? QColor(220, 232, 244, 220)
+                                        : QColor(200, 216, 232, 150);
+        // Whole pixels, centred on the 20 x 20 face: 10 px strokes, 2 px thick.
+        constexpr int kLen = 10;
+        constexpr int kWeight = 2;
+        const int x0 = (width() - kLen) / 2;
+        const int y0 = (height() - kLen) / 2;
+        const int xm = (width() - kWeight) / 2;
+        const int ym = (height() - kWeight) / 2;
+        sp.fillRect(QRect(x0, ym, kLen, kWeight), ink);
+        if (m_plus)
+            sp.fillRect(QRect(xm, y0, kWeight, kLen), ink);
+    }
+
+private:
+    bool m_plus;
+};
 
 constexpr int kDssMaxIncrementalUploadRows = 8;
 constexpr qint64 kDssFftPixelScaleSettleMs = 750;
@@ -2480,7 +2520,8 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
             "QPushButton:hover { background: rgba(30,50,70,150); color: rgba(220,232,244,220); }"
             "QPushButton:pressed { background: rgba(0,180,216,150); color: #000; }";
         auto makeRateBtn = [&](const QString& text, const QString& objName, const QString& a11y) {
-            auto* btn = new QPushButton(text, this);
+            // Build 694: the sign is drawn (RateSignButton), not a glyph.
+            auto* btn = new RateSignButton(text == QStringLiteral("+"), this);
             btn->setObjectName(objName);
             btn->setAccessibleName(a11y);
             btn->setFixedSize(20, 20);
