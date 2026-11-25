@@ -110,6 +110,13 @@ void SetRXAFMDeviation(int channel, double deviationHz);
 void SetRXAFMLimGain(int channel, double maximumGainDb);
 void SetRXAFMLimRun(int channel, int run);
 void SetRXAPanelGain1(int channel, double gain);
+// The RXA / TXA equaliser (eq.c, upstream): F[0] / G[0] are unused / the
+// preamp, F[1..nfreqs] in Hz rising and G[1..nfreqs] in dB; up to 256 points.
+// ANAN fork build 717 (the applet's graphic EQ).
+void SetRXAEQRun(int channel, int run);
+void SetRXAEQProfile(int channel, int nfreqs, double* F, double* G);
+void SetTXAEQRun(int channel, int run);
+void SetTXAEQProfile(int channel, int nfreqs, double* F, double* G);
 // 0 = mono (I copied to both channels), 1 = binaural (I left, Q right).
 void SetRXAPanelBinaural(int channel, int bin);
 void SetRXABandpassFreqs(int channel, double lowHz, double highHz);

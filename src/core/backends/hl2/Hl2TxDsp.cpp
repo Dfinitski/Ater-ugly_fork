@@ -142,6 +142,7 @@ bool Hl2TxDsp::buildModulator(std::string* error)
         m_channel->setTxCompressor(true, m_compGainDb);
     if (m_levOn)
         m_channel->setTxLeveler(true, m_levTopDb);
+    m_channel->setGraphicEq(m_geqOn, m_geqDb);   // build 717
     applyTwoTone();
     applyCfir();
 
@@ -721,6 +722,17 @@ void Hl2TxDsp::setCompressor(bool on, double gainDb)
         qCWarning(lcTxMod) << "HL2 TXA modulator: compressor setting refused";
 #endif
     qCInfo(lcTxMod) << "HL2 TXA modulator: compressor" << (on ? "on" : "off") << gainDb << "dB";
+}
+
+void Hl2TxDsp::setGraphicEq(bool on, const std::array<double, 8>& gainsDb)
+{
+    m_geqOn = on;
+    m_geqDb = gainsDb;
+#if AETHER_HL2_TX_TXA
+    if (m_channel && !m_channel->setGraphicEq(on, gainsDb))
+        qCWarning(lcTxMod) << "HL2 TXA modulator: graphic EQ setting refused";
+#endif
+    qCInfo(lcTxMod) << "HL2 TXA modulator: graphic EQ" << (on ? "on" : "off");
 }
 
 void Hl2TxDsp::setTwoTone(bool on, double f1Hz, double f2Hz, double mag)

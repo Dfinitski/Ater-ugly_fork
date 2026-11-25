@@ -12,6 +12,7 @@
 #include "core/AppSettings.h"
 
 #include <QHash>
+#include <array>
 #include <functional>
 #include <algorithm>
 #include <limits>
@@ -168,6 +169,23 @@ public:
     [[nodiscard]] static QString binauralKey(int rx)
     {
         return rx == 1 ? QStringLiteral("AnanRx2Binaural") : QStringLiteral("AnanRx1Binaural");
+    }
+    // ANAN fork build 717: the applet's graphic EQ (receive [0], transmit
+    // [1]), 63 Hz .. 8 kHz in dB, written by MainWindow, pushed by the
+    // backend to the receivers' / transmitter's WDSP equaliser whenever
+    // graphicEqVersion moves. Not persisted here (EqualizerModel keeps it).
+    bool graphicEqOn[2] = {false, false};
+    std::array<double, 8> graphicEqDb[2]{};
+    unsigned graphicEqVersion = 0;
+    void setGraphicEq(int side, bool on, const std::array<double, 8>& db)
+    {
+        if (side < 0 || side > 1)
+            return;
+        if (graphicEqOn[side] == on && graphicEqDb[side] == db)
+            return;
+        graphicEqOn[side] = on;
+        graphicEqDb[side] = db;
+        ++graphicEqVersion;
     }
     void setBinaural(int rx, bool on)
     {

@@ -12576,6 +12576,31 @@ void Hl2Backend::ananNoiseLineStep(int rx, const std::vector<float>& rawDbfs, do
             br->binauralSent = want;
             QMetaObject::invokeMethod(br->dsp, "setBinaural", Qt::QueuedConnection, Q_ARG(bool, want));
         }
+        // ANAN fork build 717: the applet's graphic EQ, receive side, to this
+        // receiver's WDSP equaliser (again whenever the DSP object is new).
+        const auto& ui = anan::AnanUiState::instance();
+        if (br->dsp != br->geqDsp || ui.graphicEqVersion != br->geqVersion) {
+            br->geqDsp = br->dsp;
+            br->geqVersion = ui.graphicEqVersion;
+            Hl2RxDsp* dsp = br->dsp;
+            const bool on = ui.graphicEqOn[0];
+            const std::array<double, 8> db = ui.graphicEqDb[0];
+            QMetaObject::invokeMethod(dsp, [dsp, on, db] { dsp->setGraphicEq(on, db); },
+                                      Qt::QueuedConnection);
+        }
+    }
+    // Build 717: and the transmit side, to the TXA equaliser.
+    if (rx == 0 && m_txDsp) {
+        const auto& ui = anan::AnanUiState::instance();
+        if (m_txDsp != m_txGeqDsp || ui.graphicEqVersion != m_txGeqVersion) {
+            m_txGeqDsp = m_txDsp;
+            m_txGeqVersion = ui.graphicEqVersion;
+            Hl2TxDsp* tx = m_txDsp;
+            const bool on = ui.graphicEqOn[1];
+            const std::array<double, 8> db = ui.graphicEqDb[1];
+            QMetaObject::invokeMethod(tx, [tx, on, db] { tx->setGraphicEq(on, db); },
+                                      Qt::QueuedConnection);
+        }
     }
     if (rx < 2)
         ananOwnNoiseCaptureStep(rx, t);

@@ -305,6 +305,7 @@ void Hl2RxDsp::installChannel(RebuildResult result)
     m_channel->setFilter(m_config.filterLowHz, m_config.filterHighHz);
     m_channel->setAgc(m_config.agcMode, m_config.maximumAgcGainDb);
     m_channel->setBinaural(m_binaural);   // build 307
+    m_channel->setGraphicEq(m_geqOn, m_geqDb);   // build 717
     // The squelch, AFTER setMode above so WdspChannel routes it to the stage
     // for the mode actually in force. A fresh channel opens with every
     // squelch stage off; without this a rate change would open the squelch
@@ -757,6 +758,16 @@ void Hl2RxDsp::setBinaural(bool on)
         m_channel->setBinaural(on);
 }
 
+void Hl2RxDsp::setGraphicEq(bool on, const std::array<double, 8>& gainsDb)
+{
+    if (m_sub)   // the SPLIT receiver is a clone of this one
+        m_sub->setGraphicEq(on, gainsDb);
+    m_geqOn = on;
+    m_geqDb = gainsDb;
+    if (canPushToChannel())
+        m_channel->setGraphicEq(on, gainsDb);
+}
+
 void Hl2RxDsp::setAudioMuted(bool muted)
 {
     if (m_sub)   // build 470: the SPLIT receiver is a clone of this one
@@ -1175,6 +1186,7 @@ void Hl2RxDsp::startSubBuild()
     }
     sub->setLinearPhaseWanted(m_linearWanted);
     sub->setBinaural(m_binaural);
+    sub->setGraphicEq(m_geqOn, m_geqDb);   // build 717
     sub->setAudioMuted(m_audioMuted);
     sub->setAgcTxHold(m_hostHold);
     sub->setShift(m_subShiftHz);

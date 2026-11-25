@@ -792,6 +792,8 @@ private:
     bool m_codecProcOn = false;
     int m_codecProcLevel = 0;
     bool m_txCompPushedOn = false;
+    Hl2TxDsp* m_txGeqDsp = nullptr;      // build 717: the TX DSP the graphic EQ was last sent to
+    unsigned m_txGeqVersion = 0;
     double m_txCompPushedGain = -1.0;
     // ANAN-100D port: TX capture (txcap-mic.wav, see Hl2Backend.cpp).
     void ananCaptureRaw(const std::vector<float>& raw);
@@ -1143,6 +1145,8 @@ private:
         Hl2RxDsp* dsp = nullptr;
         Hl2RxDsp* binauralDsp = nullptr;   // build 307: the DSP BIN was last sent to
         bool binauralSent = false;
+        Hl2RxDsp* geqDsp = nullptr;      // build 717: the DSP the graphic EQ was last sent to
+        unsigned geqVersion = 0;
         // ANAN port: the DRM decoder on this receiver (DrmApplet), or null.
         // Shared with the dsp, which feeds it on the I/O thread.
         std::shared_ptr<aether_drm::DrmEngine> drm;

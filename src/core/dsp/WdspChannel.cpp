@@ -1,5 +1,6 @@
 #include "core/dsp/WdspChannel.h"
 #include "core/dsp/FftwPlannerLock.h"
+#include "core/dsp/GraphicEqCurve.h"
 
 #include <aether_wdsp.h>
 #include <fftw3.h>
@@ -843,6 +844,28 @@ bool WdspChannel::setTxCompressor(bool on, double gainDb) noexcept
         const ControlSetupLock setupLock;
         SetTXACompressorGain(m_channelId, std::clamp(gainDb, 0.0, 20.0));
         SetTXACompressorRun(m_channelId, on ? 1 : 0);
+    }
+    endControlOperation();
+    return true;
+}
+
+bool WdspChannel::setGraphicEq(bool run, const std::array<double, 8>& gainsDb) noexcept
+{
+    if (!beginControlOperation())
+        return false;
+    {
+        const ControlSetupLock setupLock;
+        AetherSDR::GraphicEqCurve curve = AetherSDR::buildGraphicEqCurve(
+            kGraphicEqCentresHz, gainsDb, static_cast<double>(m_config.dspSampleRate));
+        if (m_config.direction == Direction::Receive) {
+            SetRXAEQProfile(m_channelId, curve.points(), curve.freqsHz.data(),
+                            curve.gainsDb.data());
+            SetRXAEQRun(m_channelId, run ? 1 : 0);
+        } else {
+            SetTXAEQProfile(m_channelId, curve.points(), curve.freqsHz.data(),
+                            curve.gainsDb.data());
+            SetTXAEQRun(m_channelId, run ? 1 : 0);
+        }
     }
     endControlOperation();
     return true;

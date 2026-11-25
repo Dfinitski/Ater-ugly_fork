@@ -365,6 +365,12 @@ public:
     // waits for this to finish. Same validation as setFilter().
     bool setFilterLive(double lowHz, double highHz) noexcept;
     // ANAN-100D port: TXA speech compressor (transmit channels only).
+    // ANAN fork build 717: the applet's 8-band graphic EQ (63 Hz .. 8 kHz,
+    // dB) on WDSP's equaliser of this channel -- RXA or TXA by direction --
+    // as the curve of GraphicEqCurve.h; off = the stage bypassed.
+    static constexpr std::array<double, 8> kGraphicEqCentresHz{
+        63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0};
+    bool setGraphicEq(bool run, const std::array<double, 8>& gainsDb) noexcept;
     bool setTxCompressor(bool on, double gainDb) noexcept;
     // ANAN fork build 418: the transmit bandpass's phase (TXASetMP: bp0..bp2,
     // FM emphasis). Transmit channels only; same magnitude either way.

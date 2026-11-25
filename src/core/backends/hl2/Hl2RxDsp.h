@@ -245,6 +245,10 @@ public:
     Q_INVOKABLE void setAgc(int agcMode, double maximumGainDb);
     // Build 307: binaural audio (RX applet BIN); kept across channel rebuilds.
     Q_INVOKABLE void setBinaural(bool on);
+    // ANAN fork build 717: the applet's graphic EQ on this receiver's WDSP
+    // equaliser (WdspChannel::setGraphicEq); kept across channel rebuilds and
+    // given to the SPLIT receiver. DSP thread (the backend queues a lambda).
+    void setGraphicEq(bool on, const std::array<double, 8>& gainsDb);
     // RX frequency shift in Hz relative to the NCO — how the backend tunes the
     // slice inside the passband without moving the DDC. Kept in m_config so a
     // later reconfigure() rebuilds the channel with the operator's offset.
@@ -927,6 +931,8 @@ private:
     std::atomic<quint64> m_spectrumGapDiscards {0};
     Config m_config;
     bool m_binaural = false;   // build 307
+    bool m_geqOn = false;                       // build 717
+    std::array<double, 8> m_geqDb{};            // build 717
 
     // Notch set, mirrored so reconfigure() can replay it — see the note on
     // addNotch(). Index in this vector IS the WDSP notch index; keeping them

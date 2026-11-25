@@ -714,7 +714,8 @@ private:
     void applySpeechProcessorToClientComp(bool operatorIntent);
     // Push the 8-band graphic EQ onto the shared ClientEq. transmit selects the
     // TX or RX instance.
-    void syncGraphicEqFromClientEq();   // ANAN fork build 687
+    void syncGraphicEqFromClientEq();   // ANAN fork build 687; 717: exclusion only
+    int m_aetherEqLastOn[2] = {-1, -1};  // build 717: ClientEq RX / TX enable last seen
     void applyGraphicEqToClientEq(bool transmit);
     void wireExternalControllers(); // MainWindow_Controllers.cpp
     void setupCtr2Proxy();          // MainWindow_Controllers.cpp

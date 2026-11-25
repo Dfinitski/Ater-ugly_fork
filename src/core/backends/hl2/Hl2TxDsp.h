@@ -86,6 +86,9 @@ public:
     // ANAN-100D port: WDSP's TXA speech compressor (PROC on the radio mic).
     // Kept across channel rebuilds.
     Q_INVOKABLE void setCompressor(bool on, double gainDb);
+    // ANAN fork build 717: the applet's graphic EQ on the TXA equaliser;
+    // kept across channel rebuilds. TX DSP thread (queued lambda).
+    void setGraphicEq(bool on, const std::array<double, 8>& gainsDb);
     Q_INVOKABLE void setLeveler(bool on, double topDb);
     // ANAN-100D port: PureSignal 2-TONE -- WDSP's TXA post-generator in
     // two-tone mode replaces the modulated signal (after the ALC, before the
@@ -206,6 +209,8 @@ private:
     Config m_config;
     TxCoordinator::Context m_txContext;
     bool m_configured = false;
+    bool m_geqOn = false;                       // build 717
+    std::array<double, 8> m_geqDb{};            // build 717
     bool m_compOn = false;
     bool m_linearPhase = true;    // build 418; build 554: every mode
     bool m_cfirOn = false;
