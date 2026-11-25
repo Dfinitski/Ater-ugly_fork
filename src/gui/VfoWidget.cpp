@@ -498,6 +498,39 @@ private:
     double m_opacity{1.0};
 };
 
+// ANAN fork build 676 (operator, 24.11: "on the expanded flag the upper line
+// must be centred over the lower one"). QLabel centres its lines through
+// QTextLayout, which gives a line wider than the label no centring offset
+// (it starts at the left edge) while the shorter line is centred in the
+// label -- so once the gap left of the frequency (build 556's width limit)
+// is narrower than "SWR 2.0:1", the two lines no longer share a centre.
+// This label centres every line on its own middle, also a line wider than
+// it (that one is clipped evenly on both sides).
+class CenteredLinesLabel : public QLabel
+{
+public:
+    using QLabel::QLabel;
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        const QString t = text();
+        if (t.isEmpty())
+            return;
+        QPainter p(this);
+        p.setFont(font());
+        p.setPen(palette().color(QPalette::WindowText));
+        const QFontMetricsF fm(font());
+        const QStringList lines = t.split(QLatin1Char('\n'));
+        const double lineH = fm.lineSpacing();
+        double y = (height() - lineH * lines.size()) / 2.0 + fm.ascent();
+        for (const QString& line : lines) {
+            p.drawText(QPointF((width() - fm.horizontalAdvance(line)) / 2.0, y), line);
+            y += lineH;
+        }
+    }
+};
+
 static const char* kTabLblColor = "#c8d8e8";
 // Build 462 (operator, 16.11: "the tab texts are brighter than the speaker
 // and the frequency digits -- bring them to the speaker's colour"): all three
@@ -1359,7 +1392,7 @@ void VfoWidget::buildUI()
         // the mode button's text"). The label takes the row's free space in
         // place of the stretch: its width never moves the frequency, a text
         // too long for the gap is cut. Clicks pass through as they did.
-        m_smartMtrValueLabel = new QLabel;
+        m_smartMtrValueLabel = new CenteredLinesLabel;   // build 676
         m_smartMtrValueLabel->setFixedHeight(30);
         // Build 556 (operator, 20.11: "the S value centred over the dB value
         // under it"): the label is as wide as its text (set with the text,
@@ -5043,13 +5076,16 @@ void VfoWidget::updateSmartMtrValueText()
             sUnit = (w < 9.95) ? QString::number(w, 'f', 1) + QStringLiteral(" W")
                                : QString::number(std::lround(w)) + QStringLiteral(" W");
         }
-        if (std::isfinite(m_txValSwr) && m_txValSwr >= 1.0)
-            level = QStringLiteral("SWR ") + QString::number(m_txValSwr, 'f', 1)
-                + QStringLiteral(":1");
-        if (sUnit.isEmpty()) {
-            sUnit = level;
-            level.clear();
-        }
+        // Build 676 (operator, 24.11: "when the power is low and the SWR
+        // cannot be measured the SWR line vanishes -- it must read
+        // SWR __:_"). An SWR absent for the whole 0.5 s (the radio's
+        // txMeters say it is not valid) shows that placeholder under the
+        // power; before the first power reading nothing is shown.
+        if (!sUnit.isEmpty())
+            level = (std::isfinite(m_txValSwr) && m_txValSwr >= 1.0)
+                ? QStringLiteral("SWR ") + QString::number(m_txValSwr, 'f', 1)
+                      + QStringLiteral(":1")
+                : QStringLiteral("SWR __:_");
     } else if (m_smartMtrWidget && m_smartMtr && m_smartMtrWidget->showsSignalValues()
         && std::isfinite(m_smartValDbm)) {
         m_smartMtrWidget->valueStrings(m_smartValDbm, sUnit, level);
