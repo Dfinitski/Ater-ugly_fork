@@ -11511,6 +11511,21 @@ Thetis (console.cs `ZoomToBand`, `zoomToBandBandwidth`): панорама на �
 
 Файлы: `src/gui/SpectrumWidget.{cpp,h}`, `src/gui/VfoWidget.{cpp,h}`, `src/core/ForkBuild.h`. errcheck: SpectrumWidget 12, VfoWidget 4 (базовые), bogus +1.
 
+## 666. Сборка 683 — кнопка «BPF Bypass» в окне WB (Wideband Monitor)
+
+**Просьба оператора (24.11):** в WB добавить кнопку «BPF Bypass». Включение шлёт в протокол байпас для выбранного в окне АЦП (отдельно выбирать не нужно). При закрытии окна байпас отключается и не запоминается.
+
+**Сделано.**
+- **`WidebandMonitorDialog`.** Кнопка-переключатель «BPF Bypass» в верхней строке, после «Update».
+  - Включена — `P2Transport::setWbBypass(1 << ADC окна)`, выключена — `setWbBypass(0)`.
+  - При смене АЦП в окне байпас переходит на новый АЦП; после переподключения радио отправляется заново.
+  - `hideEvent` отжимает кнопку без сигнала и шлёт 0; деструктор тоже шлёт 0.
+  - Состояние не сохраняется: окно всегда открывается с выключенной кнопкой.
+- **`P2Transport::setWbBypass(mask)` / `m_wbBypassMask`.** В `sendHighPriority`, после всех правил фильтров (банки, PS, «Bypass BPF When TX»), `adc0Filter` и/или `adc1Filter` = `AlexRxFilter::Bypass`. Для старого Alex (100/100D/200D) это бит 12 (HF Bypass) в Alex0 и самый широкий LPF. У АЦП2 на этих платах банка нет, бит ему ничего не включает.
+- Только Protocol 2: окно WB работает только по P2.
+
+Файлы: `src/gui/WidebandMonitorDialog.{cpp,h}`, `src/core/backends/anan/P2Transport.{cpp,h}`, `src/core/ForkBuild.h`. errcheck: WidebandMonitorDialog 4 (базовый), P2Transport 0, bogus +1.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

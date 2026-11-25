@@ -19,6 +19,7 @@
 #include <vector>
 
 class QComboBox;
+class QPushButton;
 class QLabel;
 class QSpinBox;
 
@@ -85,6 +86,7 @@ protected:
 private:
     void attachTransport();
     void pushEnable(bool on);
+    void pushBypass();   // build 683
     void onFrame(int adc, const QVector<float>& samples);
     void saveSettings();
 
@@ -94,6 +96,7 @@ private:
     WidebandView* m_view = nullptr;
     QComboBox* m_adcCombo = nullptr;
     QComboBox* m_rateCombo = nullptr;
+    QPushButton* m_bypassBtn = nullptr;   // build 683: BPF Bypass
     QSpinBox* m_avgSpin = nullptr;
     QSpinBox* m_topSpin = nullptr;
     QSpinBox* m_bottomSpin = nullptr;

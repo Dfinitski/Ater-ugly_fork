@@ -870,6 +870,13 @@ void P2Transport::sendHighPriority(bool run)
             o.adc0Filter = psBypassesBank(0) ? AlexRxFilter::Bypass : bank0.filter;   // build 502
             o.adc1Filter = o.adc0Filter;
         }
+        // Build 683: the Wideband Monitor's BPF Bypass, the ADC it shows.
+        // (On ANAN-100/100D/200D only ADC1 has a bank; ADC2's bit then has
+        // nothing to drive -- the protocol's bit, whatever the board does.)
+        if (m_wbBypassMask & 1)
+            o.adc0Filter = AlexRxFilter::Bypass;
+        if (m_wbBypassMask & 2)
+            o.adc1Filter = AlexRxFilter::Bypass;
     }
     const auto pkt =
                  buildHighPriority(run,
@@ -2369,6 +2376,19 @@ void P2Transport::setTxBypassBpf2(bool on)
         return;
     m_txBypassBpf2 = on;
     qCInfo(lcAnanP2T) << "ANAN P2 transport: Bypass BPF2 When TX" << (on ? "on" : "off");
+    if (m_run && m_configured)
+        sendHighPriority(true);
+}
+
+void P2Transport::setWbBypass(int adcMask)
+{
+    adcMask &= 3;
+    if (adcMask == m_wbBypassMask)
+        return;
+    m_wbBypassMask = adcMask;
+    qCInfo(lcAnanP2T) << "ANAN P2 transport: Wideband BPF Bypass"
+                      << (adcMask == 0 ? QStringLiteral("off")
+                                       : QStringLiteral("ADC%1").arg(adcMask == 2 ? 2 : 1));
     if (m_run && m_configured)
         sendHighPriority(true);
 }

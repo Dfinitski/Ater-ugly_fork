@@ -12,6 +12,8 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPushButton>
+#include <QSignalBlocker>
 #include <QShowEvent>
 #include <QSpinBox>
 #include <QTimer>
@@ -359,6 +361,14 @@ WidebandMonitorDialog::WidebandMonitorDialog(RadioModel* model, QWidget* parent)
         m_rateCombo->setCurrentIndex(i >= 0 ? i : 1);
     }
     row->addWidget(m_rateCombo);
+    // ANAN fork build 683 (operator, 24.11): "BPF Bypass" -- the receive
+    // filter bank of the ADC shown bypassed while on, so the whole range
+    // comes through. Off whenever the window opens or closes; not stored.
+    m_bypassBtn = new QPushButton(QStringLiteral("BPF Bypass"));
+    m_bypassBtn->setCheckable(true);
+    m_bypassBtn->setToolTip(QStringLiteral(
+        "Bypass the receive band-pass filters of the ADC shown (off when the window closes)"));
+    row->addWidget(m_bypassBtn);
     addLabel(QStringLiteral("Average:"));
     m_avgSpin = new QSpinBox;
     m_avgSpin->setRange(1, 50);
@@ -446,6 +456,10 @@ WidebandMonitorDialog::WidebandMonitorDialog(RadioModel* model, QWidget* parent)
             pushEnable(true);
     };
     connect(m_adcCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, streamChanged);
+    // Build 683: the bypass follows the ADC shown.
+    connect(m_bypassBtn, &QPushButton::toggled, this, [this] { pushBypass(); });
+    connect(m_adcCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this] { pushBypass(); });
     connect(m_rateCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, streamChanged);
 
     // A new backend on every connect: follow it.
@@ -454,6 +468,7 @@ WidebandMonitorDialog::WidebandMonitorDialog(RadioModel* model, QWidget* parent)
             attachTransport();
             if (m_enabled)
                 pushEnable(true);
+            pushBypass();   // build 683: a new transport starts without it
         });
     }
     // Receiver marker.
@@ -477,6 +492,19 @@ WidebandMonitorDialog::WidebandMonitorDialog(RadioModel* model, QWidget* parent)
 WidebandMonitorDialog::~WidebandMonitorDialog()
 {
     pushEnable(false);
+    if (m_transport)   // build 683
+        QMetaObject::invokeMethod(m_transport.data(), "setWbBypass", Qt::QueuedConnection,
+                                  Q_ARG(int, 0));
+}
+
+void WidebandMonitorDialog::pushBypass()
+{
+    if (!m_transport)
+        return;
+    const int mask = (m_bypassBtn && m_bypassBtn->isChecked() && isVisible())
+        ? (1 << m_adcCombo->currentData().toInt()) : 0;
+    QMetaObject::invokeMethod(m_transport.data(), "setWbBypass", Qt::QueuedConnection,
+                              Q_ARG(int, mask));
 }
 
 void WidebandMonitorDialog::saveSettings()
@@ -532,6 +560,12 @@ void WidebandMonitorDialog::showEvent(QShowEvent* event)
 void WidebandMonitorDialog::hideEvent(QHideEvent* event)
 {
     pushEnable(false);
+    // Build 683: closing the window ends the bypass; it opens off next time.
+    if (m_bypassBtn && m_bypassBtn->isChecked()) {
+        const QSignalBlocker block(m_bypassBtn);
+        m_bypassBtn->setChecked(false);
+    }
+    pushBypass();
     PersistentDialog::hideEvent(event);
 }
 

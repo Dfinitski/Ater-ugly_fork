@@ -199,6 +199,11 @@ public:
     Q_INVOKABLE void setTxBypassBpf(bool on);
     // Build 506: "Bypass BPF2 When TX" -- the same for ADC2's bank.
     Q_INVOKABLE void setTxBypassBpf2(bool on);
+    // ANAN fork build 683 (operator, 24.11): the Wideband Monitor's "BPF
+    // Bypass" -- the receive filter bank of each ADC in `adcMask` (bit 0 =
+    // ADC1, bit 1 = ADC2) bypassed while the window asks for it; 0 = off.
+    // Not stored anywhere: the window clears it when it closes.
+    Q_INVOKABLE void setWbBypass(int adcMask);
     Q_INVOKABLE void setPsCouplerOnTx(bool on);
     // Build 396: Thetis' "BPF ByPass on PS" (Setup, ORION MkII / Saturn
     // boards, on by default): while transmitting with PureSignal on, the
@@ -800,6 +805,7 @@ private:
     bool m_adc1GndOnTx = true;
     bool m_txBypassBpf = false;     // build 502: "Bypass BPF1 When TX"
     bool m_txBypassBpf2 = false;    // build 506: "Bypass BPF2 When TX"
+    int m_wbBypassMask = 0;         // build 683: Wideband Monitor "BPF Bypass"
     bool m_psCouplerOnTx = false;   // build 502: "PS Coupler Always when TX"
     [[nodiscard]] bool psBypassesBank(int adc) const;
     std::array<std::atomic<int>, 32> m_forcedBoardFor{};   // reported id -> forced id
