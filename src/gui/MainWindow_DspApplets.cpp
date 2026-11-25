@@ -43,6 +43,7 @@
 #include <memory>
 
 #include <algorithm>
+#include <cmath>
 
 namespace AetherSDR {
 
@@ -900,15 +901,6 @@ void MainWindow::applyGraphicEqToClientEq(bool transmit)
     if (!eq)
         return;
 
-    // ANAN fork build 686 (operator, 24.11: "when the Aether EQ is on for RX
-    // or TX, the ordinary EQ of that side is switched off and locked"). The
-    // two share this ClientEq (slots 0..7, one enable): one that is on, and
-    // not by this EQ, is the Aether EQ's -- leave its bands and its enable
-    // alone (the EqApplet of that side is locked, see the timer below).
-    const int side = transmit ? 1 : 0;
-    if (eq->isEnabled() && !m_graphicEqAppliedOn[side])
-        return;
-
     const auto& model = m_radioModel.equalizerModel();
     const bool enabled = transmit ? model.txEnabled() : model.rxEnabled();
 
@@ -919,24 +911,36 @@ void MainWindow::applyGraphicEqToClientEq(bool transmit)
         63.0f, 125.0f, 250.0f, 500.0f, 1000.0f, 2000.0f, 4000.0f, 8000.0f
     };
 
+    // ANAN fork build 687 (operator, 24.11: "it is one and the same
+    // equalizer -- synchronise the buttons and the sliders, receive and
+    // transmit"). A slider sets only the GAIN of its slot: a slot the Aether
+    // EQ already uses keeps its frequency, width and type (before, every
+    // slider movement rewrote all eight as 63 Hz .. 8 kHz peaks). Only a slot
+    // beyond the Aether EQ's active bands gets the graphic layout. The other
+    // direction -- the Aether EQ's enable and gains shown here -- is
+    // syncGraphicEqFromClientEq().
+    const int active = eq->activeBandCount();
     for (int i = 0; i < EqualizerModel::BandCount; ++i) {
         const auto band = static_cast<EqualizerModel::Band>(i);
         const int gainDb = transmit ? model.txBand(band) : model.rxBand(band);
-        ClientEq::BandParams p;
-        p.freqHz = kCentresHz[i];
+        ClientEq::BandParams p = eq->band(i);
+        if (i >= active) {
+            p.freqHz = kCentresHz[i];
+            p.q = 1.4f;
+            p.type = ClientEq::FilterType::Peak;
+            // A 0 dB band still runs, and must: leaving it disabled would make
+            // the slider's return to centre a different operation from never
+            // having moved it, and the two have to sound identical.
+            p.enabled = true;
+        } else if (std::lround(p.gainDb) == gainDb) {
+            continue;   // shown rounded: leave the Aether EQ's own value
+        }
         p.gainDb = static_cast<float>(gainDb);
-        p.q = 1.4f;
-        p.type = ClientEq::FilterType::Peak;
-        // A 0 dB band still runs, and must: leaving it disabled would make the
-        // slider's return to centre a different operation from never having
-        // moved it, and the two have to sound identical.
-        p.enabled = true;
         eq->setBand(i, p);
     }
-    if (eq->activeBandCount() < EqualizerModel::BandCount)
+    if (active < EqualizerModel::BandCount)
         eq->setActiveBandCount(EqualizerModel::BandCount);
     eq->setEnabled(enabled);
-    m_graphicEqAppliedOn[side] = enabled;   // build 686
 
     // The graphic EQ now owns slots 0..7 of a shared object. Both the
     // connect-time re-push and the family-swap unwind key off this — see
@@ -958,42 +962,47 @@ void MainWindow::applyGraphicEqToClientEq(bool transmit)
     }
 }
 
+// ANAN fork build 687: the graphic EQ shows the shared ClientEq of each side --
+// its enable and the gains of slots 0..7 (rounded to a dB, within +-10 dB) --
+// whoever set them (the Aether EQ's editors switch it with no signal, hence
+// the timer). Silent (restoreState with m_graphicEqReloading): nothing is
+// written back. The synced state is what the EQ applet keeps, so a connect
+// re-push brings back the same values.
+void MainWindow::syncGraphicEqFromClientEq()
+{
+    if (!m_audio || m_radioModel.usesFlexCommandPlane() || m_graphicEqFromRadio)
+        return;
+    auto& model = m_radioModel.equalizerModel();
+    EqualizerModel::State s = model.state();
+    auto read = [](ClientEq* eq, bool& enabled, std::array<int, EqualizerModel::BandCount>& bands) {
+        if (!eq)
+            return;
+        enabled = eq->isEnabled();
+        const int active = eq->activeBandCount();
+        for (int i = 0; i < EqualizerModel::BandCount; ++i) {
+            const int db = i < active ? static_cast<int>(std::lround(eq->band(i).gainDb)) : 0;
+            bands[static_cast<std::size_t>(i)] =
+                std::clamp(db, EqualizerModel::kMinBandDb, EqualizerModel::kMaxBandDb);
+        }
+    };
+    read(m_audio->clientEqRx(), s.rxEnabled, s.rxBands);
+    read(m_audio->clientEqTx(), s.txEnabled, s.txBands);
+    if (s == model.state())
+        return;
+    m_graphicEqReloading = true;
+    model.restoreState(s);
+    m_graphicEqReloading = false;
+    EqualizerModel::savePersistedState(s);
+}
+
 void MainWindow::wireHostModulatedVoiceChain()
 {
-    // ANAN fork build 686: the graphic EQ's lock per side, from the shared
-    // ClientEq's state (its enable is switched from several Aether places
-    // that send no signal) -- four times a second.
+    // Build 687: the Aether EQ -> the graphic EQ, four times a second.
     {
-        auto* eqLockTimer = new QTimer(this);
-        eqLockTimer->setInterval(250);
-        auto firstTick = std::make_shared<bool>(true);
-        connect(eqLockTimer, &QTimer::timeout, this, [this, firstTick] {
-            if (!m_appletPanel || !m_appletPanel->eqApplet())
-                return;
-            bool locked[2] = {false, false};
-            if (m_audio && !m_radioModel.usesFlexCommandPlane()) {
-                ClientEq* eqs[2] = {m_audio->clientEqRx(), m_audio->clientEqTx()};
-                const auto& model = m_radioModel.equalizerModel();
-                const bool graphicOn[2] = {model.rxEnabled(), model.txEnabled()};
-                for (int side = 0; side < 2; ++side) {
-                    if (!eqs[side])
-                        continue;
-                    // At start the shared ClientEq comes back on from the
-                    // saved strip settings; with the graphic EQ saved on for
-                    // that side it is taken as the graphic EQ's, as it was.
-                    if (*firstTick && graphicOn[side] && eqs[side]->isEnabled())
-                        m_graphicEqAppliedOn[side] = true;
-                    // Switched off from anywhere: the graphic EQ no longer
-                    // holds it on, and whoever switches it on next owns it.
-                    if (!eqs[side]->isEnabled())
-                        m_graphicEqAppliedOn[side] = false;
-                    locked[side] = eqs[side]->isEnabled() && !m_graphicEqAppliedOn[side];
-                }
-            }
-            *firstTick = false;
-            m_appletPanel->eqApplet()->setSideLocks(locked[0], locked[1]);
-        });
-        eqLockTimer->start();
+        auto* eqSyncTimer = new QTimer(this);
+        eqSyncTimer->setInterval(250);
+        connect(eqSyncTimer, &QTimer::timeout, this, [this] { syncGraphicEqFromClientEq(); });
+        eqSyncTimer->start();
     }
 
     // The persisted graphic EQ comes back BEFORE the ClientEq binding below, so

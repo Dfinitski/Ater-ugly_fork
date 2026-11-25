@@ -376,35 +376,6 @@ void EqApplet::syncFromModel()
     }
 
     m_updatingFromModel = false;
-    applySideLock();   // build 686: the view may have changed
-}
-
-void EqApplet::setSideLocks(bool rxLocked, bool txLocked)
-{
-    if (rxLocked == m_rxLocked && txLocked == m_txLocked)
-        return;
-    m_rxLocked = rxLocked;
-    m_txLocked = txLocked;
-    applySideLock();
-}
-
-void EqApplet::applySideLock()
-{
-    // Build 686: the side shown, locked while the Aether EQ of that side is on.
-    const bool locked = m_showTx ? m_txLocked : m_rxLocked;
-    if (m_onBtn) {
-        m_onBtn->setEnabled(!locked);
-        m_onBtn->setToolTip(locked
-            ? (m_showTx ? QStringLiteral("Locked: the Aether TX EQ is on")
-                        : QStringLiteral("Locked: the Aether RX EQ is on"))
-            : QString());
-    }
-    if (m_resetBtn)
-        m_resetBtn->setEnabled(!locked);
-    for (QSlider* s : m_sliders) {
-        if (s)
-            s->setEnabled(!locked);
-    }
 }
 
 } // namespace AetherSDR
