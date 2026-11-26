@@ -3,6 +3,7 @@
 #include "VoiceModeGate.h"   // isCwMode() — one CW-mode list, not thirteen
 #include "ComboStyle.h"
 #include "HGauge.h"
+#include "ButtonStyles.h"   // ANAN fork build 771
 #include "models/SliceModel.h"
 #include "models/TransmitModel.h"
 #include "Theme.h"
@@ -46,30 +47,9 @@ static constexpr float kAlcGainGaugeMaxDb = 40.0f;
 
 // ── Style constants ──────────────────────────────────────────────────────────
 
-static const QString kBlueActive =
-    "QPushButton:checked { background-color: #0070c0; color: #ffffff; "
-    "border: 1px solid #0090e0; }"
-    // "Checked but holding nothing" is a real state for the Hold Delay toggle
-    // (the preference persists across a disconnect, the held delay does not —
-    // #5288), so it must not look identical to "checked and protecting".
-    // Alpha-dims the accent above rather than naming a second colour: no new
-    // hardcoded colour and no new setStyleSheet() call site for the ratchet
-    // (tools/audit_colours.py), and it tracks the accent if that is retokenised.
-    // Buttons without the property simply do not match this rule.
-    "QPushButton[holdUnarmed=\"true\"]:checked { "
-    "background-color: rgba(0, 112, 192, 0.35); "
-    "color: rgba(255, 255, 255, 0.6); "
-    "border: 1px dashed rgba(0, 144, 224, 0.5); }";
-
-static const QString kGreenActive =
-    "QPushButton:checked { background-color: #006040; color: #00ff88; "
-    "border: 1px solid #00a060; }";
-
-static constexpr const char* kButtonBase =
-    "QPushButton { background: #1a3a5a; border: 1px solid #205070; "
-    "border-radius: 3px; color: #c8d8e8; font-size: 10px; font-weight: bold; }"
-    "QPushButton[continuousCompressor=\"true\"] { font-size: 11px; font-weight: normal; }"
-    "QPushButton:hover { background: #204060; }";
+// ANAN fork build 771: kBlueActive / kGreenActive / kButtonBase (the mic and
+// CW toggles) are ButtonStyles "mic.select" / "mic.toggle" -- ButtonStyles.cpp
+// keeps their original text; their colours are color.button.mic.* tokens.
 
 static const QString kStepBtnStyle =
     "QPushButton { background-color: #1a2a3a; color: #c8d8e8; "
@@ -527,7 +507,7 @@ void PhoneCwApplet::buildPhonePanel()
         m_accBtn->setFixedWidth(48);
         m_accBtn->setAccessibleName("Accessory mic input");
         m_accBtn->setAccessibleDescription("Enable accessory microphone input");
-        m_accBtn->setStyleSheet(QString(kButtonBase) + kGreenActive);
+        AetherSDR::ButtonStyles::apply(m_accBtn, "mic.toggle");   // build 771
         row->addWidget(m_accBtn);
 
         connect(m_micLevelSlider, &QSlider::valueChanged, this, [this](int v) {
@@ -584,7 +564,7 @@ void PhoneCwApplet::buildPhonePanel()
         m_procBtn->setFixedWidth(56);
         m_procBtn->setAccessibleName("Speech processor");
         m_procBtn->setAccessibleDescription("Toggle speech processor for compression");
-        m_procBtn->setStyleSheet(QString(kButtonBase) + kGreenActive);
+        AetherSDR::ButtonStyles::apply(m_procBtn, "mic.toggle");   // build 771
         row->addWidget(m_procBtn);
 
         // 3-position slider with NOR / DX / DX+ labels
@@ -643,7 +623,7 @@ void PhoneCwApplet::buildPhonePanel()
         m_daxBtn->setFixedWidth(48);
         m_daxBtn->setAccessibleName("DAX digital audio");
         m_daxBtn->setAccessibleDescription("Toggle DAX digital audio exchange");
-        m_daxBtn->setStyleSheet(QString(kButtonBase) + kBlueActive);
+        AetherSDR::ButtonStyles::apply(m_daxBtn, "mic.select");   // build 771
         row->addWidget(m_daxBtn);
 
         connect(m_procBtn, &QPushButton::toggled, this, [this](bool on) {
@@ -677,7 +657,7 @@ void PhoneCwApplet::buildPhonePanel()
         m_monBtn->setFixedWidth(48);
         m_monBtn->setAccessibleName("TX monitor");
         m_monBtn->setAccessibleDescription("Toggle sidetone monitor of transmitted audio");
-        m_monBtn->setStyleSheet(QString(kButtonBase) + kGreenActive);
+        AetherSDR::ButtonStyles::apply(m_monBtn, "mic.toggle");   // build 771
         // ANAN-100D port (operator, 31.10): MON and DUP live in the TX applet
         // now; this row is the monitor level only, "Mon lvl", aligned with
         // TX Low / TX High below. The buttons stay (hidden) for the syncs.
@@ -697,7 +677,7 @@ void PhoneCwApplet::buildPhonePanel()
         m_dupBtn->setFixedWidth(48);
         m_dupBtn->setAccessibleName("Duplex");
         m_dupBtn->setToolTip("Duplex: the panadapter and waterfall keep showing the receiver while transmitting");
-        m_dupBtn->setStyleSheet(QString(kButtonBase) + kGreenActive);
+        AetherSDR::ButtonStyles::apply(m_dupBtn, "mic.toggle");   // build 771
         m_dupBtn->setChecked(AppSettings::instance().value(QStringLiteral("AnanDuplex"),
                                  QStringLiteral("False")).toString() == QLatin1String("True"));
         m_dupBtn->setVisible(false);   // moved to the TX applet
@@ -790,7 +770,7 @@ void PhoneCwApplet::buildPhonePanel()
             b->setCheckable(true);
             b->setFixedHeight(22);
             b->setFocusPolicy(Qt::NoFocus);
-            b->setStyleSheet(QString(kButtonBase) + kBlueActive);
+            AetherSDR::ButtonStyles::apply(b, "mic.select");   // build 771
             b->setContextMenuPolicy(Qt::CustomContextMenu);
             connect(b, &QPushButton::clicked, this, [this, i] { recallMicProfile(i, true); });
             connect(b, &QPushButton::customContextMenuRequested, this, [this, i, b](const QPoint& pos) {
@@ -1419,7 +1399,7 @@ void PhoneCwApplet::buildCwPanel()
         // ratchet (tools/audit_colours.py) counts call sites, so a per-button
         // line would trip it even while reusing the same constants.
         for (auto* blueToggle : { m_iambicBtn, m_holdDelayBtn }) {
-            blueToggle->setStyleSheet(QString(kButtonBase) + kBlueActive);
+            AetherSDR::ButtonStyles::apply(blueToggle, "mic.select");   // build 771
         }
 
         connect(m_breakinBtn, &QPushButton::toggled, this, [this](bool on) {
@@ -1529,7 +1509,7 @@ void PhoneCwApplet::buildCwPanel()
     // kDimLabelStyle; m_iambicBtn is styled with m_holdDelayBtn in
     // buildCwPanel()'s kBlueActive loop.
     for (QPushButton* btn : {m_sidetoneBtn, m_breakinBtn, m_apfBtn})
-        btn->setStyleSheet(QString(kButtonBase) + kGreenActive);
+        AetherSDR::ButtonStyles::apply(btn, "mic.toggle");   // build 771
     for (QLineEdit* edit : {m_delayEdit, m_speedEdit, m_pitchEdit, m_sidetoneEdit, m_apfEdit})
         edit->setStyleSheet(kInsetEditStyle);
 

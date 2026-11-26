@@ -13066,6 +13066,34 @@ ThemeSeedGenerated 0; check_button_styles — всё идентично;
 check_theme_seed — актуален.
 Не проверено на радио, не собиралось под Windows.
 
+## 760. Сборка 771 — кнопки в редактор тем, шаг 2: аплет Mic
+
+Оператор (26.11): «хорошо, продолжай».
+
+Группа `mic` (`color.button.mic.*`: `background` #1a3a5a, `border` #205070,
+`text` #c8d8e8, `hover.background` #204060; `checked.background/.border/.text`
+#006040 / #00a060 / #00ff88 — зелёные «вкл.»; `selected.background/.border/.text`
+#0070c0 / #0090e0 / #ffffff — синие «выбрано»).
+- `mic.toggle` (было `kButtonBase + kGreenActive`): ACC, COMP, MON, DUP;
+  CW — sidetone, break-in, APF.
+- `mic.select` (было `kButtonBase + kBlueActive`): DAX, Profile 1–4; CW —
+  iambic, hold delay. Полупрозрачное правило `holdUnarmed` (rgba) оставлено как
+  было.
+- Исходные тексты в каталоге сверены с константами 770 (`kButtonBase` +
+  `kGreenActive` / `kBlueActive`, без комментариев) — совпадают; константы из
+  `PhoneCwApplet.cpp` убраны. Кнопки идут через `ThemeManager`
+  (`ButtonStyles::apply`), раньше — `setStyleSheet`.
+- `check_button_styles.py --write`: значения для Midnight / Deep Ocean; 8
+  записей × 3 темы — всё идентично. Seed перегенерирован.
+
+Файлы: `src/gui/ButtonStyles.cpp`, `src/gui/PhoneCwApplet.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `docs/button-theming.md`,
+`src/core/ForkBuild.h`.
+Проверка: errcheck PhoneCwApplet 0, ButtonStyles 0; check_button_styles —
+идентично; check_theme_seed — актуален.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

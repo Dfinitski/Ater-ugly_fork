@@ -107,6 +107,47 @@ const Entry kEntries[] = {
      "border-radius: 3px; color: {{color.text.primary}}; font-size: 10px; font-weight: bold; }"
      "QPushButton:checked { background: {{color.button.tx.checked.background}}; border: 1px solid {{color.button.tx.checked.border}}; color: {{color.text.primary}}; }"
      "QPushButton:hover { background: {{color.background.1}}; }"},
+
+    // ── Mic applet (build 771) ──────────────────────────────────────────────
+    {"mic.toggle", "PhoneCwApplet.cpp: ACC, COMP, MON, DUP; CW: sidetone, break-in, APF (kButtonBase + kGreenActive)",
+     /*original*/
+     "QPushButton { background: #1a3a5a; border: 1px solid #205070; "
+     "border-radius: 3px; color: #c8d8e8; font-size: 10px; font-weight: bold; }"
+     "QPushButton[continuousCompressor=\"true\"] { font-size: 11px; font-weight: normal; }"
+     "QPushButton:hover { background: #204060; }"
+     "QPushButton:checked { background-color: #006040; color: #00ff88; "
+     "border: 1px solid #00a060; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.mic.background}}; border: 1px solid {{color.button.mic.border}}; "
+     "border-radius: 3px; color: {{color.button.mic.text}}; font-size: 10px; font-weight: bold; }"
+     "QPushButton[continuousCompressor=\"true\"] { font-size: 11px; font-weight: normal; }"
+     "QPushButton:hover { background: {{color.button.mic.hover.background}}; }"
+     "QPushButton:checked { background-color: {{color.button.mic.checked.background}}; color: {{color.button.mic.checked.text}}; "
+     "border: 1px solid {{color.button.mic.checked.border}}; }"},
+
+    {"mic.select", "PhoneCwApplet.cpp: DAX, Profile 1-4; CW: iambic, hold delay (kButtonBase + kBlueActive)",
+     /*original*/
+     "QPushButton { background: #1a3a5a; border: 1px solid #205070; "
+     "border-radius: 3px; color: #c8d8e8; font-size: 10px; font-weight: bold; }"
+     "QPushButton[continuousCompressor=\"true\"] { font-size: 11px; font-weight: normal; }"
+     "QPushButton:hover { background: #204060; }"
+     "QPushButton:checked { background-color: #0070c0; color: #ffffff; "
+     "border: 1px solid #0090e0; }"
+     "QPushButton[holdUnarmed=\"true\"]:checked { "
+     "background-color: rgba(0, 112, 192, 0.35); "
+     "color: rgba(255, 255, 255, 0.6); "
+     "border: 1px dashed rgba(0, 144, 224, 0.5); }",
+     /*themed*/
+     "QPushButton { background: {{color.button.mic.background}}; border: 1px solid {{color.button.mic.border}}; "
+     "border-radius: 3px; color: {{color.button.mic.text}}; font-size: 10px; font-weight: bold; }"
+     "QPushButton[continuousCompressor=\"true\"] { font-size: 11px; font-weight: normal; }"
+     "QPushButton:hover { background: {{color.button.mic.hover.background}}; }"
+     "QPushButton:checked { background-color: {{color.button.mic.selected.background}}; color: {{color.button.mic.selected.text}}; "
+     "border: 1px solid {{color.button.mic.selected.border}}; }"
+     "QPushButton[holdUnarmed=\"true\"]:checked { "
+     "background-color: rgba(0, 112, 192, 0.35); "
+     "color: rgba(255, 255, 255, 0.6); "
+     "border: 1px dashed rgba(0, 144, 224, 0.5); }"},
 };
 // END-ENTRIES
 

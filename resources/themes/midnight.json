@@ -532,6 +532,18 @@
               "active.background": "#cc2222",
               "active.border": "#ff4444",
               "active.text": "#ffffff"
+            },
+            "mic": {
+              "background": "#3d59a1",
+              "border": "#4765af",
+              "text": "#c0caf5",
+              "hover.background": "#2f3549",
+              "checked.background": "#006040",
+              "checked.border": "#00a060",
+              "checked.text": "#00ff88",
+              "selected.background": "#6487d7",
+              "selected.border": "#779ef2",
+              "selected.text": "#ffffff"
             }
           }
         },

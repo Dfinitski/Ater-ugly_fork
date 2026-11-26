@@ -47,11 +47,12 @@ aliasing one family value).
 | Build | Group | Entries | Buttons |
 |---|---|---|---|
 | 770 | `tx` (TX applet) | `tx.action`, `tx.toggle`, `tx.mox.idle`, `tx.mox.active`, `tx.tune.active`, `tx.apd` | TUNE, MOX, ATU, MEM, MON, DUP, APD |
+| 771 | `mic` (Mic applet, Phone and CW) | `mic.toggle`, `mic.select` | ACC, COMP, MON, DUP, sidetone, break-in, APF (green when on); DAX, Profile 1–4, iambic, hold delay (blue when on) |
 
 ## Still to do (424 literal button rules in 56 files at build 769)
 
 VFO flag (67), spectrum overlay menu (34), RX applet (21), DX cluster dialog (16), shack switch
 (14), client chain (13), spot settings (11), Antenna Genius (10), tuner (10), client effect
-editors, PureSignal (8), Mic applet (7), container title bars (7), panadapter applet (6), DAX,
+editors, PureSignal (8), container title bars (7), panadapter applet (6), DAX,
 TCI, MQTT, title bars, dialogs. Dynamic sheets (built with `QString::arg`, e.g. quick memory
 buttons) need tokens read in code — handled separately.

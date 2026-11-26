@@ -80,6 +80,16 @@ void ThemeManager::seedGeneratedDefaults()
     m_tokens.insert("color.button.danger.border.disabled", QString("#4a2828"));
     m_tokens.insert("color.button.danger.foreground.disabled", QString("#8a6055"));
     m_tokens.insert("color.button.foreground.disabled", QString("#506070"));
+    m_tokens.insert("color.button.mic.background", QString("#1a3a5a"));
+    m_tokens.insert("color.button.mic.border", QString("#205070"));
+    m_tokens.insert("color.button.mic.checked.background", QString("#006040"));
+    m_tokens.insert("color.button.mic.checked.border", QString("#00a060"));
+    m_tokens.insert("color.button.mic.checked.text", QString("#00ff88"));
+    m_tokens.insert("color.button.mic.hover.background", QString("#204060"));
+    m_tokens.insert("color.button.mic.selected.background", QString("#0070c0"));
+    m_tokens.insert("color.button.mic.selected.border", QString("#0090e0"));
+    m_tokens.insert("color.button.mic.selected.text", QString("#ffffff"));
+    m_tokens.insert("color.button.mic.text", QString("#c8d8e8"));
     m_tokens.insert("color.button.tx.active.background", QString("#cc2222"));
     m_tokens.insert("color.button.tx.active.border", QString("#ff4444"));
     m_tokens.insert("color.button.tx.active.text", QString("#ffffff"));
