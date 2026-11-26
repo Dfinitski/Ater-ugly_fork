@@ -137,21 +137,14 @@ void MainWindow::wireStatusBarMessages()
             m_statusMessageLabel->setToolTip(QString());
             return;
         }
-        // The caller's timeout runs on QStatusBar's own timer (a direct child
-        // it creates in showMessage() and deletes in clearMessage()); read
-        // what is left of it before clearing. No running timer = a message
-        // meant to stay until replaced or cleared.
-        int remainingMs = -1;
-        for (QTimer* t : statusBar()->findChildren<QTimer*>(QString(), Qt::FindDirectChildrenOnly)) {
-            if (t->isActive())
-                remainingMs = std::max(remainingMs, t->remainingTime());
-        }
-        m_statusMessageLabel->setText(message);
-        m_statusMessageLabel->setToolTip(message);
-        if (remainingMs > 0)
-            m_statusMessageTimer->start(remainingMs);
-        else
-            m_statusMessageTimer->stop();
+        // ANAN fork build 785 (operator, 26.11: "right of the TX button some
+        // off-topic text appears now and then -- remove it completely, no text
+        // is to be written there"): the message is swallowed. QStatusBar's own
+        // copy is still cleared at once (so it never takes over the bar), and
+        // the label stays empty -- it remains only as the bar's stretch.
+        m_statusMessageTimer->stop();
+        m_statusMessageLabel->clear();
+        m_statusMessageLabel->setToolTip(QString());
         m_statusMessageClearing = true;
         statusBar()->clearMessage();
         m_statusMessageClearing = false;
