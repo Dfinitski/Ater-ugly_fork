@@ -12699,6 +12699,29 @@ AmpApplet 0, TxApplet 4 (= до правки).
 Проверка: errcheck AppletPanel 8 (= базовая), ContainerManager 0.
 Не проверено на радио, не собиралось под Windows.
 
+## 745. Сборка 757 — View → No GPU Mode
+
+Оператор (26.11): у пользователя (лог build 744, Windows 11 21H2, i5-10400F
+без встроенной графики) программа работает, но панорама и водопад пустые;
+QRhi D3D11 инициализирован без ошибок — вероятно, драйвер не показывает
+картинку Direct3D 11. «Давай добавим опцию в меню View, перед Minimal Mode,
+при выборе работает без GPU». Название — «No GPU Mode»; при переключении —
+спросить и перезапустить.
+
+- `MainWindow_Menus.cpp`: пункт **No GPU Mode** (с галочкой) в меню View
+  перед Minimal Mode. Настройка `NoGpuMode` ("True"/"False"). При
+  переключении — сохранить и спросить «Restart AetherSDR now to apply?»
+  (Yes — перезапуск тем же способом, что при смене UI Scale).
+- `main.cpp`: до создания QApplication `NoGpuMode = True` читается через
+  `SettingsBootstrap` (как выбор GPU) и даёт то же, что переменная
+  `AETHER_NO_GPU`: `QT_OPENGL=software` — панорама, водопад и прочие
+  QRhi-виды рисуются программным OpenGL вместо видеокарты (больше нагрузка
+  на процессор). Переменная `AETHER_NO_GPU` работает, как раньше.
+
+Файлы: `src/gui/MainWindow_Menus.cpp`, `src/main.cpp`, `src/core/ForkBuild.h`.
+Проверка: errcheck main.cpp 26, MainWindow_Menus 24 (= до правки).
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
