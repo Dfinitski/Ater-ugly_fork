@@ -225,6 +225,7 @@
 #include <QPainterPath>
 #include <QtMath>
 #include <QVBoxLayout>
+#include <QGridLayout>   // build 752
 #include <QHBoxLayout>
 #include <QSplitter>
 #include <QMenuBar>
@@ -6613,17 +6614,27 @@ void MainWindow::buildUI()
         // only while the FreeDV text field reads RZ3QS (as A1 / A2, AeRX /
         // AeTX); a radio with one ADC has only the ATT1 line.
         QLabel* attSep = addSep();
+        // Build 752 (operator, 25.11: "align the lines by changing the gap
+        // between ATTn and the value, so the ends of dB are level"): a grid,
+        // "ATTn" left in one column, the value right-aligned in the other;
+        // the value column is as wide as "-31 dB" (so the bar does not shift
+        // as the figures change).
         auto* attStack = new QWidget;
-        auto* attBox = new QVBoxLayout(attStack);
-        attBox->setContentsMargins(0, 0, 0, 0);
-        attBox->setSpacing(0);
-        attBox->setAlignment(Qt::AlignVCenter);
-        QLabel* attLbl[2];
+        auto* attGrid = new QGridLayout(attStack);
+        attGrid->setContentsMargins(0, 0, 0, 0);
+        attGrid->setHorizontalSpacing(4);
+        attGrid->setVerticalSpacing(0);
+        QLabel* attName[2];
+        QLabel* attVal[2];
         for (int i = 0; i < 2; ++i) {
-            attLbl[i] = new QLabel(QStringLiteral("ATT%1 -- dB").arg(i + 1));
-            applyStatusBarCompactLabelStyle(attLbl[i], QStringLiteral("{{color.text.secondary}}"));
-            attLbl[i]->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-            attBox->addWidget(attLbl[i]);
+            attName[i] = new QLabel(QStringLiteral("ATT%1").arg(i + 1));
+            attVal[i] = new QLabel(QStringLiteral("-- dB"));
+            for (QLabel* l : {attName[i], attVal[i]})
+                applyStatusBarCompactLabelStyle(l, QStringLiteral("{{color.text.secondary}}"));
+            attName[i]->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+            attVal[i]->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            attGrid->addWidget(attName[i], i, 0);
+            attGrid->addWidget(attVal[i], i, 1);
         }
         attStack->setObjectName(QStringLiteral("rz3qsAttStatus"));
         attStack->setAccessibleName(QStringLiteral("Attenuators"));
@@ -6631,7 +6642,7 @@ void MainWindow::buildUI()
         hbox->addWidget(attStack);
         attSep->hide();
         attStack->hide();
-        auto attRefresh = [attSep, attStack, l1 = attLbl[0], l2 = attLbl[1]] {
+        auto attRefresh = [attSep, attStack, n2 = attName[1], v1 = attVal[0], v2 = attVal[1]] {
             const bool show = fdv::FdvState::instance().callsign == QLatin1String("RZ3QS");
             if (attStack->isHidden() == show) {
                 attSep->setVisible(show);
@@ -6643,16 +6654,21 @@ void MainWindow::buildUI()
             // Build 751: what was last sent to the radio, receive or transmit.
             auto text = [&ui](int adc) {
                 const int att = ui.adcAttNowDb[adc].load(std::memory_order_relaxed);
-                return att < 0 ? QStringLiteral("ATT%1 -- dB").arg(adc + 1)
-                               : QStringLiteral("ATT%1 %2 dB").arg(adc + 1).arg(-att);
+                return att < 0 ? QStringLiteral("-- dB") : QStringLiteral("%1 dB").arg(-att);
             };
-            if (l1->text() != text(0))
-                l1->setText(text(0));
-            if (l2->text() != text(1))
-                l2->setText(text(1));
+            if (v1->text() != text(0))
+                v1->setText(text(0));
+            if (v2->text() != text(1))
+                v2->setText(text(1));
+            const int valW = v1->fontMetrics().horizontalAdvance(QStringLiteral("-31 dB"));
+            for (QLabel* v : {v1, v2})
+                if (v->minimumWidth() != valW)
+                    v->setMinimumWidth(valW);
             const bool two = ui.numAdcs >= 2;
-            if (l2->isHidden() == two)
-                l2->setVisible(two);
+            if (v2->isHidden() == two) {
+                n2->setVisible(two);
+                v2->setVisible(two);
+            }
         };
         // Build 751 (operator, 25.11: "any change of the attenuators must
         // show there at once"): its own 20 ms poll of the values the
