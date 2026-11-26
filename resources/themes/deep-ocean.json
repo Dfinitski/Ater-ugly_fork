@@ -3,7 +3,7 @@
   "name": "Deep Ocean",
   "author": "Ater-ugly_fork",
   "version": "1.0",
-  "description": "Deep blue-teal after Solarized Dark: #002b36 ground, #eee8d5 text, #268bd2 accent. ANAN fork build 745.",
+  "description": "Deep blue-teal after Solarized Dark: #002b36 ground, #eee8d5 text, #268bd2 accent. ANAN fork build 745; literal remap build 746.",
   "primitives": {
     "color.blue.500": "#268bd2",
     "color.blue.300": "#5fb0e8",
@@ -625,5 +625,26 @@
         }
       }
     }
+  },
+  "literalRemap": {
+    "neutral": [
+      "#00212a",
+      "#00262f",
+      "#002b36",
+      "#06313d",
+      "#073642",
+      "#0f4c5c",
+      "#1b5a69",
+      "#586e75",
+      "#93a1a1",
+      "#eee8d5",
+      "#fdf6e3",
+      "#ffffff"
+    ],
+    "accent": [
+      "#1a5f94",
+      "#268bd2",
+      "#7ab8e8"
+    ]
   }
 }

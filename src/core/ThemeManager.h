@@ -129,6 +129,23 @@ public:
     // themeChanged; the entry is removed on QObject::destroyed.
     void applyStyleSheet(QWidget* widget, const QString& stylesheetTemplate);
 
+    // ANAN fork build 746 (operator, 25.11: light themes that are not white,
+    // and "rework the colours"): many widgets carry colours written in the
+    // code for the dark theme ("#c8d8e8" text, "#0a0a18" fields ...), which
+    // no theme token reaches. A theme may declare a "literalRemap" (12
+    // neutral colours for default-dark's blue-grey ramp, 3 accent colours
+    // for its cyan-blue accent); then every such literal -- in tracked
+    // templates, in plain setStyleSheet() sheets and in the application
+    // sheet -- is mapped onto the theme's own ramp by lightness. Themes
+    // without it (Default Dark) leave every literal as written.
+    QColor  remapLiteralColor(const QColor& c) const;
+    QString remapLiterals(const QString& styleSheet) const;
+    bool    hasLiteralRemap() const { return !m_litNeutral.isEmpty(); }
+    // Called once the QApplication exists (main.cpp): watches every widget's
+    // plain style sheet and the application's.
+    void installLiteralRemapper();
+    void remapUntrackedStyleSheet(QWidget* widget);
+
     // Temporarily own a standard widget's text foreground without replacing its
     // base stylesheet. Empty token restores the latest base style. Both layers
     // remain theme/scope aware; subsequent applyStyleSheet calls preserve this
@@ -374,6 +391,12 @@ private slots:
     void onTrackedWidgetDestroyed(QObject* obj);
 
 private:
+    // Build 746: the active theme's literal remap ramps (empty = identity).
+    QVector<QColor> m_litNeutral;
+    QVector<QColor> m_litAccent;
+    QString m_appSheetOriginal;
+    bool m_litRemapperInstalled = false;
+    void remapAllUntracked();
     ThemeManager();
     ~ThemeManager() override;   // out-of-line so std::unique_ptr<ThemeScope>
                                 // member doesn't need the full type in this header

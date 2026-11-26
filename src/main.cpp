@@ -1,6 +1,7 @@
 #include "core/ForkBuild.h"
 #include "gui/MainWindow.h"
 #include "core/ForkDataDir.h"
+#include "core/ThemeManager.h"   // build 746
 #include "gui/ConnectionPanel.h"
 #include "gui/FramelessMessageBox.h"
 #include "gui/SliceColorManager.h"
@@ -844,6 +845,9 @@ int main(int argc, char* argv[])
         // readable even where an ancestor's background still applies.
         "QToolTip { color: #ffffff; background-color: #000000;"
         " border: 1px solid #00b4d8; padding: 3px 5px; }"));
+    // ANAN fork build 746: a theme's remap of the colours written in code
+    // (ThemeManager::installLiteralRemapper) -- the sheet above included.
+    AetherSDR::ThemeManager::instance().installLiteralRemapper();
 
     // Load slice color overrides (must be after AppSettings::load)
     AetherSDR::SliceColorManager::instance().load();

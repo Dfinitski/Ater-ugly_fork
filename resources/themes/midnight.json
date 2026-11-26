@@ -3,7 +3,7 @@
   "name": "Midnight",
   "author": "Ater-ugly_fork",
   "version": "1.0",
-  "description": "Blue-violet night after Tokyo Night: #1a1b26 ground, #c0caf5 text, #7aa2f7 accent. ANAN fork build 745.",
+  "description": "Blue-violet night after Tokyo Night: #1a1b26 ground, #c0caf5 text, #7aa2f7 accent. ANAN fork build 745; literal remap build 746.",
   "primitives": {
     "color.blue.500": "#7aa2f7",
     "color.blue.300": "#9dbbff",
@@ -625,5 +625,26 @@
         }
       }
     }
+  },
+  "literalRemap": {
+    "neutral": [
+      "#13141c",
+      "#16161e",
+      "#1a1b26",
+      "#1f2335",
+      "#24283b",
+      "#2f3549",
+      "#3b4261",
+      "#565f89",
+      "#9aa5ce",
+      "#c0caf5",
+      "#e3e8ff",
+      "#ffffff"
+    ],
+    "accent": [
+      "#3d59a1",
+      "#7aa2f7",
+      "#b4c8ff"
+    ]
   }
 }

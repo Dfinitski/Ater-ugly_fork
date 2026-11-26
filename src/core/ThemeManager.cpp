@@ -16,6 +16,8 @@
 #include <QRadialGradient>
 #include <QRegularExpression>
 #include <QWidget>
+#include <QApplication>   // build 746
+#include <QVector>
 #include <QtMath>
 #include <cmath>
 
@@ -473,6 +475,18 @@ bool ThemeManager::loadThemeFromPath(const QString& path)
     // tokens; the theme JSON (readScopeFromJson below) wins where it defines a value.
     m_rootScope->children.clear();
     m_primitives.clear();
+    // Build 746: the theme's literal remap ramps (none = identity).
+    m_litNeutral.clear();
+    m_litAccent.clear();
+    {
+        const QJsonObject lr = root.value(QStringLiteral("literalRemap")).toObject();
+        const QJsonArray n = lr.value(QStringLiteral("neutral")).toArray();
+        const QJsonArray a = lr.value(QStringLiteral("accent")).toArray();
+        if (n.size() == 12 && a.size() == 3) {
+            for (const QJsonValue& v : n) m_litNeutral.append(QColor(v.toString()));
+            for (const QJsonValue& v : a) m_litAccent.append(QColor(v.toString()));
+        }
+    }
     // Per-theme, not per-process: a token missing only in THIS theme should be
     // reported again when the operator comes back to it, otherwise the one log
     // line they need has scrolled away and never reappears.
@@ -620,7 +634,179 @@ bool ThemeManager::setActiveTheme(const QString& name)
     AppSettings::instance().setValue("ActiveTheme", name);
     AppSettings::instance().save();
     emit themeChanged();
+    remapAllUntracked();   // build 746
     return true;
+}
+
+// ── Build 746: literal colour remap ─────────────────────────────────────────
+
+namespace {
+
+// default-dark's blue-grey ramp (by lightness) that a theme's "neutral" list
+// replaces, entry for entry.
+const char* const kLitSrcNeutral[12] = {
+    "#000000", "#0a121e", "#0f0f1a", "#1a2330", "#1a2a3a", "#304050",
+    "#3a4a5a", "#506070", "#8ea8c0", "#c8d8e8", "#e6f0fa", "#ffffff"};
+
+QColor lerpColor(const QColor& a, const QColor& b, double t)
+{
+    t = std::clamp(t, 0.0, 1.0);
+    return QColor::fromRgbF(float(a.redF() + (b.redF() - a.redF()) * t),
+                            float(a.greenF() + (b.greenF() - a.greenF()) * t),
+                            float(a.blueF() + (b.blueF() - a.blueF()) * t));
+}
+
+// Watches the plain style sheets of untracked widgets.
+class LiteralSheetFilter : public QObject {
+public:
+    explicit LiteralSheetFilter(ThemeManager* tm) : QObject(tm), m_tm(tm) {}
+    bool eventFilter(QObject* o, QEvent* e) override
+    {
+        if ((e->type() == QEvent::StyleChange || e->type() == QEvent::Polish)
+            && o->isWidgetType() && m_tm->hasLiteralRemap())
+            m_tm->remapUntrackedStyleSheet(static_cast<QWidget*>(o));
+        return false;
+    }
+private:
+    ThemeManager* m_tm;
+};
+
+} // namespace
+
+QColor ThemeManager::remapLiteralColor(const QColor& c) const
+{
+    if (m_litNeutral.isEmpty() || !c.isValid())
+        return c;
+    float h = 0, s = 0, l = 0, a = c.alphaF();
+    c.getHslF(&h, &s, &l, &a);
+    const double hue = h < 0 ? -1.0 : h * 360.0;
+    static QVector<double> srcL;
+    if (srcL.isEmpty()) {
+        for (const char* n : kLitSrcNeutral)
+            srcL.append(QColor(QLatin1String(n)).lightnessF());
+    }
+    // The ramp's own colours are neutral whatever their saturation
+    // (#e6f0fa is 67 % saturated at 94 % lightness).
+    bool onRamp = false;
+    const QRgb rgb = c.rgb() & 0xffffffu;
+    for (const char* n : kLitSrcNeutral) {
+        if ((QColor(QLatin1String(n)).rgb() & 0xffffffu) == rgb) { onRamp = true; break; }
+    }
+    QColor out;
+    if (onRamp || s < 0.12f || (s < 0.55f && hue >= 190.0 && hue <= 260.0)) {
+        // Neutral: placed by lightness on the source ramp, the theme's taken.
+        if (l <= srcL.first()) {
+            out = m_litNeutral.first();
+        } else if (l >= srcL.last()) {
+            out = m_litNeutral.last();
+        } else {
+            out = m_litNeutral.last();
+            for (int i = 0; i + 1 < srcL.size(); ++i) {
+                if (l >= srcL[i] && l <= srcL[i + 1]) {
+                    const double span = srcL[i + 1] - srcL[i];
+                    out = lerpColor(m_litNeutral[i], m_litNeutral[i + 1],
+                                    span > 0 ? (l - srcL[i]) / span : 0.0);
+                    break;
+                }
+            }
+        }
+    } else if (hue >= 170.0 && hue <= 215.0 && s >= 0.55f) {
+        // The cyan-blue accent family: by lightness onto the theme's accent.
+        const double p[3] = {0.25, 0.45, 0.75};
+        if (l <= p[0]) out = m_litAccent[0];
+        else if (l >= p[2]) out = m_litAccent[2];
+        else if (l <= p[1]) out = lerpColor(m_litAccent[0], m_litAccent[1], (l - p[0]) / (p[1] - p[0]));
+        else out = lerpColor(m_litAccent[1], m_litAccent[2], (l - p[1]) / (p[2] - p[1]));
+    } else {
+        return c;   // status, band and special colours stay as written
+    }
+    out.setAlphaF(c.alphaF());
+    return out;
+}
+
+QString ThemeManager::remapLiterals(const QString& sheet) const
+{
+    if (m_litNeutral.isEmpty() || !sheet.contains(QLatin1Char('#')))
+        return sheet;
+    static const QRegularExpression kHex(
+        QStringLiteral("#([0-9a-fA-F]{8}|[0-9a-fA-F]{6})(?![0-9a-fA-F])"));
+    QString out;
+    out.reserve(sheet.size());
+    qsizetype last = 0;
+    QRegularExpressionMatchIterator it = kHex.globalMatch(sheet);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch m = it.next();
+        out += sheet.mid(last, m.capturedStart(0) - last);
+        const QString hex = m.captured(1);
+        const QColor c(QLatin1Char('#') + hex);   // #AARRGGBB or #RRGGBB, as Qt reads them
+        const QColor r = remapLiteralColor(c);
+        if (hex.size() == 8)
+            out += QStringLiteral("#%1%2%3%4")
+                       .arg(r.alpha(), 2, 16, QLatin1Char('0'))
+                       .arg(r.red(), 2, 16, QLatin1Char('0'))
+                       .arg(r.green(), 2, 16, QLatin1Char('0'))
+                       .arg(r.blue(), 2, 16, QLatin1Char('0'));
+        else
+            out += r.name(QColor::HexRgb);
+        last = m.capturedEnd(0);
+    }
+    out += sheet.mid(last);
+    return out;
+}
+
+void ThemeManager::installLiteralRemapper()
+{
+    auto* app = qobject_cast<QApplication*>(QCoreApplication::instance());
+    if (!app || m_litRemapperInstalled)
+        return;
+    m_litRemapperInstalled = true;
+    m_appSheetOriginal = app->styleSheet();
+    app->installEventFilter(new LiteralSheetFilter(this));
+    remapAllUntracked();
+}
+
+void ThemeManager::remapUntrackedStyleSheet(QWidget* w)
+{
+    if (!w || m_trackedWidgets.contains(w))
+        return;   // tracked: resolveFor() remaps its template
+    const QString cur = w->styleSheet();
+    const QVariant mapped = w->property("_aetherLitMapped");
+    if (cur.isEmpty() || (mapped.isValid() && mapped.toString() == cur))
+        return;   // nothing, or our own last write
+    const QString out = remapLiterals(cur);
+    w->setProperty("_aetherLitOrig", cur);
+    w->setProperty("_aetherLitMapped", out);
+    if (out != cur)
+        w->setStyleSheet(out);
+}
+
+void ThemeManager::remapAllUntracked()
+{
+    auto* app = qobject_cast<QApplication*>(QCoreApplication::instance());
+    if (!app || !m_litRemapperInstalled)
+        return;
+    const QString appSheet = remapLiterals(m_appSheetOriginal);
+    if (app->styleSheet() != appSheet)
+        app->setStyleSheet(appSheet);
+    const auto widgets = QApplication::allWidgets();
+    for (QWidget* w : widgets) {
+        if (m_trackedWidgets.contains(w))
+            continue;
+        const QString cur = w->styleSheet();
+        const QVariant mapped = w->property("_aetherLitMapped");
+        const QVariant orig = w->property("_aetherLitOrig");
+        // Our last write still in place: start from the original; else the
+        // owner has set the sheet anew.
+        const QString base = (mapped.isValid() && mapped.toString() == cur && orig.isValid())
+                                 ? orig.toString() : cur;
+        if (base.isEmpty())
+            continue;
+        const QString out = remapLiterals(base);
+        w->setProperty("_aetherLitOrig", base);
+        w->setProperty("_aetherLitMapped", out);
+        if (out != cur)
+            w->setStyleSheet(out);
+    }
 }
 
 QStringList ThemeManager::allTokenKeys() const
@@ -1562,8 +1748,10 @@ QString ThemeManager::resolveFor(const QWidget* widget,
     // container chain (containerPathFor → scope tree walk).  When null
     // (legacy resolve() callers) lookups go straight to root scope.
     static const QRegularExpression kRe(QStringLiteral(R"(\{\{([^}]+)\}\})"));
-    QString out = stylesheetTemplate;
-    QRegularExpressionMatchIterator it = kRe.globalMatch(stylesheetTemplate);
+    // Build 746: the literal colours of the template first (theme remap).
+    const QString tmpl = remapLiterals(stylesheetTemplate);
+    QString out = tmpl;
+    QRegularExpressionMatchIterator it = kRe.globalMatch(tmpl);
     int offset = 0;
     while (it.hasNext()) {
         const QRegularExpressionMatch m = it.next();
