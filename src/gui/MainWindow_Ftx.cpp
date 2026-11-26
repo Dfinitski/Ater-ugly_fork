@@ -4,6 +4,7 @@
 // are MicronSDR's own files (src/ftx: FtPanel, FtUnit, FtWaterfall, FtTx,
 // FtNet, PskReporter; libftx.dll). See core/ftx/FtxState.h, gui/FtxView.h.
 #include "MainWindow.h"
+#include "core/ThemeManager.h"   // build 801
 
 #include "FtxView.h"
 #include "PanadapterApplet.h"
@@ -57,6 +58,9 @@ public:
     explicit FtxCaptionColour(QWidget* w) : QObject(w), m_w(w)
     {
         w->installEventFilter(this);
+        // Build 801: re-coloured when the theme changes.
+        QObject::connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this,
+                         [this] { if (m_w->isVisible()) apply(); });
     }
 
 protected:
@@ -91,9 +95,17 @@ public:   // build 795: also called by attachNativeCaptionColour()
         constexpr DWORD kBorderColor = 34;    // DWMWA_BORDER_COLOR
         constexpr DWORD kCaptionColor = 35;   // DWMWA_CAPTION_COLOR
         constexpr DWORD kTextColor = 36;      // DWMWA_TEXT_COLOR
-        const COLORREF caption = RGB(0x38, 0x4e, 0x68);
-        const COLORREF text = RGB(0xe0, 0xec, 0xf4);
-        const COLORREF border = RGB(0x1e, 0x2e, 0x3e);
+        // Build 801 (operator, 26.11: "the header is not in the current
+        // theme's colour"): the program's own title bar colours as the active
+        // theme shows them -- FramelessWindowTitleBar paints these literals,
+        // and a theme's literal remap moves them (Deep Ocean, Midnight ...).
+        auto& tm = ThemeManager::instance();
+        const QColor capC = tm.remapLiteralColor(QColor(0x38, 0x4e, 0x68));
+        const QColor txtC = tm.remapLiteralColor(QColor(0xe0, 0xec, 0xf4));
+        const QColor brdC = tm.remapLiteralColor(QColor(0x1e, 0x2e, 0x3e));
+        const COLORREF caption = RGB(capC.red(), capC.green(), capC.blue());
+        const COLORREF text = RGB(txtC.red(), txtC.green(), txtC.blue());
+        const COLORREF border = RGB(brdC.red(), brdC.green(), brdC.blue());
         setAttr(hwnd, kCaptionColor, &caption, sizeof(caption));
         setAttr(hwnd, kTextColor, &text, sizeof(text));
         setAttr(hwnd, kBorderColor, &border, sizeof(border));
