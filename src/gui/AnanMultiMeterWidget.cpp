@@ -31,6 +31,7 @@ constexpr double kNamePx = 15.0, kNameSmallPx = 11.0, kMarkPx = 11.0;
 constexpr double kValuePx = 15.0, kUnitPx = 10.0;
 constexpr double kLineW = 2.2, kRedW = 4.6, kTickLen = 7.0, kTickW = 1.8;
 constexpr int kTickMs = 50;
+constexpr double kPaperCornerR = 14.0;   // build 748: the paper card's corners (design units)
 
 struct Palette {
     QColor ink, sub, red, accent, pointer, bar, frame;
@@ -430,13 +431,25 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
     p.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
     // Background: the paper, or (build 738) the applets' own background.
-    if (m_face == Face::Light && !m_paper.isNull())
+    if (m_face == Face::Light && !m_paper.isNull()) {
+        // Build 748 (operator, 25.11): the paper card has rounded corners,
+        // like the face of a cross-needle meter; the corners show the panel.
+        const double r = kPaperCornerR * meter.width() / kW;
+        QPainterPath card;
+        card.addRoundedRect(meter.adjusted(0.5, 0.5, -0.5, -0.5), r, r);
+        p.setClipPath(card);
         p.drawPixmap(meter, m_paper, QRectF(m_paper.rect()));
-    else
+        p.setClipping(false);
+        p.setPen(QPen(c.frame, 1.0));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(card);
+        p.setClipPath(card);   // the scales stay on the card
+    } else {
         p.fillRect(meter, ThemeManager::instance().color(QStringLiteral("color.background.0")));
-    p.setPen(QPen(c.frame, 1.0));
-    p.setBrush(Qt::NoBrush);
-    p.drawRect(meter.adjusted(0.5, 0.5, -0.5, -0.5));
+        p.setPen(QPen(c.frame, 1.0));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(meter.adjusted(0.5, 0.5, -0.5, -0.5));
+    }
 
     // Everything else in design units; on paper, printed (Multiply).
     p.translate(meter.topLeft());
