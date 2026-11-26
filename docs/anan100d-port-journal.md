@@ -12960,6 +12960,18 @@ similar scale, или может ты придумаешь лучше назва
 Проверка: errcheck BandStackPanel 0.
 Не проверено на радио, не собиралось под Windows.
 
+## 756. Сборка 768 — пункт меню мультиметра короче
+
+Оператор (26.11): «название новой опции в меню мультиметра слишком
+длинное, убери "in applets"».
+
+`AppletPanel.cpp`: «Hide duplicate gauges in applets» → **«Hide duplicate
+gauges»**. Подсказка (что прячется в каких аплетах) и настройка
+`AnanMmHideDuplicates` — без изменений.
+
+Файлы: `src/gui/AppletPanel.cpp`, `src/core/ForkBuild.h`.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

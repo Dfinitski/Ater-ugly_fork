@@ -1557,7 +1557,7 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
             // Build 766 (operator, 26.11): the applets' gauges this meter
             // repeats -- Mic: Compression, ALC Gain, ALC; TX: RF Pwr, SWR --
             // hidden while it is up, or not.
-            QAction* hideDup = menu.addAction(QStringLiteral("Hide duplicate gauges in applets"));
+            QAction* hideDup = menu.addAction(QStringLiteral("Hide duplicate gauges"));   // build 768: shorter
             hideDup->setCheckable(true);
             hideDup->setChecked(AppSettings::instance()
                 .value(QStringLiteral("AnanMmHideDuplicates"), QStringLiteral("True")).toString()
