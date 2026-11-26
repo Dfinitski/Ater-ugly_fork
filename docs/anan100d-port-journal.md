@@ -13276,6 +13276,38 @@ ButtonStyles 0; check_button_styles — идентично; check_theme_seed —
 актуален.
 Не проверено на радио, не собиралось под Windows.
 
+## 766. Сборка 777 — кнопки в редактор тем, шаг 8: меню наложений (ANT, входная часть, WNB, WFM, Display) — меню готово
+
+Второй, последний шаг по меню наложений: ещё 8 записей группы `overlay`.
+
+- `overlay.ant` (`antBtnStyle`) — RX / TX ANT1–3 и LNA; `overlay.loop`
+  (`loopBtnStyle`) — LoopA / LoopB; `overlay.adc` (`adcBtnStyle`) — кнопка
+  АЦП; `overlay.check` (`chkStyle`) — галочки dither / random (QCheckBox);
+  `overlay.frontend` (`kFrontEndBtnStyle`) — PRE / ATT; `overlay.wnb`;
+  `overlay.wfm`; `overlay.display` (`btnStyle` панели Display) — кнопки
+  настроек следа / водопада, фона, Clone / Reset.
+- Исходные тексты извлечены скриптом из локальных констант и вызовов;
+  константы убраны. Копия `btnStyle` панели Display оставлена только для
+  строки режима обзора (её один общий стиль со скоупом ставится напрямую).
+- Токены `color.button.overlay.*` (+46, всего 59): `ant.*` (кнопки и
+  галочки панели ANT), `frontend.*`, `wnb.*` (ссылки на примитивы — стили
+  брали общие токены), `wfm.*`, `display.*`.
+- У WFM трёхзначные цвета (`#444`, `#ccc`, `#2a7`): перекраска тем их не
+  трогает, токены хранят их как есть. `check_button_styles.py` теперь тоже
+  не перекрашивает не-шестизначные значения (как `ThemeManager`).
+- 68 записей × 3 темы — всё идентично: вид не меняется.
+
+Меню наложений закончено. Оставлены: кнопки выбора цвета (их цвет — цвет,
+выбранный оператором) и строка режима обзора.
+
+Файлы: `src/gui/SpectrumOverlayMenu.cpp`, `src/gui/ButtonStyles.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `tools/check_button_styles.py`,
+`docs/button-theming.md`, `src/core/ForkBuild.h`.
+Проверка: errcheck SpectrumOverlayMenu — те же 4 ошибки WanConnection.h, что
+до правки; check_button_styles — идентично; check_theme_seed — актуален.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

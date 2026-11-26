@@ -146,7 +146,9 @@ def name(rgb):
 
 
 def remap_hex(c, lit):
-    if not lit:
+    # ThemeManager::remapLiterals touches #rrggbb (and #aarrggbb) only: a
+    # three-digit #rgb stays as written (build 777).
+    if not lit or not re.fullmatch(r"#[0-9a-fA-F]{6}", c):
         return c
     neutral = [hx(x) for x in lit["neutral"]]
     accent = [hx(x) for x in lit["accent"]]

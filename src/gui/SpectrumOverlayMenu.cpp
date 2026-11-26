@@ -675,13 +675,7 @@ void SpectrumOverlayMenu::buildAntPanel()
         auto* rows = new QVBoxLayout(m_ananAntRows);
         rows->setContentsMargins(0, 0, 0, 0);
         rows->setSpacing(4);
-        const QString antBtnStyle = QStringLiteral(
-            "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px;"
-            " color: #c8d8e8; font-size: 10px; font-weight: bold; padding: 0px; }"
-            "QPushButton:hover { border: 1px solid #0090e0; }"
-            "QPushButton:checked { background: #0070c0; border: 1px solid #0090e0; color: #ffffff; }"
-            "QPushButton:disabled { color: #607080; }"
-            "QPushButton:checked:disabled { background: #304a60; color: #a0b0c0; }");
+        // antBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "overlay.ant" -- build 777.
         for (int line = 0; line < 2; ++line) {
             const bool tx = line == 1;
             auto* row = new QHBoxLayout;
@@ -704,7 +698,7 @@ void SpectrumOverlayMenu::buildAntPanel()
                 btn->setMinimumHeight(18);
                 // Equal thirds whatever the antenna name; long names elide.
                 btn->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-                btn->setStyleSheet(antBtnStyle);
+                AetherSDR::ButtonStyles::apply(btn, "overlay.ant");
                 btn->setToolTip(tx ? QStringLiteral("Antenna used while transmitting")
                                    : QStringLiteral("Antenna feeding ADC1"));
                 connect(btn, &QPushButton::clicked, this, [this, key, a] {
@@ -729,7 +723,7 @@ void SpectrumOverlayMenu::buildAntPanel()
             m_ananLnaBtn->setAccessibleName(QStringLiteral("Receive preamplifier"));
             m_ananLnaBtn->setCheckable(true);
             m_ananLnaBtn->setFixedSize(kLabelW, 18);   // in the label column
-            m_ananLnaBtn->setStyleSheet(antBtnStyle);
+            AetherSDR::ButtonStyles::apply(m_ananLnaBtn, "overlay.ant");
             m_ananLnaBtn->setToolTip(QStringLiteral(
                 "Receive preamplifier (Alex \"6M Preamp\" bit)"));
             m_ananLnaBtn->setChecked(
@@ -863,12 +857,7 @@ void SpectrumOverlayMenu::buildAntPanel()
 
     // Loop row — SmartSDR exposes this directly below RX ANT on models
     // with RX loop hardware (FLEX-6500 LoopA, FLEX-6700 LoopA/LoopB).
-    const QString loopBtnStyle =
-        "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
-        "border-radius: 2px; color: #c8d8e8; font-size: 10px; font-weight: bold; }"
-        "QPushButton:checked { background: #0070c0; color: #ffffff; "
-        "border: 1px solid #0090e0; }"
-        "QPushButton:hover { border: 1px solid #0090e0; }";
+    // loopBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "overlay.loop" -- build 777.
     m_loopRow = new QWidget(m_antPanel);
     applyTransparentStyle(m_loopRow, QStringLiteral("loopRow"));
     auto* loopRow = new QHBoxLayout(m_loopRow);
@@ -881,12 +870,12 @@ void SpectrumOverlayMenu::buildAntPanel()
     m_loopABtn = new QPushButton("LoopA");
     m_loopABtn->setCheckable(true);
     m_loopABtn->setMinimumHeight(22);
-    m_loopABtn->setStyleSheet(loopBtnStyle);
+    AetherSDR::ButtonStyles::apply(m_loopABtn, "overlay.loop");
     loopRow->addWidget(m_loopABtn, 1);
     m_loopBBtn = new QPushButton("LoopB");
     m_loopBBtn->setCheckable(true);
     m_loopBBtn->setMinimumHeight(22);
-    m_loopBBtn->setStyleSheet(loopBtnStyle);
+    AetherSDR::ButtonStyles::apply(m_loopBBtn, "overlay.loop");
     loopRow->addWidget(m_loopBBtn, 1);
     vbox->addWidget(m_loopRow);
 
@@ -1045,10 +1034,7 @@ void SpectrumOverlayMenu::buildAntPanel()
     auto* adcRow = new QHBoxLayout(m_adcRow);
     adcRow->setContentsMargins(0, 0, 0, 0);
     adcRow->setSpacing(4);
-    const QString adcBtnStyle = QStringLiteral(
-        "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px;"
-        " color: #c8d8e8; font-size: 10px; font-weight: bold; padding: 0px; }"
-        "QPushButton:hover { border: 1px solid #0090e0; }");
+    // adcBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "overlay.adc" -- build 777.
     // Build 437 (operator, 15.11: "each receiver's ANT menu sets the ADC of
     // every receiver -- that is wrong; only the one of the receiver whose menu
     // it is"): one label RXn: and one ADC button, for this pan's receiver
@@ -1060,7 +1046,7 @@ void SpectrumOverlayMenu::buildAntPanel()
     m_adcBtn->setObjectName(QStringLiteral("antennaRxAdcBtn"));
     m_adcBtn->setAccessibleName(QStringLiteral("Receiver ADC"));
     m_adcBtn->setMinimumHeight(18);
-    m_adcBtn->setStyleSheet(adcBtnStyle);
+    AetherSDR::ButtonStyles::apply(m_adcBtn, "overlay.adc");
     m_adcBtn->setToolTip(QStringLiteral("ADC feeding this receiver; click to switch ADC1 / ADC2"));
     m_adcBtn->setText(QStringLiteral("ADC1"));
     connect(m_adcBtn, &QPushButton::clicked, this, [this] {
@@ -1084,19 +1070,13 @@ void SpectrumOverlayMenu::buildAntPanel()
         auto* drl = new QHBoxLayout(dr);
         drl->setContentsMargins(4, 0, 0, 0);
         drl->setSpacing(3);
-        const QString chkStyle = QStringLiteral(
-            "QCheckBox { spacing: 0px; }"
-            "QCheckBox::indicator { width: 12px; height: 12px; border: 1px solid #304050;"
-            " border-radius: 2px; background: #0a0a18; }"
-            "QCheckBox::indicator:hover { border: 1px solid #0090e0; }"
-            "QCheckBox::indicator:checked { background: #00b4d8; border: 1px solid #40c8e8; }"
-            "QCheckBox::indicator:disabled { background: #1a2028; border: 1px solid #252f3a; }");
+        // chkStyle: in the button-style catalogue (ButtonStyles.cpp), "overlay.check" -- build 777.
         auto addChk = [&](const QString& text, const char* what, QCheckBox*& out) {
             auto* l = new QLabel(text);
             l->setStyleSheet(kLabelStyle);
             drl->addWidget(l);
             auto* c = new QCheckBox;
-            c->setStyleSheet(chkStyle);
+            AetherSDR::ButtonStyles::apply(c, "overlay.check");
             c->setAccessibleName(QString::fromLatin1(what));
             drl->addWidget(c);
             out = c;
@@ -1194,13 +1174,7 @@ void SpectrumOverlayMenu::buildAntPanel()
     // control it is belongs to the label. Putting both in the button gave
     // "PRE: P.AMP2" in a 56 px cell inside a fixed 180 px panel, which clipped
     // to "PRE: P.A" — a control naming a state the operator cannot read.
-    const QString kFrontEndBtnStyle =
-        "QPushButton { background: {{color.background.1}}; "
-        "border: 1px solid {{color.background.2}}; border-radius: 3px; "
-        "color: {{color.text.secondary}}; font-size: 11px; padding: 1px 4px; }"
-        "QPushButton:hover { border-color: {{color.accent.bright}}; }"
-        "QPushButton:checked { background: {{color.accent.dim}}; "
-        "border-color: {{color.accent.bright}}; color: {{color.text.primary}}; }";
+    // kFrontEndBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "overlay.frontend" -- build 777.
 
     // CLICK ADVANCES ONE POSITION, and the button does not own the result: it
     // emits the request and repaints from whatever the radio reports back. A
@@ -1226,7 +1200,7 @@ void SpectrumOverlayMenu::buildAntPanel()
         btn->setAccessibleName(a11yName);
         btn->setCheckable(true);
         btn->setFixedHeight(22);
-        AetherSDR::ThemeManager::instance().applyStyleSheet(btn, kFrontEndBtnStyle);
+        AetherSDR::ButtonStyles::apply(btn, "overlay.frontend");
         row->addWidget(btn, 1);
         rowWidget->setVisible(false);
         vbox->addWidget(rowWidget);
@@ -1267,11 +1241,7 @@ void SpectrumOverlayMenu::buildAntPanel()
     m_wnbBtn = new QPushButton("WNB");
     m_wnbBtn->setCheckable(true);
     m_wnbBtn->setFixedSize(48, 22);
-    AetherSDR::ThemeManager::instance().applyStyleSheet(m_wnbBtn, "QPushButton { background: {{color.background.1}}; border: 1px solid {{color.background.2}}; "
-        "border-radius: 2px; color: {{color.text.primary}}; font-size: 11px; font-weight: bold; }"
-        "QPushButton:checked { background: {{color.background.2}}; color: {{color.text.primary}}; "
-        "border: 1px solid {{color.accent.dim}}; }"
-        "QPushButton:hover { border: 1px solid {{color.accent.dim}}; }");
+    AetherSDR::ButtonStyles::apply(m_wnbBtn, "overlay.wnb");
     wnbRow->addWidget(m_wnbBtn);
     m_wnbSlider = new GuardedSlider(Qt::Horizontal);
     m_wnbSlider->setRange(0, 100);
@@ -1681,11 +1651,7 @@ void SpectrumOverlayMenu::buildDaxPanel()
     m_wfmBtn->setToolTip(
         tr("Software FM demodulator (DAX IQ → Hi-Fi Cable). Demodulates this "
            "pan's DAX IQ stream for the active slice; mode-independent."));
-    m_wfmBtn->setStyleSheet(
-        "QPushButton { background: #444; color: #ccc; border: 1px solid #666;"
-        " border-radius: 3px; font-size: 11px; font-weight: bold; padding: 2px 8px; }"
-        "QPushButton:checked { background: #2a7; color: #fff; border-color: #2a7; }"
-        "QPushButton:hover { background: #555; }");
+    AetherSDR::ButtonStyles::apply(m_wfmBtn, "overlay.wfm");
     connect(m_wfmBtn, &QPushButton::toggled, this, [this](bool on) {
         if (m_updatingFromModel) return;
         if (!m_slice) {
@@ -1949,6 +1915,9 @@ void SpectrumOverlayMenu::buildDisplayPanel()
     auto labelStyle = QStringLiteral("QLabel { color: #8090a0; font-size: 10px; border: none; }");
     auto valStyle   = QStringLiteral("QLabel { color: #c8d8e8; font-size: 10px; border: none;"
                                       " min-width: 24px; }");
+    // Build 777: the Display panel buttons take "overlay.display" from the
+    // button-style catalogue (ButtonStyles.cpp); this copy is kept only for
+    // the scope-mode row below, whose one sheet is scoped and set plainly.
     auto btnStyle = QStringLiteral(
         "QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #205070;"
         " border-radius: 3px; font-size: 10px; font-weight: bold; padding: 2px 6px; }"
@@ -2006,7 +1975,7 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         btn = new QPushButton(btnText);
         btn->setCheckable(true);
         btn->setFixedSize(36, 18);
-        btn->setStyleSheet(btnStyle);
+        AetherSDR::ButtonStyles::apply(btn, "overlay.display");
         grid->addWidget(btn, row, 1);
 
         slider = new GuardedSlider(Qt::Horizontal);
@@ -2070,7 +2039,7 @@ void SpectrumOverlayMenu::buildDisplayPanel()
             btn = new QPushButton(text);
             btn->setCheckable(true);
             btn->setChecked(checked);
-            btn->setStyleSheet(btnStyle);
+            AetherSDR::ButtonStyles::apply(btn, "overlay.display");
             btn->setFixedHeight(20);
             toggleLayout->addWidget(btn);
         };
@@ -2439,7 +2408,7 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         auto* bgBtn = new QPushButton("Choose...");
         bgBtn->setObjectName("displayBgChooseBtn");
         bgBtn->setFixedHeight(18);
-        bgBtn->setStyleSheet(btnStyle);
+        AetherSDR::ButtonStyles::apply(bgBtn, "overlay.display");
         connect(bgBtn, &QPushButton::clicked, this, [this] {
             emit backgroundImageRequested();
         });
@@ -2448,7 +2417,7 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         auto* clearBtn = new QPushButton("Clear");
         clearBtn->setObjectName("displayBgClearBtn");
         clearBtn->setFixedHeight(18);
-        clearBtn->setStyleSheet(btnStyle);
+        AetherSDR::ButtonStyles::apply(clearBtn, "overlay.display");
         clearBtn->setToolTip("Revert to the default logo background.");
         connect(clearBtn, &QPushButton::clicked, this, [this] {
             emit backgroundImageCleared();
@@ -2458,7 +2427,7 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         auto* offBtn = new QPushButton("Off");
         offBtn->setObjectName("displayBgOffBtn");
         offBtn->setFixedHeight(18);
-        offBtn->setStyleSheet(btnStyle);
+        AetherSDR::ButtonStyles::apply(offBtn, "overlay.display");
         offBtn->setToolTip("Turn the background off entirely (no image, just the fill colour).");
         connect(offBtn, &QPushButton::clicked, this, [this] {
             emit backgroundImageDisabled();
@@ -2754,7 +2723,7 @@ void SpectrumOverlayMenu::buildDisplayPanel()
         });
 
         for (QPushButton* actionBtn : {m_cloneToAllPansBtn, resetBtn}) {
-            actionBtn->setStyleSheet(btnStyle);
+            AetherSDR::ButtonStyles::apply(actionBtn, "overlay.display");
             grid->addWidget(actionBtn, row, 0, 1, 4);
             ++row;
         }

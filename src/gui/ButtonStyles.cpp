@@ -864,6 +864,132 @@ const Entry kEntries[] = {
      "{{color.button.overlay.hover.border}}; }QPushButton:disabled { background: rgba(15, 15, "
      "26, 180); color: {{color.button.overlay.disabled.text}}; border: 1px solid "
      "{{color.button.overlay.disabled.border}}; }"},
+
+    // ── Spectrum overlay menu, step 2: ANT panel, front end, WNB, WFM, Display panel (build 777)
+    {"overlay.ant", "SpectrumOverlayMenu.cpp: ANT panel RX / TX antenna buttons, LNA (antBtnStyle)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; color: "
+     "#c8d8e8; font-size: 10px; font-weight: bold; padding: 0px; }QPushButton:hover { border: "
+     "1px solid #0090e0; }QPushButton:checked { background: #0070c0; border: 1px solid "
+     "#0090e0; color: #ffffff; }QPushButton:disabled { color: #607080; "
+     "}QPushButton:checked:disabled { background: #304a60; color: #a0b0c0; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.overlay.ant.background}}; border: 1px solid "
+     "{{color.button.overlay.ant.border}}; border-radius: 2px; color: "
+     "{{color.button.overlay.ant.text}}; font-size: 10px; font-weight: bold; padding: 0px; "
+     "}QPushButton:hover { border: 1px solid {{color.button.overlay.ant.hover.border}}; "
+     "}QPushButton:checked { background: {{color.button.overlay.ant.checked.background}}; "
+     "border: 1px solid {{color.button.overlay.ant.checked.border}}; color: "
+     "{{color.button.overlay.ant.checked.text}}; }QPushButton:disabled { color: "
+     "{{color.button.overlay.ant.disabled.text}}; }QPushButton:checked:disabled { background: "
+     "{{color.button.overlay.ant.checked.disabled.background}}; color: "
+     "{{color.button.overlay.ant.checked.disabled.text}}; }"},
+
+    {"overlay.loop", "SpectrumOverlayMenu.cpp: ANT panel LoopA / LoopB (loopBtnStyle)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; color: "
+     "#c8d8e8; font-size: 10px; font-weight: bold; }QPushButton:checked { background: #0070c0; "
+     "color: #ffffff; border: 1px solid #0090e0; }QPushButton:hover { border: 1px solid "
+     "#0090e0; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.overlay.ant.background}}; border: 1px solid "
+     "{{color.button.overlay.ant.border}}; border-radius: 2px; color: "
+     "{{color.button.overlay.ant.text}}; font-size: 10px; font-weight: bold; "
+     "}QPushButton:checked { background: {{color.button.overlay.ant.checked.background}}; "
+     "color: {{color.button.overlay.ant.checked.text}}; border: 1px solid "
+     "{{color.button.overlay.ant.checked.border}}; }QPushButton:hover { border: 1px solid "
+     "{{color.button.overlay.ant.hover.border}}; }"},
+
+    {"overlay.adc", "SpectrumOverlayMenu.cpp: ANT panel ADC button (adcBtnStyle)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; color: "
+     "#c8d8e8; font-size: 10px; font-weight: bold; padding: 0px; }QPushButton:hover { border: "
+     "1px solid #0090e0; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.overlay.ant.background}}; border: 1px solid "
+     "{{color.button.overlay.ant.border}}; border-radius: 2px; color: "
+     "{{color.button.overlay.ant.text}}; font-size: 10px; font-weight: bold; padding: 0px; "
+     "}QPushButton:hover { border: 1px solid {{color.button.overlay.ant.hover.border}}; }"},
+
+    {"overlay.check", "SpectrumOverlayMenu.cpp: ANT panel dither / random check boxes (chkStyle)",
+     /*original*/
+     "QCheckBox { spacing: 0px; }QCheckBox::indicator { width: 12px; height: 12px; border: 1px "
+     "solid #304050; border-radius: 2px; background: #0a0a18; }QCheckBox::indicator:hover { "
+     "border: 1px solid #0090e0; }QCheckBox::indicator:checked { background: #00b4d8; border: "
+     "1px solid #40c8e8; }QCheckBox::indicator:disabled { background: #1a2028; border: 1px "
+     "solid #252f3a; }",
+     /*themed*/
+     "QCheckBox { spacing: 0px; }QCheckBox::indicator { width: 12px; height: 12px; border: 1px "
+     "solid {{color.button.overlay.ant.check.border}}; border-radius: 2px; background: "
+     "{{color.button.overlay.ant.check.background}}; }QCheckBox::indicator:hover { border: 1px "
+     "solid {{color.button.overlay.ant.check.hover.border}}; }QCheckBox::indicator:checked { "
+     "background: {{color.button.overlay.ant.check.checked.background}}; border: 1px solid "
+     "{{color.button.overlay.ant.check.checked.border}}; }QCheckBox::indicator:disabled { "
+     "background: {{color.button.overlay.ant.check.disabled.background}}; border: 1px solid "
+     "{{color.button.overlay.ant.check.disabled.border}}; }"},
+
+    {"overlay.frontend", "SpectrumOverlayMenu.cpp: front end PRE / ATT buttons (kFrontEndBtnStyle)",
+     /*original*/
+     "QPushButton { background: {{color.background.1}}; border: 1px solid "
+     "{{color.background.2}}; border-radius: 3px; color: {{color.text.secondary}}; font-size: "
+     "11px; padding: 1px 4px; }QPushButton:hover { border-color: {{color.accent.bright}}; "
+     "}QPushButton:checked { background: {{color.accent.dim}}; border-color: "
+     "{{color.accent.bright}}; color: {{color.text.primary}}; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.overlay.frontend.background}}; border: 1px "
+     "solid {{color.button.overlay.frontend.border}}; border-radius: 3px; color: "
+     "{{color.button.overlay.frontend.text}}; font-size: 11px; padding: 1px 4px; "
+     "}QPushButton:hover { border-color: {{color.button.overlay.frontend.hover.border}}; "
+     "}QPushButton:checked { background: {{color.button.overlay.frontend.checked.background}}; "
+     "border-color: {{color.button.overlay.frontend.checked.border}}; color: "
+     "{{color.button.overlay.frontend.checked.text}}; }"},
+
+    {"overlay.wnb", "SpectrumOverlayMenu.cpp: WNB",
+     /*original*/
+     "QPushButton { background: {{color.background.1}}; border: 1px solid "
+     "{{color.background.2}}; border-radius: 2px; color: {{color.text.primary}}; font-size: "
+     "11px; font-weight: bold; }QPushButton:checked { background: {{color.background.2}}; "
+     "color: {{color.text.primary}}; border: 1px solid {{color.accent.dim}}; "
+     "}QPushButton:hover { border: 1px solid {{color.accent.dim}}; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.overlay.wnb.background}}; border: 1px solid "
+     "{{color.button.overlay.wnb.border}}; border-radius: 2px; color: "
+     "{{color.button.overlay.wnb.text}}; font-size: 11px; font-weight: bold; "
+     "}QPushButton:checked { background: {{color.button.overlay.wnb.checked.background}}; "
+     "color: {{color.button.overlay.wnb.checked.text}}; border: 1px solid "
+     "{{color.button.overlay.wnb.checked.border}}; }QPushButton:hover { border: 1px solid "
+     "{{color.button.overlay.wnb.hover.border}}; }"},
+
+    {"overlay.wfm", "SpectrumOverlayMenu.cpp: WFM (three-digit colours: not remapped by the remap themes)",
+     /*original*/
+     "QPushButton { background: #444; color: #ccc; border: 1px solid #666; border-radius: 3px; "
+     "font-size: 11px; font-weight: bold; padding: 2px 8px; }QPushButton:checked { background: "
+     "#2a7; color: #fff; border-color: #2a7; }QPushButton:hover { background: #555; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.overlay.wfm.background}}; color: "
+     "{{color.button.overlay.wfm.text}}; border: 1px solid "
+     "{{color.button.overlay.wfm.border}}; border-radius: 3px; font-size: 11px; font-weight: "
+     "bold; padding: 2px 8px; }QPushButton:checked { background: "
+     "{{color.button.overlay.wfm.checked.background}}; color: "
+     "{{color.button.overlay.wfm.checked.text}}; border-color: "
+     "{{color.button.overlay.wfm.checked.border}}; }QPushButton:hover { background: "
+     "{{color.button.overlay.wfm.hover.background}}; }"},
+
+    {"overlay.display", "SpectrumOverlayMenu.cpp: Display panel buttons -- trace / waterfall options, background, Clone / Reset (btnStyle)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #205070; "
+     "border-radius: 3px; font-size: 10px; font-weight: bold; padding: 2px 6px; "
+     "}QPushButton:hover { background: #204060; }QPushButton:checked { background: #006040; "
+     "color: #00ff88; border-color: #00a060; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.overlay.display.background}}; color: "
+     "{{color.button.overlay.display.text}}; border: 1px solid "
+     "{{color.button.overlay.display.border}}; border-radius: 3px; font-size: 10px; "
+     "font-weight: bold; padding: 2px 6px; }QPushButton:hover { background: "
+     "{{color.button.overlay.display.hover.background}}; }QPushButton:checked { background: "
+     "{{color.button.overlay.display.checked.background}}; color: "
+     "{{color.button.overlay.display.checked.text}}; border-color: "
+     "{{color.button.overlay.display.checked.border}}; }"},
 };
 // END-ENTRIES
 
