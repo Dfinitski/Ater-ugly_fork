@@ -3738,10 +3738,131 @@ static QString ananBandMemKey(int sliceId, const QString& band)
     return sliceId == 0 ? band : QStringLiteral("RX%1/%2").arg(sliceId + 1).arg(band);
 }
 
+// ANAN fork build 787 (operator, 26.11: "for each mode means: on 40 m in CW
+// RIT is on, and on the same band in SSB it is not -- that one has its own
+// setting"). RIT / XIT are kept per receiver, per band AND per mode group
+// (SSB, CW, AM, FM, DIGI -- the tuning step's groups), in AppSettings
+// "AnanRitXitByBandMode" as {"<band memory key>|<group>": {rit, ritHz, xit,
+// xitHz}}. The band memory therefore does not carry them (a band button would
+// bring back one value for every mode); the quick memories and the station
+// memories still do (RecallSnapshot, build 786).
+static void stripRitXit(QJsonObject& o)
+{
+    o.remove(QStringLiteral("rit"));
+    o.remove(QStringLiteral("ritHz"));
+    o.remove(QStringLiteral("xit"));
+    o.remove(QStringLiteral("xitHz"));
+}
+
+static QString ritXitModeGroup(const QString& mode)
+{
+    // RadioModel's tuningStepGroup(): the same groups.
+    const QString m = mode.toUpper();
+    if (m == QLatin1String("USB") || m == QLatin1String("LSB"))
+        return QStringLiteral("SSB");
+    if (m.startsWith(QLatin1String("CW")))
+        return QStringLiteral("CW");
+    if (m == QLatin1String("AM") || m == QLatin1String("SAM") || m == QLatin1String("DSB")
+        || m == QLatin1String("DRM"))
+        return QStringLiteral("AM");
+    if (m == QLatin1String("FM") || m == QLatin1String("NFM") || m == QLatin1String("FMN")
+        || m == QLatin1String("WFM") || m == QLatin1String("WBFM") || m == QLatin1String("DFM"))
+        return QStringLiteral("FM");
+    return QStringLiteral("DIGI");
+}
+
+static QJsonObject ritXitOf(const SliceModel* s)
+{
+    return QJsonObject{{QStringLiteral("rit"), s->ritOn()}, {QStringLiteral("ritHz"), s->ritFreq()},
+                       {QStringLiteral("xit"), s->xitOn()}, {QStringLiteral("xitHz"), s->xitFreq()}};
+}
+
+static void ritXitStore(const QString& key, const QJsonObject& v)
+{
+    auto& st = AppSettings::instance();
+    QJsonObject all = QJsonDocument::fromJson(
+        st.value(QStringLiteral("AnanRitXitByBandMode"), QStringLiteral("{}")).toString().toUtf8()).object();
+    // Both off at 0 is the default: not kept (keeps the document small).
+    const bool isDefault = !v.value(QStringLiteral("rit")).toBool() && v.value(QStringLiteral("ritHz")).toInt() == 0
+        && !v.value(QStringLiteral("xit")).toBool() && v.value(QStringLiteral("xitHz")).toInt() == 0;
+    if (isDefault ? !all.contains(key) : all.value(key).toObject() == v)
+        return;
+    if (isDefault)
+        all.remove(key);
+    else
+        all.insert(key, v);
+    st.setValue(QStringLiteral("AnanRitXitByBandMode"),
+                QString::fromUtf8(QJsonDocument(all).toJson(QJsonDocument::Compact)));
+    st.save();
+}
+
+static QJsonObject ritXitLoad(const QString& key)
+{
+    const QJsonObject all = QJsonDocument::fromJson(
+        AppSettings::instance().value(QStringLiteral("AnanRitXitByBandMode"), QStringLiteral("{}"))
+            .toString().toUtf8()).object();
+    const QJsonObject v = all.value(key).toObject();
+    if (!v.isEmpty())
+        return v;
+    return QJsonObject{{QStringLiteral("rit"), false}, {QStringLiteral("ritHz"), 0},
+                       {QStringLiteral("xit"), false}, {QStringLiteral("xitHz"), 0}};
+}
+
+// One receiver's sample (every 0.5 s, from ananBandMemTick). While the band and
+// the mode group stay, a change of RIT / XIT is stored for them. When either
+// changes, the new pair's own values are set -- unless RIT / XIT changed in the
+// same moment (a quick memory or a station memory recalled its own): those are
+// kept and become the new pair's.
+static void ritXitByBandModeTick(SliceModel* s, const QString& memKey, bool skip)
+{
+    struct State { QString key; QJsonObject vals; };
+    static QHash<int, State> states;   // by slice id (one MainWindow)
+    State& st = states[s->sliceId()];
+    if (skip || memKey.isEmpty()) {    // FTX holds the receiver: not its band's state
+        st = {};
+        return;
+    }
+    const QString key = memKey + QLatin1Char('|') + ritXitModeGroup(s->mode());
+    const QJsonObject cur = ritXitOf(s);
+    if (st.key.isEmpty()) {            // first sample: learn what the receiver holds
+        st = {key, cur};
+        ritXitStore(key, cur);
+        return;
+    }
+    if (key == st.key) {
+        if (cur != st.vals) {
+            st.vals = cur;
+            ritXitStore(key, cur);
+        }
+        return;
+    }
+    if (cur != st.vals) {              // changed together with the band / mode: a recall
+        st = {key, cur};
+        ritXitStore(key, cur);
+        return;
+    }
+    const QJsonObject want = ritXitLoad(key);
+    const bool ritOn = want.value(QStringLiteral("rit")).toBool();
+    const int ritHz = want.value(QStringLiteral("ritHz")).toInt();
+    const bool xitOn = want.value(QStringLiteral("xit")).toBool();
+    const int xitHz = want.value(QStringLiteral("xitHz")).toInt();
+    if (ritOn != s->ritOn() || ritHz != s->ritFreq())
+        s->setRit(ritOn, ritHz);
+    if (xitOn != s->xitOn() || xitHz != s->xitFreq())
+        s->setXit(xitOn, xitHz);
+    st = {key, ritXitOf(s)};
+    qCInfo(lcProtocol).noquote().nospace()
+        << "MainWindow: RIT/XIT for " << key << ": RIT " << (ritOn ? "on " : "off ") << ritHz
+        << " Hz, XIT " << (xitOn ? "on " : "off ") << xitHz << " Hz";
+}
+
 QJsonObject MainWindow::ananBandMemSnapshot(SliceModel* s) const
 {
     // Build 452: the snapshot every recall point stores (gui/RecallSnapshot.h).
-    return RecallSnapshot::capture(m_radioModel, s);
+    // Build 787: without RIT / XIT -- they are kept per band and mode group.
+    QJsonObject o = RecallSnapshot::capture(m_radioModel, s);
+    stripRitXit(o);
+    return o;
 }
 
 void MainWindow::ananBandMemStore(int sliceId, const QString& band, const QJsonObject& snap)
@@ -3959,6 +4080,8 @@ void MainWindow::ananBandMemTick()
         // While FTX holds this receiver nothing it does is remembered as a
         // band's state; the band's antennas / LNA still follow its dial.
         const bool ftx = s->sliceId() == m_ftxSliceId;
+        // Build 787: RIT / XIT per band and mode group.
+        ritXitByBandModeTick(s, band.isEmpty() ? QString() : ananBandMemKey(s->sliceId(), band), ftx);
         if (band == slot.band) {
             slot.live = ftx ? QJsonObject() : snap;
             continue;
@@ -4448,6 +4571,7 @@ void MainWindow::selectBand(const QString& panId, const QString& bandName, doubl
             // parameters but leaves it off until SPLIT is pressed.
             recall.insert(QStringLiteral("sub"), false);
             recall.remove(QStringLiteral("step"));   // build 500: not a band button's
+            stripRitXit(recall);   // build 787: per band and mode group, not the band's
             applyRecallSnapshot(s, recall, true);
             m_ananBandMem[sid] = AnanBandMemSlot{bandName, mem};
             qCInfo(lcProtocol).noquote().nospace()
