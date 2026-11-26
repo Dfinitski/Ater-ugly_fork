@@ -608,7 +608,23 @@
               "tab.dsp.text": "#20a040",
               "tab.dsp.border": "#20a040",
               "ant.rx.text": "#4488ff",
-              "ant.tx.text": "#ff4444"
+              "ant.tx.text": "#ff4444",
+              "hover.background": "#272c3f",
+              "gated.background": "{color.gray.700}",
+              "gated.text": "{color.gray.600}",
+              "offset.checked.background": "#604000",
+              "offset.checked.border": "#906000",
+              "offset.checked.text": "#ffb800",
+              "slice.text": "#c0caf5",
+              "slice.close.hover.text": "#ffffff",
+              "slice.play.text": "#60a070",
+              "slice.play.checked.text": "#30d050",
+              "slice.play.disabled.text": "#393f5c",
+              "autotune.hover.background": "#2a2f42",
+              "autotune.pressed.background": "#3d59a1",
+              "autotune.checked.background": "#3d59a1",
+              "autotune.checked.border": "#7298ec",
+              "autotune.checked.text": "#b4c8ff"
             }
           }
         },

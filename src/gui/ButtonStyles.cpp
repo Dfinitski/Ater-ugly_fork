@@ -530,6 +530,121 @@ const Entry kEntries[] = {
      "QPushButton:hover { background: {{color.button.vfo.sql.auto.hover.background}}; }"
      "QPushButton:disabled { background-color: {{color.button.vfo.disabled.background}}; color: {{color.button.vfo.disabled.text}}; "
      "border: 1px solid {{color.button.vfo.disabled.border}}; }"},
+
+    // ── VFO flag, step 2: slice side buttons, FM, RIT / XIT, autotune (build 774)
+    {"vfo.slice.close", "VfoWidget.cpp: slice close button (sliceBtnStyle + ...)",
+     /*original*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; "
+     "border-radius: 10px; font-size: 11px; padding: 0; }"
+     "QPushButton:hover { background: rgba(255,255,255,60); }"
+     "QPushButton { color: #c8d8e8; }"
+     "QPushButton:hover { background: rgba(204,32,32,180); color: #ffffff; }",
+     /*themed*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; "
+     "border-radius: 10px; font-size: 11px; padding: 0; }"
+     "QPushButton:hover { background: rgba(255,255,255,60); }"
+     "QPushButton { color: {{color.button.vfo.slice.text}}; }"
+     "QPushButton:hover { background: rgba(204,32,32,180); color: {{color.button.vfo.slice.close.hover.text}}; }"},
+
+    {"vfo.slice.lock", "VfoWidget.cpp: slice lock button (sliceBtnStyle + ..., translucent colours only)",
+     /*original*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; "
+     "border-radius: 10px; font-size: 11px; padding: 0; }"
+     "QPushButton:hover { background: rgba(255,255,255,60); }"
+     "QPushButton:checked { background: rgba(255,100,100,80); }",
+     /*themed*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; "
+     "border-radius: 10px; font-size: 11px; padding: 0; }"
+     "QPushButton:hover { background: rgba(255,255,255,60); }"
+     "QPushButton:checked { background: rgba(255,100,100,80); }"},
+
+    {"vfo.slice.play", "VfoWidget.cpp: slice play button (sliceBtnStyle + ...)",
+     /*original*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; "
+     "border-radius: 10px; font-size: 11px; padding: 0; }"
+     "QPushButton:hover { background: rgba(255,255,255,60); }"
+     "QPushButton { color: #60a070; }"
+     "QPushButton:checked { color: #30d050; background: rgba(50,200,80,110); }"
+     "QPushButton:disabled { color: #484848; background: rgba(255,255,255,15); }",
+     /*themed*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; "
+     "border-radius: 10px; font-size: 11px; padding: 0; }"
+     "QPushButton:hover { background: rgba(255,255,255,60); }"
+     "QPushButton { color: {{color.button.vfo.slice.play.text}}; }"
+     "QPushButton:checked { color: {{color.button.vfo.slice.play.checked.text}}; background: rgba(50,200,80,110); }"
+     "QPushButton:disabled { color: {{color.button.vfo.slice.play.disabled.text}}; background: rgba(255,255,255,15); }"},
+
+    {"vfo.offset", "VfoWidget.cpp: FM offset -, Simplex, + (kDirBtn + :disabled)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px;"
+     " color: #c8d8e8; font-size: 11px; font-weight: bold; padding: 2px 4px; }"
+     "QPushButton:checked { background: #0070c0; color: #ffffff; border: 1px solid #0090e0; }"
+     "QPushButton:hover { border: 1px solid #0090e0; }"
+     "QPushButton:disabled { color: {{color.text.disabled}}; "
+     "background: {{color.background.2}}; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.background}}; border: 1px solid {{color.button.vfo.border}}; border-radius: 2px;"
+     " color: {{color.button.vfo.text}}; font-size: 11px; font-weight: bold; padding: 2px 4px; }"
+     "QPushButton:checked { background: {{color.button.vfo.selected.background}}; color: {{color.button.vfo.selected.text}}; border: 1px solid {{color.button.vfo.selected.border}}; }"
+     "QPushButton:hover { border: 1px solid {{color.button.vfo.hover.border}}; }"
+     "QPushButton:disabled { color: {{color.button.vfo.gated.text}}; "
+     "background: {{color.button.vfo.gated.background}}; }"},
+
+    {"vfo.rev", "VfoWidget.cpp: FM REV (kRevBtn + :disabled)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px;"
+     " color: #c8d8e8; font-size: 11px; font-weight: bold; padding: 2px 4px; }"
+     "QPushButton:checked { background-color: #604000; color: #ffb800; border: 1px solid #906000; }"
+     "QPushButton:hover { border: 1px solid #0090e0; }"
+     "QPushButton:disabled { color: {{color.text.disabled}}; "
+     "background: {{color.background.2}}; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.background}}; border: 1px solid {{color.button.vfo.border}}; border-radius: 2px;"
+     " color: {{color.button.vfo.text}}; font-size: 11px; font-weight: bold; padding: 2px 4px; }"
+     "QPushButton:checked { background-color: {{color.button.vfo.offset.checked.background}}; color: {{color.button.vfo.offset.checked.text}}; border: 1px solid {{color.button.vfo.offset.checked.border}}; }"
+     "QPushButton:hover { border: 1px solid {{color.button.vfo.hover.border}}; }"
+     "QPushButton:disabled { color: {{color.button.vfo.gated.text}}; "
+     "background: {{color.button.vfo.gated.background}}; }"},
+
+    {"vfo.rit", "VfoWidget.cpp: RIT, XIT on (kRitBtnStyle)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+     "border-radius: 2px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+     "padding: 1px 4px; }"
+     "QPushButton:checked { background-color: #604000; color: #ffb800; "
+     "border: 1px solid #906000; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.background}}; border: 1px solid {{color.button.vfo.border}}; "
+     "border-radius: 2px; color: {{color.button.vfo.text}}; font-size: 11px; font-weight: bold; "
+     "padding: 1px 4px; }"
+     "QPushButton:checked { background-color: {{color.button.vfo.offset.checked.background}}; color: {{color.button.vfo.offset.checked.text}}; "
+     "border: 1px solid {{color.button.vfo.offset.checked.border}}; }"},
+
+    {"vfo.zero", "VfoWidget.cpp: RIT / XIT zero (kZeroBtnStyle)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
+     "border-radius: 2px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+     "padding: 1px 4px; }"
+     "QPushButton:hover { background: #203040; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.background}}; border: 1px solid {{color.button.vfo.border}}; "
+     "border-radius: 2px; color: {{color.button.vfo.text}}; font-size: 11px; font-weight: bold; "
+     "padding: 1px 4px; }"
+     "QPushButton:hover { background: {{color.button.vfo.hover.background}}; }"},
+
+    {"vfo.autotune", "VfoWidget.cpp: CW autotune Once / Loop, Zero Beat (btnStyle)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #304050; "
+     "border-radius: 3px; font-size: 10px; padding: 0 8px; }"
+     "QPushButton:hover { background: #253545; }"
+     "QPushButton:pressed { background: #00607a; }"
+     "QPushButton:checked { background: #00607a; color: #e0f0ff; border-color: #00b4d8; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.background}}; color: {{color.button.vfo.text}}; border: 1px solid {{color.button.vfo.border}}; "
+     "border-radius: 3px; font-size: 10px; padding: 0 8px; }"
+     "QPushButton:hover { background: {{color.button.vfo.autotune.hover.background}}; }"
+     "QPushButton:pressed { background: {{color.button.vfo.autotune.pressed.background}}; }"
+     "QPushButton:checked { background: {{color.button.vfo.autotune.checked.background}}; color: {{color.button.vfo.autotune.checked.text}}; border-color: {{color.button.vfo.autotune.checked.border}}; }"},
 };
 // END-ENTRIES
 

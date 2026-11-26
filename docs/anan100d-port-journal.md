@@ -13171,6 +13171,39 @@ ThemeSeedGenerated 0; check_button_styles — идентично.
 ButtonStyles 0; check_button_styles — идентично; check_theme_seed — актуален.
 Не проверено на радио, не собиралось под Windows.
 
+## 763. Сборка 774 — кнопки в редактор тем, шаг 5: флажок VFO (кнопки слайса, FM, RIT/XIT, автонастройка)
+
+Второй шаг по флажку VFO: ещё 8 записей группы `vfo` в `ButtonStyles.cpp`.
+
+- `vfo.slice.close`, `vfo.slice.lock`, `vfo.slice.play` (`sliceBtnStyle` +
+  своё) — круглые кнопки слайса закрыть / замок / воспроизведение.
+  Полупрозрачные rgba-цвета оставлены как есть (у замка других и нет, его
+  запись — только для каталога). Кнопка записи не тронута: у неё
+  пульсирующий стиль, меняется по таймеру, `sliceBtnStyle` оставлен для неё.
+- `vfo.offset` (`kDirBtn` + правило `:disabled`) — FM −, Simplex, +;
+  `vfo.rev` (`kRevBtn` + `:disabled`) — REV; `vfo.rit` (`kRitBtnStyle` =
+  база + `kAmberActive`) — RIT, XIT; `vfo.zero` (`kZeroBtnStyle`) — их «0»;
+  `vfo.autotune` (`btnStyle`) — CW Once / Loop, Zero Beat.
+- Исходные тексты сверены скриптом с константами и вызовами в коде —
+  совпадают. Локальные константы убраны, на их месте отсылка к id.
+- Новые токены `color.button.vfo.*` (+16, всего 47): `hover.background`,
+  `gated.*` (ссылки на примитивы, как в RX), `offset.checked.*` (янтарное
+  «вкл.» RIT/XIT/REV), `slice.*` (текст кнопок слайса, наведение на «закрыть»,
+  воспроизведение), `autotune.*`.
+- 42 записи × 3 темы — всё идентично: вид не меняется ни в одной теме.
+
+Осталось по флажку: кнопка записи (пульсирует), бейджи слайса / TX / split
+(зависят от состояния), сброс DSP, mute, AGC A.
+
+Файлы: `src/gui/VfoWidget.cpp`, `src/gui/ButtonStyles.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `docs/button-theming.md`,
+`src/core/ForkBuild.h`.
+Проверка: errcheck VfoWidget — те же 4 ошибки WanConnection.h, что до
+правки; ButtonStyles 0; check_button_styles — идентично; check_theme_seed —
+актуален.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

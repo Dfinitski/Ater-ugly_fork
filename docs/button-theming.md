@@ -54,6 +54,7 @@ aliasing one family value).
 | 771 | `mic` (Mic applet, Phone and CW) | `mic.toggle`, `mic.select` | ACC, COMP, MON, DUP, sidetone, break-in, APF (green when on); DAX, Profile 1–4, iambic, hold delay (blue when on) |
 | 772 | `rx` (RX applet) | `rx.toggle`, `rx.select`, `rx.offset`, `rx.rev`, `rx.amber`, `rx.zero`, `rx.caption`, `rx.sql.manual`, `rx.sql.auto`, `rx.preset`, `rx.lock`, `rx.ant`, `rx.txant`, `rx.qsk` | NB / NR, BIN, AGC A, FM offset − / Simplex / + and REV, RIT / XIT and their 0, NF + caption, SQL (off / manual / AUTO), filter presets, VFO lock, RX / TX antenna, QSK |
 | 773 | `vfo` (VFO flag, step 1: the file's style constants) | `vfo.ant.rx`, `vfo.ant.tx`, `vfo.tab`, `vfo.tab.active`, `vfo.tab.dsp`, `vfo.dsp`, `vfo.dsp.caption`, `vfo.dsp.active`, `vfo.mode`, `vfo.meter`, `vfo.sql.manual`, `vfo.sql.auto` | RX / TX antenna, tab labels (speaker, DSP, mode, X/RIT: at rest, open, DSP on), DSP toggles, DIV, ESC, AetherDSP / AetherVoice, NF caption, SQL (off / on / AUTO), quick mode buttons, filter presets, meter view selector |
+| 774 | `vfo` (VFO flag, step 2) | `vfo.slice.close`, `vfo.slice.lock`, `vfo.slice.play`, `vfo.offset`, `vfo.rev`, `vfo.rit`, `vfo.zero`, `vfo.autotune` | slice close / lock / play buttons, FM offset − / Simplex / + and REV, RIT / XIT and their 0, CW autotune Once / Loop, Zero Beat |
 
 Primitive references. A group token may hold a primitive reference (`{color.gray.800}`) when the
 original sheet used a generic token (`{{color.background.1}}`): the remap themes resolve it to their
@@ -61,7 +62,7 @@ own primitive, and `check_button_styles.py --write` copies such a value unchange
 
 ## Still to do (424 literal button rules in 56 files at build 769)
 
-VFO flag (the rest after build 773: slice buttons, FM offset / REV, RIT / XIT, step labels and other local sheets), spectrum overlay menu (34), DX cluster dialog (16), shack switch
+VFO flag (the rest after build 774: the record button (pulses), slice / TX / split badges (state-dependent), DSP reset, mute, AGC A), spectrum overlay menu (34), DX cluster dialog (16), shack switch
 (14), client chain (13), spot settings (11), Antenna Genius (10), tuner (10), client effect
 editors, PureSignal (8), container title bars (7), panadapter applet (6), DAX,
 TCI, MQTT, title bars, dialogs. Dynamic sheets (built with `QString::arg`, e.g. quick memory

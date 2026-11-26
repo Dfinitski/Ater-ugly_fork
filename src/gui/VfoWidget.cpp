@@ -1157,6 +1157,8 @@ void VfoWidget::buildUI()
     // Shared base style for the four 20x20 slice-side buttons (close, lock,
     // record, play). All use the same background circle so they line up
     // visually when stacked vertically on the slice edge.
+    // Build 774: close / lock / play take theirs from the button-style
+    // catalogue ("vfo.slice.*"); the record button keeps this one (it pulses).
     static const QString sliceBtnStyle =
         "QPushButton { background: rgba(255,255,255,30); border: none; "
         "border-radius: 10px; font-size: 11px; padding: 0; }"
@@ -1164,9 +1166,7 @@ void VfoWidget::buildUI()
 
     m_closeSliceBtn = new QPushButton("\xE2\x9C\x95", btnParent);  // ✕
     m_closeSliceBtn->setFixedSize(20, 20);
-    m_closeSliceBtn->setStyleSheet(sliceBtnStyle +
-        "QPushButton { color: #c8d8e8; }"
-        "QPushButton:hover { background: rgba(204,32,32,180); color: #ffffff; }");
+    AetherSDR::ButtonStyles::apply(m_closeSliceBtn, "vfo.slice.close");
     m_closeSliceBtn->show();
     connect(m_closeSliceBtn, &QPushButton::clicked, this, [this] {
         emit closeSliceRequested();
@@ -1175,8 +1175,7 @@ void VfoWidget::buildUI()
     m_lockVfoBtn = new QPushButton("\xF0\x9F\x94\x93", btnParent);  // 🔓
     m_lockVfoBtn->setFixedSize(20, 20);
     m_lockVfoBtn->setCheckable(true);
-    m_lockVfoBtn->setStyleSheet(sliceBtnStyle +
-        "QPushButton:checked { background: rgba(255,100,100,80); }");
+    AetherSDR::ButtonStyles::apply(m_lockVfoBtn, "vfo.slice.lock");
     m_lockVfoBtn->show();
     connect(m_lockVfoBtn, &QPushButton::toggled, this, [this](bool locked) {
         m_lockVfoBtn->setText(locked ? "\xF0\x9F\x94\x92" : "\xF0\x9F\x94\x93");
@@ -1226,10 +1225,7 @@ void VfoWidget::buildUI()
     m_playBtn->setCheckable(true);
     m_playBtn->setEnabled(false);
     m_playBtn->setToolTip("Play recorded audio");
-    m_playBtn->setStyleSheet(sliceBtnStyle +
-        "QPushButton { color: #60a070; }"
-        "QPushButton:checked { color: #30d050; background: rgba(50,200,80,110); }"
-        "QPushButton:disabled { color: #484848; background: rgba(255,255,255,15); }");
+    AetherSDR::ButtonStyles::apply(m_playBtn, "vfo.slice.play");
     m_playBtn->show();
     connect(m_playBtn, &QPushButton::clicked, this, [this](bool checked) {
         emit playToggled(checked);
@@ -2916,16 +2912,8 @@ void VfoWidget::buildTabContent()
         // FM-family OPT controls. DSTR uses the DFM RF chain and therefore
         // shares the duplex-offset controls, but it does not use CTCSS.
         {
-            static const QString kDirBtn =
-                "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px;"
-                " color: #c8d8e8; font-size: 11px; font-weight: bold; padding: 2px 4px; }"
-                "QPushButton:checked { background: #0070c0; color: #ffffff; border: 1px solid #0090e0; }"
-                "QPushButton:hover { border: 1px solid #0090e0; }";
-            static const QString kRevBtn =
-                "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px;"
-                " color: #c8d8e8; font-size: 11px; font-weight: bold; padding: 2px 4px; }"
-                "QPushButton:checked { background-color: #604000; color: #ffb800; border: 1px solid #906000; }"
-                "QPushButton:hover { border: 1px solid #0090e0; }";
+            // kDirBtn: in the button-style catalogue (ButtonStyles.cpp), "vfo.offset" -- build 774.
+            // kRevBtn: in the button-style catalogue (ButtonStyles.cpp), "vfo.rev" -- build 774.
 
             m_fmContainer = new QWidget;
             m_fmContainer->setObjectName("vfoFmDuplexContainer");
@@ -3081,10 +3069,7 @@ void VfoWidget::buildTabContent()
             m_fmOffsetDown = new QPushButton(QString::fromUtf8("\xe2\x88\x92"));
             m_fmOffsetDown->setAccessibleName("Repeater offset down");
             m_fmOffsetDown->setCheckable(true);
-            m_fmOffsetDown->setStyleSheet(kDirBtn);
-            ThemeManager::instance().applyStyleSheet(m_fmOffsetDown, m_fmOffsetDown->styleSheet()
-                + QStringLiteral("QPushButton:disabled { color: {{color.text.disabled}}; "
-                                 "background: {{color.background.2}}; }"));
+            AetherSDR::ButtonStyles::apply(m_fmOffsetDown, "vfo.offset");
             connect(m_fmOffsetDown, &QPushButton::clicked, this, [applyDir] { applyDir("down"); });
             dirRow->addWidget(m_fmOffsetDown);
 
@@ -3092,20 +3077,14 @@ void VfoWidget::buildTabContent()
             m_fmSimplexBtn->setAccessibleName("Repeater simplex");
             m_fmSimplexBtn->setCheckable(true);
             m_fmSimplexBtn->setChecked(true);
-            m_fmSimplexBtn->setStyleSheet(kDirBtn);
-            ThemeManager::instance().applyStyleSheet(m_fmSimplexBtn, m_fmSimplexBtn->styleSheet()
-                + QStringLiteral("QPushButton:disabled { color: {{color.text.disabled}}; "
-                                 "background: {{color.background.2}}; }"));
+            AetherSDR::ButtonStyles::apply(m_fmSimplexBtn, "vfo.offset");
             connect(m_fmSimplexBtn, &QPushButton::clicked, this, [applyDir] { applyDir("simplex"); });
             dirRow->addWidget(m_fmSimplexBtn);
 
             m_fmOffsetUp = new QPushButton("+");
             m_fmOffsetUp->setAccessibleName("Repeater offset up");
             m_fmOffsetUp->setCheckable(true);
-            m_fmOffsetUp->setStyleSheet(kDirBtn);
-            ThemeManager::instance().applyStyleSheet(m_fmOffsetUp, m_fmOffsetUp->styleSheet()
-                + QStringLiteral("QPushButton:disabled { color: {{color.text.disabled}}; "
-                                 "background: {{color.background.2}}; }"));
+            AetherSDR::ButtonStyles::apply(m_fmOffsetUp, "vfo.offset");
             connect(m_fmOffsetUp, &QPushButton::clicked, this, [applyDir] { applyDir("up"); });
             dirRow->addWidget(m_fmOffsetUp);
 
@@ -3113,13 +3092,11 @@ void VfoWidget::buildTabContent()
             m_fmRevBtn->setObjectName("vfoFmReverseButton");
             m_fmRevBtn->setAccessibleName("Reverse repeater offset");
             m_fmRevBtn->setCheckable(true);
-            m_fmRevBtn->setStyleSheet(kRevBtn);
+            AetherSDR::ButtonStyles::apply(m_fmRevBtn, "vfo.rev");
             // The same :disabled rule its three neighbours carry. Without it a
             // gated-off REV is indistinguishable from a live one, which is the
             // "dead control that looks live" failure the gate exists to remove.
-            ThemeManager::instance().applyStyleSheet(m_fmRevBtn, m_fmRevBtn->styleSheet()
-                + QStringLiteral("QPushButton:disabled { color: {{color.text.disabled}}; "
-                                 "background: {{color.background.2}}; }"));
+            // (build 774: the rule is part of the "vfo.rev" style.)
             connect(m_fmRevBtn, &QPushButton::toggled, this, [this](bool on) {
                 if (m_fmRevBtn->signalsBlocked() || !m_slice
                     || usesTransmitFrequencyCheck()) return;
@@ -3414,18 +3391,9 @@ void VfoWidget::buildTabContent()
     {
         static constexpr int RIT_STEP_HZ = 10;
 
-        static const QString kAmberActive =
-            "QPushButton:checked { background-color: #604000; color: #ffb800; "
-            "border: 1px solid #906000; }";
-        static const QString kRitBtnStyle =
-            "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
-            "border-radius: 2px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
-            "padding: 1px 4px; }" + kAmberActive;
-        static const QString kZeroBtnStyle =
-            "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
-            "border-radius: 2px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
-            "padding: 1px 4px; }"
-            "QPushButton:hover { background: #203040; }";
+        // kAmberActive: in the button-style catalogue (ButtonStyles.cpp), part of "vfo.rit" -- build 774.
+        // kRitBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "vfo.rit" -- build 774.
+        // kZeroBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "vfo.zero" -- build 774.
         static const QString kHzLabelStyle =
             "QLabel { font-size: 10px; background: #0a0a18; border: 1px solid #1e2e3e; "
             "border-radius: 3px; padding: 0px 2px; color: #c8d8e8; }";
@@ -3444,13 +3412,13 @@ void VfoWidget::buildTabContent()
             m_ritBtn = new QPushButton("RIT");
             m_ritBtn->setCheckable(true);
             m_ritBtn->setFixedHeight(22);
-            m_ritBtn->setStyleSheet(kRitBtnStyle);
+            AetherSDR::ButtonStyles::apply(m_ritBtn, "vfo.rit");
             m_ritBtn->setToolTip("Receive Incremental Tuning \u2014 offsets the receive frequency without moving transmit.");
             row->addWidget(m_ritBtn);
 
             auto* zero = new QPushButton("0");
             zero->setFixedHeight(22);
-            zero->setStyleSheet(kZeroBtnStyle);
+            AetherSDR::ButtonStyles::apply(zero, "vfo.zero");
             connect(zero, &QPushButton::clicked, this, [this] {
                 if (m_slice) m_slice->setRit(m_ritBtn->isChecked(), 0);
             });
@@ -3502,13 +3470,13 @@ void VfoWidget::buildTabContent()
             m_xitBtn = new QPushButton("XIT");
             m_xitBtn->setCheckable(true);
             m_xitBtn->setFixedHeight(22);
-            m_xitBtn->setStyleSheet(kRitBtnStyle);
+            AetherSDR::ButtonStyles::apply(m_xitBtn, "vfo.rit");
             m_xitBtn->setToolTip("Transmit Incremental Tuning \u2014 offsets the transmit frequency without moving receive.");
             row->addWidget(m_xitBtn);
 
             auto* zero = new QPushButton("0");
             zero->setFixedHeight(22);
-            zero->setStyleSheet(kZeroBtnStyle);
+            AetherSDR::ButtonStyles::apply(zero, "vfo.zero");
             connect(zero, &QPushButton::clicked, this, [this] {
                 if (m_slice) m_slice->setXit(m_xitBtn->isChecked(), 0);
             });
@@ -7187,17 +7155,12 @@ void VfoWidget::rebuildFilterButtons()
         label->setStyleSheet("QLabel { color: #8898a8; font-size: 11px; }");
         hbox->addWidget(label);
 
-        const QString btnStyle =
-            "QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #304050; "
-            "border-radius: 3px; font-size: 10px; padding: 0 8px; }"
-            "QPushButton:hover { background: #253545; }"
-            "QPushButton:pressed { background: #00607a; }"
-            "QPushButton:checked { background: #00607a; color: #e0f0ff; border-color: #00b4d8; }";
+        // btnStyle: in the button-style catalogue (ButtonStyles.cpp), "vfo.autotune" -- build 774.
 
         if (m_hasSmartSdrPlus) {
             m_autotuneOnceBtn = new QPushButton("Once");
             m_autotuneOnceBtn->setFixedHeight(26);
-            m_autotuneOnceBtn->setStyleSheet(btnStyle);
+            AetherSDR::ButtonStyles::apply(m_autotuneOnceBtn, "vfo.autotune");
             connect(m_autotuneOnceBtn, &QPushButton::clicked, this, [this]() {
                 emit autotuneOnceRequested();
             });
@@ -7206,7 +7169,7 @@ void VfoWidget::rebuildFilterButtons()
             m_autotuneLoopBtn = new QPushButton("Loop");
             m_autotuneLoopBtn->setCheckable(true);
             m_autotuneLoopBtn->setFixedHeight(26);
-            m_autotuneLoopBtn->setStyleSheet(btnStyle);
+            AetherSDR::ButtonStyles::apply(m_autotuneLoopBtn, "vfo.autotune");
             connect(m_autotuneLoopBtn, &QPushButton::toggled, this, [this](bool on) {
                 emit autotuneRequested(on);
             });
@@ -7217,7 +7180,7 @@ void VfoWidget::rebuildFilterButtons()
 #ifdef HAVE_CW_RX_BACKENDS
             refreshCwDecoderControls();
 #endif
-            m_zeroBeatBtn->setStyleSheet(btnStyle);
+            AetherSDR::ButtonStyles::apply(m_zeroBeatBtn, "vfo.autotune");
             connect(m_zeroBeatBtn, &QPushButton::clicked, this, [this]() {
                 emit zeroBeatRequested();
             });
