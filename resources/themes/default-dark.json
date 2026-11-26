@@ -554,6 +554,32 @@
               "display.checked.background":      "#006040",
               "display.checked.border":          "#00a060",
               "display.checked.text":            "#00ff88"
+            },
+            "shack": {
+              "background":                    "#0b1220",
+              "border":                        "#1c2a40",
+              "text":                          "#6b8099",
+              "hover.background":              "#0e1a2e",
+              "a.active.background":           "#041e2a",
+              "a.active.border":               "#00d8ef",
+              "a.active.text":                 "#00d8ef",
+              "b.active.background":           "#1e0e00",
+              "b.active.border":               "#f97316",
+              "b.active.text":                 "#f97316",
+              "b.conflict.background":         "#1e1200",
+              "b.conflict.border":             "#ffaa00",
+              "b.conflict.text":               "#ffaa00",
+              "b.parked.background":           "#0b1220",
+              "b.parked.border":               "#c05000",
+              "b.parked.text":                 "#c05000",
+              "settings.background":           "#0f1e30",
+              "settings.border":               "#008fa0",
+              "settings.text":                 "#00d8ef",
+              "settings.hover.background":     "#041e2a",
+              "dummy.hover.text":              "#dde6f0",
+              "dummy.active.border":           "#c05000",
+              "dummy.active.text":             "#f97316",
+              "dummy.active.hover.background": "#1e0e00"
             }
           }
         },

@@ -990,6 +990,89 @@ const Entry kEntries[] = {
      "{{color.button.overlay.display.checked.background}}; color: "
      "{{color.button.overlay.display.checked.text}}; border-color: "
      "{{color.button.overlay.display.checked.border}}; }"},
+
+    // ── Shack switch applet (build 778)
+    {"shack.idle", "ShackSwitchApplet.cpp: A / B antenna buttons at rest (kABtnNeutral = kBBtnNeutral)",
+     /*original*/
+     "QPushButton { background: #0b1220; border: 1px solid #1c2a40; border-radius: 3px; "
+     "padding: 3px 6px; font-size: 10px; font-weight: bold; color: #6b8099; min-width: 18px; "
+     "}QPushButton:hover { background: #0e1a2e; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.shack.background}}; border: 1px solid "
+     "{{color.button.shack.border}}; border-radius: 3px; padding: 3px 6px; font-size: 10px; "
+     "font-weight: bold; color: {{color.button.shack.text}}; min-width: 18px; "
+     "}QPushButton:hover { background: {{color.button.shack.hover.background}}; }"},
+
+    {"shack.a.active", "ShackSwitchApplet.cpp: A button on its antenna (kABtnActive)",
+     /*original*/
+     "QPushButton { background: #041e2a; border: 1px solid #00d8ef; border-radius: 3px; "
+     "padding: 3px 6px; font-size: 10px; font-weight: bold; color: #00d8ef; min-width: 18px; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.shack.a.active.background}}; border: 1px solid "
+     "{{color.button.shack.a.active.border}}; border-radius: 3px; padding: 3px 6px; font-size: "
+     "10px; font-weight: bold; color: {{color.button.shack.a.active.text}}; min-width: 18px; }"},
+
+    {"shack.b.active", "ShackSwitchApplet.cpp: B button on its antenna (kBBtnActive)",
+     /*original*/
+     "QPushButton { background: #1e0e00; border: 1px solid #f97316; border-radius: 3px; "
+     "padding: 3px 6px; font-size: 10px; font-weight: bold; color: #f97316; min-width: 18px; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.shack.b.active.background}}; border: 1px solid "
+     "{{color.button.shack.b.active.border}}; border-radius: 3px; padding: 3px 6px; font-size: "
+     "10px; font-weight: bold; color: {{color.button.shack.b.active.text}}; min-width: 18px; }"},
+
+    {"shack.b.conflict", "ShackSwitchApplet.cpp: B button blinking on a conflict (kBBtnConflict)",
+     /*original*/
+     "QPushButton { background: #1e1200; border: 1px solid #ffaa00; border-radius: 3px; "
+     "padding: 3px 6px; font-size: 10px; font-weight: bold; color: #ffaa00; min-width: 18px; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.shack.b.conflict.background}}; border: 1px "
+     "solid {{color.button.shack.b.conflict.border}}; border-radius: 3px; padding: 3px 6px; "
+     "font-size: 10px; font-weight: bold; color: {{color.button.shack.b.conflict.text}}; "
+     "min-width: 18px; }"},
+
+    {"shack.b.parked", "ShackSwitchApplet.cpp: B button parked on the dummy load, dim half of the blink (kBBtnParked)",
+     /*original*/
+     "QPushButton { background: #0b1220; border: 1px solid #c05000; border-radius: 3px; "
+     "padding: 3px 6px; font-size: 10px; font-weight: bold; color: #c05000; min-width: 18px; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.shack.b.parked.background}}; border: 1px solid "
+     "{{color.button.shack.b.parked.border}}; border-radius: 3px; padding: 3px 6px; font-size: "
+     "10px; font-weight: bold; color: {{color.button.shack.b.parked.text}}; min-width: 18px; }"},
+
+    {"shack.settings", "ShackSwitchApplet.cpp: Settings (kSettingsBtnStyle)",
+     /*original*/
+     "QPushButton { background: #0f1e30; border: 1px solid #008fa0; border-radius: 3px; "
+     "padding: 4px 10px; font-size: 10px; font-weight: bold; color: #00d8ef; "
+     "}QPushButton:hover { background: #041e2a; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.shack.settings.background}}; border: 1px solid "
+     "{{color.button.shack.settings.border}}; border-radius: 3px; padding: 4px 10px; "
+     "font-size: 10px; font-weight: bold; color: {{color.button.shack.settings.text}}; "
+     "}QPushButton:hover { background: {{color.button.shack.settings.hover.background}}; }"},
+
+    {"shack.dummy", "ShackSwitchApplet.cpp: dummy load button (kDummyLoadBtnStyle)",
+     /*original*/
+     "QPushButton { background: #0b1220; border: 1px solid #1c2a40; border-radius: 3px; "
+     "padding: 4px 8px; font-size: 10px; color: #6b8099; text-align: left; }QPushButton:hover "
+     "{ background: #0e1a2e; color: #dde6f0; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.shack.background}}; border: 1px solid "
+     "{{color.button.shack.border}}; border-radius: 3px; padding: 4px 8px; font-size: 10px; "
+     "color: {{color.button.shack.text}}; text-align: left; }QPushButton:hover { background: "
+     "{{color.button.shack.hover.background}}; color: {{color.button.shack.dummy.hover.text}}; "
+     "}"},
+
+    {"shack.dummy.active", "ShackSwitchApplet.cpp: dummy load button, on (kDummyLoadBtnActiveStyle)",
+     /*original*/
+     "QPushButton { background: #0b1220; border: 1px solid #c05000; border-radius: 3px; "
+     "padding: 4px 8px; font-size: 10px; color: #f97316; text-align: left; }QPushButton:hover "
+     "{ background: #1e0e00; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.shack.background}}; border: 1px solid "
+     "{{color.button.shack.dummy.active.border}}; border-radius: 3px; padding: 4px 8px; "
+     "font-size: 10px; color: {{color.button.shack.dummy.active.text}}; text-align: left; "
+     "}QPushButton:hover { background: {{color.button.shack.dummy.active.hover.background}}; }"},
 };
 // END-ENTRIES
 

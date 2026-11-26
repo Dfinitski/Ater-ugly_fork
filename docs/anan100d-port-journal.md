@@ -13308,6 +13308,33 @@ ButtonStyles 0; check_button_styles — идентично; check_theme_seed —
 до правки; check_button_styles — идентично; check_theme_seed — актуален.
 Не проверено на радио, не собиралось под Windows.
 
+## 767. Сборка 778 — кнопки в редактор тем, шаг 9: аплет Shack Switch
+
+Диалог DX-кластера оказался уже целиком на токенах темы (кроме образцов
+цвета, выбранных оператором), переводить там нечего. Список «осталось»
+пересчитан по коду: 125 стилей кнопок с литеральными цветами в 57 файлах
+после этой сборки.
+
+Аплет Shack Switch (`ShackSwitchApplet.cpp`), группа `shack`, 8 записей:
+
+- `shack.idle` (`kABtnNeutral` = `kBBtnNeutral`, тексты совпадают —
+  одна запись) — кнопки A / B в покое; `shack.a.active`, `shack.b.active`,
+  `shack.b.conflict` (янтарное мигание при конфликте), `shack.b.parked`
+  (тусклая половина мигания на нагрузке); `shack.settings`; `shack.dummy` /
+  `shack.dummy.active` — кнопка эквивалента нагрузки.
+- Исходные тексты извлечены скриптом из констант; константы убраны,
+  13 вызовов `setStyleSheet` заменены на `ButtonStyles::apply`.
+- Токены `color.button.shack.*` (24). 76 записей × 3 темы — всё
+  идентично: вид не меняется.
+
+Файлы: `src/gui/ShackSwitchApplet.cpp`, `src/gui/ButtonStyles.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `docs/button-theming.md`,
+`src/core/ForkBuild.h`.
+Проверка: errcheck ShackSwitchApplet 0 (как до правки); check_button_styles —
+идентично; check_theme_seed — актуален.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

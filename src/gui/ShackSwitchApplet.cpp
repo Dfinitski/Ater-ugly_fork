@@ -1,4 +1,5 @@
 #include "ShackSwitchApplet.h"
+#include "ButtonStyles.h"
 #include "core/PeripheralSettings.h"
 #include "models/AntennaGeniusModel.h"
 #include "core/AppSettings.h"
@@ -29,48 +30,25 @@ static constexpr const char* kLabelMuted =
 static constexpr const char* kStatusStyle =
     "QLabel { color: #6b8099; font-size: 10px; }";
 
-static const QString kABtnNeutral =
-    "QPushButton { background: #0b1220; border: 1px solid #1c2a40; border-radius: 3px; "
-    "padding: 3px 6px; font-size: 10px; font-weight: bold; color: #6b8099; min-width: 18px; }"
-    "QPushButton:hover { background: #0e1a2e; }";
+// kABtnNeutral: in the button-style catalogue (ButtonStyles.cpp), "shack.idle" -- build 778.
 
-static const QString kABtnActive =
-    "QPushButton { background: #041e2a; border: 1px solid #00d8ef; border-radius: 3px; "
-    "padding: 3px 6px; font-size: 10px; font-weight: bold; color: #00d8ef; min-width: 18px; }";
+// kABtnActive: in the button-style catalogue (ButtonStyles.cpp), "shack.a.active" -- build 778.
 
-static const QString kBBtnNeutral =
-    "QPushButton { background: #0b1220; border: 1px solid #1c2a40; border-radius: 3px; "
-    "padding: 3px 6px; font-size: 10px; font-weight: bold; color: #6b8099; min-width: 18px; }"
-    "QPushButton:hover { background: #0e1a2e; }";
+// kBBtnNeutral: in the button-style catalogue (ButtonStyles.cpp), "shack.idle" -- build 778.
 
-static const QString kBBtnActive =
-    "QPushButton { background: #1e0e00; border: 1px solid #f97316; border-radius: 3px; "
-    "padding: 3px 6px; font-size: 10px; font-weight: bold; color: #f97316; min-width: 18px; }";
+// kBBtnActive: in the button-style catalogue (ButtonStyles.cpp), "shack.b.active" -- build 778.
 
 // Amber: B button blinking on the antenna where a conflict exists (B "wants" to go there)
-static const QString kBBtnConflict =
-    "QPushButton { background: #1e1200; border: 1px solid #ffaa00; border-radius: 3px; "
-    "padding: 3px 6px; font-size: 10px; font-weight: bold; color: #ffaa00; min-width: 18px; }";
+// kBBtnConflict: in the button-style catalogue (ButtonStyles.cpp), "shack.b.conflict" -- build 778.
 
 // Dim orange: dummy load row B button when B is parked there (blink between this and active orange)
-static const QString kBBtnParked =
-    "QPushButton { background: #0b1220; border: 1px solid #c05000; border-radius: 3px; "
-    "padding: 3px 6px; font-size: 10px; font-weight: bold; color: #c05000; min-width: 18px; }";
+// kBBtnParked: in the button-style catalogue (ButtonStyles.cpp), "shack.b.parked" -- build 778.
 
-static constexpr const char* kSettingsBtnStyle =
-    "QPushButton { background: #0f1e30; border: 1px solid #008fa0; border-radius: 3px; "
-    "padding: 4px 10px; font-size: 10px; font-weight: bold; color: #00d8ef; }"
-    "QPushButton:hover { background: #041e2a; }";
+// kSettingsBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "shack.settings" -- build 778.
 
-static constexpr const char* kDummyLoadBtnStyle =
-    "QPushButton { background: #0b1220; border: 1px solid #1c2a40; border-radius: 3px; "
-    "padding: 4px 8px; font-size: 10px; color: #6b8099; text-align: left; }"
-    "QPushButton:hover { background: #0e1a2e; color: #dde6f0; }";
+// kDummyLoadBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "shack.dummy" -- build 778.
 
-static constexpr const char* kDummyLoadBtnActiveStyle =
-    "QPushButton { background: #0b1220; border: 1px solid #c05000; border-radius: 3px; "
-    "padding: 4px 8px; font-size: 10px; color: #f97316; text-align: left; }"
-    "QPushButton:hover { background: #1e0e00; }";
+// kDummyLoadBtnActiveStyle: in the button-style catalogue (ButtonStyles.cpp), "shack.dummy.active" -- build 778.
 
 // ── ShackSwitchApplet ────────────────────────────────────────────────────────
 
@@ -212,7 +190,7 @@ void ShackSwitchApplet::buildUI()
     // ── Dummy load selector ──────────────────────────────────────────────────
     {
         m_dummyLoadBtn = new QPushButton("Dummy Load: None");
-        m_dummyLoadBtn->setStyleSheet(kDummyLoadBtnStyle);
+        AetherSDR::ButtonStyles::apply(m_dummyLoadBtn, "shack.dummy");
         m_dummyLoadBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         connect(m_dummyLoadBtn, &QPushButton::clicked, this, [this]() {
             auto* menu = new QMenu(this);
@@ -253,7 +231,7 @@ void ShackSwitchApplet::buildUI()
         hl->setContentsMargins(0, 0, 0, 0);
         hl->addStretch();
         auto* btn = new QPushButton("Settings ⚙");
-        btn->setStyleSheet(kSettingsBtnStyle);
+        AetherSDR::ButtonStyles::apply(btn, "shack.settings");
         connect(btn, &QPushButton::clicked, this, [this]() {
             auto& settings = AppSettings::instance();
             // Get IP from the live connected device; port from beacon webPort
@@ -502,13 +480,13 @@ void ShackSwitchApplet::applyButtonStyles(int rxA, int rxB, bool singlePort)
     for (auto& r : m_antRows) {
         if (singlePort) {
             const bool aActive = (r.antennaId == rxA);
-            r.aBtn->setStyleSheet(aActive ? kABtnActive : kABtnNeutral);
-            r.bBtn->setStyleSheet(kBBtnNeutral);
+            AetherSDR::ButtonStyles::apply(r.aBtn, aActive ? "shack.a.active" : "shack.idle");
+            AetherSDR::ButtonStyles::apply(r.bBtn, "shack.idle");
             continue;
         }
 
         // A button: always straightforward
-        r.aBtn->setStyleSheet(r.antennaId == rxA ? kABtnActive : kABtnNeutral);
+        AetherSDR::ButtonStyles::apply(r.aBtn, r.antennaId == rxA ? "shack.a.active" : "shack.idle");
 
         // B button: depends on conflict state
         if (m_conflictAntId >= 0) {
@@ -516,23 +494,23 @@ void ShackSwitchApplet::applyButtonStyles(int rxA, int rxB, bool singlePort)
                 // B is parked on dummy load
                 if (r.antennaId == m_conflictAntId) {
                     // This is where B wants to be — blink amber/neutral
-                    r.bBtn->setStyleSheet(m_blinkState ? kBBtnConflict : kBBtnNeutral);
+                    AetherSDR::ButtonStyles::apply(r.bBtn, m_blinkState ? "shack.b.conflict" : "shack.idle");
                 } else if (r.antennaId == rxB) {
                     // This is the dummy load row — blink orange/dim
-                    r.bBtn->setStyleSheet(m_blinkState ? kBBtnActive : kBBtnParked);
+                    AetherSDR::ButtonStyles::apply(r.bBtn, m_blinkState ? "shack.b.active" : "shack.b.parked");
                 } else {
-                    r.bBtn->setStyleSheet(kBBtnNeutral);
+                    AetherSDR::ButtonStyles::apply(r.bBtn, "shack.idle");
                 }
             } else {
                 // Direct conflict, no dummy load configured — B button blinks amber on the shared antenna
                 if (r.antennaId == m_conflictAntId) {
-                    r.bBtn->setStyleSheet(m_blinkState ? kBBtnConflict : kBBtnNeutral);
+                    AetherSDR::ButtonStyles::apply(r.bBtn, m_blinkState ? "shack.b.conflict" : "shack.idle");
                 } else {
-                    r.bBtn->setStyleSheet(kBBtnNeutral);
+                    AetherSDR::ButtonStyles::apply(r.bBtn, "shack.idle");
                 }
             }
         } else {
-            r.bBtn->setStyleSheet(r.antennaId == rxB ? kBBtnActive : kBBtnNeutral);
+            AetherSDR::ButtonStyles::apply(r.bBtn, r.antennaId == rxB ? "shack.b.active" : "shack.idle");
         }
     }
 }
@@ -557,13 +535,13 @@ void ShackSwitchApplet::updateDummyLoadBtn()
     if (!m_dummyLoadBtn) return;
     if (m_dummyLoadAntId < 0) {
         m_dummyLoadBtn->setText("Dummy Load: None");
-        m_dummyLoadBtn->setStyleSheet(kDummyLoadBtnStyle);
+        AetherSDR::ButtonStyles::apply(m_dummyLoadBtn, "shack.dummy");
     } else {
         QString name = (m_model && m_dummyLoadAntId > 0)
                      ? m_model->antennaName(m_dummyLoadAntId)
                      : QString::number(m_dummyLoadAntId);
         m_dummyLoadBtn->setText("Dummy Load: " + name);
-        m_dummyLoadBtn->setStyleSheet(kDummyLoadBtnActiveStyle);
+        AetherSDR::ButtonStyles::apply(m_dummyLoadBtn, "shack.dummy.active");
     }
 }
 
