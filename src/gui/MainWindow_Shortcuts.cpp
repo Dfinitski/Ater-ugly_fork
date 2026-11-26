@@ -57,6 +57,7 @@
 #include <QApplication>
 #include <QApplicationStateChangeEvent>
 #include <QColorDialog>
+#include <QDialog>
 #include <QComboBox>
 #include <QKeyEvent>
 #include <QLineEdit>
@@ -690,9 +691,14 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
     // (AppletPanel's applet drag-and-drop) opt out via _aetherNoTouchScroll.
     // ANAN fork build 795: the colour picker's native caption in the
     // program's title-bar colours (MainWindow_Ftx.cpp), not Windows' white.
+    // Build 799 (operator, 26.11: the new-theme window had a white header):
+    // every dialog with a native frame (the theme editor's wizard, Adjust
+    // Colors, Contrast Check, message and input boxes ...); frameless ones
+    // draw their own title bar and are left alone.
     if (event->type() == QEvent::Show) {
-        if (auto* cd = qobject_cast<QColorDialog*>(obj); cd && cd->isWindow())
-            attachNativeCaptionColour(cd);
+        if (auto* dlg = qobject_cast<QDialog*>(obj);
+            dlg && dlg->isWindow() && !(dlg->windowFlags() & Qt::FramelessWindowHint))
+            attachNativeCaptionColour(dlg);
     }
 
     if (event->type() == QEvent::Show) {
