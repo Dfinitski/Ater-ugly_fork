@@ -36,6 +36,7 @@
 #include "models/SliceModel.h"
 #include "models/TransmitModel.h"
 #include "Theme.h"
+#include "ButtonStyles.h"
 #include "core/AppSettings.h"
 #include "InteractionSettings.h"
 
@@ -422,14 +423,7 @@ static bool hasFmToneControls(const QString& mode)
 static const QString kBgStyle =
     "QWidget#VfoWidgetRoot { background: transparent; border: none; }";
 
-static const QString kFlatBtn =
-    "QPushButton { background: transparent; border: none; "
-    "font-size: 13px; font-weight: bold; padding: 0 6px; margin: 0; }"
-    // Layout-stable hover: a translucent fill (no border added) so the flat
-    // antenna buttons signal clickability on hover without the text jumping
-    // — the other flag controls change border colour, but kFlatBtn has no
-    // border to recolour, so it hovered with zero feedback before (#4036).
-    "QPushButton:hover { background: rgba(255,255,255,28); border-radius: 3px; }";
+// kFlatBtn: moved to the button-style catalogue (ButtonStyles.cpp), "vfo.ant.rx" / "vfo.ant.tx" -- build 773.
 
 // ANAN fork, build 448 (operator, 16.11: new users did not take the speaker,
 // DSP, mode and X/RIT tabs for buttons -- #6888a0 looked like disabled
@@ -546,49 +540,23 @@ static const char* kTabLblColor = "#c8d8e8";
 // thin strokes. Measured on the operator's screenshot, the mean luminance of
 // the drawn pixels: speaker 138, DSP / LSB / X/RIT 163 - 171 (0.82 of it).
 // The texts take #c8d8e8 x 0.84: #a8b5c3. The speaker keeps kTabLblColor.
-static const QString kTabLblNormal =
-    "QPushButton { background: transparent; border: none; "
-    "border-bottom: 2px solid transparent; "
-    "color: #a8b5c3; font-size: 13px; font-weight: bold; padding: 3px 0; }"
-    "QPushButton:hover { color: #ffffff; border-bottom: 2px solid #5a7890; }"
-    "QPushButton:focus { outline: none; border-bottom: 2px solid #6888a0; }";
+// kTabLblNormal: moved to the button-style catalogue (ButtonStyles.cpp), "vfo.tab" -- build 773.
 
-static const QString kTabLblActive =
-    "QPushButton { background: transparent; border: none; "
-    "border-bottom: 2px solid #00b4d8; "
-    "color: #00b4d8; font-size: 13px; font-weight: bold; padding: 3px 0; }"
-    "QPushButton:focus { outline: none; }";
+// kTabLblActive: moved to the button-style catalogue (ButtonStyles.cpp), "vfo.tab.active" -- build 773.
 
-static const QString kTabLblDspActive =
-    "QPushButton { background: transparent; border: none; "
-    "border-bottom: 2px solid #20a040; "
-    "color: #20a040; font-size: 13px; font-weight: bold; padding: 3px 0; }"
-    "QPushButton:focus { outline: none; }";
+// kTabLblDspActive: moved to the button-style catalogue (ButtonStyles.cpp), "vfo.tab.dsp" -- build 773.
 
-static const QString kDisabledBtn =
-    "QPushButton:disabled { background-color: #1a1a2a; color: #556070; "
-    "border: 1px solid #2a3040; }";
+// kDisabledBtn: moved to the button-style catalogue (ButtonStyles.cpp), the :disabled rule of "vfo.dsp.caption" / "vfo.sql.*" -- build 773.
 
-static const QString kDspToggle =
-    "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; "
-    "color: #c8d8e8; font-size: 13px; font-weight: bold; padding: 2px 4px; }"
-    "QPushButton:checked { background: #1a6030; color: #ffffff; border: 1px solid #20a040; }"
-    "QPushButton:hover { border: 1px solid #0090e0; }";
+// kDspToggle: moved to the button-style catalogue (ButtonStyles.cpp), "vfo.dsp" -- build 773.
 
 // Active-accent variant for the non-checkable ADSP launcher: mirrors the
 // green "active" look the radio-side toggles get via :checked, so a client-side
 // NR module being on (NR2 / NR4 / MNR / BNR / DFNR / RN2) is visible on the VFO
 // grid without opening the AetherDSP applet. (#3800)
-static const QString kDspToggleActive =
-    "QPushButton { background: #1a6030; border: 1px solid #20a040; border-radius: 2px; "
-    "color: #ffffff; font-size: 13px; font-weight: bold; padding: 2px 4px; }"
-    "QPushButton:hover { border: 1px solid #0090e0; }";
+// kDspToggleActive: moved to the button-style catalogue (ButtonStyles.cpp), "vfo.dsp.active" -- build 773.
 
-static const QString kModeBtn =
-    "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; "
-    "color: #c8d8e8; font-size: 13px; font-weight: bold; padding: 3px; }"
-    "QPushButton:checked { background: #0070c0; color: #ffffff; border: 1px solid #0090e0; }"
-    "QPushButton:hover { border: 1px solid #0090e0; }";
+// kModeBtn: moved to the button-style catalogue (ButtonStyles.cpp), "vfo.mode" -- build 773.
 
 // Shared :disabled rule: a stylesheet colour beats the disabled palette, so
 // a label in a disabled row stays bright unless the sheet says otherwise.
@@ -607,11 +575,7 @@ static const QString kLabelStyle =
 // Meter-view selector buttons.  Unselected look matches the DSP NR/NB/ANF
 // toggles exactly (kDspToggle base + hover); the selected/checked look matches
 // an enabled filter preset exactly (kModeBtn's blue checked rule).
-static const QString kMeterOptBtn =
-    "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; "
-    "color: #c8d8e8; font-size: 13px; font-weight: bold; padding: 2px 4px; }"
-    "QPushButton:checked { background: #0070c0; color: #ffffff; border: 1px solid #0090e0; }"
-    "QPushButton:hover { border: 1px solid #0090e0; }";
+// kMeterOptBtn: moved to the button-style catalogue (ButtonStyles.cpp), "vfo.meter" -- build 773.
 
 static bool likelyTxAntennaFallbackToken(const QString& token)
 {
@@ -1044,7 +1008,7 @@ void VfoWidget::buildUI()
 
     m_rxAntBtn = new QPushButton("ANT1");
     m_rxAntBtn->setFlat(true);
-    m_rxAntBtn->setStyleSheet(kFlatBtn + "QPushButton { color: #4488ff; }");
+    AetherSDR::ButtonStyles::apply(m_rxAntBtn, "vfo.ant.rx");
     connect(m_rxAntBtn, &QPushButton::clicked, this, [this] {
         if (!m_slice) {
             return;
@@ -1095,7 +1059,7 @@ void VfoWidget::buildUI()
 
     m_txAntBtn = new QPushButton("ANT1");
     m_txAntBtn->setFlat(true);
-    m_txAntBtn->setStyleSheet(kFlatBtn + "QPushButton { color: #ff4444; }");
+    AetherSDR::ButtonStyles::apply(m_txAntBtn, "vfo.ant.tx");
     connect(m_txAntBtn, &QPushButton::clicked, this, [this] {
         if (!m_slice) return;
         // Same non-blocking shape as the RX antenna menu above: no nested
@@ -1587,7 +1551,7 @@ void VfoWidget::buildUI()
     m_sMeterOptBtn = new QPushButton(tr("S-Meter"));
     m_sMeterOptBtn->setCheckable(true);
     m_sMeterOptBtn->setFixedHeight(26);
-    m_sMeterOptBtn->setStyleSheet(kMeterOptBtn);
+    AetherSDR::ButtonStyles::apply(m_sMeterOptBtn, "vfo.meter");
     m_sMeterOptBtn->setAccessibleName(tr("Standard S-Meter view"));
     m_sMeterOptBtn->setCursor(Qt::ArrowCursor);
     meterMenuLayout->addWidget(m_sMeterOptBtn, 1);
@@ -1595,7 +1559,7 @@ void VfoWidget::buildUI()
     m_smartMtrOptBtn = new QPushButton(tr("SmartMTR"));
     m_smartMtrOptBtn->setCheckable(true);
     m_smartMtrOptBtn->setFixedHeight(26);
-    m_smartMtrOptBtn->setStyleSheet(kMeterOptBtn);
+    AetherSDR::ButtonStyles::apply(m_smartMtrOptBtn, "vfo.meter");
     m_smartMtrOptBtn->setAccessibleName(tr("SmartMTR view"));
     m_smartMtrOptBtn->setCursor(Qt::ArrowCursor);
     meterMenuLayout->addWidget(m_smartMtrOptBtn, 1);
@@ -1796,7 +1760,7 @@ void VfoWidget::buildUI()
         auto* btn = new QPushButton(tabLabels[i]);
         btn->setFlat(true);
         btn->setCheckable(true);
-        btn->setStyleSheet(kTabLblNormal);
+        AetherSDR::ButtonStyles::apply(btn, "vfo.tab");
         btn->setFixedHeight(24);
         btn->setCursor(Qt::ArrowCursor);
         btn->setFocusPolicy(Qt::TabFocus);
@@ -1958,7 +1922,7 @@ void VfoWidget::buildTabContent()
         m_sqlBtn->setAccessibleName("Squelch");
         m_sqlBtn->setCheckable(true);
         m_sqlBtn->setFixedHeight(20);
-        m_sqlBtn->setStyleSheet(kDspToggle + kDisabledBtn);
+        AetherSDR::ButtonStyles::apply(m_sqlBtn, "vfo.dsp.caption");
         sqlRow->addWidget(m_sqlBtn);
         m_sqlSlider = new GuardedSlider(Qt::Horizontal);
         m_sqlSlider->setAccessibleName("Squelch threshold");
@@ -2037,7 +2001,7 @@ void VfoWidget::buildTabContent()
         // A caption drawn as the SQL button (operator 04.11), not clickable.
         auto* nfLbl = new QPushButton(QStringLiteral("NF +"));
         nfLbl->setFixedSize(60, 20);
-        nfLbl->setStyleSheet(kDspToggle + kDisabledBtn);
+        AetherSDR::ButtonStyles::apply(nfLbl, "vfo.dsp.caption");
         nfLbl->setFocusPolicy(Qt::NoFocus);
         nfLbl->setAttribute(Qt::WA_TransparentForMouseEvents);
         nfLbl->setCursor(Qt::ArrowCursor);
@@ -2085,7 +2049,7 @@ void VfoWidget::buildTabContent()
         m_divBtn->setCheckable(true);
         m_divBtn->setFixedHeight(20);
         m_divBtn->setFixedWidth(60);
-        m_divBtn->setStyleSheet(kDspToggle);
+        AetherSDR::ButtonStyles::apply(m_divBtn, "vfo.dsp");
         m_divBtn->setVisible(false);  // shown only on dual-SCU radios
         panRow->addWidget(m_divBtn);
         // Build 471: "Main RX" while a SPLIT receiver shares this audio.
@@ -2172,7 +2136,7 @@ void VfoWidget::buildTabContent()
         m_escBtn->setCheckable(true);
         m_escBtn->setFixedHeight(20);
         m_escBtn->setFixedWidth(60);
-        m_escBtn->setStyleSheet(kDspToggle);
+        AetherSDR::ButtonStyles::apply(m_escBtn, "vfo.dsp");
         escTopRow->addWidget(m_escBtn);
         auto* phaseLbl = new QLabel("P");
         phaseLbl->setStyleSheet(kLabelStyle);
@@ -2193,7 +2157,7 @@ void VfoWidget::buildTabContent()
         m_escPlus180Btn->setToolTip("Shift ESC phase by 180\u00B0 to check the out-of-phase null. Click again to return.");
         m_escPlus180Btn->setFixedHeight(20);
         m_escPlus180Btn->setFixedWidth(40);
-        m_escPlus180Btn->setStyleSheet(kDspToggle);
+        AetherSDR::ButtonStyles::apply(m_escPlus180Btn, "vfo.dsp");
         escTopRow->addWidget(m_escPlus180Btn);
         escVbox->addLayout(escTopRow);
 
@@ -2408,7 +2372,7 @@ void VfoWidget::buildTabContent()
             auto* b = new QPushButton(text);
             b->setCheckable(true);
             b->setFixedHeight(26);
-            b->setStyleSheet(kDspToggle);
+            AetherSDR::ButtonStyles::apply(b, "vfo.dsp");
             // A STABLE id, not just an accessible name. These already carry
             // accessible names, which is what a screen reader needs — but the
             // automation bridge addresses controls by objectName first, and a
@@ -2453,7 +2417,7 @@ void VfoWidget::buildTabContent()
         m_aetherDspBtn->setObjectName("aetherDspBtn");
         m_aetherDspBtn->setCheckable(false);
         m_aetherDspBtn->setFixedHeight(26);
-        m_aetherDspBtn->setStyleSheet(kDspToggle);
+        AetherSDR::ButtonStyles::apply(m_aetherDspBtn, "vfo.dsp");
         m_aetherDspBtn->setAccessibleName("AetherRX");
         m_aetherDspBtn->setToolTip("Open AetherRX — the receive chain: noise reduction, gate, EQ, compressor, tube, voice processor, output");
         connect(m_aetherDspBtn, &QPushButton::clicked, this,
@@ -2465,7 +2429,7 @@ void VfoWidget::buildTabContent()
         m_aetherVoiceBtn->setObjectName("aetherVoiceBtn");
         m_aetherVoiceBtn->setCheckable(false);
         m_aetherVoiceBtn->setFixedHeight(26);
-        m_aetherVoiceBtn->setStyleSheet(kDspToggle);
+        AetherSDR::ButtonStyles::apply(m_aetherVoiceBtn, "vfo.dsp");
         m_aetherVoiceBtn->setAccessibleName("AetherTX");
         m_aetherVoiceBtn->setToolTip("Open AetherTX — the transmit chain: gate, EQ, compressor, de-esser, tube, voice processor, reverb, output");
         connect(m_aetherVoiceBtn, &QPushButton::clicked, this,
@@ -3333,7 +3297,7 @@ void VfoWidget::buildTabContent()
             auto* btn = new QPushButton(m_quickModeAssign[i]);
             btn->setCheckable(true);
             btn->setFixedHeight(26);
-            btn->setStyleSheet(kModeBtn);
+            AetherSDR::ButtonStyles::apply(btn, "vfo.mode");
             btn->setToolTip(sidebandPartner(m_quickModeAssign[i]).isEmpty()
                 ? tr("Click: this mode. Right-click: choose the button's mode.")
                 : tr("Click: this mode; click again: the other sideband. "
@@ -3676,7 +3640,7 @@ void VfoWidget::showTab(int index)
             deactivateTabButton(closedTab);
         }
         m_activeTab = index;
-        m_tabBtns[index]->setStyleSheet(kTabLblActive);
+        AetherSDR::ButtonStyles::apply(m_tabBtns[index], "vfo.tab.active");
         m_tabBtns[index]->setChecked(true);
         m_tabStack->setCurrentIndex(index);
         m_tabStack->show();
@@ -3741,10 +3705,9 @@ void VfoWidget::updateDspTabAccent()
         // status packet re-runs this up to 9x (SliceModel::applyChanges emits
         // the DSP signals unconditionally), and setStyleSheet() forces a full
         // style recompute even when the accent is unchanged.
-        const QString& target = dspActive ? kTabLblDspActive : kTabLblNormal;
-        if (dspTabButton->styleSheet() != target) {
-            dspTabButton->setStyleSheet(target);
-        }
+        // (build 773: ThemeManager::applyStyleSheet skips setStyleSheet when
+        // the resolved sheet is unchanged -- the same guard.)
+        AetherSDR::ButtonStyles::apply(dspTabButton, dspActive ? "vfo.tab.dsp" : "vfo.tab");
     }
 }
 
@@ -3761,7 +3724,7 @@ void VfoWidget::deactivateTabButton(int closedTab)
     if (closedTab == 1) {
         updateDspTabAccent();
     } else {
-        m_tabBtns[closedTab]->setStyleSheet(kTabLblNormal);
+        AetherSDR::ButtonStyles::apply(m_tabBtns[closedTab], "vfo.tab");
     }
 }
 
@@ -3850,7 +3813,7 @@ void VfoWidget::setCollapsed(bool collapsed, bool persist)
             m_tabStack->hide();
             m_activeTab = -1;
             for (QPushButton* btn : m_tabBtns) {
-                btn->setStyleSheet(kTabLblNormal);
+                AetherSDR::ButtonStyles::apply(btn, "vfo.tab");
                 btn->setChecked(false);
             }
             updateDspTabAccent();
@@ -4248,7 +4211,7 @@ void VfoWidget::setAetherDspActive(bool active)
     m_aetherDspActive = active;
     if (!m_aetherDspBtn)
         return;
-    m_aetherDspBtn->setStyleSheet(active ? kDspToggleActive : kDspToggle);
+    AetherSDR::ButtonStyles::apply(m_aetherDspBtn, active ? "vfo.dsp.active" : "vfo.dsp");
     m_aetherDspBtn->setAccessibleName(active ? QStringLiteral("AetherRX (NR active)")
                                              : QStringLiteral("AetherRX"));
     updateDspTabAccent();
@@ -7029,7 +6992,7 @@ void VfoWidget::rebuildFilterButtons()
     const auto createFilterButton = [this](const QString& label) {
         auto* button = new QPushButton(label, this);
         button->setFixedHeight(26);
-        button->setStyleSheet(kModeBtn);
+        AetherSDR::ButtonStyles::apply(button, "vfo.mode");
         return button;
     };
     for (auto* btn : m_filterBtns) delete btn;
@@ -7660,17 +7623,12 @@ void VfoWidget::syncSqlVisuals()
             switch (standaloneSqlMode()) {
             case LocalSqlMode::Off:
                 m_sqlBtn->setText("SQL");
-                m_sqlBtn->setStyleSheet(QString(kDspToggle) + kDisabledBtn);
+                AetherSDR::ButtonStyles::apply(m_sqlBtn, "vfo.dsp.caption");
                 m_sqlSlider->setEnabled(false);
                 break;
             case LocalSqlMode::Manual:
                 m_sqlBtn->setText("SQL");
-                m_sqlBtn->setStyleSheet(
-                    "QPushButton { background: #006040; color: #00ff88; "
-                    "border: 1px solid #00a060; border-radius: 3px; "
-                    "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
-                    "QPushButton:hover { background: #007050; }"
-                    + kDisabledBtn);
+                AetherSDR::ButtonStyles::apply(m_sqlBtn, "vfo.sql.manual");
                 m_sqlSlider->setRange(0, manualSqlMaximum());
                 m_sqlSlider->setValue(clampManualSqlLevel(
                     m_slice->receiveSquelchLevel()));
@@ -7678,12 +7636,7 @@ void VfoWidget::syncSqlVisuals()
                 break;
             case LocalSqlMode::Auto:
                 m_sqlBtn->setText("AUTO");
-                m_sqlBtn->setStyleSheet(
-                    "QPushButton { background: #604000; color: #ffb800; "
-                    "border: 1px solid #906000; border-radius: 3px; "
-                    "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
-                    "QPushButton:hover { background: #705000; }"
-                    + kDisabledBtn);
+                AetherSDR::ButtonStyles::apply(m_sqlBtn, "vfo.sql.auto");
                 m_sqlSlider->setRange(5, 20);
                 m_sqlSlider->setValue(autoSqlMarginDb());
                 m_sqlSlider->setEnabled(m_sqlBtn->isEnabled());
@@ -7714,13 +7667,7 @@ void VfoWidget::syncSqlVisuals()
         const int level = m_slice ? m_slice->receiveSquelchLevel() : 0;
         m_sqlBtn->setText("SQL");
         m_sqlBtn->setChecked(on);
-        m_sqlBtn->setStyleSheet(on
-            ? QStringLiteral("QPushButton { background: #006040; color: #00ff88; "
-                             "border: 1px solid #00a060; border-radius: 3px; "
-                             "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
-                             "QPushButton:hover { background: #007050; }")
-                + kDisabledBtn
-            : QString(kDspToggle) + kDisabledBtn);
+        AetherSDR::ButtonStyles::apply(m_sqlBtn, on ? "vfo.sql.manual" : "vfo.dsp.caption");
         m_sqlSlider->setRange(0, manualSqlMaximum());
         m_sqlSlider->setValue(clampManualSqlLevel(level));
         m_sqlSlider->setEnabled(m_sqlBtn->isEnabled() && on);
@@ -7758,25 +7705,15 @@ void VfoWidget::syncSqlVisuals()
     switch (mode) {
     case RxApplet::SqlMode::Off:
         m_sqlBtn->setText("SQL");
-        m_sqlBtn->setStyleSheet(QString(kDspToggle) + kDisabledBtn);
+        AetherSDR::ButtonStyles::apply(m_sqlBtn, "vfo.dsp.caption");
         break;
     case RxApplet::SqlMode::Manual:
         m_sqlBtn->setText("SQL");
-        m_sqlBtn->setStyleSheet(
-            "QPushButton { background: #006040; color: #00ff88; "
-            "border: 1px solid #00a060; border-radius: 3px; "
-            "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
-            "QPushButton:hover { background: #007050; }"
-            + kDisabledBtn);
+        AetherSDR::ButtonStyles::apply(m_sqlBtn, "vfo.sql.manual");
         break;
     case RxApplet::SqlMode::Auto:
         m_sqlBtn->setText("AUTO");
-        m_sqlBtn->setStyleSheet(
-            "QPushButton { background: #604000; color: #ffb800; "
-            "border: 1px solid #906000; border-radius: 3px; "
-            "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
-            "QPushButton:hover { background: #705000; }"
-            + kDisabledBtn);
+        AetherSDR::ButtonStyles::apply(m_sqlBtn, "vfo.sql.auto");
         break;
     }
     // Slider swaps role between Manual (Flex 0-100, Kiwi 0-99 signed-offset UI)

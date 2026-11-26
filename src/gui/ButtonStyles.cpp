@@ -373,6 +373,163 @@ const Entry kEntries[] = {
      "QPushButton { color: {{color.button.rx.qsk.text}}; background: transparent; border: none; "
      "font-size: 10px; font-weight: bold; padding: 0 2px; }"
      "QPushButton:checked { color: {{color.button.rx.qsk.checked.text}}; }"},
+
+    // ── VFO flag, step 1: the file's style constants (build 773) ────────────
+    {"vfo.ant.rx", "VfoWidget.cpp: RX antenna (kFlatBtn + blue)",
+     /*original*/
+     "QPushButton { background: transparent; border: none; "
+     "font-size: 13px; font-weight: bold; padding: 0 6px; margin: 0; }"
+     "QPushButton:hover { background: rgba(255,255,255,28); border-radius: 3px; }"
+     "QPushButton { color: #4488ff; }",
+     /*themed*/
+     "QPushButton { background: transparent; border: none; "
+     "font-size: 13px; font-weight: bold; padding: 0 6px; margin: 0; }"
+     "QPushButton:hover { background: rgba(255,255,255,28); border-radius: 3px; }"
+     "QPushButton { color: {{color.button.vfo.ant.rx.text}}; }"},
+
+    {"vfo.ant.tx", "VfoWidget.cpp: TX antenna (kFlatBtn + red)",
+     /*original*/
+     "QPushButton { background: transparent; border: none; "
+     "font-size: 13px; font-weight: bold; padding: 0 6px; margin: 0; }"
+     "QPushButton:hover { background: rgba(255,255,255,28); border-radius: 3px; }"
+     "QPushButton { color: #ff4444; }",
+     /*themed*/
+     "QPushButton { background: transparent; border: none; "
+     "font-size: 13px; font-weight: bold; padding: 0 6px; margin: 0; }"
+     "QPushButton:hover { background: rgba(255,255,255,28); border-radius: 3px; }"
+     "QPushButton { color: {{color.button.vfo.ant.tx.text}}; }"},
+
+    {"vfo.tab", "VfoWidget.cpp: tab labels at rest (kTabLblNormal)",
+     /*original*/
+     "QPushButton { background: transparent; border: none; "
+     "border-bottom: 2px solid transparent; "
+     "color: #a8b5c3; font-size: 13px; font-weight: bold; padding: 3px 0; }"
+     "QPushButton:hover { color: #ffffff; border-bottom: 2px solid #5a7890; }"
+     "QPushButton:focus { outline: none; border-bottom: 2px solid #6888a0; }",
+     /*themed*/
+     "QPushButton { background: transparent; border: none; "
+     "border-bottom: 2px solid transparent; "
+     "color: {{color.button.vfo.tab.text}}; font-size: 13px; font-weight: bold; padding: 3px 0; }"
+     "QPushButton:hover { color: {{color.button.vfo.tab.hover.text}}; border-bottom: 2px solid {{color.button.vfo.tab.hover.border}}; }"
+     "QPushButton:focus { outline: none; border-bottom: 2px solid {{color.button.vfo.tab.focus.border}}; }"},
+
+    {"vfo.tab.active", "VfoWidget.cpp: the open tab (kTabLblActive)",
+     /*original*/
+     "QPushButton { background: transparent; border: none; "
+     "border-bottom: 2px solid #00b4d8; "
+     "color: #00b4d8; font-size: 13px; font-weight: bold; padding: 3px 0; }"
+     "QPushButton:focus { outline: none; }",
+     /*themed*/
+     "QPushButton { background: transparent; border: none; "
+     "border-bottom: 2px solid {{color.button.vfo.tab.active.border}}; "
+     "color: {{color.button.vfo.tab.active.text}}; font-size: 13px; font-weight: bold; padding: 3px 0; }"
+     "QPushButton:focus { outline: none; }"},
+
+    {"vfo.tab.dsp", "VfoWidget.cpp: DSP tab closed with DSP on (kTabLblDspActive)",
+     /*original*/
+     "QPushButton { background: transparent; border: none; "
+     "border-bottom: 2px solid #20a040; "
+     "color: #20a040; font-size: 13px; font-weight: bold; padding: 3px 0; }"
+     "QPushButton:focus { outline: none; }",
+     /*themed*/
+     "QPushButton { background: transparent; border: none; "
+     "border-bottom: 2px solid {{color.button.vfo.tab.dsp.border}}; "
+     "color: {{color.button.vfo.tab.dsp.text}}; font-size: 13px; font-weight: bold; padding: 3px 0; }"
+     "QPushButton:focus { outline: none; }"},
+
+    {"vfo.dsp", "VfoWidget.cpp: DSP toggles, DIV, ESC, ESC +180, AetherDSP, AetherVoice (kDspToggle)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; "
+     "color: #c8d8e8; font-size: 13px; font-weight: bold; padding: 2px 4px; }"
+     "QPushButton:checked { background: #1a6030; color: #ffffff; border: 1px solid #20a040; }"
+     "QPushButton:hover { border: 1px solid #0090e0; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.background}}; border: 1px solid {{color.button.vfo.border}}; border-radius: 2px; "
+     "color: {{color.button.vfo.text}}; font-size: 13px; font-weight: bold; padding: 2px 4px; }"
+     "QPushButton:checked { background: {{color.button.vfo.checked.background}}; color: {{color.button.vfo.checked.text}}; border: 1px solid {{color.button.vfo.checked.border}}; }"
+     "QPushButton:hover { border: 1px solid {{color.button.vfo.hover.border}}; }"},
+
+    {"vfo.dsp.caption", "VfoWidget.cpp: SQL off, NF caption (kDspToggle + kDisabledBtn)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; "
+     "color: #c8d8e8; font-size: 13px; font-weight: bold; padding: 2px 4px; }"
+     "QPushButton:checked { background: #1a6030; color: #ffffff; border: 1px solid #20a040; }"
+     "QPushButton:hover { border: 1px solid #0090e0; }"
+     "QPushButton:disabled { background-color: #1a1a2a; color: #556070; "
+     "border: 1px solid #2a3040; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.background}}; border: 1px solid {{color.button.vfo.border}}; border-radius: 2px; "
+     "color: {{color.button.vfo.text}}; font-size: 13px; font-weight: bold; padding: 2px 4px; }"
+     "QPushButton:checked { background: {{color.button.vfo.checked.background}}; color: {{color.button.vfo.checked.text}}; border: 1px solid {{color.button.vfo.checked.border}}; }"
+     "QPushButton:hover { border: 1px solid {{color.button.vfo.hover.border}}; }"
+     "QPushButton:disabled { background-color: {{color.button.vfo.disabled.background}}; color: {{color.button.vfo.disabled.text}}; "
+     "border: 1px solid {{color.button.vfo.disabled.border}}; }"},
+
+    {"vfo.dsp.active", "VfoWidget.cpp: AetherDSP launcher with a client NR on (kDspToggleActive)",
+     /*original*/
+     "QPushButton { background: #1a6030; border: 1px solid #20a040; border-radius: 2px; "
+     "color: #ffffff; font-size: 13px; font-weight: bold; padding: 2px 4px; }"
+     "QPushButton:hover { border: 1px solid #0090e0; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.checked.background}}; border: 1px solid {{color.button.vfo.checked.border}}; border-radius: 2px; "
+     "color: {{color.button.vfo.checked.text}}; font-size: 13px; font-weight: bold; padding: 2px 4px; }"
+     "QPushButton:hover { border: 1px solid {{color.button.vfo.hover.border}}; }"},
+
+    {"vfo.mode", "VfoWidget.cpp: quick mode buttons, filter presets (kModeBtn)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; "
+     "color: #c8d8e8; font-size: 13px; font-weight: bold; padding: 3px; }"
+     "QPushButton:checked { background: #0070c0; color: #ffffff; border: 1px solid #0090e0; }"
+     "QPushButton:hover { border: 1px solid #0090e0; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.background}}; border: 1px solid {{color.button.vfo.border}}; border-radius: 2px; "
+     "color: {{color.button.vfo.text}}; font-size: 13px; font-weight: bold; padding: 3px; }"
+     "QPushButton:checked { background: {{color.button.vfo.selected.background}}; color: {{color.button.vfo.selected.text}}; border: 1px solid {{color.button.vfo.selected.border}}; }"
+     "QPushButton:hover { border: 1px solid {{color.button.vfo.hover.border}}; }"},
+
+    {"vfo.meter", "VfoWidget.cpp: meter view selector (kMeterOptBtn)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; "
+     "color: #c8d8e8; font-size: 13px; font-weight: bold; padding: 2px 4px; }"
+     "QPushButton:checked { background: #0070c0; color: #ffffff; border: 1px solid #0090e0; }"
+     "QPushButton:hover { border: 1px solid #0090e0; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.background}}; border: 1px solid {{color.button.vfo.border}}; border-radius: 2px; "
+     "color: {{color.button.vfo.text}}; font-size: 13px; font-weight: bold; padding: 2px 4px; }"
+     "QPushButton:checked { background: {{color.button.vfo.selected.background}}; color: {{color.button.vfo.selected.text}}; border: 1px solid {{color.button.vfo.selected.border}}; }"
+     "QPushButton:hover { border: 1px solid {{color.button.vfo.hover.border}}; }"},
+
+    {"vfo.sql.manual", "VfoWidget.cpp: SQL manual / on",
+     /*original*/
+     "QPushButton { background: #006040; color: #00ff88; "
+     "border: 1px solid #00a060; border-radius: 3px; "
+     "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
+     "QPushButton:hover { background: #007050; }"
+     "QPushButton:disabled { background-color: #1a1a2a; color: #556070; "
+     "border: 1px solid #2a3040; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.sql.manual.background}}; color: {{color.button.vfo.sql.manual.text}}; "
+     "border: 1px solid {{color.button.vfo.sql.manual.border}}; border-radius: 3px; "
+     "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
+     "QPushButton:hover { background: {{color.button.vfo.sql.manual.hover.background}}; }"
+     "QPushButton:disabled { background-color: {{color.button.vfo.disabled.background}}; color: {{color.button.vfo.disabled.text}}; "
+     "border: 1px solid {{color.button.vfo.disabled.border}}; }"},
+
+    {"vfo.sql.auto", "VfoWidget.cpp: SQL AUTO",
+     /*original*/
+     "QPushButton { background: #604000; color: #ffb800; "
+     "border: 1px solid #906000; border-radius: 3px; "
+     "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
+     "QPushButton:hover { background: #705000; }"
+     "QPushButton:disabled { background-color: #1a1a2a; color: #556070; "
+     "border: 1px solid #2a3040; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.sql.auto.background}}; color: {{color.button.vfo.sql.auto.text}}; "
+     "border: 1px solid {{color.button.vfo.sql.auto.border}}; border-radius: 3px; "
+     "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
+     "QPushButton:hover { background: {{color.button.vfo.sql.auto.hover.background}}; }"
+     "QPushButton:disabled { background-color: {{color.button.vfo.disabled.background}}; color: {{color.button.vfo.disabled.text}}; "
+     "border: 1px solid {{color.button.vfo.disabled.border}}; }"},
 };
 // END-ENTRIES
 

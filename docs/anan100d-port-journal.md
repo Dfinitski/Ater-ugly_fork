@@ -13134,6 +13134,43 @@ check_theme_seed — актуален.
 ThemeSeedGenerated 0; check_button_styles — идентично.
 Не проверено на радио, не собиралось под Windows.
 
+## 762. Сборка 773 — кнопки в редактор тем, шаг 4: флажок VFO (константы)
+
+Первый шаг по флажку VFO: все стилевые константы `VfoWidget.cpp` перенесены
+в каталог `ButtonStyles.cpp`, группа `vfo` (12 записей), кнопки идут через
+`ThemeManager` (`ButtonStyles::apply`).
+
+- `vfo.ant.rx` / `vfo.ant.tx` (`kFlatBtn` + синий / красный) — антенны;
+  `vfo.tab` / `vfo.tab.active` / `vfo.tab.dsp` (`kTabLblNormal` /
+  `kTabLblActive` / `kTabLblDspActive`) — подписи вкладок (динамик, DSP,
+  режим, X/RIT); `vfo.dsp` (`kDspToggle`) — переключатели DSP, DIV, ESC,
+  ESC +180, AetherDSP, AetherVoice; `vfo.dsp.caption` (+ `kDisabledBtn`) —
+  подпись NF, SQL выкл.; `vfo.dsp.active` (`kDspToggleActive`); `vfo.mode`
+  (`kModeBtn`) — быстрые кнопки режимов, кнопки фильтров; `vfo.meter`
+  (`kMeterOptBtn`); `vfo.sql.manual` / `vfo.sql.auto`.
+- Исходные тексты в каталоге сверены скриптом с константами (без
+  комментариев) и с SQL-строками — совпадают. Константы из `VfoWidget.cpp`
+  убраны, на их месте — отсылка к id.
+- Защита от лишнего `setStyleSheet` у вкладки DSP (до 9 раз на пакет
+  статуса) сохранена: `ThemeManager::applyStyleSheet` сам не ставит стиль,
+  если итоговый текст не изменился.
+- Токены `color.button.vfo.*` (31), новые части: `hover.border`, `tab.*`
+  (текст, наведение, фокус, открытая, DSP вкл.), `ant.rx/tx.text`. Значения
+  Default Dark — прежние, для Midnight / Deep Ocean записаны инструментом.
+  34 записи × 3 темы — всё идентично: вид не меняется ни в одной теме
+  (эти стили были литеральными, перекраска шла один раз и раньше).
+
+Осталось по флажку: кнопки слайсов, FM offset / REV, RIT / XIT, подписи шага
+и другие локальные стили.
+
+Файлы: `src/gui/VfoWidget.cpp`, `src/gui/ButtonStyles.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `docs/button-theming.md`,
+`src/core/ForkBuild.h`.
+Проверка: errcheck VfoWidget 4 (= до правки, те же ошибки WanConnection.h),
+ButtonStyles 0; check_button_styles — идентично; check_theme_seed — актуален.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
