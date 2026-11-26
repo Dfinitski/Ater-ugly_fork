@@ -1,4 +1,5 @@
 #include "core/ThemeManager.h"
+#include "ButtonStyles.h"
 #ifdef HAVE_MIDI
 
 #include "MidiMappingDialog.h"
@@ -134,7 +135,7 @@ private:
 static QPushButton* makeStyledButton(const QString& text)
 {
     auto* btn = new QPushButton(text);
-    btn->setStyleSheet(kBtnStyle);
+    AetherSDR::ButtonStyles::apply(btn, "midi.btn");
     return btn;
 }
 
@@ -894,10 +895,7 @@ void MidiMappingDialog::refreshBindingTable()
         delBtn->setFixedSize(40, 22);
         delBtn->setToolTip("Remove this binding");
         delBtn->setAccessibleName(QString("Remove binding for %1").arg(paramName));
-        delBtn->setStyleSheet(
-            "QPushButton { background: #602020; color: #ffb0b0; font-size: 11px; font-weight: bold; "
-            "padding: 0; border: 1px solid #803030; border-radius: 3px; }"
-            "QPushButton:hover { background: #803030; color: #ffffff; }");
+        AetherSDR::ButtonStyles::apply(delBtn, "midi.del");
         connect(delBtn, &QPushButton::clicked, this, [this, paramId = b.paramId] {
             m_manager->removeBinding(paramId);
             refreshBindingTable();

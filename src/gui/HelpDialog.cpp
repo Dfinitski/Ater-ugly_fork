@@ -1,4 +1,5 @@
 #include "HelpDialog.h"
+#include "ButtonStyles.h"
 
 #include <QDialogButtonBox>
 #include <QFile>
@@ -113,18 +114,7 @@ void HelpDialog::buildUI(const QString& resourcePath)
     m_findEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     findLayout->addWidget(m_findEdit, 1);
 
-    const QString kFindButtonStyle =
-        "QPushButton {"
-        "  background: #203040;"
-        "  color: #d8e4ee;"
-        "  border: 1px solid #38506a;"
-        "  border-radius: 4px;"
-        "  min-width: 72px;"
-        "  min-height: 28px;"
-        "  padding: 0 12px;"
-        "}"
-        "QPushButton:hover:enabled { background: #28435a; }"
-        "QPushButton:disabled { color: #5f7080; border-color: #263442; }";
+    // kFindButtonStyle: in the button-style catalogue (ButtonStyles.cpp), group "help".
 
     m_findPrevButton = new QPushButton("Previous", findRow);
     m_findPrevButton->setObjectName("helpFindPrevButton");
@@ -133,7 +123,7 @@ void HelpDialog::buildUI(const QString& resourcePath)
     m_findPrevButton->setDefault(false);
     m_findPrevButton->setEnabled(false);
     m_findPrevButton->setToolTip("Find previous match (Shift+Return)");
-    m_findPrevButton->setStyleSheet(kFindButtonStyle);
+    AetherSDR::ButtonStyles::apply(m_findPrevButton, "help.find.button");
     findLayout->addWidget(m_findPrevButton);
 
     m_findButton = new QPushButton("Next", findRow);
@@ -143,7 +133,7 @@ void HelpDialog::buildUI(const QString& resourcePath)
     m_findButton->setDefault(false);
     m_findButton->setEnabled(false);
     m_findButton->setToolTip("Find next match (Return)");
-    m_findButton->setStyleSheet(kFindButtonStyle);
+    AetherSDR::ButtonStyles::apply(m_findButton, "help.find.button");
     findLayout->addWidget(m_findButton);
 
     m_findStatus = new QLabel(findRow);
@@ -263,17 +253,7 @@ void HelpDialog::buildUI(const QString& resourcePath)
     closeButton->setCursor(Qt::PointingHandCursor);
     closeButton->setAutoDefault(false);
     closeButton->setDefault(false);
-    AetherSDR::ThemeManager::instance().applyStyleSheet(closeButton, "QPushButton {"
-        "  background: {{color.accent}};"
-        "  color: {{color.background.0}};"
-        "  font-weight: 700;"
-        "  border: none;"
-        "  border-radius: 16px;"
-        "  min-width: 96px;"
-        "  min-height: 32px;"
-        "  padding: 0 18px;"
-        "}"
-        "QPushButton:hover { background: #18c8ea; }");
+    AetherSDR::ButtonStyles::apply(closeButton, "help.close");
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::close);
     footerLayout->addWidget(buttons, 0, Qt::AlignRight);
 

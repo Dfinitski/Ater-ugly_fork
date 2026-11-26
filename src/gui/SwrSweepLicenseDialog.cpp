@@ -1,4 +1,5 @@
 #include "SwrSweepLicenseDialog.h"
+#include "ButtonStyles.h"
 #include "core/AppSettings.h"
 
 #include <QCheckBox>
@@ -66,11 +67,7 @@ SwrSweepLicenseDialog::SwrSweepLicenseDialog(QWidget* parent)
 
     auto* acceptBtn = new QPushButton("I am licensed to use this feature");
     acceptBtn->setDefault(true);
-    AetherSDR::ThemeManager::instance().applyStyleSheet(acceptBtn, "QPushButton { background: {{color.accent}}; color: {{color.background.0}}; font-weight: bold;"
-        " border: 1px solid {{color.accent.dim}}; border-radius: 3px;"
-        " padding: 6px 16px; font-size: 11px; }"
-        "QPushButton:hover { background: {{color.accent.bright}}; }"
-        "QPushButton:default { border: 2px solid #00f0ff; }");
+    AetherSDR::ButtonStyles::apply(acceptBtn, "swrlicense.accept");
     connect(acceptBtn, &QPushButton::clicked, this, &QDialog::accept);
     btnRow->addWidget(acceptBtn);
 

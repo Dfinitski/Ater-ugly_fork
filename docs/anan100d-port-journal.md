@@ -13452,6 +13452,32 @@ check_button_styles — идентично; check_theme_seed — актуале�
 — идентично; check_theme_seed — актуален.
 Не проверено на радио, не собиралось под Windows.
 
+## 772. Сборка 783 — кнопки в редактор тем, шаг 14: 14 диалогов (автоматический перевод)
+
+Тем же скриптом, что в 782, — 14 диалогов, 18 записей: `atupretune`
+(Start / Tune / Abort), `audiodevice`, `disconnect`, `stations`
+(общие стили диалогов — в токены ушли только цвета правил кнопок и
+галочек, остальные цвета стиля остались литералами), `dxcommands` (OK),
+`help` (поиск, закрыть), `midi`, `mqttsettings` (галочки), `profileio`,
+`profiles`, `psampview` (защёлки, 2 Tone), `settingsbrowser`,
+`shortcuts`, `swrlicense`. Набор совпадает с прогоном на копии (errcheck
+всех файлов совпал с исходным). 159 записей × 3 темы — всё идентично: вид
+не меняется.
+
+Осталось 31 стиль: динамические (`.arg()` — шрифт, цвета слайсов,
+образцы цвета), кнопки быстрой памяти, кнопки включения клиентских
+эффектов (`kEnableStyle` / `kBypassStyle` в составных выражениях),
+`WhatsNewDialog`, `StripFinalOutputPanel`, `main.cpp`, заголовок окна без
+рамки — разбираются вручную.
+
+Файлы: 14 исходников (см. коммит), `src/gui/ButtonStyles.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `docs/button-theming.md`,
+`src/core/ForkBuild.h`.
+Проверка: errcheck — совпадает с исходным; check_button_styles — идентично;
+check_theme_seed — актуален.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

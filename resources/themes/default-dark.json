@@ -883,6 +883,137 @@
             "container": {
               "text":       "#c8d8e8",
               "hover.text": "#ffffff"
+            },
+            "atupretune": {
+              "hover.background":       "#007038",
+              "disabled.background":    "#1a2a1a",
+              "disabled.text":          "#556070",
+              "abort.hover.background": "#903030"
+            },
+            "audiodevice": {
+              "text":                           "#c8d8e8",
+              "indicator.border":               "#304050",
+              "indicator.background":           "#0a0a14",
+              "indicator.hover.border":         "#00b4d8",
+              "indicator.checked.background":   "#00b4d8",
+              "indicator.checked.border":       "#00c8f0",
+              "background":                     "#1a2a3a",
+              "border":                         "#304050",
+              "hover.background":               "#203040",
+              "hover.border":                   "#00b4d8",
+              "pressed.background":             "#102030",
+              "primarybutton.background":       "#00b4d8",
+              "primarybutton.border":           "#00c8f0",
+              "primarybutton.text":             "#0f0f1a",
+              "primarybutton.hover.background": "#00c8f0",
+              "cancelbutton.text":              "#8aa8c0"
+            },
+            "disconnect": {
+              "background":                     "#1a2a3a",
+              "border":                         "#304050",
+              "text":                           "#c8d8e8",
+              "hover.background":               "#203040",
+              "hover.border":                   "#00b4d8",
+              "pressed.background":             "#102030",
+              "primarybutton.background":       "#00b4d8",
+              "primarybutton.border":           "#00c8f0",
+              "primarybutton.text":             "#0f0f1a",
+              "primarybutton.hover.background": "#00c8f0",
+              "cancelbutton.text":              "#8aa8c0"
+            },
+            "stations": {
+              "text":                                 "#c8d8e8",
+              "indicator.checked.text":               "#00b4d8",
+              "background":                           "#1a2a3a",
+              "border":                               "#304050",
+              "hover.background":                     "#203040",
+              "hover.border":                         "#00b4d8",
+              "pressed.background":                   "#102030",
+              "disconnectbutton.background":          "#c0392b",
+              "disconnectbutton.border":              "#e74c3c",
+              "disconnectbutton.text":                "#ffffff",
+              "disconnectbutton.hover.background":    "#e74c3c",
+              "disconnectbutton.disabled.background": "#2a1a1a",
+              "disconnectbutton.disabled.border":     "#3a2a2a",
+              "disconnectbutton.disabled.text":       "#604040",
+              "cancelbutton.text":                    "#8aa8c0"
+            },
+            "dxcommands": {
+              "default.border": "#00f0ff"
+            },
+            "help": {
+              "background":               "#203040",
+              "text":                     "#d8e4ee",
+              "border":                   "#38506a",
+              "hover.enabled.background": "#28435a",
+              "disabled.text":            "#5f7080",
+              "disabled.border":          "#263442",
+              "hover.background":         "#18c8ea"
+            },
+            "midi": {
+              "background":           "#00b4d8",
+              "text":                 "#0f0f1a",
+              "border":               "#008ba8",
+              "hover.background":     "#00c8f0",
+              "disabled.background":  "#404060",
+              "disabled.text":        "#808080",
+              "del.background":       "#602020",
+              "del.text":             "#ffb0b0",
+              "del.border":           "#803030",
+              "del.hover.background": "#803030",
+              "hover.text":           "#ffffff"
+            },
+            "mqttsettings": {
+              "disabled.text": "#556"
+            },
+            "profileio": {
+              "background":                   "#1a2a3a",
+              "border":                       "#203040",
+              "text":                         "#c8d8e8",
+              "hover.background":             "#2a3a4a",
+              "disabled.text":                "#607080",
+              "disabled.background":          "#101824",
+              "indicator.border":             "#406080",
+              "indicator.background":         "#0a0a18",
+              "indicator.checked.background": "#00b4d8"
+            },
+            "profiles": {
+              "background":                   "#1a2a3a",
+              "border":                       "#203040",
+              "text":                         "#c8d8e8",
+              "hover.background":             "#2a3a4a",
+              "disabled.background":          "#141c26",
+              "disabled.border":              "#1a2632",
+              "disabled.text":                "#5a6a78",
+              "indicator.border":             "#406080",
+              "indicator.background":         "#0a0a18",
+              "indicator.checked.background": "#00b4d8"
+            },
+            "psampview": {
+              "checked.background":          "#0070c0",
+              "checked.text":                "#ffffff",
+              "checked.border":              "#40b0ff",
+              "two.tone.checked.background": "#c03030",
+              "two.tone.checked.border":     "#ff5050"
+            },
+            "settingsbrowser": {
+              "background":          "#1a2a3a",
+              "border":              "#203040",
+              "text":                "#c8d8e8",
+              "hover.background":    "#2a3a4a",
+              "disabled.background": "#141c26",
+              "disabled.border":     "#1a2632",
+              "disabled.text":       "#5a6a78"
+            },
+            "shortcuts": {
+              "background":       "#1a2a3a",
+              "border":           "#304050",
+              "text":             "#c8d8e8",
+              "hover.background": "#203040",
+              "hover.border":     "#00b4d8"
+            },
+            "swrlicense": {
+              "default.border": "#00f0ff"
             }
           }
         },

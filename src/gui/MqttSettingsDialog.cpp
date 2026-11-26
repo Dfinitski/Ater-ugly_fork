@@ -1,4 +1,5 @@
 #include "MqttSettingsDialog.h"
+#include "ButtonStyles.h"
 
 #include "core/AppSettings.h"
 #include "core/LogManager.h"
@@ -174,7 +175,7 @@ void MqttSettingsDialog::buildUi()
         if (!def.gateable) {
             cb->setChecked(true);
             cb->setEnabled(false);
-            cb->setStyleSheet(QStringLiteral("QCheckBox:disabled { color: #556; }"));
+            AetherSDR::ButtonStyles::apply(cb, "mqttsettings.cb");
         }
         m_internalSubBoxes.append(cb);
         internalLayout->addWidget(cb);
@@ -216,7 +217,7 @@ void MqttSettingsDialog::buildUi()
         if (!def.gateable) {
             cb->setChecked(true);
             cb->setEnabled(false);
-            cb->setStyleSheet(QStringLiteral("QCheckBox:disabled { color: #556; }"));
+            AetherSDR::ButtonStyles::apply(cb, "mqttsettings.cb");
         }
         m_internalPubBoxes.append(cb);
         pubInternalLayout->addWidget(cb);

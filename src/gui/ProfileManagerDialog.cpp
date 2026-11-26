@@ -1,4 +1,5 @@
 #include "ProfileManagerDialog.h"
+#include "ButtonStyles.h"
 #include "ControlAvailabilityRegistry.h"
 #include "core/ThemeManager.h"
 #include "models/RadioModel.h"
@@ -29,30 +30,7 @@ ProfileRequest::Kind profileKind(const QString& type)
 }
 }
 
-static const QString kDialogStyle =
-    "QDialog { background: #0f0f1a; color: #c8d8e8; }"
-    "QTabWidget::pane { border: 1px solid #203040; background: #0f0f1a; }"
-    "QTabBar::tab { background: #1a2a3a; color: #8898a8; padding: 6px 14px;"
-    "  border: 1px solid #203040; border-bottom: none; border-top-left-radius: 4px;"
-    "  border-top-right-radius: 4px; margin-right: 2px; }"
-    "QTabBar::tab:selected { background: #0f0f1a; color: #c8d8e8; }"
-    "QLineEdit { background: #0a0a18; border: 1px solid #1e2e3e; border-radius: 3px;"
-    "  padding: 4px 6px; color: #c8d8e8; }"
-    "QListWidget { background: #0a0a18; border: 1px solid #1e2e3e; border-radius: 3px;"
-    "  color: #c8d8e8; }"
-    "QListWidget::item:selected { background: #0070c0; }"
-    "QPushButton { background: #1a2a3a; border: 1px solid #203040;"
-    "  border-radius: 3px; padding: 4px 12px; color: #c8d8e8; }"
-    "QPushButton:hover { background: #2a3a4a; }"
-    // Without this the dialog's explicit QPushButton color/background defeats
-    // Qt's default disabled rendering, so a disabled button is pixel-identical
-    // to an enabled one — the "no target" state (#4396) would be invisible.
-    "QPushButton:disabled { background: #141c26; border: 1px solid #1a2632;"
-    "  color: #5a6a78; }"
-    "QCheckBox { color: #c8d8e8; }"
-    "QCheckBox::indicator { width: 16px; height: 16px;"
-    "  border: 1px solid #406080; border-radius: 3px; background: #0a0a18; }"
-    "QCheckBox::indicator:checked { background: #00b4d8; }";
+// kDialogStyle: in the button-style catalogue (ButtonStyles.cpp), group "profiles".
 
 // Result-line styling, matching ConnectionPanel's manual-connect result label
 // (ConnectionPanel.cpp:38-41) so the two read as the same kind of message.
@@ -74,7 +52,7 @@ ProfileManagerDialog::ProfileManagerDialog(RadioModel* model, QWidget* parent)
 {
     theme::setContainer(this, QStringLiteral("dialog/profileManager"));
     setMinimumSize(460, 400);
-    setStyleSheet(kDialogStyle);
+    AetherSDR::ButtonStyles::apply(this, "profiles.dialog");
 
     // PersistentDialog::setFramelessMode() owns the body layout's contents
     // margins (9 / 9-or-7 / 9 / 9 depending on frameless chrome state).

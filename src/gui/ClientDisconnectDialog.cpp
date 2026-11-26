@@ -1,4 +1,5 @@
 #include "ClientDisconnectDialog.h"
+#include "ButtonStyles.h"
 
 #include "core/ThemeManager.h"
 
@@ -20,39 +21,7 @@ namespace AetherSDR {
 
 namespace {
 
-const char* kDialogStyle =
-    "QDialog { background: #0f0f1a; }"
-    "QFrame#clientDisconnectHeader {"
-    "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-    "    stop:0 #103626, stop:1 #10283a);"
-    "  border-bottom: 1px solid #00b4d8;"
-    "}"
-    "QLabel { color: #c8d8e8; background: transparent; }"
-    "QLabel#eyebrow { color: #40ff80; background: transparent; font-weight: bold; }"
-    "QLabel#title { color: #ffffff; background: transparent; font-size: 18px; font-weight: bold; }"
-    "QLabel#body { color: #c8d8e8; background: transparent; }"
-    "QLabel#prompt { color: #8aa8c0; background: transparent; font-weight: bold; }"
-    "QPushButton {"
-    "  background: #1a2a3a;"
-    "  border: 1px solid #304050;"
-    "  border-radius: 3px;"
-    "  color: #c8d8e8;"
-    "  padding: 6px 14px;"
-    "}"
-    "QPushButton:hover { background: #203040; border-color: #00b4d8; }"
-    "QPushButton:pressed { background: #102030; }"
-    "QPushButton#primaryButton {"
-    "  background: #00b4d8;"
-    "  border-color: #00c8f0;"
-    "  color: #0f0f1a;"
-    "  font-weight: bold;"
-    "}"
-    "QPushButton#primaryButton:hover { background: #00c8f0; }"
-    "QPushButton#cancelButton { color: #8aa8c0; }"
-    "QScrollArea { background: transparent; border: none; }"
-    "QScrollBar:vertical { background: #0a0a14; width: 8px; }"
-    "QScrollBar::handle:vertical { background: #304050; border-radius: 4px; }"
-    "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }";
+// kDialogStyle: in the button-style catalogue (ButtonStyles.cpp), group "disconnect".
 
 QList<quint32> allHandles(const QList<ClientDisconnectDialog::Client>& clients)
 {
@@ -81,7 +50,7 @@ ClientDisconnectDialog::ClientDisconnectDialog(const QList<Client>& clients,
     setWindowModality(Qt::ApplicationModal);
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     setSizeGripEnabled(false);
-    setStyleSheet(kDialogStyle);
+    AetherSDR::ButtonStyles::apply(this, "disconnect.dialog");
 
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);

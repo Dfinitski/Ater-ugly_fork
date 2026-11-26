@@ -1,4 +1,5 @@
 #include "ConnectedStationsDialog.h"
+#include "ButtonStyles.h"
 
 #include "core/ThemeManager.h"
 
@@ -20,75 +21,7 @@ namespace AetherSDR {
 
 namespace {
 
-const char* kStyle =
-    "QDialog { background: #0f0f1a; }"
-    "QFrame#radioSection {"
-    "  background: #121220;"
-    "  border-bottom: 1px solid #1e2840;"
-    "}"
-    "QFrame#stationsSection {"
-    "  background: #0f0f1a;"
-    "}"
-    "QLabel#sectionHeader {"
-    "  color: #ffffff;"
-    "  font-size: 13px;"
-    "  font-weight: bold;"
-    "  background: transparent;"
-    "}"
-    "QLabel#radioModel {"
-    "  color: #e0eaf8;"
-    "  font-size: 14px;"
-    "  font-weight: bold;"
-    "  background: transparent;"
-    "}"
-    "QLabel#radioStation {"
-    "  color: #00b4d8;"
-    "  font-size: 12px;"
-    "  background: transparent;"
-    "}"
-    "QLabel#infoLabel {"
-    "  color: #8aa8c0;"
-    "  font-size: 11px;"
-    "  background: transparent;"
-    "}"
-    "QFrame#stationRow {"
-    "  background: #171728;"
-    "  border: 1px solid #1e2840;"
-    "  border-radius: 3px;"
-    "}"
-    "QFrame#stationRow:hover {"
-    "  background: #1a2035;"
-    "  border-color: #304060;"
-    "}"
-    "QRadioButton {"
-    "  color: #c8d8e8;"
-    "  background: transparent;"
-    "  spacing: 8px;"
-    "}"
-    "QRadioButton::indicator { width: 14px; height: 14px; }"
-    "QRadioButton::indicator:checked { color: #00b4d8; }"
-    "QPushButton {"
-    "  background: #1a2a3a;"
-    "  border: 1px solid #304050;"
-    "  border-radius: 3px;"
-    "  color: #c8d8e8;"
-    "  padding: 6px 16px;"
-    "}"
-    "QPushButton:hover { background: #203040; border-color: #00b4d8; }"
-    "QPushButton:pressed { background: #102030; }"
-    "QPushButton#disconnectButton {"
-    "  background: #c0392b;"
-    "  border-color: #e74c3c;"
-    "  color: #ffffff;"
-    "  font-weight: bold;"
-    "}"
-    "QPushButton#disconnectButton:hover { background: #e74c3c; }"
-    "QPushButton#disconnectButton:disabled {"
-    "  background: #2a1a1a;"
-    "  border-color: #3a2a2a;"
-    "  color: #604040;"
-    "}"
-    "QPushButton#cancelButton { color: #8aa8c0; }";
+// kStyle: in the button-style catalogue (ButtonStyles.cpp), group "stations".
 
 } // namespace
 
@@ -103,7 +36,7 @@ ConnectedStationsDialog::ConnectedStationsDialog(const RadioMeta& radio,
     setWindowModality(Qt::ApplicationModal);
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     setSizeGripEnabled(false);
-    setStyleSheet(kStyle);
+    AetherSDR::ButtonStyles::apply(this, "stations.style");
 
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);

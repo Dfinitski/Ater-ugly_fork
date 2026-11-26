@@ -1,4 +1,5 @@
 #include "ProfileImportExportDialog.h"
+#include "ButtonStyles.h"
 
 #include "core/AppSettings.h"
 #include "core/ThemeManager.h"
@@ -31,29 +32,7 @@ namespace AetherSDR {
 
 namespace {
 
-static const QString kDialogStyle =
-    "QDialog { background: #0f0f1a; color: #c8d8e8; }"
-    "QTabWidget::pane { border: 1px solid #203040; background: #0f0f1a; }"
-    "QTabBar::tab { background: #1a2a3a; color: #8898a8; padding: 6px 14px;"
-    "  border: 1px solid #203040; border-bottom: none; border-top-left-radius: 4px;"
-    "  border-top-right-radius: 4px; margin-right: 2px; }"
-    "QTabBar::tab:selected { background: #0f0f1a; color: #c8d8e8; }"
-    "QGroupBox { border: 1px solid #203040; border-radius: 4px; margin-top: 10px;"
-    "  padding: 10px 8px 8px 8px; color: #c8d8e8; }"
-    "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; }"
-    "QLineEdit { background: #0a0a18; border: 1px solid #1e2e3e; border-radius: 3px;"
-    "  padding: 4px 6px; color: #c8d8e8; }"
-    "QPushButton { background: #1a2a3a; border: 1px solid #203040;"
-    "  border-radius: 3px; padding: 4px 12px; color: #c8d8e8; }"
-    "QPushButton:hover { background: #2a3a4a; }"
-    "QPushButton:disabled { color: #607080; background: #101824; }"
-    "QCheckBox { color: #c8d8e8; spacing: 8px; }"
-    "QCheckBox::indicator { width: 16px; height: 16px;"
-    "  border: 1px solid #406080; border-radius: 3px; background: #0a0a18; }"
-    "QCheckBox::indicator:checked { background: #00b4d8; }"
-    "QProgressBar { background: #0a0a18; border: 1px solid #1e2e3e; border-radius: 3px;"
-    "  color: #c8d8e8; text-align: center; }"
-    "QProgressBar::chunk { background: #00b4d8; }";
+// kDialogStyle: in the button-style catalogue (ButtonStyles.cpp), group "profileio".
 
 QString profileTransferDirectory()
 {
@@ -91,7 +70,7 @@ ProfileImportExportDialog::ProfileImportExportDialog(RadioModel* model, QWidget*
 {
     theme::setContainer(this, QStringLiteral("dialog/profileIO"));
     setMinimumSize(560, 430);
-    setStyleSheet(kDialogStyle);
+    AetherSDR::ButtonStyles::apply(this, "profileio.dialog");
 
     auto* root = new QVBoxLayout(bodyWidget());
     root->setSpacing(9);

@@ -1,4 +1,5 @@
 #include "AtuPreTuneDialog.h"
+#include "ButtonStyles.h"
 #include "AtuPreTuneCenters.h"
 #include "FramelessWindowTitleBar.h"
 #include "FramelessResizer.h"
@@ -393,10 +394,7 @@ void AtuPreTuneDialog::buildConfigPage()
     m_cancelBtn = new QPushButton("Cancel", m_configPage);
     m_startBtn  = new QPushButton("START", m_configPage);
     markTxKeying(m_startBtn);   // starts the ATU pre-tune sweep → keys TX (#3646)
-    AetherSDR::ThemeManager::instance().applyStyleSheet(m_startBtn, "QPushButton { background: #006030; border: 1px solid #008040; "
-        "color: {{color.text.primary}}; padding: 4px 12px; font-weight: bold; }"
-        "QPushButton:hover { background: #007038; }"
-        "QPushButton:disabled { background: #1a2a1a; color: #556070; }");
+    AetherSDR::ButtonStyles::apply(m_startBtn, "atupretune.start");
     btnRow->addWidget(m_cancelBtn);
     btnRow->addWidget(m_startBtn);
     layout->addLayout(btnRow);
@@ -431,10 +429,7 @@ void AtuPreTuneDialog::buildSweepPage()
     auto* row = new QHBoxLayout;
     m_tuneBtn  = new QPushButton("Tune this frequency", m_sweepPage);
     markTxKeying(m_tuneBtn);   // tunes the current point → keys TX (#3646)
-    AetherSDR::ThemeManager::instance().applyStyleSheet(m_tuneBtn, "QPushButton { background: #006030; border: 1px solid #008040; "
-        "color: {{color.text.primary}}; padding: 4px 12px; font-weight: bold; }"
-        "QPushButton:hover { background: #007038; }"
-        "QPushButton:disabled { background: #1a2a1a; color: #556070; }");
+    AetherSDR::ButtonStyles::apply(m_tuneBtn, "atupretune.start");
     m_skipBtn  = new QPushButton("Skip", m_sweepPage);
     m_continueAfterFailBtn = new QPushButton("Continue", m_sweepPage);
     markTxKeying(m_continueAfterFailBtn);   // resumes tuning after a failed point → keys TX (#3646)
@@ -1012,9 +1007,7 @@ void AtuPreTuneDialog::setAbortButtonAbortMode()
 {
     if (!m_abortBtn) return;
     m_abortBtn->setText("ABORT");
-    AetherSDR::ThemeManager::instance().applyStyleSheet(m_abortBtn, "QPushButton { background: #802020; border: 1px solid {{color.accent.danger}}; "
-        "color: {{color.text.primary}}; padding: 4px 12px; font-weight: bold; }"
-        "QPushButton:hover { background: #903030; }");
+    AetherSDR::ButtonStyles::apply(m_abortBtn, "atupretune.abort");
 }
 
 void AtuPreTuneDialog::setAbortButtonCloseMode()

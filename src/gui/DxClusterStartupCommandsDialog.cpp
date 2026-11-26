@@ -1,4 +1,5 @@
 #include "DxClusterStartupCommandsDialog.h"
+#include "ButtonStyles.h"
 #include "core/AppSettings.h"
 #include "ScopedChildWidget.h"
 
@@ -70,11 +71,7 @@ DxClusterStartupCommandsDialog::DxClusterStartupCommandsDialog(
 
     auto* okBtn = new QPushButton("OK");
     okBtn->setDefault(true);
-    AetherSDR::ThemeManager::instance().applyStyleSheet(okBtn, "QPushButton { background: {{color.accent}}; color: {{color.background.0}}; font-weight: bold;"
-        " border: 1px solid {{color.accent.dim}}; border-radius: 3px;"
-        " padding: 6px 16px; font-size: 11px; }"
-        "QPushButton:hover { background: {{color.accent.bright}}; }"
-        "QPushButton:default { border: 2px solid #00f0ff; }");
+    AetherSDR::ButtonStyles::apply(okBtn, "dxcommands.ok");
     connect(okBtn, &QPushButton::clicked, this, &QDialog::accept);
     btnRow->addWidget(okBtn);
 

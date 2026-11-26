@@ -1,4 +1,5 @@
 #include "ShortcutDialog.h"
+#include "ButtonStyles.h"
 #include "KeyboardMapWidget.h"
 #include "core/AppSettings.h"
 #include "core/ShortcutManager.h"
@@ -22,25 +23,7 @@
 
 namespace AetherSDR {
 
-static const char* kDialogStyle =
-    "QDialog { background: #0f0f1a; }"
-    "QLabel { color: #c8d8e8; }"
-    "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
-    "  border-radius: 3px; color: #c8d8e8; padding: 4px 12px; }"
-    "QPushButton:hover { background: #203040; border-color: #00b4d8; }"
-    "QComboBox { background: #1a2a3a; border: 1px solid #304050; "
-    "  border-radius: 3px; color: #c8d8e8; padding: 2px 6px; }"
-    "QComboBox::drop-down { border: none; }"
-    "QComboBox QAbstractItemView { background: #0f0f1a; color: #c8d8e8; "
-    "  selection-background-color: #1a3a5a; }"
-    "QLineEdit { background: #1a2a3a; border: 1px solid #304050; "
-    "  border-radius: 3px; color: #c8d8e8; padding: 2px 6px; }"
-    "QTableWidget { background: #0f0f1a; color: #c8d8e8; "
-    "  gridline-color: #203040; border: 1px solid #304050; }"
-    "QTableWidget::item { padding: 2px 6px; }"
-    "QTableWidget::item:selected { background: #1a3a5a; color: #00b4d8; }"
-    "QHeaderView::section { background: #1a2a3a; color: #8aa8c0; "
-    "  border: 1px solid #203040; padding: 4px; }";
+// kDialogStyle: in the button-style catalogue (ButtonStyles.cpp), group "shortcuts".
 
 ShortcutDialog::ShortcutDialog(ShortcutManager* mgr, QWidget* parent)
     : QDialog(parent), m_mgr(mgr)
@@ -49,7 +32,7 @@ ShortcutDialog::ShortcutDialog(ShortcutManager* mgr, QWidget* parent)
     setWindowTitle("Keyboard Shortcuts");
     setMinimumSize(950, 700);
     resize(1100, 800);
-    setStyleSheet(kDialogStyle);
+    AetherSDR::ButtonStyles::apply(this, "shortcuts.dialog");
     buildUI();
     populateTable();
 }

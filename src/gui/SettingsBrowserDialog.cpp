@@ -1,4 +1,5 @@
 #include "SettingsBrowserDialog.h"
+#include "ButtonStyles.h"
 #include "ScopedChildWidget.h"
 #include "FramelessMessageBox.h"
 #include "core/AppSettings.h"
@@ -171,7 +172,7 @@ SettingsBrowserDialog::SettingsBrowserDialog(QWidget* parent)
 {
     theme::setContainer(this, QStringLiteral("dialog/settingsBrowser"));
     setMinimumSize(760, 480);
-    setStyleSheet(kDialogStyle);
+    AetherSDR::ButtonStyles::apply(this, "settingsbrowser.dialog");
 
     auto* root = new QVBoxLayout(bodyWidget());
     root->setSpacing(9);

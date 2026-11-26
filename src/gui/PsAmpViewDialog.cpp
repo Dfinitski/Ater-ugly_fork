@@ -1,4 +1,5 @@
 #include "gui/PsAmpViewDialog.h"
+#include "ButtonStyles.h"
 #include "core/ForkDataDir.h"
 
 #include "gui/PsApplet.h"
@@ -230,9 +231,8 @@ PsAmpViewDialog::PsAmpViewDialog(PsApplet* applet, QWidget* parent)
     const QString latch = QStringLiteral(
         "QPushButton:checked { background: #0070c0; color: #ffffff; border: 1px solid #40b0ff; }");
     for (QPushButton* b : {m_twoTone, m_cal, m_auto, m_single})
-        b->setStyleSheet(latch);
-    m_twoTone->setStyleSheet(QStringLiteral(
-        "QPushButton:checked { background: #c03030; color: #ffffff; border: 1px solid #ff5050; }"));
+        AetherSDR::ButtonStyles::apply(b, "psampview.latch");
+    AetherSDR::ButtonStyles::apply(m_twoTone, "psampview.two.tone");
     tg->addWidget(m_twoTone, 0, 0, 1, 2);
     tg->addWidget(m_auto, 1, 0);
     tg->addWidget(m_single, 1, 1);

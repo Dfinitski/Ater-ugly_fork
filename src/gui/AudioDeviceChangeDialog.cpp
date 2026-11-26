@@ -1,4 +1,5 @@
 #include "AudioDeviceChangeDialog.h"
+#include "ButtonStyles.h"
 #include "FramelessResizer.h"
 #include "FramelessWindowTitleBar.h"
 #include "core/AppSettings.h"
@@ -27,54 +28,7 @@ namespace {
 
 constexpr int kDeviceIdRole = Qt::UserRole + 1;
 
-const char* kDialogStyle =
-    "QDialog { background: #0f0f1a; }"
-    "QFrame#audioDeviceHeader {"
-    "  background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-    "    stop:0 #103626, stop:1 #10283a);"
-    "  border-bottom: 1px solid #00b4d8;"
-    "}"
-    "QLabel { color: #c8d8e8; background: transparent; }"
-    "QLabel#eyebrow { color: #40ff80; background: transparent; font-weight: bold; }"
-    "QLabel#title { color: #ffffff; background: transparent; font-size: 18px; font-weight: bold; }"
-    "QLabel#body { color: #c8d8e8; background: transparent; }"
-    "QLabel#sectionLabel { color: #00b4d8; background: transparent; font-weight: bold; }"
-    "QCheckBox { color: #c8d8e8; spacing: 8px; }"
-    "QCheckBox::indicator { width: 16px; height: 16px;"
-    "  border: 1px solid #304050; border-radius: 3px; background: #0a0a14; }"
-    "QCheckBox::indicator:hover { border-color: #00b4d8; }"
-    "QCheckBox::indicator:checked { background: #00b4d8; border-color: #00c8f0; }"
-    "QListWidget {"
-    "  background: #0a0a14;"
-    "  border: 1px solid #304050;"
-    "  border-radius: 3px;"
-    "  color: #c8d8e8;"
-    "  alternate-background-color: #101826;"
-    "  outline: none;"
-    "}"
-    "QListWidget::item { padding: 6px 8px; border-bottom: 1px solid #182838; }"
-    "QListWidget::item:selected { background: #12384a; color: #ffffff; }"
-    "QListWidget::item:hover { background: #203040; }"
-    "QPushButton {"
-    "  background: #1a2a3a;"
-    "  border: 1px solid #304050;"
-    "  border-radius: 3px;"
-    "  color: #c8d8e8;"
-    "  padding: 6px 14px;"
-    "}"
-    "QPushButton:hover { background: #203040; border-color: #00b4d8; }"
-    "QPushButton:pressed { background: #102030; }"
-    "QPushButton#primaryButton {"
-    "  background: #00b4d8;"
-    "  border-color: #00c8f0;"
-    "  color: #0f0f1a;"
-    "  font-weight: bold;"
-    "}"
-    "QPushButton#primaryButton:hover { background: #00c8f0; }"
-    "QPushButton#cancelButton { color: #8aa8c0; }"
-    "QScrollBar:vertical { background: #0a0a14; width: 8px; }"
-    "QScrollBar::handle:vertical { background: #304050; border-radius: 4px; }"
-    "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }";
+// kDialogStyle: in the button-style catalogue (ButtonStyles.cpp), group "audiodevice".
 
 bool containsDeviceId(const QList<QByteArray>& ids, const QByteArray& id)
 {
@@ -246,7 +200,7 @@ AudioDeviceChangeDialog::AudioDeviceChangeDialog(
     setWindowModality(Qt::ApplicationModal);
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     setSizeGripEnabled(false);
-    setStyleSheet(kDialogStyle);
+    AetherSDR::ButtonStyles::apply(this, "audiodevice.dialog");
 
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);

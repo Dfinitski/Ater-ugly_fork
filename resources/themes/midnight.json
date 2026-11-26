@@ -1038,6 +1038,137 @@
             "container": {
               "text": "#c0caf5",
               "hover.text": "#ffffff"
+            },
+            "atupretune": {
+              "hover.background": "#007038",
+              "disabled.background": "#1a2a1a",
+              "disabled.text": "#58618b",
+              "abort.hover.background": "#903030"
+            },
+            "audiodevice": {
+              "text": "#c0caf5",
+              "indicator.border": "#2f3549",
+              "indicator.background": "#15161e",
+              "indicator.hover.border": "#7298ec",
+              "indicator.checked.background": "#7298ec",
+              "indicator.checked.border": "#7ea5f8",
+              "background": "#24283b",
+              "border": "#2f3549",
+              "hover.background": "#272c3f",
+              "hover.border": "#7298ec",
+              "pressed.background": "#1d2130",
+              "primarybutton.background": "#7298ec",
+              "primarybutton.border": "#7ea5f8",
+              "primarybutton.text": "#1a1b26",
+              "primarybutton.hover.background": "#7ea5f8",
+              "cancelbutton.text": "#98a3cc"
+            },
+            "disconnect": {
+              "background": "#24283b",
+              "border": "#2f3549",
+              "text": "#c0caf5",
+              "hover.background": "#272c3f",
+              "hover.border": "#7298ec",
+              "pressed.background": "#1d2130",
+              "primarybutton.background": "#7298ec",
+              "primarybutton.border": "#7ea5f8",
+              "primarybutton.text": "#1a1b26",
+              "primarybutton.hover.background": "#7ea5f8",
+              "cancelbutton.text": "#98a3cc"
+            },
+            "stations": {
+              "text": "#c0caf5",
+              "indicator.checked.text": "#7298ec",
+              "background": "#24283b",
+              "border": "#2f3549",
+              "hover.background": "#272c3f",
+              "hover.border": "#7298ec",
+              "pressed.background": "#1d2130",
+              "disconnectbutton.background": "#c0392b",
+              "disconnectbutton.border": "#e74c3c",
+              "disconnectbutton.text": "#ffffff",
+              "disconnectbutton.hover.background": "#e74c3c",
+              "disconnectbutton.disabled.background": "#2a1a1a",
+              "disconnectbutton.disabled.border": "#3a2a2a",
+              "disconnectbutton.disabled.text": "#604040",
+              "cancelbutton.text": "#98a3cc"
+            },
+            "dxcommands": {
+              "default.border": "#84a8f8"
+            },
+            "help": {
+              "background": "#272c3f",
+              "text": "#d0d8fa",
+              "border": "#444b6e",
+              "hover.enabled.background": "#30364b",
+              "disabled.text": "#656e98",
+              "disabled.border": "#292e41",
+              "hover.background": "#85a9f8"
+            },
+            "midi": {
+              "background": "#7298ec",
+              "text": "#1a1b26",
+              "border": "#5576c3",
+              "hover.background": "#7ea5f8",
+              "disabled.background": "#424a6c",
+              "disabled.text": "#757fa8",
+              "del.background": "#602020",
+              "del.text": "#ffb0b0",
+              "del.border": "#803030",
+              "del.hover.background": "#803030",
+              "hover.text": "#ffffff"
+            },
+            "mqttsettings": {
+              "disabled.text": "#556"
+            },
+            "profileio": {
+              "background": "#24283b",
+              "border": "#272c3f",
+              "text": "#c0caf5",
+              "hover.background": "#2c3145",
+              "disabled.text": "#656f99",
+              "disabled.background": "#1c1e2b",
+              "indicator.border": "#565f89",
+              "indicator.background": "#16161e",
+              "indicator.checked.background": "#7298ec"
+            },
+            "profiles": {
+              "background": "#24283b",
+              "border": "#272c3f",
+              "text": "#c0caf5",
+              "hover.background": "#2c3145",
+              "disabled.background": "#1d1f2e",
+              "disabled.border": "#202436",
+              "disabled.text": "#5f6892",
+              "indicator.border": "#565f89",
+              "indicator.background": "#16161e",
+              "indicator.checked.background": "#7298ec"
+            },
+            "psampview": {
+              "checked.background": "#6487d7",
+              "checked.text": "#ffffff",
+              "checked.border": "#9cb8fc",
+              "two.tone.checked.background": "#c03030",
+              "two.tone.checked.border": "#ff5050"
+            },
+            "settingsbrowser": {
+              "background": "#24283b",
+              "border": "#272c3f",
+              "text": "#c0caf5",
+              "hover.background": "#2c3145",
+              "disabled.background": "#1d1f2e",
+              "disabled.border": "#202436",
+              "disabled.text": "#5f6892"
+            },
+            "shortcuts": {
+              "background": "#24283b",
+              "border": "#2f3549",
+              "text": "#c0caf5",
+              "hover.background": "#272c3f",
+              "hover.border": "#7298ec"
+            },
+            "swrlicense": {
+              "default.border": "#84a8f8"
             }
           }
         },
