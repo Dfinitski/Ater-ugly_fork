@@ -1467,7 +1467,16 @@ void AppletPanel::syncMicMeterDuplicates()
     if (!m_phoneCwApplet)
         return;
     const bool mmUp = m_ananMm && m_ananMmShown && m_vuBtn && m_vuBtn->isChecked();
-    m_phoneCwApplet->setMultiMeterShown(mmUp);
+    // Build 766 (operator, 26.11): the multi meter's right-click option
+    // "Hide duplicate gauges" (setting AnanMmHideDuplicates, on by default)
+    // -- off, the applets keep all their gauges. With it: the Mic applet's
+    // Compression, ALC Gain and ALC, the TX applet's RF Pwr and SWR.
+    const bool hide = mmUp && AppSettings::instance()
+        .value(QStringLiteral("AnanMmHideDuplicates"), QStringLiteral("True")).toString()
+        == QLatin1String("True");
+    m_phoneCwApplet->setMultiMeterShown(hide);
+    if (m_txApplet)
+        m_txApplet->setMultiMeterShown(hide);
 }
 
 void AppletPanel::showStandardMeterContextMenu(QWidget* source,
@@ -1544,6 +1553,24 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
                 s.setValue(QStringLiteral("AnanMmShadowTx"),
                            on ? QStringLiteral("True") : QStringLiteral("False"));
                 s.save();
+            });
+            // Build 766 (operator, 26.11): the applets' gauges this meter
+            // repeats -- Mic: Compression, ALC Gain, ALC; TX: RF Pwr, SWR --
+            // hidden while it is up, or not.
+            QAction* hideDup = menu.addAction(QStringLiteral("Hide duplicate gauges in applets"));
+            hideDup->setCheckable(true);
+            hideDup->setChecked(AppSettings::instance()
+                .value(QStringLiteral("AnanMmHideDuplicates"), QStringLiteral("True")).toString()
+                == QLatin1String("True"));
+            hideDup->setToolTip(QStringLiteral(
+                "While the multi meter is shown, hide the gauges it repeats:\n"
+                "Mic applet -- Compression, ALC Gain, ALC; TX applet -- RF Pwr, SWR."));
+            connect(hideDup, &QAction::toggled, this, [this](bool on) {
+                auto& s = AppSettings::instance();
+                s.setValue(QStringLiteral("AnanMmHideDuplicates"),
+                           on ? QStringLiteral("True") : QStringLiteral("False"));
+                s.save();
+                syncMicMeterDuplicates();
             });
             menu.exec(source->mapToGlobal(position));
             return;

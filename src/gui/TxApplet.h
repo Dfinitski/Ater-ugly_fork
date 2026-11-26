@@ -30,6 +30,10 @@ public:
     // ANAN-100D port: key / unkey from a tool (PureSignal 2 TONE), through
     // the same MOX path as the button.
     void setMoxFromTool(bool on);
+    // ANAN fork build 766: while the multi meter is up with "Hide duplicate
+    // gauges" (AppletPanel), RF Pwr and SWR -- its PWR and SWR rows -- are
+    // hidden and the applet shrinks to suit.
+    void setMultiMeterShown(bool shown);
     explicit TxApplet(QWidget* parent = nullptr);
 
     void setTransmitModel(TransmitModel* model);

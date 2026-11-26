@@ -12917,6 +12917,30 @@ View → No GPU Mode больше нет, настройка `NoGpuMode` не ч
 Файлы: `src/gui/MainWindow_Menus.cpp`, `src/main.cpp`, `src/core/ForkBuild.h`.
 Не проверено на радио, не собиралось под Windows.
 
+## 754. Сборка 766 — «Hide duplicate gauges in applets»: и ALC Gain, и RF Pwr / SWR
+
+Оператор (26.11): «сделай по аналогии, чтобы когда включён мультиметр, этот
+индикатор [ALC Gain] тоже прятался. И в аплете TX мощность и КСВ индикатор
+тоже прятался. Но эта опция была по правой кнопке на мультиметре — Hide
+similar scale, или может ты придумаешь лучше название».
+
+- Правая кнопка на мультиметре: новый пункт с галочкой **Hide duplicate
+  gauges in applets** (настройка `AnanMmHideDuplicates`, по умолчанию
+  включена — как вела себя 758). Подсказка перечисляет, что прячется.
+- Пока мультиметр на экране (758: выбран Multi Meter и плитка S-метра
+  включена) и пункт включён:
+  - аплет Mic — Compression, **ALC Gain** (новое), ALC (Phone и CW);
+  - аплет TX — **RF Pwr и SWR** (новое; `TxApplet::setMultiMeterShown`).
+  Выключен пункт — аплеты показывают все свои шкалы.
+- ALC Gain: видим только при радио, которое его даёт, и не при спрятанных
+  дубликатах (`setHasAlcGainMeter` учитывает это).
+- Вытянутые окна аплетов подгоняются по высоте, как в 758.
+
+Файлы: `src/gui/AppletPanel.cpp`, `src/gui/PhoneCwApplet.h/.cpp`,
+`src/gui/TxApplet.h/.cpp`, `src/core/ForkBuild.h`.
+Проверка: errcheck AppletPanel 8, TxApplet 4 (= базовые), PhoneCwApplet 0.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

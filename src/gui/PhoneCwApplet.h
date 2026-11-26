@@ -89,7 +89,8 @@ public:
     void setHasAlcGainMeter(bool has);
     // ANAN fork build 758: while the multi meter is up (AppletPanel), the
     // Compression and ALC gauges -- its COMP and ALC rows -- are hidden and
-    // the applet shrinks to suit; shown again when it is not.
+    // the applet shrinks to suit; shown again when it is not. Build 766:
+    // ALC Gain too, and only with the meter's "Hide duplicate gauges".
     void setMultiMeterShown(bool shown);
 
 signals:
@@ -177,6 +178,7 @@ private:
     // setHasAlcGainMeter(). False by default so the gauge is built hidden and
     // a family that never publishes ALCGAIN gets the panel it had before.
     bool m_hasAlcGainMeter{false};
+    bool m_multiMeterShown{false};   // build 758/766
 
     QComboBox* m_micProfileCombo{nullptr};
 

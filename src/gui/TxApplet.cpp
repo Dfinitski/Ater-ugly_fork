@@ -7,6 +7,7 @@
 #include "Theme.h"
 #include "core/TxKeyingMarker.h"
 #include "core/AppSettings.h"
+#include <QTimer>   // build 766
 #include "models/RadioModel.h"
 #include "models/TransmitModel.h"
 #include "models/TunerModel.h"
@@ -490,6 +491,21 @@ void TxApplet::requestTune(bool on, const TxController::Input& input)
         m_model->startTune();
     } else {
         m_model->stopTune();
+    }
+}
+
+// ANAN fork build 766 (operator, 26.11): see the header.
+void TxApplet::setMultiMeterShown(bool shown)
+{
+    for (QWidget* w : {m_fwdGauge, m_swrGauge}) {
+        if (w && w->isHidden() != shown)
+            w->setVisible(!shown);
+    }
+    updateGeometry();
+    if (QWidget* top = window(); top && top->inherits("AetherSDR::FloatingContainerWindow")) {
+        QTimer::singleShot(0, top, [top] {
+            top->resize(top->width(), top->sizeHint().height());
+        });
     }
 }
 

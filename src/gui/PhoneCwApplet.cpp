@@ -1939,6 +1939,14 @@ void PhoneCwApplet::resetLevelMeter()
 // ANAN fork build 758 (operator, 26.11): see the header.
 void PhoneCwApplet::setMultiMeterShown(bool shown)
 {
+    m_multiMeterShown = shown;
+    // Build 766 (operator, 26.11: "ALC is enough -- hide ALC Gain with the
+    // multi meter too"): shown only for a radio that drives it.
+    if (m_alcGainGauge) {
+        const bool want = m_hasAlcGainMeter && !shown;
+        if (m_alcGainGauge->isVisible() != want)
+            m_alcGainGauge->setVisible(want);
+    }
     for (QWidget* w : {static_cast<QWidget*>(m_compGauge),
                        static_cast<QWidget*>(m_alcGaugePhone),
                        static_cast<QWidget*>(m_alcGaugeCw)}) {
@@ -2012,7 +2020,7 @@ void PhoneCwApplet::setHasAlcGainMeter(bool has)
     if (!has) {
         resetAlcGain();
     }
-    m_alcGainGauge->setVisible(has);
+    m_alcGainGauge->setVisible(has && !m_multiMeterShown);   // build 766
 }
 
 void PhoneCwApplet::setAlcMeterUnit(const QString& unit)
