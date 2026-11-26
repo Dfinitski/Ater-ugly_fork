@@ -1908,7 +1908,9 @@ void SpectrumOverlayMenu::buildDisplayPanel()
     grid->setSpacing(4);
     grid->setColumnStretch(1, 1);
 
-    auto labelStyle = QStringLiteral("QLabel { color: #8090a0; font-size: 10px; border: none; }");
+    // Build 794 (operator, 26.11): the field names as bright as the values
+    // (were #8090a0, dimmed), the same plain colour in every theme.
+    auto labelStyle = QStringLiteral("QLabel { color: #c8d8e8; font-size: 10px; border: none; }");
     auto valStyle   = QStringLiteral("QLabel { color: #c8d8e8; font-size: 10px; border: none;"
                                       " min-width: 24px; }");
     // Build 777: the Display panel buttons take "overlay.display" from the
