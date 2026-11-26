@@ -35,6 +35,7 @@
 #include "PanZoomModeGate.h"
 #include "PanadapterStack.h"
 #include "RxApplet.h"
+#include "TxApplet.h"   // build 759
 #include "SpectrumOverlayMenu.h"
 #include "SpectrumWidget.h"
 #include "TitleBar.h"
@@ -1112,6 +1113,17 @@ void MainWindow::activateStatusIndicator(QObject* obj)
         return;
     }
     if (obj == m_txIndicator) {
+        // ANAN fork build 759 (operator, 26.11: "the TX indicator takes the
+        // mouse but a click does nothing -- let it work as MOX"): a click
+        // while receiving keys MOX (the TX tile's MOX, its checks included);
+        // a click while transmitting -- MOX, PTT, TUNE or CW -- unkeys, as
+        // before (cancelTransmitFromIndicator).
+        const auto& tx = m_radioModel.transmitModel();
+        if (m_radioModel.isConnected() && !tx.isTransmitting() && !tx.isMox()
+            && m_appletPanel && m_appletPanel->txApplet()) {
+            m_appletPanel->txApplet()->setMoxFromTool(true);
+            return;
+        }
         cancelTransmitFromIndicator();
         return;
     }
