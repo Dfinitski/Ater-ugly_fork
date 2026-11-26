@@ -25,6 +25,7 @@
 #include "core/backends/anan/AnanUiState.h"
 #include "models/SliceModel.h"
 #include "Theme.h"
+#include "ButtonStyles.h"
 #include "models/TransmitModel.h"
 
 #include <QPushButton>
@@ -185,46 +186,15 @@ static QString panText(int value)
 
 // ── Style constants (matching docs/style/applet-style-guide.md) ───────────────
 //
-// kButtonBase() + kBlueActive() are tokenised through ThemeManager so the
-// filter-preset buttons (1.8K, 2.1K, …) live re-theme alongside the
-// rest of the UI.  Resolved once per file at first use via a Meyer's
-// static — ThemeManager's singleton is up by the time any RxApplet is
-// constructed.
-
-static const QString& kButtonBase()
-{
-    static const QString s = AetherSDR::ThemeManager::instance().resolve(
-        "QPushButton { background: {{color.background.1}}; "
-        "border: 1px solid {{color.background.2}}; "
-        "border-radius: 3px; color: {{color.text.primary}}; "
-        "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
-        "QPushButton:hover { background: {{color.background.2}}; }");
-    return s;
-}
+// ANAN fork build 772: the button sheets (kButtonBase, kBlueActive,
+// kAmberActive, kDisabledBtn, and the lock / antenna / QSK / SQL sheets) moved
+// to the button-style catalogue, src/gui/ButtonStyles.cpp, group "rx" -- the
+// original texts are kept there. They used to be resolved once from tokens
+// and set untracked, so the literal-colour remap ran over the already
+// resolved colours a second time (Deep Ocean drew the buttons blue).
 
 static constexpr const char* kDimLabelStyle =
     "QLabel { color: #8090a0; font-size: 11px; }";
-
-static const QString& kBlueActive()
-{
-    static const QString s = AetherSDR::ThemeManager::instance().resolve(
-        "QPushButton:checked { background: {{color.accent.dim}}; "
-        "color: {{color.text.primary}}; "
-        "border: 1px solid {{color.accent.bright}}; }");
-    return s;
-}
-
-static const QString kGreenActive =
-    "QPushButton:checked { background-color: #006040; color: #00ff88; "
-    "border: 1px solid #00a060; }";
-
-static const QString kDisabledBtn =
-    "QPushButton:disabled { background-color: #1a1a2a; color: #556070; "
-    "border: 1px solid #2a3040; }";
-
-static const QString kAmberActive =
-    "QPushButton:checked { background-color: #604000; color: #ffb800; "
-    "border: 1px solid #906000; }";
 
 static bool likelyTxAntennaFallbackToken(const QString& token)
 {
@@ -290,14 +260,16 @@ static const ModeSettings& modeSettingsFor(const QString& mode)
 }
 
 // Small checkable button used throughout the applet.
+// ANAN fork build 772: the look comes from the button-style catalogue
+// (ButtonStyles.cpp, group "rx"), tracked by ThemeManager.
 static QPushButton* mkToggle(const QString& text, QWidget* parent = nullptr,
-                             const QString& activeStyle = QString())
+                             const char* styleId = "rx.toggle")
 {
     auto* b = new QPushButton(text, parent);
     b->setCheckable(true);
     b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     b->setFixedHeight(20);
-    b->setStyleSheet(kButtonBase() + activeStyle);
+    AetherSDR::ButtonStyles::apply(b, styleId);
     return b;
 }
 
@@ -367,7 +339,7 @@ void RxApplet::buildUI()
         // noise reduction method. Kept per receiver (AnanRxDspStore.h).
         {
             auto mk = [this](const char* name, const QString& accessible) {
-                auto* b = mkToggle(QStringLiteral("NB"), nullptr, kBlueActive());
+                auto* b = mkToggle(QStringLiteral("NB"), nullptr, "rx.select");
                 b->setObjectName(QString::fromLatin1(name));
                 b->setAccessibleName(accessible);
                 b->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
@@ -469,9 +441,7 @@ void RxApplet::buildUI()
         m_lockBtn->setCheckable(true);
         m_lockBtn->setFixedSize(20, 20);
         m_lockBtn->setFlat(true);
-        m_lockBtn->setStyleSheet(
-            "QPushButton { font-size: 13px; padding: 0; }"
-            "QPushButton:checked { color: #4488ff; }");
+        AetherSDR::ButtonStyles::apply(m_lockBtn, "rx.lock");
         connect(m_lockBtn, &QPushButton::toggled, this, [this](bool locked) {
             m_lockBtn->setText(locked ? "\U0001F512" : "\U0001F513");
             if (m_slice) m_slice->setLocked(locked);
@@ -482,10 +452,7 @@ void RxApplet::buildUI()
         m_rxAntBtn = new QPushButton("ANT1");
         m_rxAntBtn->setFlat(true);
         m_rxAntBtn->setFixedHeight(20);
-        m_rxAntBtn->setStyleSheet(
-            "QPushButton { color: #4488ff; background: transparent; border: none; "
-            "font-size: 10px; font-weight: bold; padding: 0 2px; }"
-            "QPushButton:hover { color: #66aaff; }");
+        AetherSDR::ButtonStyles::apply(m_rxAntBtn, "rx.ant");
         connect(m_rxAntBtn, &QPushButton::clicked, this, [this] {
             if (!m_slice) {
                 return;
@@ -541,9 +508,7 @@ void RxApplet::buildUI()
         m_txAntBtn = new QPushButton("ANT1");
         m_txAntBtn->setFlat(true);
         m_txAntBtn->setFixedHeight(20);
-        AetherSDR::ThemeManager::instance().applyStyleSheet(m_txAntBtn, "QPushButton { color: {{color.accent.danger}}; background: transparent; border: none; "
-            "font-size: 10px; font-weight: bold; padding: 0 2px; }"
-            "QPushButton:hover { color: #ff6666; }");
+        AetherSDR::ButtonStyles::apply(m_txAntBtn, "rx.txant");
         connect(m_txAntBtn, &QPushButton::clicked, this, [this] {
             // TX has no Kiwi escape: a virtual receiver never transmits.
             if (m_slice) {
@@ -601,9 +566,7 @@ void RxApplet::buildUI()
         m_qskBtn->setFixedHeight(20);
         m_qskBtn->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
         m_qskBtn->setEnabled(false);
-        AetherSDR::ThemeManager::instance().applyStyleSheet(m_qskBtn, "QPushButton { color: {{color.text.secondary}}; background: transparent; border: none; "
-            "font-size: 10px; font-weight: bold; padding: 0 2px; }"
-            "QPushButton:checked { color: #ffb800; }");
+        AetherSDR::ButtonStyles::apply(m_qskBtn, "rx.qsk");
         row->addWidget(m_qskBtn);
 
         root->addLayout(row);
@@ -953,20 +916,14 @@ void RxApplet::buildUI()
             row->setSpacing(2);
 
             m_offsetDown = mkToggle(QString::fromUtf8("\xe2\x88\x92")); // −
-            m_offsetDown->setStyleSheet(kButtonBase() + kBlueActive());
-            ThemeManager::instance().applyStyleSheet(m_offsetDown, m_offsetDown->styleSheet()
-                + QStringLiteral("QPushButton:disabled { color: {{color.text.disabled}}; "
-                                 "background: {{color.background.2}}; }"));
+            AetherSDR::ButtonStyles::apply(m_offsetDown, "rx.offset");
             connect(m_offsetDown, &QPushButton::clicked, this, [this] {
                 applyOffsetDir("down");
             });
             row->addWidget(m_offsetDown);
 
             m_simplexBtn = mkToggle("Simplex");
-            m_simplexBtn->setStyleSheet(kButtonBase() + kBlueActive());
-            ThemeManager::instance().applyStyleSheet(m_simplexBtn, m_simplexBtn->styleSheet()
-                + QStringLiteral("QPushButton:disabled { color: {{color.text.disabled}}; "
-                                 "background: {{color.background.2}}; }"));
+            AetherSDR::ButtonStyles::apply(m_simplexBtn, "rx.offset");
             m_simplexBtn->setChecked(true);
             connect(m_simplexBtn, &QPushButton::clicked, this, [this] {
                 applyOffsetDir("simplex");
@@ -974,10 +931,7 @@ void RxApplet::buildUI()
             row->addWidget(m_simplexBtn);
 
             m_offsetUp = mkToggle("+");
-            m_offsetUp->setStyleSheet(kButtonBase() + kBlueActive());
-            ThemeManager::instance().applyStyleSheet(m_offsetUp, m_offsetUp->styleSheet()
-                + QStringLiteral("QPushButton:disabled { color: {{color.text.disabled}}; "
-                                 "background: {{color.background.2}}; }"));
+            AetherSDR::ButtonStyles::apply(m_offsetUp, "rx.offset");
             connect(m_offsetUp, &QPushButton::clicked, this, [this] {
                 applyOffsetDir("up");
             });
@@ -985,13 +939,11 @@ void RxApplet::buildUI()
 
             m_revBtn = mkToggle("REV");
             m_revBtn->setObjectName("rxFmReverseButton");
-            m_revBtn->setStyleSheet(kButtonBase() + kAmberActive);
+            AetherSDR::ButtonStyles::apply(m_revBtn, "rx.rev");
             // The same :disabled rule its three neighbours carry. Without it a
             // gated-off REV is indistinguishable from a live one, which is the
             // "dead control that looks live" failure the gate exists to remove.
-            ThemeManager::instance().applyStyleSheet(m_revBtn, m_revBtn->styleSheet()
-                + QStringLiteral("QPushButton:disabled { color: {{color.text.disabled}}; "
-                                 "background: {{color.background.2}}; }"));
+            // (build 772: the rule is part of the "rx.rev" style.)
             connect(m_revBtn, &QPushButton::toggled, this, [this](bool on) {
                 if (m_revBtn->signalsBlocked()) return;
                 if (!m_slice || usesTransmitFrequencyCheck()) return;
@@ -1099,7 +1051,7 @@ void RxApplet::buildUI()
         // same audio in both ears. On: left = I, right = Q of the
         // demodulator, a 90-degree pair -- a wider, "spatial" sound, and the
         // image moves with the sideband. Per receiver, remembered.
-        m_binauralBtn = mkToggle(tr("BIN"), nullptr, kBlueActive());
+        m_binauralBtn = mkToggle(tr("BIN"), nullptr, "rx.select");
         m_binauralBtn->setFixedWidth(30);
         m_binauralBtn->setObjectName(QStringLiteral("binaural"));
         m_binauralBtn->setAccessibleName(tr("Binaural audio"));
@@ -1204,7 +1156,7 @@ void RxApplet::buildUI()
         });
         agcRow->addWidget(m_agcCombo);
 
-        m_autoAgcTButton = mkToggle(tr("A"), nullptr, kBlueActive());
+        m_autoAgcTButton = mkToggle(tr("A"), nullptr, "rx.select");
         m_autoAgcTButton->setFixedWidth(20);
         m_autoAgcTButton->setObjectName(QStringLiteral("autoAgcT"));
         m_autoAgcTButton->setAccessibleName(tr("Auto AGC-T"));
@@ -1286,7 +1238,7 @@ void RxApplet::buildUI()
         // A caption drawn as the SQL button (operator 04.11), not clickable.
         auto* nfLbl = new QPushButton(QStringLiteral("NF +"));
         nfLbl->setFixedSize(52, 20);
-        nfLbl->setStyleSheet(kButtonBase() + kDisabledBtn);
+        AetherSDR::ButtonStyles::apply(nfLbl, "rx.caption");
         nfLbl->setFocusPolicy(Qt::NoFocus);
         nfLbl->setAttribute(Qt::WA_TransparentForMouseEvents);
         // Build 519: a caption, not a control -- the sub receiver lock leaves it.
@@ -1336,12 +1288,11 @@ void RxApplet::buildUI()
         row->setSpacing(0);
 
         m_ritOnBtn = mkToggle("RIT");
-        m_ritOnBtn->setStyleSheet(kButtonBase() + kAmberActive);
+        AetherSDR::ButtonStyles::apply(m_ritOnBtn, "rx.amber");
         row->addWidget(m_ritOnBtn);
 
         m_ritZero = new QPushButton("0");
-        m_ritZero->setStyleSheet(
-            kButtonBase() + "QPushButton { padding: 1px 4px; }");
+        AetherSDR::ButtonStyles::apply(m_ritZero, "rx.zero");
         connect(m_ritZero, &QPushButton::clicked, this, [this] {
             if (m_slice) m_slice->setRit(m_ritOnBtn->isChecked(), 0);
         });
@@ -1388,12 +1339,11 @@ void RxApplet::buildUI()
         row->setSpacing(0);
 
         m_xitOnBtn = mkToggle("XIT");
-        m_xitOnBtn->setStyleSheet(kButtonBase() + kAmberActive);
+        AetherSDR::ButtonStyles::apply(m_xitOnBtn, "rx.amber");
         row->addWidget(m_xitOnBtn);
 
         m_xitZero = new QPushButton("0");
-        m_xitZero->setStyleSheet(
-            kButtonBase() + "QPushButton { padding: 1px 4px; }");
+        AetherSDR::ButtonStyles::apply(m_xitZero, "rx.zero");
         connect(m_xitZero, &QPushButton::clicked, this, [this] {
             if (m_slice) m_slice->setXit(m_xitOnBtn->isChecked(), 0);
         });
@@ -1549,25 +1499,15 @@ void RxApplet::applySqlModeVisuals()
     switch (m_sqlMode) {
     case SqlMode::Off:
         m_sqlBtn->setText("SQL");
-        m_sqlBtn->setStyleSheet(kButtonBase() + kDisabledBtn);
+        AetherSDR::ButtonStyles::apply(m_sqlBtn, "rx.caption");
         break;
     case SqlMode::Manual:
         m_sqlBtn->setText("SQL");
-        m_sqlBtn->setStyleSheet(
-            "QPushButton { background: #006040; color: #00ff88; "
-            "border: 1px solid #00a060; border-radius: 3px; "
-            "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
-            "QPushButton:hover { background: #007050; }"
-            + kDisabledBtn);
+        AetherSDR::ButtonStyles::apply(m_sqlBtn, "rx.sql.manual");
         break;
     case SqlMode::Auto:
         m_sqlBtn->setText("AUTO");
-        m_sqlBtn->setStyleSheet(
-            "QPushButton { background: #604000; color: #ffb800; "
-            "border: 1px solid #906000; border-radius: 3px; "
-            "font-size: 10px; font-weight: bold; padding: 1px 2px; }"
-            "QPushButton:hover { background: #705000; }"
-            + kDisabledBtn);
+        AetherSDR::ButtonStyles::apply(m_sqlBtn, "rx.sql.auto");
         break;
     }
     // Slider has two distinct roles depending on mode:
@@ -3836,8 +3776,7 @@ void RxApplet::rebuildFilterButtons()
         }
         // Three preset columns must leave room for the 60 px AGC slider
         // and Auto button within the dock's 248 px viewport.
-        btn->setStyleSheet(kButtonBase() + kBlueActive()
-            + QStringLiteral("QPushButton { padding: 1px; }"));
+        AetherSDR::ButtonStyles::apply(btn, "rx.preset");
         connect(btn, &QPushButton::clicked, this,
                 [this, i, customisable, stablePresets, preset](bool) {
             if (!m_slice) {

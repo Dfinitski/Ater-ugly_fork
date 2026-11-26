@@ -13094,6 +13094,46 @@ check_theme_seed — актуален.
 идентично; check_theme_seed — актуален.
 Не проверено на радио, не собиралось под Windows.
 
+## 761. Сборка 772 — кнопки в редактор тем, шаг 3: аплет RX
+
+Группа `rx` в каталоге `ButtonStyles.cpp`: 14 записей, все кнопки аплета
+приёмника идут через `ThemeManager` (`ButtonStyles::apply`).
+
+- `rx.toggle` (`kButtonBase`, `mkToggle()` по умолчанию, Filter unavailable),
+  `rx.select` (+ `kBlueActive`: NB / NR, BIN, AGC A), `rx.offset` (+ правило
+  `:disabled`: FM −, Simplex, +), `rx.rev` (+ `kAmberActive` + `:disabled`),
+  `rx.amber` (RIT, XIT), `rx.zero` (их «0»), `rx.caption` (+ `kDisabledBtn`:
+  подпись NF +, SQL выкл.), `rx.sql.manual`, `rx.sql.auto`, `rx.preset`
+  (кнопки фильтров), `rx.lock`, `rx.ant`, `rx.txant`, `rx.qsk`.
+- `mkToggle()` получает id стиля вместо строки; константы `kButtonBase`,
+  `kBlueActive`, `kGreenActive` (не использовалась), `kDisabledBtn`,
+  `kAmberActive` из `RxApplet.cpp` убраны, исходные тексты — в каталоге.
+- Токены `color.button.rx.*` (30). Там, где исходный стиль брал общий токен
+  (`color.background.1/.2`, `text.primary/.secondary/.disabled`,
+  `accent.dim/.bright/.danger`), значение — ссылка на тот же примитив
+  (`{color.gray.800}` и т.п.), поэтому каждая тема даёт свой цвет. Новые части:
+  `selected.*` (синее «выбрано»), `gated.*` (выключено гейтом режима),
+  `sql.manual.*`, `sql.auto.*`, `lock/ant/txant/qsk.*`.
+- `check_button_styles.py --write` копирует ссылку на примитив как есть (не
+  перекрашивает). 22 записи × 3 темы — всё идентично.
+
+Исправлена ошибка двойной перекраски (по выбору оператора): `kButtonBase` /
+`kBlueActive` раньше разрешались из токенов один раз и ставились через
+`setStyleSheet` без учёта темы, и фильтр перекраски литералов проходил по уже
+готовым цветам второй раз. Default Dark не меняется. В Midnight кнопки RX
+чуть темнее (настоящие цвета темы), в Deep Ocean фон кнопок RX снова тёмный
+#073642 вместо синего #1a5f94. Кнопки теперь перекрашиваются при смене темы
+на лету (раньше — только после перезапуска). `ThemedButtons=False` возвращает
+исходные тексты — тоже уже без двойной перекраски.
+
+Файлы: `src/gui/RxApplet.cpp`, `src/gui/ButtonStyles.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `tools/check_button_styles.py`,
+`docs/button-theming.md`, `src/core/ForkBuild.h`.
+Проверка: errcheck RxApplet 4 (= до правки, WanConnection.h), ButtonStyles 0,
+ThemeSeedGenerated 0; check_button_styles — идентично.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -197,7 +197,11 @@ def main():
             d, toks, prim, lit = theme_tokens(THEMES / tf)
             btn = d["scopes"]["root"]["tokens"].setdefault("color", {}).setdefault("button", {})
             for grp, leaves in groups.items():
-                btn[grp] = {leaf: remap_hex(resolve_value(v, base_prim, base_toks, base_prim), lit)
+                # A primitive reference ("{color.gray.800}", build 772) stands
+                # for a generic token the original sheet used: the remap theme
+                # resolves it to its own primitive, so it is copied as it is.
+                btn[grp] = {leaf: (v if isinstance(v, str) and v.startswith("{")
+                                   else remap_hex(resolve_value(v, base_prim, base_toks, base_prim), lit))
                             for leaf, v in leaves.items()}
             (THEMES / tf).write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             print(f"wrote color.button.{{{','.join(groups)}}} into {tf}")
