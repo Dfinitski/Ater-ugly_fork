@@ -12413,6 +12413,18 @@ errcheck AnanMultiMeterWidget 0. Не проверено на радио, не �
 
 errcheck: P2Transport 0, P2Protocol 0, Hl2Backend 2, PsApplet 4 (= до правки). Не проверено на радио (HL2 у оператора нет), не собиралось под Windows.
 
+## 732. Релиз сборки 744
+
+Оператор, 25.11: «прекрасно, делаем релиз. Подготовь документацию и архив портативной версии».
+
+- `docs/release-notes-build-744.md` — изменения с 732: свой Multi Meter (вместо ANAN Multi Meter 713 / 732, автор дизайна которого попросил оставить его эксклюзивом Thetis), кнопка PROC → COMP и развёрнутая шкала компрессии, PureSignal на HL2, полоса прокрутки панели аплетов от верха S-метра. В шапке — что 744 заменяет 713 и 732. Строка об источнике калибровки ANAN Multi Meter (Thetis) из лицензионного хвоста убрана. Установщик 744 — в таблице загрузок (собирает оператор, `build-installer-anan.cmd`).
+- README: раздел «Build 744», 732 — в списке прежних.
+- Архив `AetherSDR-ANAN-build744-win64-portable.zip` (папка `AetherSDR-ANAN-build744`) = архив 732 (SHA-256 сверен) с `AetherSDR.exe` оператора из `Desktop\AetherSDR-Release` и `README-build744.md` вместо `README-build732.md`.
+  - exe: 91 336 192 байт, время файла на 168 с позже последней записи исходников 744; в нём строки 735–739 («Shadow TX scales», `meter-paper-light`, `AnanMmShadowTx`), строки «ANAN Multi Meter» нет.
+  - Архив: 93 файла, 163 422 079 байт, SHA-256 `4e441e0a2832e211aa4e5fb3f790997a47163d391c6708a631db6610071e7bab`.
+  - Записан в `Desktop\AetherSDR-Release`, считан обратно, хеш совпал.
+- Тег `build-744`, релиз на GitHub, установщик и снятие релизов 713 / 732 — оператор.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
