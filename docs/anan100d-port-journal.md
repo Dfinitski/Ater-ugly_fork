@@ -12397,6 +12397,22 @@ errcheck AnanMultiMeterWidget 0. Не проверено на радио, не �
 
 Проверка: отрисовка offscreen. errcheck AnanMultiMeterWidget 0. Не проверено на радио, не собиралось под Windows.
 
+## 731. Сборка 744 — PureSignal на Hermes-Lite 2
+
+Оператор: перед релизом попытаться прикрутить PureSignal для HL2, очень аккуратно, не сломав имеющееся.
+
+**Что уже было.** Над Protocol 1 PureSignal общий для всех плат: `P2Transport::configureSession` ставит `psSupported` для любой P1-платы; у HL2 план DDC тот же, что у HERMES (`p1DdcPlanFor`: nddc 4, пара PS — DDC2 обратная связь / DDC3 опорный TX DAC; на передаче DDC2/DDC3 на частоте TX, RX3/RX4 удерживаются); ротация `p1CcHl2` уже ставит бит PureSignal (0x0A C2 бит 6 и 0x12 C2 бит 6); объект `AnanPureSignal` и аплет PS создаются для любого ANAN-режима. Это совпадает с deskHPSDR (`rx_feedback_channel` / `tx_feedback_channel` / `how_many_receivers`: HERMES_LITE2 — 2 / 3 / 4) и Thetis MI0BOT (`WriteMainLoop_HL2`).
+
+**Чего не хватало (deskHPSDR old_protocol.c, DEVICE_HERMES_LITE2):**
+- У HL2 нет отдельного аттенюатора обратной связи — обратная связь идёт на его же АЦП, а ослабление задаётся LNA на передаче: код усиления = 31 − PS att (0..31), т. е. усиление = 19 − att дБ, в 0x0E C3 (= 0xC0 | код) и 0x0A C4 (= 0x40 | код). `P2Transport::p1State`, блок HL2: при `m_psEnabled && m_mox` `hl2TxGainDb = hl2RxGainDb = 19 − m_psAttDb` (−12..48). Ручной и авто-аттенюатор PS (0..31) работают через это. На приёме — без изменений.
+- Задержка буфера TX — не меньше 40 мс, пока PureSignal включён (deskHPSDR: «TUNE / PureSignal → conservative»).
+
+**Интерфейс:** `Hl2Backend::ananHwFields` — `ananPureSignal` больше не исключает HL2 (пропадает заметка «PureSignal недоступен» в настройках); `PsApplet` — для HL2 выбор входа (Internal / EXT1 / RX Bypass, реле Alex) и АЦП обратной связи недоступны.
+
+**Не меняется для ANAN:** все правки под `boardId == kBoardIdHermesLite` / `hermesLite`.
+
+errcheck: P2Transport 0, P2Protocol 0, Hl2Backend 2, PsApplet 4 (= до правки). Не проверено на радио (HL2 у оператора нет), не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

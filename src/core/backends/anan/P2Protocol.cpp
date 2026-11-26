@@ -84,7 +84,8 @@ std::optional<BoardProfile> boardProfileFor(std::uint8_t boardId) noexcept
     case kBoardIdHermesLite:
         // ANAN fork build 723: Hermes-Lite 2 -- one ADC (AD9866), no Alex, the
         // receivers from DDC0 as on the Hermes boards (MI0BOT's Thetis puts it
-        // in UpdateDDCs' HERMES case). PureSignal not offered yet.
+        // in UpdateDDCs' HERMES case). Build 744: PureSignal over Protocol 1
+        // (P2Transport::configureSession sets psSupported for every P1 board).
         p.modelName = "Hermes-Lite 2";
         p.rxDdcBase = 0;
         p.numAdcs = 1;

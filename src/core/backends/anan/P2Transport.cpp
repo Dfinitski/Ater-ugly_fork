@@ -3519,6 +3519,24 @@ P1CcState P2Transport::p1State() const
         s.hl2ResetOnDisconnect = m_hl2.resetOnDisconnect;
         s.hl2Bit11 = m_dither;   // Hl2Backend: AK4951 -> speaker on, else PWM band indicator
         s.hl2DisableSync = m_hl2.disableSync;
+        // ANAN fork build 744 (operator, 25.11: PureSignal on the HL2, "very
+        // carefully"). deskHPSDR old_protocol.c (DEVICE_HERMES_LITE2): with
+        // PureSignal the HL2 has no feedback attenuator of its own -- the
+        // feedback is its receiver's ADC on DDC2 (the TX DAC on DDC3), so the
+        // PS attenuation 0..31 dB is the LNA gain code 31 - att while
+        // transmitting (C0 0x1C C3 = 0xC0 | code and C0 0x14 C4 = 0x40 |
+        // code; MI0BOT's Thetis sends its tx_step_attn in 0x14 C4 on transmit
+        // as well): gain = 19 - att dB. Receiving, nothing changes.
+        if (psTx) {
+            const int psGainDb = std::clamp(19 - m_psAttDb, -12, 48);
+            s.hl2TxGainDb = psGainDb;
+            s.hl2RxGainDb = psGainDb;
+        }
+        // deskHPSDR: TX buffer latency 40 ms whenever PureSignal is on
+        // ("Safety first: TUNE / PureSignal -> conservative"); never less than
+        // the operator's setting.
+        if (m_psEnabled)
+            s.hl2TxLatencyMs = std::max(s.hl2TxLatencyMs, 40);
     }
     return s;
 }

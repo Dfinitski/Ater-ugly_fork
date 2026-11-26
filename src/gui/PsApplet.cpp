@@ -6,6 +6,7 @@
 #include "Theme.h"
 #include "core/ThemeManager.h"
 #include "core/backends/anan/AnanPureSignal.h"
+#include "core/backends/anan/AnanUiState.h"   // build 744
 #include "core/backends/hl2/Hl2Backend.h"
 #include "models/RadioModel.h"
 #include "models/SliceModel.h"
@@ -383,6 +384,13 @@ void PsApplet::refresh()
     // Input switches the Alex relays in front of ADC1 only; ADC2 is the bare
     // RX2 input.
     m_source->setEnabled(have && ps->settings().feedbackAdc == 0);
+    // ANAN fork build 744: a Hermes-Lite 2 has no Alex input relays and one
+    // ADC -- its feedback is always its own receiver; the attenuator is its
+    // LNA while transmitting (P2Transport::p1State).
+    if (anan::AnanUiState::instance().hermesLite) {
+        m_source->setEnabled(false);
+        m_fbAdc->setEnabled(false);
+    }
 
     const bool allowed = have && twoToneAllowed();
     m_twoToneBtn->setEnabled(allowed || m_twoToneKeyed);
