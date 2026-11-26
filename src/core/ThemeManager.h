@@ -22,6 +22,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <vector>
 
 class QWidget;
 
@@ -201,6 +202,20 @@ public:
                             const QStringList& onlyTokens, bool familyOnly);
     void endColorAdjust(bool commit);
     bool colorAdjustActive() const { return m_adjustActive; }
+
+    // ANAN fork build 798 (operator, 26.11: editor items 5 and 6).
+    //  * Undo / redo of theme edits: every edit that saves the theme (all the
+    //    setters, removeOverride, palette, code-colour remap, replace, link,
+    //    an accepted HSL adjustment) leaves the state before it on the undo
+    //    stack (edits within 0.7 s -- a picker drag -- are one step). A theme
+    //    load clears the history. undo()/redo() repaint and save.
+    //  * rootTokensOfTheme(): the root tokens of a theme as its file has
+    //    them, aliases resolved -- the editor's "changed vs <theme>" filter.
+    bool canUndo() const { return !m_undo.empty(); }
+    bool canRedo() const { return !m_redo.empty(); }
+    bool undo();
+    bool redo();
+    QHash<QString, QVariant> rootTokensOfTheme(const QString& name) const;
     // Called once the QApplication exists (main.cpp): watches every widget's
     // plain style sheet and the application's.
     void installLiteralRemapper();
@@ -475,6 +490,20 @@ private:
     QHash<QString, QVariant> m_adjustPrimitives;
     QVector<QColor> m_adjustLitNeutral, m_adjustLitAccent;
     void restoreAdjustSnapshot();
+    // Build 798: undo / redo.
+    struct UndoState {
+        QHash<QString, QHash<QString, QVariant>> scopes;   // scope path -> tokens
+        QHash<QString, QVariant> primitives;
+        QVector<QColor> litNeutral, litAccent;
+    };
+    std::vector<UndoState> m_undo, m_redo;
+    UndoState m_undoLast;            // the state after the last edit
+    qint64 m_undoLastMs = 0;
+    bool m_undoRestoring = false;
+    UndoState captureUndoState() const;
+    void applyUndoState(const UndoState& s);
+    void resetUndo();
+    void noteEditForUndo();
     QString m_appSheetOriginal;
     bool m_litRemapperInstalled = false;
     void remapAllUntracked();

@@ -23,6 +23,7 @@
 #include <algorithm>   // build 796
 #include <functional>
 #include <QSet>
+#include <QDateTime>
 
 namespace AetherSDR {
 
@@ -549,6 +550,7 @@ bool ThemeManager::loadThemeFromPath(const QString& path)
     // Classifying at Reset time on live tokens would let a dragged-dark background
     // on a light theme reclassify it as dark and reset every token to dark values.
     m_activeThemeBase = resolveThemeBase(root);
+    resetUndo();   // build 798: a new theme state, no history
     return true;
 }
 
@@ -975,6 +977,7 @@ bool ThemeManager::createThemeFromColors(const QString& nameIn, const NewThemeCo
         m_primitives.insert(QStringLiteral("color.blue.500"), colorToTokenString(c.accent));
     remapScopeColours(m_rootScope.get(), *this);
     m_activeThemeBase = QStringLiteral("Default Dark");
+    resetUndo();   // build 798: the generated theme is the start of its history
     if (!saveCurrentThemeAs(name)) {
         // Back to the theme that was active (its file is unchanged).
         const QString prev = m_themePaths.value(m_activeTheme);
@@ -1214,6 +1217,123 @@ void ThemeManager::endColorAdjust(bool commit)
     m_adjustPrimitives.clear();
 }
 
+// ── ANAN fork build 798: undo / redo, compare with another theme ───────────
+
+ThemeManager::UndoState ThemeManager::captureUndoState() const
+{
+    UndoState s;
+    snapshotScopes(m_rootScope.get(), s.scopes);   // implicitly shared copies: cheap
+    s.primitives = m_primitives;
+    s.litNeutral = m_litNeutral;
+    s.litAccent = m_litAccent;
+    return s;
+}
+
+void ThemeManager::applyUndoState(const UndoState& s)
+{
+    m_rootScope->tokens = s.scopes.value(QString());
+    for (auto it = m_scopeByPath.constBegin(); it != m_scopeByPath.constEnd(); ++it)
+        it.value()->tokens = s.scopes.value(it.key());
+    m_primitives = s.primitives;
+    m_litNeutral = s.litNeutral;
+    m_litAccent = s.litAccent;
+}
+
+void ThemeManager::resetUndo()
+{
+    m_undo.clear();
+    m_redo.clear();
+    m_undoLast = captureUndoState();
+    m_undoLastMs = 0;
+}
+
+void ThemeManager::noteEditForUndo()
+{
+    if (m_undoRestoring)
+        return;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (m_undo.empty() || now - m_undoLastMs > 700) {
+        m_undo.push_back(m_undoLast);
+        if (m_undo.size() > 100)
+            m_undo.erase(m_undo.begin());
+    }
+    m_undoLastMs = now;
+    m_undoLast = captureUndoState();
+    m_redo.clear();
+}
+
+bool ThemeManager::undo()
+{
+    if (m_undo.empty() || m_adjustActive)
+        return false;
+    m_redo.push_back(captureUndoState());
+    const UndoState s = m_undo.back();
+    m_undo.pop_back();
+    applyUndoState(s);
+    m_undoLast = s;
+    m_undoLastMs = 0;
+    emit themeChanged();
+    remapAllUntracked();
+    m_undoRestoring = true;
+    saveActiveTheme();
+    m_undoRestoring = false;
+    return true;
+}
+
+bool ThemeManager::redo()
+{
+    if (m_redo.empty() || m_adjustActive)
+        return false;
+    m_undo.push_back(captureUndoState());
+    const UndoState s = m_redo.back();
+    m_redo.pop_back();
+    applyUndoState(s);
+    m_undoLast = s;
+    m_undoLastMs = 0;
+    emit themeChanged();
+    remapAllUntracked();
+    m_undoRestoring = true;
+    saveActiveTheme();
+    m_undoRestoring = false;
+    return true;
+}
+
+QHash<QString, QVariant> ThemeManager::rootTokensOfTheme(const QString& name) const
+{
+    QHash<QString, QVariant> out;
+    const QString path = m_themePaths.value(name);
+    QFile f(path);
+    if (path.isEmpty() || !f.open(QIODevice::ReadOnly))
+        return out;
+    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    QHash<QString, QVariant> prims;
+    const QJsonObject po = root.value(QStringLiteral("primitives")).toObject();
+    for (auto it = po.constBegin(); it != po.constEnd(); ++it) {
+        if (it.value().isString())
+            prims.insert(it.key(), it.value().toString());
+        else if (it.value().isObject() && it.value().toObject().contains(QStringLiteral("type")))
+            prims.insert(it.key(), QVariant::fromValue(parseGradient(it.value().toObject())));
+    }
+    QJsonObject toks;
+    if (root.contains(QStringLiteral("scopes")))
+        toks = root.value(QStringLiteral("scopes")).toObject().value(QStringLiteral("root")).toObject()
+                   .value(QStringLiteral("tokens")).toObject();
+    else
+        toks = root.value(QStringLiteral("tokens")).toObject();
+    flattenTokens(toks, QString(), out);
+    for (auto it = out.begin(); it != out.end(); ++it) {
+        if (it.value().userType() != QMetaType::QString)
+            continue;
+        const QString v = it.value().toString();
+        if (v.size() > 2 && v.startsWith(QLatin1Char('{')) && v.endsWith(QLatin1Char('}'))) {
+            const auto p = prims.constFind(v.mid(1, v.size() - 2));
+            if (p != prims.constEnd())
+                it.value() = p.value();
+        }
+    }
+    return out;
+}
+
 void ThemeManager::installLiteralRemapper()
 {
     auto* app = qobject_cast<QApplication*>(QCoreApplication::instance());
@@ -1344,6 +1464,7 @@ void ThemeManager::setString(const QString& token, const QString& value)
 
 bool ThemeManager::saveActiveTheme()
 {
+    noteEditForUndo();   // build 798: every edit lands here
     if (m_activeTheme.isEmpty()) return false;
     if (isBuiltInTheme(m_activeTheme)) {
         // Built-ins live in :/themes/ and can't be overwritten.  The

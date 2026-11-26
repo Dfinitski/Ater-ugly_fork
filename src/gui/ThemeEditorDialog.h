@@ -4,6 +4,8 @@
 
 #include <QColor>
 #include <QPointer>
+#include <QHash>
+#include <QVariant>
 
 class QDragEnterEvent;
 class QDropEvent;
@@ -14,6 +16,7 @@ class QComboBox;
 class QLineEdit;
 class QPushButton;
 class QTabWidget;
+class QCheckBox;
 class QWidget;
 
 namespace AetherSDR {
@@ -86,6 +89,18 @@ private:
     void         onNewThemeClicked();
     void         onAdjustColorsClicked();   // build 797: HSL adjustment
     QStringList  visibleTokenKeys() const;   // rows not hidden by a filter
+    // Build 798: "changed vs <theme>" filter, undo / redo, contrast check.
+    QCheckBox*   m_changedOnly{nullptr};
+    QComboBox*   m_compareCombo{nullptr};
+    QLabel*      m_changedCount{nullptr};
+    QHash<QString, QVariant> m_compareTokens;
+    QPushButton* m_undoBtn{nullptr};
+    QPushButton* m_redoBtn{nullptr};
+    void         reloadCompareThemes();      // combo items + m_compareTokens
+    bool         tokenDiffers(const QString& key) const;
+    void         updateUndoButtons();
+    void         doUndo(bool redo);
+    void         onCheckContrastClicked();
 
     QLabel*      m_themeLabel{nullptr};   // "Editing: <name>"
     TokenEditorWidget* m_tokenEditor{nullptr};   // inline editor stack

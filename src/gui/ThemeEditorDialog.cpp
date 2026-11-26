@@ -8,6 +8,8 @@
 #include "core/ThemeManager.h"
 
 #include <QAction>
+#include <QShortcut>
+#include <QKeySequence>
 #include <QSlider>
 #include <QHash>
 #include <cmath>
@@ -284,6 +286,19 @@ ThemeEditorDialog::ThemeEditorDialog(QWidget* parent)
     tokensLay->setContentsMargins(0, 6, 0, 0);
     tokensLay->setSpacing(6);
     tokensLay->addLayout(filterRow);
+    // Build 798: only the tokens that differ from another theme.
+    auto* compareRow = new QHBoxLayout;
+    compareRow->setSpacing(6);
+    m_changedOnly = new QCheckBox(QStringLiteral("Only changed vs"), tokensPage);
+    m_changedOnly->setToolTip(QStringLiteral("Shows only the tokens whose value differs from the chosen theme\n"
+                                             "(e.g. a copy against the theme it was made from)."));
+    m_compareCombo = new QComboBox(tokensPage);
+    m_compareCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_changedCount = new QLabel(tokensPage);
+    compareRow->addWidget(m_changedOnly);
+    compareRow->addWidget(m_compareCombo);
+    compareRow->addWidget(m_changedCount, 1);
+    tokensLay->addLayout(compareRow);
 
     m_tokenList = new QTreeWidget(bodyWidget());
     m_tokenList->setIconSize(QSize(18, 18));
@@ -319,6 +334,7 @@ ThemeEditorDialog::ThemeEditorDialog(QWidget* parent)
     auto* themeActionsMenu = new QMenu(themeActionsBtn);
     auto* newThemeAct = themeActionsMenu->addAction(QStringLiteral("New theme from colors…"));   // build 796
     auto* adjustAct = themeActionsMenu->addAction(QStringLiteral("Adjust colors (hue / saturation / lightness)…"));   // build 797
+    auto* contrastAct = themeActionsMenu->addAction(QStringLiteral("Check contrast…"));   // build 798
     themeActionsMenu->addSeparator();
     auto* renameAct = themeActionsMenu->addAction(QStringLiteral("Rename theme…"));
     auto* deleteAct = themeActionsMenu->addAction(QStringLiteral("Delete theme…"));
@@ -327,6 +343,13 @@ ThemeEditorDialog::ThemeEditorDialog(QWidget* parent)
     auto* importAct = themeActionsMenu->addAction(QStringLiteral("Import from file…"));
     themeActionsBtn->setMenu(themeActionsMenu);
     btnRow->addWidget(themeActionsBtn);
+    // Build 798: undo / redo (Ctrl+Z / Ctrl+Y).
+    m_undoBtn = new QPushButton(QStringLiteral("Undo"), bodyWidget());
+    m_redoBtn = new QPushButton(QStringLiteral("Redo"), bodyWidget());
+    m_undoBtn->setToolTip(QStringLiteral("Undo the last theme edit (Ctrl+Z)"));
+    m_redoBtn->setToolTip(QStringLiteral("Redo (Ctrl+Y / Ctrl+Shift+Z)"));
+    btnRow->addWidget(m_undoBtn);
+    btnRow->addWidget(m_redoBtn);
 
     btnRow->addStretch(1);
     m_saveAsBtn = new QPushButton(QStringLiteral("Save As…"), bodyWidget());
@@ -339,6 +362,22 @@ ThemeEditorDialog::ThemeEditorDialog(QWidget* parent)
             this, &ThemeEditorDialog::onNewThemeClicked);
     connect(adjustAct, &QAction::triggered,
             this, &ThemeEditorDialog::onAdjustColorsClicked);
+    connect(contrastAct, &QAction::triggered,
+            this, &ThemeEditorDialog::onCheckContrastClicked);
+    connect(m_undoBtn, &QPushButton::clicked, this, [this] { doUndo(false); });
+    connect(m_redoBtn, &QPushButton::clicked, this, [this] { doUndo(true); });
+    auto* undoSc = new QShortcut(QKeySequence::Undo, this);
+    auto* redoSc = new QShortcut(QKeySequence::Redo, this);
+    connect(undoSc, &QShortcut::activated, this, [this] { doUndo(false); });
+    connect(redoSc, &QShortcut::activated, this, [this] { doUndo(true); });
+    connect(m_changedOnly, &QCheckBox::toggled, this, [this](bool) { filterTokensTo(m_activeSubset); });
+    connect(m_compareCombo, &QComboBox::currentTextChanged, this, [this](const QString& name) {
+        if (name.isEmpty())
+            return;
+        AppSettings::instance().setValue(QStringLiteral("ThemeEditorCompareWith"), name);
+        m_compareTokens = ThemeManager::instance().rootTokensOfTheme(name);
+        filterTokensTo(m_activeSubset);
+    });
     connect(renameAct, &QAction::triggered,
             this, &ThemeEditorDialog::onRenameThemeClicked);
     connect(deleteAct, &QAction::triggered,
@@ -356,6 +395,8 @@ ThemeEditorDialog::ThemeEditorDialog(QWidget* parent)
     refreshContainerCombo();
     refreshTokenList();
     rebuildPalettePage();   // build 796
+    reloadCompareThemes();  // build 798
+    updateUndoButtons();
     updateTitle();
     m_lastRenderedTheme = ThemeManager::instance().activeTheme();
     m_inheritedCellColor = inheritedCellBrush().color();
@@ -1084,14 +1125,20 @@ void ThemeEditorDialog::filterTokensTo(const QStringList& subset)
                                ? m_filterEdit->text().trimmed().toLower()
                                : QString();
     const QSet<QString> wanted(subset.begin(), subset.end());
+    const bool changedOnly = m_changedOnly && m_changedOnly->isChecked();   // build 798
+    int changed = 0;
     for (int i = 0; i < m_tokenList->topLevelItemCount(); ++i) {
         auto* item = m_tokenList->topLevelItem(i);
         const QString key = item->data(0, Qt::UserRole).toString();
         bool hidden = false;
         if (!subset.isEmpty() && !wanted.contains(key)) hidden = true;
         if (!hidden && !needle.isEmpty() && !key.contains(needle)) hidden = true;
+        if (!hidden && changedOnly && !tokenDiffers(key)) hidden = true;
+        if (changedOnly && tokenDiffers(key)) ++changed;
         item->setHidden(hidden);
     }
+    if (m_changedCount)
+        m_changedCount->setText(changedOnly ? QStringLiteral("%1 changed").arg(changed) : QString());
 }
 
 void ThemeEditorDialog::refreshContainerCombo()
@@ -1338,7 +1385,18 @@ void ThemeEditorDialog::onActiveThemeChanged()
         refreshContainerCombo();
         refreshTokenList();
         rebuildPalettePage();   // build 796
+        reloadCompareThemes();  // build 798
+        updateUndoButtons();
         return;
+    }
+    updateUndoButtons();   // build 798
+    // Build 798: an edit may move a token into / out of "changed".
+    if (m_changedOnly && m_changedOnly->isChecked()) {
+        const QPointer<ThemeEditorDialog> self(this);
+        QTimer::singleShot(0, this, [self] {
+            if (self)
+                self->filterTokensTo(self->m_activeSubset);
+        });
     }
     // An in-place edit keeps every row, but the "inherited" cells carry
     // color.text.secondary, which may be the token just edited. Repaint them
@@ -1906,6 +1964,282 @@ void ThemeEditorDialog::onAdjustColorsClicked()
     refreshTokenList();
     filterTokensTo(m_activeSubset);
     rebuildPalettePage();
+}
+
+// ── ANAN fork build 798: changed-vs filter, undo / redo, contrast check ────
+
+void ThemeEditorDialog::reloadCompareThemes()
+{
+    if (!m_compareCombo)
+        return;
+    auto& tm = ThemeManager::instance();
+    QString want = m_compareCombo->currentText();
+    if (want.isEmpty())
+        want = AppSettings::instance().value(QStringLiteral("ThemeEditorCompareWith"),
+                                             QStringLiteral("Default Dark")).toString();
+    const QStringList themes = tm.availableThemes();
+    {
+        const QSignalBlocker block(m_compareCombo);
+        m_compareCombo->clear();
+        m_compareCombo->addItems(themes);
+        int idx = m_compareCombo->findText(want);
+        if (idx < 0)
+            idx = m_compareCombo->findText(QStringLiteral("Default Dark"));
+        m_compareCombo->setCurrentIndex(std::max(0, idx));
+    }
+    m_compareTokens = tm.rootTokensOfTheme(m_compareCombo->currentText());
+    filterTokensTo(m_activeSubset);
+}
+
+bool ThemeEditorDialog::tokenDiffers(const QString& key) const
+{
+    const auto it = m_compareTokens.constFind(key);
+    if (it == m_compareTokens.constEnd())
+        return false;   // not in that theme's file: both run on the built-in default
+    auto& tm = ThemeManager::instance();
+    const QString path = m_activeContainerPath;
+    const QVariant& base = it.value();
+    if (base.userType() == qMetaTypeId<ThemeGradient>()) {
+        const ThemeGradient a = base.value<ThemeGradient>();
+        const ThemeGradient b = tm.gradientAt(path, key);
+        if (a.stops.size() != b.stops.size() || a.type != b.type || !qFuzzyCompare(a.angle + 1, b.angle + 1))
+            return true;
+        for (int i = 0; i < a.stops.size(); ++i) {
+            if (a.stops[i].color.rgba() != b.stops[i].color.rgba()
+                || std::abs(a.stops[i].at - b.stops[i].at) > 1e-4)
+                return true;
+        }
+        return false;
+    }
+    if (base.userType() == qMetaTypeId<ThemeFont>()) {
+        const ThemeFont a = base.value<ThemeFont>();
+        const ThemeFont b = tm.fontTokenAt(path, key);
+        return a.family != b.family || a.size != b.size || a.color.rgba() != b.color.rgba();
+    }
+    if (base.userType() == QMetaType::QString) {
+        const QString v = base.toString();
+        if (v.startsWith(QLatin1Char('#'))) {
+            const QColor c(v);
+            return c.isValid() && c.rgba() != tm.colorAt(path, key).rgba();
+        }
+        return v != tm.valueAt(path, key);
+    }
+    if (base.canConvert<double>())
+        return int(std::lround(base.toDouble())) != tm.sizingAt(path, key);
+    return false;
+}
+
+void ThemeEditorDialog::updateUndoButtons()
+{
+    auto& tm = ThemeManager::instance();
+    if (m_undoBtn)
+        m_undoBtn->setEnabled(tm.canUndo());
+    if (m_redoBtn)
+        m_redoBtn->setEnabled(tm.canRedo());
+}
+
+void ThemeEditorDialog::doUndo(bool redo)
+{
+    auto& tm = ThemeManager::instance();
+    if (!(redo ? tm.redo() : tm.undo()))
+        return;
+    refreshTokenList();
+    filterTokensTo(m_activeSubset);
+    rebuildPalettePage();
+    updateUndoButtons();
+    updateInspectorStatus(redo ? QStringLiteral("Redone.") : QStringLiteral("Undone."));
+}
+
+namespace {
+
+// WCAG relative luminance and contrast ratio.
+double relLuminance(const QColor& c)
+{
+    auto ch = [](double v) { return v <= 0.03928 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * ch(c.redF()) + 0.7152 * ch(c.greenF()) + 0.0722 * ch(c.blueF());
+}
+
+double contrastRatio(const QColor& a, const QColor& b)
+{
+    const double la = relLuminance(a), lb = relLuminance(b);
+    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+}
+
+// A translucent colour as it shows over `under`.
+QColor over(const QColor& c, const QColor& under)
+{
+    const double a = c.alphaF();
+    return QColor::fromRgbF(float(c.redF() * a + under.redF() * (1 - a)),
+                            float(c.greenF() * a + under.greenF() * (1 - a)),
+                            float(c.blueF() * a + under.blueF() * (1 - a)));
+}
+
+} // namespace
+
+void ThemeEditorDialog::onCheckContrastClicked()
+{
+    auto& tm = ThemeManager::instance();
+    const QString path = m_activeContainerPath;
+    const QColor ground = tm.colorAt(path, QStringLiteral("color.background.0"));
+    // The flat colour of a token: a gradient by the average of its stops,
+    // a translucent one over the ground.
+    auto flat = [&tm, &path, ground](const QString& key) -> QColor {
+        const ThemeGradient g = tm.gradientAt(path, key);
+        QColor c;
+        if (!g.stops.isEmpty()) {
+            double r = 0, gg = 0, b = 0, a = 0;
+            for (const auto& st : g.stops) {
+                r += st.color.redF(); gg += st.color.greenF(); b += st.color.blueF(); a += st.color.alphaF();
+            }
+            const double n = g.stops.size();
+            c = QColor::fromRgbF(float(r / n), float(gg / n), float(b / n), float(a / n));
+        } else {
+            c = tm.colorAt(path, key);
+        }
+        if (c.isValid() && c.alpha() < 255 && ground.isValid())
+            c = over(c, ground);
+        return c;
+    };
+    const QStringList all = tm.allTokenKeys();
+    const QSet<QString> keys(all.begin(), all.end());
+    struct Pair { QString text, bg; QColor tc, bc; double ratio; double need; };
+    QVector<Pair> pairs;
+    auto add = [&pairs, &flat](const QString& t, const QString& b, double need) {
+        const QColor tc = flat(t), bc = flat(b);
+        if (!tc.isValid() || !bc.isValid() || tc.alpha() == 0 || bc.alpha() == 0)
+            return;
+        pairs.append({t, b, tc, bc, contrastRatio(tc, bc), need});
+    };
+    // 1) <prefix>.text against <prefix>.background (one state level up as a
+    //    fallback: ".hover.text" against ".background").
+    for (const QString& k : all) {
+        if (!k.startsWith(QStringLiteral("color.")) || !k.endsWith(QStringLiteral(".text"))
+            || k.contains(QStringLiteral(".disabled")))
+            continue;
+        QString prefix = k.left(k.size() - 4);   // keeps the trailing '.'
+        QString bg = prefix + QStringLiteral("background");
+        if (!keys.contains(bg)) {
+            const QString up = prefix.left(prefix.size() - 1);
+            const qsizetype dot = up.lastIndexOf(QLatin1Char('.'));
+            if (dot > 6)
+                bg = up.left(dot + 1) + QStringLiteral("background");
+        }
+        if (keys.contains(bg))
+            add(k, bg, 4.5);
+    }
+    // 2) The main text colours on the grounds.
+    const QStringList texts = {QStringLiteral("color.text.primary"), QStringLiteral("color.text.secondary"),
+                               QStringLiteral("color.text.label")};
+    const QStringList grounds = {QStringLiteral("color.background.0"), QStringLiteral("color.background.1"),
+                                 QStringLiteral("color.background.2")};
+    for (const QString& t : texts) {
+        if (!keys.contains(t))
+            continue;
+        for (const QString& g : grounds) {
+            if (keys.contains(g))
+                add(t, g, t.endsWith(QStringLiteral("primary")) ? 4.5 : 3.0);
+        }
+    }
+    std::sort(pairs.begin(), pairs.end(), [](const Pair& a, const Pair& b) { return a.ratio < b.ratio; });
+    // 3) The colours written in the code (literal remap).
+    struct LitPair { QString name; QColor tc, bc; double ratio; double need; };
+    QVector<LitPair> lits;
+    const QVector<QColor> n = tm.literalNeutral();
+    if (n.size() == 12) {
+        lits.append({QStringLiteral("code text (#c8d8e8) on code ground (#0f0f1a)"), n[9], n[2], contrastRatio(n[9], n[2]), 4.5});
+        lits.append({QStringLiteral("code text (#c8d8e8) on code panels (#1a2a3a)"), n[9], n[4], contrastRatio(n[9], n[4]), 4.5});
+        lits.append({QStringLiteral("code labels (#8ea8c0) on code panels (#1a2a3a)"), n[8], n[4], contrastRatio(n[8], n[4]), 3.0});
+        lits.append({QStringLiteral("code white (#ffffff) on code borders (#304050)"), n[11], n[5], contrastRatio(n[11], n[5]), 3.0});
+    }
+
+    ScopedChildWidget<QDialog> dlgOwner(this);
+    QDialog& dlg = *dlgOwner.get();
+    dlg.setWindowTitle(QStringLiteral("Contrast Check — %1").arg(tm.activeTheme()));
+    applyAppTheme(&dlg);
+    dlg.resize(720, 520);
+    auto* root = new QVBoxLayout(&dlg);
+    root->addWidget(hintLabel(QStringLiteral(
+        "Text / background pairs of this theme with their contrast ratio (WCAG). Main text needs "
+        "4.5 : 1, secondary text and labels 3 : 1. Double-click a row to show its two tokens in "
+        "the list. Disabled states are not checked."), &dlg));
+    auto* onlyBad = new QCheckBox(QStringLiteral("Only problems"), &dlg);
+    onlyBad->setChecked(true);
+    root->addWidget(onlyBad);
+    auto* tree = new QTreeWidget(&dlg);
+    tree->setColumnCount(4);
+    tree->setHeaderLabels({QStringLiteral("Text"), QStringLiteral("Background"), QStringLiteral("Ratio"),
+                           QString()});
+    tree->setRootIsDecorated(false);
+    tree->setUniformRowHeights(true);
+    tree->setAlternatingRowColors(true);
+    root->addWidget(tree, 1);
+    auto* summary = new QLabel(&dlg);
+    root->addWidget(summary);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dlg);
+    root->addWidget(buttons);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    auto verdict = [](double ratio, double need) {
+        if (ratio >= need) return QStringLiteral("✓ ok");
+        if (ratio >= 3.0) return QStringLiteral("! low");
+        return QStringLiteral("✗ poor");
+    };
+    int bad = 0;
+    for (const Pair& p : pairs) {
+        auto* it = new QTreeWidgetItem(tree);
+        it->setIcon(0, swatchIcon(p.tc));
+        it->setText(0, p.text);
+        it->setIcon(1, swatchIcon(p.bc));
+        it->setText(1, p.bg);
+        it->setText(2, QStringLiteral("%1 : 1").arg(p.ratio, 0, 'f', 2));
+        it->setText(3, verdict(p.ratio, p.need));
+        it->setData(0, Qt::UserRole, QStringList{p.text, p.bg});
+        it->setData(3, Qt::UserRole, p.ratio < p.need);
+        if (p.ratio < p.need)
+            ++bad;
+    }
+    for (const LitPair& p : lits) {
+        auto* it = new QTreeWidgetItem(tree);
+        it->setIcon(0, swatchIcon(p.tc));
+        it->setText(0, p.name);
+        it->setIcon(1, swatchIcon(p.bc));
+        it->setText(1, QStringLiteral("Palette tab > Colours written in the code"));
+        it->setText(2, QStringLiteral("%1 : 1").arg(p.ratio, 0, 'f', 2));
+        it->setText(3, verdict(p.ratio, p.need));
+        it->setData(3, Qt::UserRole, p.ratio < p.need);
+        if (p.ratio < p.need)
+            ++bad;
+    }
+    summary->setText(QStringLiteral("%1 pairs checked, %2 below the target.")
+                         .arg(pairs.size() + lits.size()).arg(bad));
+    tree->resizeColumnToContents(0);
+    tree->resizeColumnToContents(1);
+    auto applyFilter = [tree, onlyBad] {
+        for (int i = 0; i < tree->topLevelItemCount(); ++i) {
+            auto* it = tree->topLevelItem(i);
+            it->setHidden(onlyBad->isChecked() && !it->data(3, Qt::UserRole).toBool());
+        }
+    };
+    QObject::connect(onlyBad, &QCheckBox::toggled, &dlg, applyFilter);
+    applyFilter();
+
+    QStringList chosen;
+    QObject::connect(tree, &QTreeWidget::itemDoubleClicked, &dlg, [&chosen, &dlg](QTreeWidgetItem* it, int) {
+        const QStringList pair = it->data(0, Qt::UserRole).toStringList();
+        if (pair.isEmpty())
+            return;
+        chosen = pair;
+        dlg.accept();
+    });
+    const QPointer<ThemeEditorDialog> self(this);
+    dlg.exec();
+    if (!self || chosen.isEmpty())
+        return;
+    if (m_tabs)
+        m_tabs->setCurrentIndex(0);
+    m_activeSubset = chosen;
+    filterTokensTo(chosen);
+    updateInspectorStatus(QStringLiteral("%1 on %2 (right-click > Show all tokens).").arg(chosen.value(0), chosen.value(1)));
 }
 
 } // namespace AetherSDR
