@@ -847,6 +847,197 @@
               "close.text": "{color.gray.400}",
               "close.hover.background": "{color.gray.800}",
               "close.hover.text": "#ff6060"
+            },
+            "ftpanel": {
+              "checked.background": "#a02020",
+              "checked.border": "#ff8080"
+            },
+            "js8panel": {
+              "checked.background": "#6f5a1f",
+              "checked.border": "#e0c080",
+              "pb.hb.checked.background": "#4663ad",
+              "pb.hb.checked.border": "#a8c0fd",
+              "background": "#3d59a1",
+              "border": "#818bb5",
+              "disabled.background": "#272c3f",
+              "disabled.text": "#757fa8",
+              "disabled.border": "#424a6c"
+            },
+            "acom": {
+              "text": "#c0caf5",
+              "hover.border": "#272c3f",
+              "hover.text": "#ffffff",
+              "focus.border": "#7298ec"
+            },
+            "bandstack": {
+              "background": "#24283b",
+              "border": "#2f3549",
+              "text": "#98a3cc",
+              "hover.background": "#272c3f",
+              "hover.text": "#c0caf5"
+            },
+            "eqeditor": {
+              "checked.hover.background": "#d4b050"
+            },
+            "gateeditor": {
+              "background": "#006040",
+              "border": "#00a060",
+              "text": "#00ff88",
+              "hover.background": "#007050",
+              "checked.background": "#3a2a0e",
+              "checked.text": "#f2c14e",
+              "checked.border": "#f2c14e",
+              "checked.hover.background": "#4a3a1e"
+            },
+            "pudu": {
+              "background": "#24283b",
+              "border": "#30364b",
+              "text": "#98a3cc",
+              "hover.background": "#2c3145",
+              "checked.background": "#3a2a0e",
+              "checked.text": "#f2c14e",
+              "checked.border": "#f2c14e"
+            },
+            "puduedit": {
+              "background": "#24283b",
+              "border": "#30364b",
+              "text": "#98a3cc",
+              "hover.background": "#2c3145",
+              "checked.background": "#3a2a0e",
+              "checked.text": "#f2c14e",
+              "checked.border": "#f2c14e"
+            },
+            "tubeeditor": {
+              "background": "#24283b",
+              "border": "#30364b",
+              "text": "#98a3cc",
+              "hover.background": "#2c3145",
+              "checked.background": "#3a2a0e",
+              "checked.text": "#f2c14e",
+              "checked.border": "#f2c14e"
+            },
+            "cwx": {
+              "background": "#24283b",
+              "border": "#2f3549",
+              "text": "#c0caf5",
+              "checked.background": "#7298ec",
+              "checked.text": "#000",
+              "checked.border": "#81a7f8",
+              "hover.background": "#272c3f"
+            },
+            "dax": {
+              "background": "#24283b",
+              "border": "#4765af",
+              "text": "#c0caf5",
+              "hover.background": "#2f3549",
+              "checked.background": "#006040",
+              "checked.text": "#00ff88",
+              "checked.border": "#00a060"
+            },
+            "daxiq": {
+              "background": "#24283b",
+              "border": "#4765af",
+              "text": "#c0caf5",
+              "hover.background": "#2f3549",
+              "iq.btn.off.text": "#848eb8",
+              "iq.btn.on.background": "#7298ec",
+              "iq.btn.on.text": "#1a1b26",
+              "iq.btn.on.border": "#5576c3"
+            },
+            "dspparam": {
+              "text": "#c0caf5",
+              "background": "#24283b",
+              "border": "#2f3549",
+              "hover.border": "#779ef2"
+            },
+            "eq": {
+              "background": "#24283b",
+              "text": "#c0caf5",
+              "border": "#4765af",
+              "checked.background": "#006040",
+              "checked.text": "#00ff88",
+              "checked.border": "#00a060",
+              "btn.base.blue.active.checked.background": "#6487d7",
+              "btn.base.blue.active.checked.text": "#ffffff",
+              "btn.base.blue.active.checked.border": "#779ef2"
+            },
+            "meter": {
+              "text": "#848eb8",
+              "hover.border": "#272c3f",
+              "hover.text": "#ffffff",
+              "focus.border": "#7298ec"
+            },
+            "mqtt": {
+              "background": "#24283b",
+              "text": "#848eb8",
+              "border": "#4765af",
+              "btn.on.background": "#7298ec",
+              "btn.on.text": "#1a1b26",
+              "btn.on.border": "#5576c3",
+              "pub.text": "#c0caf5",
+              "pub.border": "#4c547a",
+              "hover.background": "#2b3044",
+              "pressed.background": "#7298ec",
+              "pressed.text": "#1a1b26"
+            },
+            "phone": {
+              "background": "#24283b",
+              "text": "#c0caf5",
+              "border": "#4765af",
+              "checked.background": "#006040",
+              "checked.text": "#00ff88",
+              "checked.border": "#00a060",
+              "btn.base.blue.active.checked.background": "#6487d7",
+              "btn.base.blue.active.checked.text": "#ffffff",
+              "btn.base.blue.active.checked.border": "#779ef2"
+            },
+            "overlay2": {
+              "background": "#24283b",
+              "border": "#2f3549",
+              "text": "#c0caf5",
+              "checked.background": "#6487d7",
+              "checked.text": "#ffffff",
+              "checked.border": "#779ef2",
+              "hover.border": "#779ef2"
+            },
+            "spectrum": {
+              "border": "#2f3549",
+              "text": "#939ec7",
+              "hover.text": "#c0caf5",
+              "checked.text": "#000",
+              "pressed.background": "#7298ec",
+              "pressed.text": "#000"
+            },
+            "tci": {
+              "background": "#24283b",
+              "border": "#4765af",
+              "text": "#c0caf5",
+              "hover.background": "#2f3549",
+              "center.lock.iq.text": "#848eb8",
+              "checked.background": "#006040",
+              "checked.text": "#00ff88",
+              "checked.border": "#00a060"
+            },
+            "titlebar": {
+              "background": "#24283b",
+              "border": "#2f3549",
+              "text": "#c0caf5",
+              "hover.background": "#272c3f",
+              "bug.hover.background": "#dd5050"
+            },
+            "vfo2": {
+              "text": "#c0caf5",
+              "indicator.border": "#2f3549",
+              "indicator.background": "#24283b",
+              "indicator.checked.background": "#6487d7",
+              "indicator.checked.border": "#779ef2",
+              "disabled.text": "#5f6892",
+              "indicator.disabled.border": "#282d40",
+              "indicator.disabled.background": "#1d2030"
+            },
+            "container": {
+              "text": "#c0caf5",
+              "hover.text": "#ffffff"
             }
           }
         },

@@ -23,6 +23,7 @@
 //     without a dialog: the reports, the grid, the times, the frequency, the power of the meter.
 //     QRZ: the QSOs of the log not sent yet to the QRZ.com logbook (its API key in the settings).
 #include "FtPanel.h"
+#include "gui/ButtonStyles.h"
 #include <QtWidgets>
 #include <QSettings>
 #include <QRandomGenerator>
@@ -78,7 +79,7 @@ void FtPanel::buildTxUi(QVBoxLayout *v)
     pbEnable = new QPushButton("Enable TX");
     pbEnable->setCheckable(true);
     pbEnable->setFocusPolicy(Qt::NoFocus);
-    pbEnable->setStyleSheet("QPushButton { padding: 2px 5px; } QPushButton:checked { background: #A02020; border-color: #FF8080; }");
+    AetherSDR::ButtonStyles::apply(pbEnable, "ftpanel.pb.enable");
     pbEnable->setToolTip("Transmit in the periods of the TX parity (TX 1st), the message selected");
     h->addWidget(pbEnable);
     pbHalt = new QPushButton("Halt TX");

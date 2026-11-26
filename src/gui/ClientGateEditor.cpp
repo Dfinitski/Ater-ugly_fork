@@ -1,4 +1,5 @@
 #include "ClientGateEditor.h"
+#include "ButtonStyles.h"
 #include "ClientCompKnob.h"
 #include "ClientGateLevelView.h"
 #include "EditorFramelessTitleBar.h"
@@ -31,39 +32,14 @@ constexpr const char* kWindowStyle =
     "QWidget { background: #08121d; color: #d7e7f2; }"
     "QLabel  { background: transparent; color: #8aa8c0; font-size: 11px; }";
 
-const QString kBypassStyle = QStringLiteral(
-    "QPushButton {"
-    "  background: #0e1b28;"
-    "  color: #8aa8c0;"
-    "  border: 1px solid #243a4e;"
-    "  border-radius: 3px;"
-    "  font-size: 11px;"
-    "  font-weight: bold;"
-    "  padding: 3px 12px;"
-    "}"
-    "QPushButton:hover { background: #1a2a3a; }"
-    "QPushButton:checked {"
-    "  background: #3a2a0e;"
-    "  color: #f2c14e;"
-    "  border: 1px solid #f2c14e;"
-    "}"
-    "QPushButton:checked:hover { background: #4a3a1e; }");
+// kBypassStyle: in the button-style catalogue (ButtonStyles.cpp), group "gateeditor".
 
 // Flip (Expander/Gate) — two custom checked states instead of the
 // usual idle→active swap: Expander (unchecked) uses the SQL/MIC
 // green palette, Gate (checked) uses the amber palette that marks
 // more-aggressive settings elsewhere in the chain.  The colour
 // itself tells you which mode you're in without reading the label.
-const QString kFlipStyle = QStringLiteral(
-    "QPushButton {"
-    "  background: #006040; border: 1px solid #00a060; border-radius: 3px;"
-    "  color: #00ff88; font-size: 10px; font-weight: bold; padding: 3px 6px;"
-    "}"
-    "QPushButton:hover { background: #007050; }"
-    "QPushButton:checked {"
-    "  background: #3a2a0e; color: #f2c14e; border: 1px solid #f2c14e;"
-    "}"
-    "QPushButton:checked:hover { background: #4a3a1e; }");
+// kFlipStyle: in the button-style catalogue (ButtonStyles.cpp), group "gateeditor".
 
 // Lookahead dropdown values in ms.  0 disables the delay line; 1 and
 // 1.5 ms match Ableton's preset options; 3 / 5 added for users who
@@ -164,7 +140,7 @@ ClientGateEditor::ClientGateEditor(AudioEngine* engine, QWidget* parent)
     // Flip button (Expander ↔ Gate) — bottom-most control.
     m_flip = new QPushButton("Flip");
     m_flip->setCheckable(true);
-    m_flip->setStyleSheet(kFlipStyle);
+    AetherSDR::ButtonStyles::apply(m_flip, "gateeditor.flip");
     m_flip->setFixedHeight(22);
     m_flip->setToolTip(
         "Flip between downward Expander (gentle) and Gate (hard) "

@@ -1,4 +1,5 @@
 #include "SpectrumWidget.h"
+#include "ButtonStyles.h"
 #include "SpectrumChromeGeometry.h"
 #include "SpectrumSquelchLogic.h"
 #include "ForkDisplayDefaults.h"
@@ -2342,20 +2343,7 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
     // more transparent background than the base rule, matching the same
     // "communicate inactive without hiding the control" intent as
     // setBandSegmentZoomAvailable()'s explanatory tooltip.
-    static const QString kZoomBtnStyle =
-        "QPushButton { background: rgba(15,15,26,180); border: 1px solid #304050;"
-        " border-radius: 2px; color: #90a0b0; font-size: 11px; font-weight: bold;"
-        " padding: 0; margin: 0; min-width: 0; }"
-        "QPushButton:hover { background: rgba(30,50,70,200); color: #c8d8e8; }"
-        "QPushButton:checked { background: rgba(0,180,216,210); color: #000; }"
-        "QPushButton:pressed { background: #00b4d8; color: #000; }"
-        // Own token role, not {{color.text.disabled}}: this button always paints its
-        // own dark backdrop regardless of theme, so disabled colours are the enabled
-        // RGB at reduced alpha (the alpha is the dimming; identical in both themes).
-        // ThemeManager converts translucent ARGB token values to rgba() here.
-        "QPushButton:disabled { background: {{color.spectrum.zoomButton.disabled.background}};"
-        " border-color: {{color.spectrum.zoomButton.disabled.border}};"
-        " color: {{color.spectrum.zoomButton.disabled.text}}; }";
+    // kZoomBtnStyle: in the button-style catalogue (ButtonStyles.cpp), group "spectrum".
 
     // objectName + accessibleName let the automation bridge target these by a
     // stable handle instead of the visible label \u2014 notably zoom-out, whose glyph
@@ -2365,7 +2353,7 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
         btn->setObjectName(objName);
         btn->setAccessibleName(a11y);
         btn->setFixedSize(22, 22);
-        AetherSDR::ThemeManager::instance().applyStyleSheet(btn, kZoomBtnStyle);
+        AetherSDR::ButtonStyles::apply(btn, "spectrum.zoom.btn");
         btn->setCursor(Qt::PointingHandCursor);
         return btn;
     };
@@ -2376,7 +2364,7 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
         tr("Switches the displayed spectrum and waterfall between Flex and KiwiSDR. Audio and meters are unchanged."));
     m_kiwiSdrDisplaySourceBtn->setCheckable(true);
     m_kiwiSdrDisplaySourceBtn->setFixedSize(46, 22);
-    AetherSDR::ThemeManager::instance().applyStyleSheet(m_kiwiSdrDisplaySourceBtn, kZoomBtnStyle);
+    AetherSDR::ButtonStyles::apply(m_kiwiSdrDisplaySourceBtn, "spectrum.zoom.btn");
     m_kiwiSdrDisplaySourceBtn->setCursor(Qt::PointingHandCursor);
     m_kiwiSdrDisplaySourceBtn->setToolTip(
         tr("Show Flex or KiwiSDR spectrum/waterfall. Audio and meters are unchanged."));
@@ -2484,7 +2472,7 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
             btn->setObjectName(objName);
             btn->setAccessibleName(a11y);
             btn->setFixedSize(20, 20);
-            btn->setStyleSheet(kRateBtnStyle);
+            AetherSDR::ButtonStyles::apply(btn, "spectrum.rate.btn");
             btn->setCursor(Qt::PointingHandCursor);
             btn->setFocusPolicy(Qt::NoFocus);
             return btn;

@@ -1,4 +1,5 @@
 #include "MqttApplet.h"
+#include "ButtonStyles.h"
 
 #include "core/AppSettings.h"
 #include "core/LogManager.h"
@@ -23,17 +24,9 @@
 
 namespace AetherSDR {
 
-static const QString kBtnOff =
-    "QPushButton { background: #1a2a3a; color: #8090a0; "
-    "border: 1px solid #205070; padding: 2px 8px; border-radius: 3px; font-size: 10px; }";
-static const QString kBtnOn =
-    "QPushButton { background: #00b4d8; color: #0f0f1a; font-weight: bold; "
-    "border: 1px solid #008ba8; padding: 2px 8px; border-radius: 3px; font-size: 10px; }";
-static const QString kPubBtn =
-    "QPushButton { background: #1a2a3a; color: #c8d8e8; "
-    "border: 1px solid #306080; padding: 4px 6px; border-radius: 3px; font-size: 10px; }"
-    "QPushButton:hover { background: #203850; }"
-    "QPushButton:pressed { background: #00b4d8; color: #0f0f1a; }";
+// kBtnOff: in the button-style catalogue (ButtonStyles.cpp), group "mqtt".
+// kBtnOn: in the button-style catalogue (ButtonStyles.cpp), group "mqtt".
+// kPubBtn: in the button-style catalogue (ButtonStyles.cpp), group "mqtt".
 
 MqttApplet::MqttApplet(QWidget* parent)
     : QWidget(parent)
@@ -75,7 +68,7 @@ void MqttApplet::buildUI()
     ctrlRow->setSpacing(4);
     m_enableBtn = new QPushButton("Off");
     m_enableBtn->setFixedWidth(36);
-    m_enableBtn->setStyleSheet(kBtnOff);
+    AetherSDR::ButtonStyles::apply(m_enableBtn, "mqtt.btn.off");
     ctrlRow->addWidget(m_enableBtn);
 
     m_statusLabel = new QLabel("Disconnected");
@@ -108,7 +101,7 @@ void MqttApplet::buildUI()
             m_restoreConnectPending = false;
             emit disconnectRequested();
             m_enableBtn->setText("Off");
-            m_enableBtn->setStyleSheet(kBtnOff);
+            AetherSDR::ButtonStyles::apply(m_enableBtn, "mqtt.btn.off");
             return;
         }
 
@@ -116,7 +109,7 @@ void MqttApplet::buildUI()
         if (!m_passwordLoaded) {
             m_restoreConnectPending = true;
             m_enableBtn->setText("On");
-            m_enableBtn->setStyleSheet(kBtnOn);
+            AetherSDR::ButtonStyles::apply(m_enableBtn, "mqtt.btn.on");
             updateStatus("Waiting for keychain", false);
             return;
         }
@@ -135,7 +128,7 @@ void MqttApplet::setMqttClient(MqttClient* client)
     connect(client, &MqttClient::disconnected, this, [this] {
         updateStatus("Disconnected", false);
         m_enableBtn->setText("Off");
-        m_enableBtn->setStyleSheet(kBtnOff);
+        AetherSDR::ButtonStyles::apply(m_enableBtn, "mqtt.btn.off");
         emit displayCleared();
     });
     connect(client, &MqttClient::connectionError, this, [this](const QString& err) {
@@ -186,7 +179,7 @@ void MqttApplet::restoreConnectionState()
         m_restoreConnectPending = true;
         if (m_enableBtn) {
             m_enableBtn->setText("On");
-            m_enableBtn->setStyleSheet(kBtnOn);
+            AetherSDR::ButtonStyles::apply(m_enableBtn, "mqtt.btn.on");
         }
         updateStatus("Waiting for keychain", false);
         return;
@@ -235,7 +228,7 @@ void MqttApplet::rebuildButtons()
 
     for (int i = 0; i < m_buttonDefs.size(); ++i) {
         auto* btn = new QPushButton(m_buttonDefs[i].label);
-        btn->setStyleSheet(kPubBtn);
+        AetherSDR::ButtonStyles::apply(btn, "mqtt.pub");
         btn->setToolTip(QString("%1 -> %2")
                             .arg(m_buttonDefs[i].topic, m_buttonDefs[i].payload));
         connect(btn, &QPushButton::clicked, this, [this, i] {
@@ -263,7 +256,7 @@ void MqttApplet::requestConnectFromSettings()
 
     if (m_enableBtn) {
         m_enableBtn->setText("On");
-        m_enableBtn->setStyleSheet(kBtnOn);
+        AetherSDR::ButtonStyles::apply(m_enableBtn, "mqtt.btn.on");
     }
     updateStatus("Connecting", false);
 }

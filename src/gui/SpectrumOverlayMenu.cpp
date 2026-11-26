@@ -951,11 +951,7 @@ void SpectrumOverlayMenu::buildAntPanel()
     m_autoRfGainCheck = new QPushButton(QStringLiteral("AUTO"));
     m_autoRfGainCheck->setCheckable(true);
     m_autoRfGainCheck->setFixedSize(30, 15);
-    m_autoRfGainCheck->setStyleSheet(
-        "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px;"
-        " color: #c8d8e8; font-size: 9px; font-weight: bold; padding: 0px; margin: 0px; }"
-        "QPushButton:checked { background: #0070c0; color: #ffffff; border: 1px solid #0090e0; }"
-        "QPushButton:hover { border: 1px solid #0090e0; }");
+    AetherSDR::ButtonStyles::apply(m_autoRfGainCheck, "overlay2.auto.rf.gain.check");
     m_autoRfGainCheck->setObjectName(QStringLiteral("antennaAutoRfGainCheck"));
     m_autoRfGainCheck->setAccessibleName(QStringLiteral("Automatic RF gain"));
     // NO STYLESHEET HERE, deliberately. kLabelStyle selects `QLabel`, and a

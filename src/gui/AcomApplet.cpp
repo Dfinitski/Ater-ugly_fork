@@ -1,4 +1,5 @@
 #include "AcomApplet.h"
+#include "ButtonStyles.h"
 #include "AmpAppletStyles.h"
 #include "HGauge.h"
 #include "core/AppSettings.h"
@@ -187,11 +188,7 @@ AcomApplet::AcomApplet(QWidget* parent)
     m_tempBtn->setCursor(Qt::PointingHandCursor);
     m_tempBtn->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     m_tempBtn->setAccessibleDescription("Toggles amplifier temperature between Celsius and Fahrenheit");
-    AetherSDR::ThemeManager::instance().applyStyleSheet(m_tempBtn,
-        "QPushButton { background: transparent; border: 1px solid transparent; "
-        "color: #c8d8e8; font-size: 10px; text-align: left; padding: 0 2px; }"
-        "QPushButton:hover { border-color: #203040; color: #ffffff; }"
-        "QPushButton:focus { border-color: #00b4d8; }");
+    AetherSDR::ButtonStyles::apply(m_tempBtn, "acom.temp");
     connect(m_tempBtn, &QPushButton::clicked, this, [this]() {
         m_tempFahrenheit = !m_tempFahrenheit;
         writeTempFahrenheit(m_tempFahrenheit);

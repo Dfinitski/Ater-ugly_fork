@@ -1,4 +1,5 @@
 #include "TciApplet.h"
+#include "ButtonStyles.h"
 #include "SliceLabel.h"
 #include "core/ThemeManager.h"
 
@@ -29,12 +30,7 @@ namespace AetherSDR {
 
 namespace {
 
-constexpr const char* kSectionStyle =
-    "QWidget { background: transparent; }"
-    "QLabel { color: #8090a0; font-size: 11px; }"
-    "QPushButton { background: #1a2a3a; border: 1px solid #205070;"
-    "  border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; color: #c8d8e8; }"
-    "QPushButton:hover { background: #204060; }";
+// kSectionStyle: in the button-style catalogue (ButtonStyles.cpp), group "tci".
 
 const QString kGreenToggle =
     "QPushButton { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px;"
@@ -70,7 +66,7 @@ TciApplet::TciApplet(QWidget* parent) : QWidget(parent)
 
 void TciApplet::buildUI()
 {
-    setStyleSheet(kSectionStyle);
+    AetherSDR::ButtonStyles::apply(this, "tci.section");
 
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
@@ -214,7 +210,7 @@ void TciApplet::buildUI()
     m_centerLockIq->setToolTip(tr("While a TCI client takes I/Q from a receiver, keep that "
                                   "receiver's filter in the middle of its panadapter, so the "
                                   "tuned signal stays inside the I/Q band the client receives."));
-    m_centerLockIq->setStyleSheet(QStringLiteral("QCheckBox { color: #8090a0; font-size: 11px; }"));
+    AetherSDR::ButtonStyles::apply(m_centerLockIq, "tci.center.lock.iq");
     m_centerLockIq->setChecked(settings.value(QStringLiteral("TciCenterLockWhenIq"), QStringLiteral("False"))
                                    .toString() == QLatin1String("True"));
     // ANAN fork build 510 (operator, 19.11): "Spots" -- ticked, the spots a
@@ -226,7 +222,7 @@ void TciApplet::buildUI()
     m_tciSpots->setAccessibleName(tr("TCI spots"));
     m_tciSpots->setToolTip(tr("Show the spots sent by TCI clients on the panadapter.\n"
                               "Off: they are removed at once and not drawn."));
-    m_tciSpots->setStyleSheet(QStringLiteral("QCheckBox { color: #8090a0; font-size: 11px; }"));
+    AetherSDR::ButtonStyles::apply(m_tciSpots, "tci.center.lock.iq");
     m_tciSpots->setChecked(settings.value(QStringLiteral("TciSpotsEnabled"), QStringLiteral("True"))
                                .toString() == QLatin1String("True"));
     connect(m_tciSpots, &QCheckBox::toggled, this, [this](bool on) {
@@ -339,7 +335,7 @@ void TciApplet::buildUI()
     m_tciEnable->setObjectName(QStringLiteral("tciEnable"));
     m_tciEnable->setAccessibleName(tr("TCI server enable"));
     m_tciEnable->setAccessibleDescription(tr("Start or stop the TCI server"));
-    m_tciEnable->setStyleSheet(kGreenToggle);
+    AetherSDR::ButtonStyles::apply(m_tciEnable, "tci.green.toggle");
     // Build 510: narrower, to make room for "Spots" on its left.
     m_tciEnable->setFixedSize(76, 22);
     {

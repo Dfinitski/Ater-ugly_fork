@@ -1,4 +1,5 @@
 #include "ClientTubeEditor.h"
+#include "ButtonStyles.h"
 #include "ClientCompKnob.h"
 #include "ClientLevelMeter.h"
 #include "ClientTubeCurveWidget.h"
@@ -32,34 +33,9 @@ constexpr const char* kWindowStyle =
     "QWidget { background: #08121d; color: #d7e7f2; }"
     "QLabel  { background: transparent; color: #8aa8c0; font-size: 11px; }";
 
-const QString kBypassStyle = QStringLiteral(
-    "QPushButton {"
-    "  background: #0e1b28;"
-    "  color: #8aa8c0;"
-    "  border: 1px solid #243a4e;"
-    "  border-radius: 3px;"
-    "  font-size: 11px;"
-    "  font-weight: bold;"
-    "  padding: 3px 12px;"
-    "}"
-    "QPushButton:hover { background: #1a2a3a; }"
-    "QPushButton:checked {"
-    "  background: #3a2a0e;"
-    "  color: #f2c14e;"
-    "  border: 1px solid #f2c14e;"
-    "}"
-    "QPushButton:checked:hover { background: #4a3a1e; }");
+// kBypassStyle: in the button-style catalogue (ButtonStyles.cpp), group "tubeeditor".
 
-const QString kModelStyle = QStringLiteral(
-    "QPushButton {"
-    "  background: #1a2a3a; border: 1px solid #2a4458; border-radius: 3px;"
-    "  color: #8aa8c0; font-size: 11px; font-weight: bold;"
-    "  padding: 3px 10px; min-width: 26px;"
-    "}"
-    "QPushButton:hover { background: #24384e; }"
-    "QPushButton:checked {"
-    "  background: #3a2a0e; color: #f2c14e; border: 1px solid #f2c14e;"
-    "}");
+// kModelStyle: in the button-style catalogue (ButtonStyles.cpp), group "tubeeditor".
 
 } // namespace
 
@@ -188,7 +164,7 @@ ClientTubeEditor::ClientTubeEditor(AudioEngine* engine, QWidget* parent)
             auto addModelBtn = [&](const QString& label, int idx) {
                 auto* btn = new QPushButton(label);
                 btn->setCheckable(true);
-                btn->setStyleSheet(kModelStyle);
+                AetherSDR::ButtonStyles::apply(btn, "tubeeditor.model");
                 btn->setFixedSize(22, 20);
                 m_modelGroup->addButton(btn, idx);
                 modelCol->addWidget(btn);

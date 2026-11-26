@@ -62,6 +62,7 @@ aliasing one family value).
 | 779 | `ag` (Antenna Genius applet), `spots` (spot settings dialog) | `ag.connect`, `ag.auto`, `ag.ant`, `ag.ant.rxonly`, `ag.ant.dim`, `spots.toggle` | Connect, port Auto, antenna buttons (TX + RX, RX only, unavailable); the dialog's Enabled / Disabled toggles |
 | 780 | `chain` (client chain applet), `tuner` (tuner applet) | `chain.mode`, `chain.bypass`, `chain.rec.idle / .bright / .dim`, `chain.play.idle / .bright / .dim`, `tuner.tune.busy`, `tuner.operate`, `tuner.bypass`, `tuner.ant`, `tuner.ant.active` | TX / RX chain select, BYPASS, PUDU monitor record / play (idle and both halves of the pulse); TUNE while tuning, rail OPERATE / BYPASS, ANT1–3 |
 | 781 | `rx` (rest), `ps` (PureSignal applet), `pan` (panadapter applet) | `rx.addrx`, `rx.badge.tx`, `rx.badge.rx`, `ps.button`, `ps.ps`, `ps.twotone`, `pan.decoder`, `pan.decoder.close` | +RX, TX badge; PS, 2 Tone and the other PureSignal buttons; CW / RTTY decoder bar buttons and close |
+| 782 | 23 files, converted by `engine` (applets, panels, title bars): `ftpanel`, `js8panel`, `acom`, `bandstack`, `eqeditor`, `gateeditor`, `pudu`, `puduedit`, `tubeeditor`, `cwx`, `dax`, `daxiq`, `dspparam`, `eq`, `meter`, `mqtt`, `phone`, `overlay2`, `spectrum`, `tci`, `titlebar`, `vfo2`, `container` | 38 entries; ids and sites are in the catalogue |
 
 Primitive references. A group token may hold a primitive reference (`{color.gray.800}`) when the
 original sheet used a generic token (`{{color.background.1}}`): the remap themes resolve it to their
@@ -81,7 +82,15 @@ Three-digit colours (`#444`, WFM) are kept as written: the remap themes do not t
 RX applet: the receiver (slice) buttons stay as they are -- their colour is the slice colour, and
 their sheet is compared and dimmed in code.
 
-## Still to do (94 button sheets with literal colours in 52 files after build 781)
+Automatic conversion (build 782 on). A sheet set with a plain string, a constant, a sum of constants
+or a ternary of them is converted mechanically: every `#rgb` / `#rrggbb` inside a `QPushButton`,
+`QToolButton`, `QCheckBox` or `QRadioButton` rule becomes `color.button.<group>.<state>.<part>`
+(`state` from the selector -- `hover`, `checked`, `indicator.checked`, `primarybutton.hover` ...;
+`part` from the property -- background, text, border), shared within the group when the value is the
+same, qualified by the entry when it differs. Colours in other rules of a dialog-wide sheet stay
+literal. Sheets built with `.arg()` and widgets whose sheet is read back in code are left alone.
+
+## Still to do (49 button sheets with literal colours after build 782)
 
 Client effect
 editors, container title bars (7), DAX,

@@ -1,4 +1,5 @@
 #include "PhoneApplet.h"
+#include "ButtonStyles.h"
 #include "GuardedSlider.h"
 #include "models/TransmitModel.h"
 #include "Theme.h"
@@ -61,24 +62,14 @@ static QString percentText(int value)
     return QStringLiteral("%1%").arg(value);
 }
 
-static const QString kGreenActive =
-    "QPushButton:checked { background-color: #006040; color: #00ff88; "
-    "border: 1px solid #00a060; }";
+// kGreenActive: in the button-style catalogue (ButtonStyles.cpp), group "phone".
 
-static const QString kBlueActive =
-    "QPushButton:checked { background-color: #0070c0; color: #ffffff; "
-    "border: 1px solid #0090e0; }";
+// kBlueActive: in the button-style catalogue (ButtonStyles.cpp), group "phone".
 
-static const QString kBtnBase =
-    "QPushButton { background-color: #1a2a3a; color: #c8d8e8; "
-    "border: 1px solid #205070; border-radius: 3px; font-size: 11px; "
-    "font-weight: bold; padding: 2px 4px; }";
+// kBtnBase: in the button-style catalogue (ButtonStyles.cpp), group "phone".
 
 // Small step button style (< > for filter cut)
-static const QString kStepBtnStyle =
-    "QPushButton { background-color: #1a2a3a; color: #c8d8e8; "
-    "border: 1px solid #205070; border-radius: 2px; font-size: 11px; "
-    "font-weight: bold; padding: 0px; }";
+// kStepBtnStyle: in the button-style catalogue (ButtonStyles.cpp), group "phone".
 
 // ── PhoneApplet ──────────────────────────────────────────────────────────────
 
@@ -164,7 +155,7 @@ void PhoneApplet::buildUI()
         m_voxBtn->setFixedSize(52, 22);
         m_voxBtn->setAccessibleName("VOX voice-operated transmit");
         m_voxBtn->setAccessibleDescription("Toggle voice-activated transmit");
-        m_voxBtn->setStyleSheet(kBtnBase + kGreenActive);
+        AetherSDR::ButtonStyles::apply(m_voxBtn, "phone.btn.base.green.active");
         connect(m_voxBtn, &QPushButton::toggled, this, [this](bool on) {
             if (!m_updatingFromModel && m_model) m_model->setVoxEnable(on);
         });
@@ -272,7 +263,7 @@ void PhoneApplet::buildUI()
         m_dexpBtn->setFixedSize(52, 22);
         m_dexpBtn->setAccessibleName("Downward expander");
         m_dexpBtn->setAccessibleDescription("Toggle downward expander noise gate");
-        m_dexpBtn->setStyleSheet(kBtnBase + kBlueActive);
+        AetherSDR::ButtonStyles::apply(m_dexpBtn, "phone.btn.base.blue.active");
         connect(m_dexpBtn, &QPushButton::toggled, this, [this](bool on) {
             if (!m_updatingFromModel && m_model) {
                 m_model->setDexp(on);

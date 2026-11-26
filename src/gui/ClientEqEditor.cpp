@@ -1,4 +1,5 @@
 #include "ClientEqEditor.h"
+#include "ButtonStyles.h"
 #include "PanelTick.h"
 #include "ClientEqEditorCanvas.h"
 #include "ClientEqFftAnalyzer.h"
@@ -40,23 +41,7 @@ constexpr const char* kWindowStyle =
 
 // Bypass button visual: unchecked = EQ active (subtle), checked = bypass
 // engaged (amber, signals "this is muting your work").  Plugin convention.
-const QString kBypassStyle = QStringLiteral(
-    "QPushButton {"
-    "  background: #0e1b28;"
-    "  color: #8aa8c0;"
-    "  border: 1px solid #243a4e;"
-    "  border-radius: 3px;"
-    "  font-size: 11px;"
-    "  font-weight: bold;"
-    "  padding: 3px 12px;"
-    "}"
-    "QPushButton:hover { background: #1a2a3a; }"
-    "QPushButton:checked {"
-    "  background: #3a2a0e;"
-    "  color: #f2c14e;"
-    "  border: 1px solid #f2c14e;"
-    "}"
-    "QPushButton:checked:hover { background: #4a3a1e; }");
+// kBypassStyle: in the button-style catalogue (ButtonStyles.cpp), group "eqeditor".
 
 } // namespace
 
@@ -182,17 +167,7 @@ ClientEqEditor::ClientEqEditor(AudioEngine* engine, QWidget* parent)
         peakHoldBtn->setToolTip(
             "Freeze the analyzer peak-hold trace at its highest level.\n"
             "Toggle off to resume normal decay.");
-        AetherSDR::ThemeManager::instance().applyStyleSheet(peakHoldBtn, "QPushButton {"
-            "  background: {{color.background.0}}; color: {{color.text.primary}};"
-            "  border: 1px solid {{color.background.1}}; border-radius: 3px;"
-            "  padding: 2px 12px; font-size: 11px; font-weight: bold;"
-            "}"
-            "QPushButton:hover { background: {{color.background.1}}; }"
-            "QPushButton:checked {"
-            "  background: #c8a040; color: {{color.background.0}};"
-            "  border-color: #d4b050;"
-            "}"
-            "QPushButton:checked:hover { background: #d4b050; }");
+        AetherSDR::ButtonStyles::apply(peakHoldBtn, "eqeditor.peak.hold");
         connect(peakHoldBtn, &QPushButton::toggled, this, [this](bool on) {
             if (m_canvas) m_canvas->setPeakHoldFrozen(on);
         });

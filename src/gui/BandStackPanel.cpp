@@ -1,4 +1,5 @@
 #include "BandStackPanel.h"
+#include "ButtonStyles.h"
 #include "core/BandStackSettings.h"
 #include "models/BandPlanManager.h"
 #include "models/BandDefs.h"
@@ -72,15 +73,11 @@ BandStackPanel::BandStackPanel(QWidget* parent)
     bottomRow->setContentsMargins(0, 0, 0, 0);
     bottomRow->setSpacing(2);
 
-    static const char* kSmallBtnStyle =
-        "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
-        "border-radius: 3px; color: #8aa8c0; font-size: 13px; font-weight: bold; "
-        "padding: 0px; margin: 0px; }"
-        "QPushButton:hover { background: #203040; color: #c8d8e8; }";
+    // kSmallBtnStyle: in the button-style catalogue (ButtonStyles.cpp), group "bandstack".
 
     m_clearAllButton = new QPushButton(QString::fromUtf8("\xc3\x97"), this);  // ×
     m_clearAllButton->setFixedSize(22, 26);
-    m_clearAllButton->setStyleSheet(kSmallBtnStyle);
+    AetherSDR::ButtonStyles::apply(m_clearAllButton, "bandstack.small.btn");
     m_clearAllButton->setToolTip("Clear all bookmarks");
     connect(m_clearAllButton, &QPushButton::clicked,
             this, &BandStackPanel::clearAllRequested);
@@ -98,7 +95,7 @@ BandStackPanel::BandStackPanel(QWidget* parent)
 
     m_settingsButton = new QPushButton(QString::fromUtf8("\xe2\x9a\x99"), this);  // gear
     m_settingsButton->setFixedSize(22, 26);
-    m_settingsButton->setStyleSheet(kSmallBtnStyle);
+    AetherSDR::ButtonStyles::apply(m_settingsButton, "bandstack.small.btn");
     m_settingsButton->setToolTip(
         "Band stack options.\n"
         "Pair Auto-save (dwell) with Auto-expiry for a self-pruning rolling history.");

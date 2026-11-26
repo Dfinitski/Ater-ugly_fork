@@ -1,4 +1,5 @@
 #include "ClientPuduApplet.h"
+#include "ButtonStyles.h"
 #include "ClientCompKnob.h"
 #include "PooDooLogo.h"
 #include "core/AudioEngine.h"
@@ -20,26 +21,9 @@ namespace AetherSDR {
 
 namespace {
 
-const QString kEnableStyle =
-    "QPushButton {"
-    "  background: #1a2a3a; border: 1px solid #205070; border-radius: 3px;"
-    "  color: #c8d8e8; font-size: 11px; font-weight: bold; padding: 2px 10px;"
-    "}"
-    "QPushButton:hover { background: #204060; }"
-    "QPushButton:checked {"
-    "  background: #006040; color: #00ff88; border: 1px solid #00a060;"
-    "}";
+// kEnableStyle: in the button-style catalogue (ButtonStyles.cpp), group "pudu".
 
-const QString kModeStyle = QStringLiteral(
-    "QPushButton {"
-    "  background: #1a2a3a; border: 1px solid #2a4458; border-radius: 3px;"
-    "  color: #8aa8c0; font-size: 11px; font-weight: bold;"
-    "  padding: 3px 14px; min-width: 26px;"
-    "}"
-    "QPushButton:hover { background: #24384e; }"
-    "QPushButton:checked {"
-    "  background: #3a2a0e; color: #f2c14e; border: 1px solid #f2c14e;"
-    "}");
+// kModeStyle: in the button-style catalogue (ButtonStyles.cpp), group "pudu".
 
 // "|─── text ───|" group label: horizontal line, centred text, horizontal line.
 QWidget* makeBracketLabel(const QString& text)
@@ -119,7 +103,7 @@ void ClientPuduApplet::buildUI()
 
         m_modeA = new QPushButton("Even");
         m_modeA->setCheckable(true);
-        m_modeA->setStyleSheet(kModeStyle);
+        AetherSDR::ButtonStyles::apply(m_modeA, "pudu.mode");
         m_modeA->setFixedHeight(22);
         m_modeA->setToolTip(
             "Aphex-lineage asymmetric shaping — predominantly even "
@@ -129,7 +113,7 @@ void ClientPuduApplet::buildUI()
 
         m_modeB = new QPushButton("Odd");
         m_modeB->setCheckable(true);
-        m_modeB->setStyleSheet(kModeStyle);
+        AetherSDR::ButtonStyles::apply(m_modeB, "pudu.mode");
         m_modeB->setFixedHeight(22);
         m_modeB->setToolTip(
             "Behringer-lineage symmetric tanh shaping — pure odd "

@@ -1596,16 +1596,7 @@ void VfoWidget::buildUI()
     // Shared styling for the SmartMTR option checkboxes.
     auto styleMeterCheck = [](QCheckBox* c) {
         c->setCursor(Qt::ArrowCursor);
-        c->setStyleSheet(
-            "QCheckBox { background: transparent; color: #c8d8e8; font-size: 12px; "
-            "spacing: 5px; }"
-            "QCheckBox::indicator { width: 13px; height: 13px; border-radius: 2px; "
-            "border: 1px solid #304050; background: #1a2a3a; }"
-            "QCheckBox::indicator:checked { background: #0070c0; "
-            "border: 1px solid #0090e0; }"
-            "QCheckBox:disabled { color: #5a6a78; }"
-            "QCheckBox::indicator:disabled { border: 1px solid #243240; "
-            "background: #141f2a; }");
+        AetherSDR::ButtonStyles::apply(c, "vfo2.c");
     };
 
     // Show extremes — checkbox.

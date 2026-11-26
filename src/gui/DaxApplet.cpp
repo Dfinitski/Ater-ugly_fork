@@ -1,4 +1,5 @@
 #include "DaxApplet.h"
+#include "ButtonStyles.h"
 #include "MeterSlider.h"
 #include "ControlAvailabilityRegistry.h"
 #include "SliceLabel.h"
@@ -17,18 +18,9 @@ namespace AetherSDR {
 
 namespace {
 
-constexpr const char* kSectionStyle =
-    "QWidget { background: transparent; }"
-    "QLabel { color: #8090a0; font-size: 11px; }"
-    "QPushButton { background: #1a2a3a; border: 1px solid #205070;"
-    "  border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; color: #c8d8e8; }"
-    "QPushButton:hover { background: #204060; }";
+// kSectionStyle: in the button-style catalogue (ButtonStyles.cpp), group "dax".
 
-const QString kGreenToggle =
-    "QPushButton { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px;"
-    " color: #c8d8e8; font-size: 11px; font-weight: bold; padding: 2px 8px; }"
-    "QPushButton:hover { background: #204060; }"
-    "QPushButton:checked { background: #006040; color: #00ff88; border: 1px solid #00a060; }";
+// kGreenToggle: in the button-style catalogue (ButtonStyles.cpp), group "dax".
 
 constexpr const char* kDimLabel =
     "QLabel { color: #8090a0; font-size: 11px; }";
@@ -46,7 +38,7 @@ DaxApplet::DaxApplet(QWidget* parent) : QWidget(parent)
 
 void DaxApplet::buildUI()
 {
-    setStyleSheet(kSectionStyle);
+    AetherSDR::ButtonStyles::apply(this, "dax.section");
 
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
@@ -90,7 +82,7 @@ void DaxApplet::buildUI()
     m_daxEnable->setObjectName(QStringLiteral("daxEnable"));
     m_daxEnable->setAccessibleName(tr("DAX enable"));
     m_daxEnable->setAccessibleDescription(tr("Enable or disable DAX digital audio routing"));
-    m_daxEnable->setStyleSheet(kGreenToggle);
+    AetherSDR::ButtonStyles::apply(m_daxEnable, "dax.green.toggle");
     m_daxEnable->setFixedSize(76, 22);
     daxEnRow->addWidget(m_daxEnable);
 

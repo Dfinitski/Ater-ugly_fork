@@ -1,4 +1,5 @@
 #include "TitleBar.h"
+#include "ButtonStyles.h"
 #include "AudioButtonIcon.h"
 #include "RoundedMenu.h"
 #include "BrandMark.h"
@@ -2011,11 +2012,7 @@ void TitleBar::showFeatureRequestDialogImpl()
     vbox->addWidget(statusLabel);
 
     // AI provider buttons
-    const QString btnStyle =
-        "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
-        "border-radius: 3px; color: #c8d8e8; font-size: 12px; font-weight: bold; "
-        "padding: 6px 12px; }"
-        "QPushButton:hover { background: #203040; }";
+    // btnStyle: in the button-style catalogue (ButtonStyles.cpp), group "titlebar".
 
     auto* btnRow1 = new QHBoxLayout;
     struct { const char* name; const char* url; } providers[] = {
@@ -2027,7 +2024,7 @@ void TitleBar::showFeatureRequestDialogImpl()
     };
     for (const auto& p : providers) {
         auto* btn = new QPushButton(p.name, dlg);
-        btn->setStyleSheet(btnStyle);
+        AetherSDR::ButtonStyles::apply(btn, "titlebar.btn");
         QString url = p.url;
         const QString& prompt = kPrompt;  // local ref for lambda capture
         connect(btn, &QPushButton::clicked, dlg, [url, statusLabel, prompt] {
@@ -2058,9 +2055,7 @@ void TitleBar::showFeatureRequestDialogImpl()
     btnRow2->addWidget(submitBtn);
 
     auto* bugBtn = new QPushButton("Report a Bug", dlg);
-    AetherSDR::ThemeManager::instance().applyStyleSheet(bugBtn, "QPushButton { background: #cc4040; color: {{color.text.primary}}; font-weight: bold; "
-        "border-radius: 4px; padding: 8px 20px; font-size: 13px; }"
-        "QPushButton:hover { background: #dd5050; }");
+    AetherSDR::ButtonStyles::apply(bugBtn, "titlebar.bug");
     connect(bugBtn, &QPushButton::clicked, dlg, [dlg] {
         QDesktopServices::openUrl(QUrl(
             "https://github.com/Dfinitski/Ater-ugly_fork/issues/new"));
@@ -2069,7 +2064,7 @@ void TitleBar::showFeatureRequestDialogImpl()
     btnRow2->addWidget(bugBtn);
 
     auto* closeBtn = new QPushButton("Close", dlg);
-    closeBtn->setStyleSheet(btnStyle);
+    AetherSDR::ButtonStyles::apply(closeBtn, "titlebar.btn");
     connect(closeBtn, &QPushButton::clicked, dlg, &QDialog::close);
     btnRow2->addWidget(closeBtn);
     vbox->addLayout(btnRow2);

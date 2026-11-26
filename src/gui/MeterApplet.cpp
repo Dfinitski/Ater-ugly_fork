@@ -1,4 +1,5 @@
 #include "MeterApplet.h"
+#include "ButtonStyles.h"
 #include "HGauge.h"
 #include "core/AppSettings.h"
 #include "core/ThemeManager.h"
@@ -128,11 +129,7 @@ MeterApplet::MeterApplet(QWidget* parent)
     m_tempUnitBtn->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     m_tempUnitBtn->setAccessibleDescription(
         "Toggles PA temperature display between Celsius and Fahrenheit");
-    AetherSDR::ThemeManager::instance().applyStyleSheet(m_tempUnitBtn,
-        "QPushButton { background: transparent; border: 1px solid transparent; "
-        "color: #8090a0; font-size: 10px; text-align: right; padding: 0 2px; }"
-        "QPushButton:hover { border-color: #203040; color: #ffffff; }"
-        "QPushButton:focus { border-color: #00b4d8; }");
+    AetherSDR::ButtonStyles::apply(m_tempUnitBtn, "meter.temp.unit");
     connect(m_tempUnitBtn, &QPushButton::clicked, this, [this]() {
         m_tempFahrenheit = !m_tempFahrenheit;
         writeMtrTempFahrenheit(m_tempFahrenheit);

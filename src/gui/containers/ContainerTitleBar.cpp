@@ -1,4 +1,5 @@
 #include "ContainerTitleBar.h"
+#include "ButtonStyles.h"
 #include "gui/FramelessMoveHelper.h"
 
 #include <QCursor>
@@ -34,11 +35,7 @@ constexpr const char* kTitleStyle =
     "QLabel { background: transparent; color: #e0ecf4; "
     "font-size: 10px; font-weight: bold; }";
 
-constexpr const char* kBtnStyle =
-    "QPushButton { background: transparent; border: none; "
-    "color: #c8d8e8; font-size: 11px; font-weight: bold; "
-    "padding: 0px 4px; } "
-    "QPushButton:hover { color: #ffffff; }";
+// kBtnStyle: in the button-style catalogue (ButtonStyles.cpp), group "container".
 
 // The pin button: no text, the state is in its icon (pinIcon below).
 constexpr const char* kPinBtnStyle =
@@ -82,11 +79,7 @@ QIcon pinIcon()
 // the ⧉ glyph reads clearly at small sizes — at 11px the two-square
 // detail blurs together. The button box is bumped to 18×18 to fit the
 // taller glyph without clipping.
-constexpr const char* kFloatBtnStyle =
-    "QPushButton { background: transparent; border: none; "
-    "color: #c8d8e8; font-size: 15px; font-weight: bold; "
-    "padding: 0px 4px; } "
-    "QPushButton:hover { color: #ffffff; }";
+// kFloatBtnStyle: in the button-style catalogue (ButtonStyles.cpp), group "container".
 
 constexpr int kDragThresholdPx = 6;
 
@@ -144,7 +137,7 @@ ContainerTitleBar::ContainerTitleBar(const QString& title, QWidget* parent)
     layout->addWidget(m_pinBtn);
 
     m_floatBtn = new QPushButton(QString::fromUtf8("\xe2\xa7\x89"));  // ⧉ two joined squares (#2430 follow-up)
-    m_floatBtn->setStyleSheet(kFloatBtnStyle);
+    AetherSDR::ButtonStyles::apply(m_floatBtn, "container.float.btn");
     m_floatBtn->setFixedSize(18, 18);
     m_floatBtn->setAccessibleName(QStringLiteral("containerFloatToggle"));
     m_floatBtn->setToolTip("Pop out into a floating window");
@@ -157,7 +150,7 @@ ContainerTitleBar::ContainerTitleBar(const QString& title, QWidget* parent)
     m_floatBtn->setVisible(false);
 
     m_closeBtn = new QPushButton(QString::fromUtf8("\xc3\x97"));  // ×
-    m_closeBtn->setStyleSheet(kBtnStyle);
+    AetherSDR::ButtonStyles::apply(m_closeBtn, "container.btn");
     m_closeBtn->setFixedSize(16, 16);
     m_closeBtn->setAccessibleName(QStringLiteral("containerClose"));
     m_closeBtn->setToolTip("Hide this container");

@@ -1,4 +1,5 @@
 #include "EqApplet.h"
+#include "ButtonStyles.h"
 #include "GuardedSlider.h"
 #include "core/AppSettings.h"
 
@@ -63,18 +64,11 @@ protected:
 
 // ── Style constants ──────────────────────────────────────────────────────────
 
-static const QString kBtnBase =
-    "QPushButton { background-color: #1a2a3a; color: #c8d8e8; "
-    "border: 1px solid #205070; border-radius: 3px; font-size: 11px; "
-    "font-weight: bold; padding: 2px 4px; }";
+// kBtnBase: in the button-style catalogue (ButtonStyles.cpp), group "eq".
 
-static const QString kGreenActive =
-    "QPushButton:checked { background-color: #006040; color: #00ff88; "
-    "border: 1px solid #00a060; }";
+// kGreenActive: in the button-style catalogue (ButtonStyles.cpp), group "eq".
 
-static const QString kBlueActive =
-    "QPushButton:checked { background-color: #0070c0; color: #ffffff; "
-    "border: 1px solid #0090e0; }";
+// kBlueActive: in the button-style catalogue (ButtonStyles.cpp), group "eq".
 
 // Vertical EQ band slider: thin groove, accent handle. Sizes are local;
 // colours use color.slider.* tokens (fill token on the handle, since this
@@ -139,7 +133,7 @@ void EqApplet::buildUI()
         m_onBtn->setFixedSize(36, 22);
         m_onBtn->setAccessibleName("Equalizer enable");
         m_onBtn->setAccessibleDescription("Toggle equalizer on or off");
-        m_onBtn->setStyleSheet(kBtnBase + kGreenActive);
+        AetherSDR::ButtonStyles::apply(m_onBtn, "eq.btn.base.green.active");
         connect(m_onBtn, &QPushButton::toggled, this, [this](bool on) {
             if (!m_updatingFromModel && m_model) {
                 if (m_showTx)
@@ -172,7 +166,7 @@ void EqApplet::buildUI()
         m_rxBtn->setFixedSize(36, 22);
         m_rxBtn->setAccessibleName("RX equalizer");
         m_rxBtn->setAccessibleDescription("Show receive equalizer bands");
-        m_rxBtn->setStyleSheet(kBtnBase + kBlueActive);
+        AetherSDR::ButtonStyles::apply(m_rxBtn, "eq.btn.base.blue.active");
         row->addWidget(m_rxBtn);
 
         m_txBtn = new QPushButton("TX");
@@ -181,7 +175,7 @@ void EqApplet::buildUI()
         m_txBtn->setFixedSize(36, 22);
         m_txBtn->setAccessibleName("TX equalizer");
         m_txBtn->setAccessibleDescription("Show transmit equalizer bands");
-        m_txBtn->setStyleSheet(kBtnBase + kBlueActive);
+        AetherSDR::ButtonStyles::apply(m_txBtn, "eq.btn.base.blue.active");
         row->addWidget(m_txBtn);
 
         // RX/TX are mutually exclusive

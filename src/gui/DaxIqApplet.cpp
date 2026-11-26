@@ -1,4 +1,5 @@
 #include "DaxIqApplet.h"
+#include "ButtonStyles.h"
 #include "ComboStyle.h"
 #include "ControlAvailabilityRegistry.h"
 #include "GuardedSlider.h"
@@ -27,23 +28,14 @@ namespace AetherSDR {
 
 namespace {
 
-constexpr const char* kSectionStyle =
-    "QWidget { background: transparent; }"
-    "QLabel { color: #8090a0; font-size: 11px; }"
-    "QPushButton { background: #1a2a3a; border: 1px solid #205070;"
-    "  border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; color: #c8d8e8; }"
-    "QPushButton:hover { background: #204060; }";
+// kSectionStyle: in the button-style catalogue (ButtonStyles.cpp), group "daxiq".
 
 constexpr const char* kDimLabel =
     "QLabel { color: #8090a0; font-size: 11px; }";
 
-const QString kIqBtnOn =
-    "QPushButton { background: #00b4d8; color: #0f0f1a; font-weight: bold; "
-    "border: 1px solid #008ba8; padding: 2px 8px; border-radius: 3px; font-size: 10px; }";
+// kIqBtnOn: in the button-style catalogue (ButtonStyles.cpp), group "daxiq".
 
-const QString kIqBtnOff =
-    "QPushButton { background: #1a2a3a; color: #8090a0; "
-    "border: 1px solid #205070; padding: 2px 8px; border-radius: 3px; font-size: 10px; }";
+// kIqBtnOff: in the button-style catalogue (ButtonStyles.cpp), group "daxiq".
 
 } // namespace
 
@@ -63,7 +55,7 @@ DaxIqApplet::~DaxIqApplet() = default;
 
 void DaxIqApplet::buildUI()
 {
-    setStyleSheet(kSectionStyle);
+    AetherSDR::ButtonStyles::apply(this, "daxiq.section");
 
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
@@ -129,7 +121,7 @@ void DaxIqApplet::buildUI()
         m_iqEnable[i]->setFixedWidth(36);
         m_iqEnable[i]->setObjectName(QStringLiteral("daxIqEnable%1").arg(i + 1));
         m_iqEnable[i]->setAccessibleName(tr("IQ %1 stream").arg(i + 1));
-        ThemeManager::instance().applyStyleSheet(m_iqEnable[i], kIqBtnOff);
+        AetherSDR::ButtonStyles::apply(m_iqEnable[i], "daxiq.iq.btn.off");
         connect(m_iqEnable[i], &QPushButton::clicked, this, [this, i]() {
             if (!m_model || m_model->daxIqModel().supportedSampleRates().isEmpty()) {
                 return;
@@ -139,7 +131,7 @@ void DaxIqApplet::buildUI()
             if (wasOn) {
                 emit iqDisableRequested(i + 1);
                 m_iqEnable[i]->setText("Off");
-                ThemeManager::instance().applyStyleSheet(m_iqEnable[i], kIqBtnOff);
+                AetherSDR::ButtonStyles::apply(m_iqEnable[i], "daxiq.iq.btn.off");
                 m_iqMeter[i]->setValue(0);
                 ss.setValue(QStringLiteral("DaxIqEnabled%1").arg(i + 1), "False");
             } else {
@@ -149,7 +141,7 @@ void DaxIqApplet::buildUI()
                 emit iqRateChanged(i + 1, m_iqRateCombo[i]->currentData().toInt());
                 emit iqEnableRequested(i + 1);
                 m_iqEnable[i]->setText("On");
-                ThemeManager::instance().applyStyleSheet(m_iqEnable[i], kIqBtnOn);
+                AetherSDR::ButtonStyles::apply(m_iqEnable[i], "daxiq.iq.btn.on");
                 ss.setValue(QStringLiteral("DaxIqEnabled%1").arg(i + 1), "True");
             }
             ss.save();
@@ -221,7 +213,7 @@ void DaxIqApplet::setRadioModel(RadioModel* model)
             }
             if (!connected) {
                 m_iqEnable[i]->setText("Off");
-                ThemeManager::instance().applyStyleSheet(m_iqEnable[i], kIqBtnOff);
+                AetherSDR::ButtonStyles::apply(m_iqEnable[i], "daxiq.iq.btn.off");
                 if (m_iqMeter[i]) {
                     m_iqMeter[i]->setValue(0);
                 }
@@ -229,7 +221,7 @@ void DaxIqApplet::setRadioModel(RadioModel* model)
             }
             // Reset to Off; stream requests follow after session setup settles.
             m_iqEnable[i]->setText("Off");
-            ThemeManager::instance().applyStyleSheet(m_iqEnable[i], kIqBtnOff);
+            AetherSDR::ButtonStyles::apply(m_iqEnable[i], "daxiq.iq.btn.off");
             if (m_iqMeter[i]) {
                 m_iqMeter[i]->setValue(0);
             }
@@ -265,7 +257,7 @@ void DaxIqApplet::syncStreamState(int ch)
     int idx = ch - 1;
     const bool exists = m_model && m_model->daxIqModel().stream(ch).exists;
     m_iqEnable[idx]->setText(exists ? "On" : "Off");
-    ThemeManager::instance().applyStyleSheet(m_iqEnable[idx], exists ? kIqBtnOn : kIqBtnOff);
+    AetherSDR::ButtonStyles::apply(m_iqEnable[idx], exists ? "daxiq.iq.btn.on" : "daxiq.iq.btn.off");
     // Zero the meter whenever the channel is not actively bound to a pan: it
     // may be Off (exists==false) OR enabled-but-unbound (pan==0x0, e.g. the
     // pan's daxiq_channel was moved to another IQ channel). No IQ data flows

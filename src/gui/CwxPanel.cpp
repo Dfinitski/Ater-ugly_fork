@@ -1,4 +1,5 @@
 #include "CwxPanel.h"
+#include "ButtonStyles.h"
 #include "core/AppSettings.h"
 #include "VoiceModeGate.h"   // isCwMode() — one CW-mode list, not thirteen
 #include "core/TxKeyingMarker.h"
@@ -176,12 +177,7 @@ void CwxBubble::paintEvent(QPaintEvent*)
     p.drawText(timeRect, Qt::AlignRight | Qt::AlignTop, m_time);
 }
 
-static const char* kBtnStyle =
-    "QPushButton { background: #1a2a3a; border: 1px solid #304050; "
-    "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
-    "padding: 4px 10px; }"
-    "QPushButton:checked { background: #00b4d8; color: #000; border: 1px solid #00d4f8; }"
-    "QPushButton:hover { background: #203040; }";
+// kBtnStyle: in the button-style catalogue (ButtonStyles.cpp), group "cwx".
 
 static const char* kTextStyle =
     "QTextEdit { background: #0a0a14; color: #c8d8e8; border: none; "
@@ -240,18 +236,17 @@ CwxPanel::CwxPanel(CwxModel* model, QWidget* parent)
 
     m_sendBtn = new QPushButton("Send");
     markTxKeying(m_sendBtn);   // sends CW → keys TX; label "Send" matches no keyword (#3646 review)
-    m_sendBtn->setStyleSheet(kBtnStyle);
+    AetherSDR::ButtonStyles::apply(m_sendBtn, "cwx.btn");
     barLayout->addWidget(m_sendBtn);
 
     m_liveBtn = new QPushButton("Live");
     m_liveBtn->setCheckable(true);
-    m_liveBtn->setStyleSheet(kBtnStyle);
+    AetherSDR::ButtonStyles::apply(m_liveBtn, "cwx.btn");
     barLayout->addWidget(m_liveBtn);
 
     m_setupBtn = new QPushButton("Setup");
     m_setupBtn->setCheckable(true);
-    m_setupBtn->setStyleSheet(QString(kBtnStyle) +
-        " QPushButton { padding: 4px 6px; }");
+    AetherSDR::ButtonStyles::apply(m_setupBtn, "cwx.btn.2");
     barLayout->addWidget(m_setupBtn);
 
     auto* speedLabel = new QLabel("Speed:");
@@ -559,7 +554,7 @@ void CwxPanel::buildSetupView()
 
     m_qskBtn = new QPushButton("QSK");
     m_qskBtn->setCheckable(true);
-    m_qskBtn->setStyleSheet(kBtnStyle);
+    AetherSDR::ButtonStyles::apply(m_qskBtn, "cwx.btn");
     topRow->addWidget(m_qskBtn);
 
     topRow->addWidget(new QLabel("Step:"));

@@ -1,4 +1,5 @@
 #include "ClientPuduEditor.h"
+#include "ButtonStyles.h"
 #include "ClientCompKnob.h"
 #include "EditorFramelessTitleBar.h"
 #include "PooDooLogo.h"
@@ -33,28 +34,9 @@ constexpr const char* kWindowStyle =
     "QWidget { background: #08121d; color: #d7e7f2; }"
     "QLabel  { background: transparent; color: #8aa8c0; font-size: 11px; }";
 
-const QString kBypassStyle = QStringLiteral(
-    "QPushButton {"
-    "  background: #0e1b28; color: #8aa8c0;"
-    "  border: 1px solid #243a4e; border-radius: 3px;"
-    "  font-size: 11px; font-weight: bold; padding: 3px 12px;"
-    "}"
-    "QPushButton:hover { background: #1a2a3a; }"
-    "QPushButton:checked {"
-    "  background: #3a2a0e; color: #f2c14e; border: 1px solid #f2c14e;"
-    "}"
-    "QPushButton:checked:hover { background: #4a3a1e; }");
+// kBypassStyle: in the button-style catalogue (ButtonStyles.cpp), group "puduedit".
 
-const QString kModeStyle = QStringLiteral(
-    "QPushButton {"
-    "  background: #1a2a3a; border: 1px solid #2a4458; border-radius: 3px;"
-    "  color: #8aa8c0; font-size: 12px; font-weight: bold;"
-    "  padding: 4px 20px; min-width: 34px;"
-    "}"
-    "QPushButton:hover { background: #24384e; }"
-    "QPushButton:checked {"
-    "  background: #3a2a0e; color: #f2c14e; border: 1px solid #f2c14e;"
-    "}");
+// kModeStyle: in the button-style catalogue (ButtonStyles.cpp), group "puduedit".
 
 // "|─── text ───|" group label: horizontal line, centred text, horizontal line.
 QWidget* makeBracketLabel(const QString& text)
@@ -122,7 +104,7 @@ ClientPuduEditor::ClientPuduEditor(AudioEngine* engine, QWidget* parent)
         group->setExclusive(true);
         m_modeA = new QPushButton("Even");
         m_modeA->setCheckable(true);
-        m_modeA->setStyleSheet(kModeStyle);
+        AetherSDR::ButtonStyles::apply(m_modeA, "puduedit.mode");
         m_modeA->setFixedHeight(24);
         m_modeA->setToolTip(
             "Aphex-lineage asymmetric shaping — predominantly even "
@@ -133,7 +115,7 @@ ClientPuduEditor::ClientPuduEditor(AudioEngine* engine, QWidget* parent)
 
         m_modeB = new QPushButton("Odd");
         m_modeB->setCheckable(true);
-        m_modeB->setStyleSheet(kModeStyle);
+        AetherSDR::ButtonStyles::apply(m_modeB, "puduedit.mode");
         m_modeB->setFixedHeight(24);
         m_modeB->setToolTip(
             "Behringer-lineage symmetric tanh shaping — pure odd "

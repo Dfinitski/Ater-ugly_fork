@@ -24,6 +24,7 @@
 //     (90 s, the default) unless switched off.
 //   - The periods of my transmissions are not decoded.
 #include "core/ForkName.h"
+#include "gui/ButtonStyles.h"
 #include "Js8Panel.h"
 #include "FtPanel.h"   // AetherSDR: FtLatinValidator
 #include "js8/decodedtext.h"
@@ -205,10 +206,10 @@ void Js8Panel::buildTxUi(QVBoxLayout *v)
     pbAuto->setFocusPolicy(Qt::NoFocus);
     pbAuto->setToolTip("The automatic replies to the queries to my call (SNR?, GRID?, INFO?, STATUS?, HEARING?, AGN?,\n"
                        "MSG -> ACK) and, with HB, to the heartbeats. Off: a reply waits in the text for Send");
-    pbAuto->setStyleSheet("QPushButton:checked { background: #6F5A1F; border-color: #E0C080; }");
+    AetherSDR::ButtonStyles::apply(pbAuto, "js8panel.pb.auto");
     h1->addWidget(pbAuto);
-    pbHb->setStyleSheet("QPushButton:checked { background: #1F4F6F; border-color: #80C0E0; }");
-    pbCq->setStyleSheet("QPushButton:checked { background: #1F4F6F; border-color: #80C0E0; }");
+    AetherSDR::ButtonStyles::apply(pbHb, "js8panel.pb.hb");
+    AetherSDR::ButtonStyles::apply(pbCq, "js8panel.pb.hb");
     vb->addLayout(h1);
 
     // the automatic reply waiting for the confirmation
@@ -249,8 +250,7 @@ void Js8Panel::buildTxUi(QVBoxLayout *v)
     pbSend->setFocusPolicy(Qt::NoFocus);
     pbSend->setMinimumWidth(70);
     // AetherSDR: this program's blue (MicronSDR: green)
-    pbSend->setStyleSheet("QPushButton { background: #12466a; border: 1px solid #6a90b0; font-weight: bold; }"
-                          "QPushButton:disabled { background: #303030; color: #808080; border-color: #505050; }");
+    AetherSDR::ButtonStyles::apply(pbSend, "js8panel.pb.send");
     pbSend->setToolTip("Transmit the text: one frame each period from the next one (late by up to ~2 s: now)");
     pbHalt = new QPushButton("Halt");
     pbHalt->setFocusPolicy(Qt::NoFocus);

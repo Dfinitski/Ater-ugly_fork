@@ -1434,6 +1434,516 @@ const Entry kEntries[] = {
      "border-radius: 2px; font-size: 9px; font-weight: bold; padding: 1px 6px; "
      "}QPushButton:hover { color: {{color.button.pan.close.hover.text}}; background: "
      "{{color.button.pan.close.hover.background}}; }"},
+
+    // ── FtPanelTx.cpp (group ftpanel)
+    {"ftpanel.pb.enable", "FtPanelTx.cpp: pbEnable",
+     /*original*/
+     "QPushButton { padding: 2px 5px; } QPushButton:checked { background: #A02020; "
+     "border-color: #FF8080; }",
+     /*themed*/
+     "QPushButton { padding: 2px 5px; } QPushButton:checked { background: "
+     "{{color.button.ftpanel.checked.background}}; border-color: "
+     "{{color.button.ftpanel.checked.border}}; }"},
+
+    // ── Js8PanelTx.cpp (group js8panel)
+    {"js8panel.pb.auto", "Js8PanelTx.cpp: pbAuto",
+     /*original*/
+     "QPushButton:checked { background: #6F5A1F; border-color: #E0C080; }",
+     /*themed*/
+     "QPushButton:checked { background: {{color.button.js8panel.checked.background}}; "
+     "border-color: {{color.button.js8panel.checked.border}}; }"},
+
+    {"js8panel.pb.hb", "Js8PanelTx.cpp: pbHb",
+     /*original*/
+     "QPushButton:checked { background: #1F4F6F; border-color: #80C0E0; }",
+     /*themed*/
+     "QPushButton:checked { background: {{color.button.js8panel.pb.hb.checked.background}}; "
+     "border-color: {{color.button.js8panel.pb.hb.checked.border}}; }"},
+
+    {"js8panel.pb.send", "Js8PanelTx.cpp: pbSend",
+     /*original*/
+     "QPushButton { background: #12466a; border: 1px solid #6a90b0; font-weight: bold; "
+     "}QPushButton:disabled { background: #303030; color: #808080; border-color: #505050; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.js8panel.background}}; border: 1px solid "
+     "{{color.button.js8panel.border}}; font-weight: bold; }QPushButton:disabled { background: "
+     "{{color.button.js8panel.disabled.background}}; color: "
+     "{{color.button.js8panel.disabled.text}}; border-color: "
+     "{{color.button.js8panel.disabled.border}}; }"},
+
+    // ── AcomApplet.cpp (group acom)
+    {"acom.temp", "AcomApplet.cpp: m_tempBtn",
+     /*original*/
+     "QPushButton { background: transparent; border: 1px solid transparent; color: #c8d8e8; "
+     "font-size: 10px; text-align: left; padding: 0 2px; }QPushButton:hover { border-color: "
+     "#203040; color: #ffffff; }QPushButton:focus { border-color: #00b4d8; }",
+     /*themed*/
+     "QPushButton { background: transparent; border: 1px solid transparent; color: "
+     "{{color.button.acom.text}}; font-size: 10px; text-align: left; padding: 0 2px; "
+     "}QPushButton:hover { border-color: {{color.button.acom.hover.border}}; color: "
+     "{{color.button.acom.hover.text}}; }QPushButton:focus { border-color: "
+     "{{color.button.acom.focus.border}}; }"},
+
+    // ── BandStackPanel.cpp (group bandstack)
+    {"bandstack.small.btn", "BandStackPanel.cpp: m_clearAllButton",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 3px; color: "
+     "#8aa8c0; font-size: 13px; font-weight: bold; padding: 0px; margin: 0px; "
+     "}QPushButton:hover { background: #203040; color: #c8d8e8; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.bandstack.background}}; border: 1px solid "
+     "{{color.button.bandstack.border}}; border-radius: 3px; color: "
+     "{{color.button.bandstack.text}}; font-size: 13px; font-weight: bold; padding: 0px; "
+     "margin: 0px; }QPushButton:hover { background: "
+     "{{color.button.bandstack.hover.background}}; color: "
+     "{{color.button.bandstack.hover.text}}; }"},
+
+    // ── ClientEqEditor.cpp (group eqeditor)
+    {"eqeditor.peak.hold", "ClientEqEditor.cpp: peakHoldBtn",
+     /*original*/
+     "QPushButton {  background: {{color.background.0}}; color: {{color.text.primary}};  "
+     "border: 1px solid {{color.background.1}}; border-radius: 3px;  padding: 2px 12px; "
+     "font-size: 11px; font-weight: bold;}QPushButton:hover { background: "
+     "{{color.background.1}}; }QPushButton:checked {  background: #c8a040; color: "
+     "{{color.background.0}};  border-color: #d4b050;}QPushButton:checked:hover { background: "
+     "#d4b050; }",
+     /*themed*/
+     "QPushButton {  background: {{color.background.0}}; color: {{color.text.primary}};  "
+     "border: 1px solid {{color.background.1}}; border-radius: 3px;  padding: 2px 12px; "
+     "font-size: 11px; font-weight: bold;}QPushButton:hover { background: "
+     "{{color.background.1}}; }QPushButton:checked {  background: #c8a040; color: "
+     "{{color.background.0}};  border-color: #d4b050;}QPushButton:checked:hover { background: "
+     "{{color.button.eqeditor.checked.hover.background}}; }"},
+
+    // ── ClientGateEditor.cpp (group gateeditor)
+    {"gateeditor.flip", "ClientGateEditor.cpp: m_flip",
+     /*original*/
+     "QPushButton {  background: #006040; border: 1px solid #00a060; border-radius: 3px;  "
+     "color: #00ff88; font-size: 10px; font-weight: bold; padding: 3px 6px;}QPushButton:hover "
+     "{ background: #007050; }QPushButton:checked {  background: #3a2a0e; color: #f2c14e; "
+     "border: 1px solid #f2c14e;}QPushButton:checked:hover { background: #4a3a1e; }",
+     /*themed*/
+     "QPushButton {  background: {{color.button.gateeditor.background}}; border: 1px solid "
+     "{{color.button.gateeditor.border}}; border-radius: 3px;  color: "
+     "{{color.button.gateeditor.text}}; font-size: 10px; font-weight: bold; padding: 3px "
+     "6px;}QPushButton:hover { background: {{color.button.gateeditor.hover.background}}; "
+     "}QPushButton:checked {  background: {{color.button.gateeditor.checked.background}}; "
+     "color: {{color.button.gateeditor.checked.text}}; border: 1px solid "
+     "{{color.button.gateeditor.checked.border}};}QPushButton:checked:hover { background: "
+     "{{color.button.gateeditor.checked.hover.background}}; }"},
+
+    // ── ClientPuduApplet.cpp (group pudu)
+    {"pudu.mode", "ClientPuduApplet.cpp: m_modeA",
+     /*original*/
+     "QPushButton {  background: #1a2a3a; border: 1px solid #2a4458; border-radius: 3px;  "
+     "color: #8aa8c0; font-size: 11px; font-weight: bold;  padding: 3px 14px; min-width: "
+     "26px;}QPushButton:hover { background: #24384e; }QPushButton:checked {  background: "
+     "#3a2a0e; color: #f2c14e; border: 1px solid #f2c14e;}",
+     /*themed*/
+     "QPushButton {  background: {{color.button.pudu.background}}; border: 1px solid "
+     "{{color.button.pudu.border}}; border-radius: 3px;  color: {{color.button.pudu.text}}; "
+     "font-size: 11px; font-weight: bold;  padding: 3px 14px; min-width: "
+     "26px;}QPushButton:hover { background: {{color.button.pudu.hover.background}}; "
+     "}QPushButton:checked {  background: {{color.button.pudu.checked.background}}; color: "
+     "{{color.button.pudu.checked.text}}; border: 1px solid "
+     "{{color.button.pudu.checked.border}};}"},
+
+    // ── ClientPuduEditor.cpp (group puduedit)
+    {"puduedit.mode", "ClientPuduEditor.cpp: m_modeA",
+     /*original*/
+     "QPushButton {  background: #1a2a3a; border: 1px solid #2a4458; border-radius: 3px;  "
+     "color: #8aa8c0; font-size: 12px; font-weight: bold;  padding: 4px 20px; min-width: "
+     "34px;}QPushButton:hover { background: #24384e; }QPushButton:checked {  background: "
+     "#3a2a0e; color: #f2c14e; border: 1px solid #f2c14e;}",
+     /*themed*/
+     "QPushButton {  background: {{color.button.puduedit.background}}; border: 1px solid "
+     "{{color.button.puduedit.border}}; border-radius: 3px;  color: "
+     "{{color.button.puduedit.text}}; font-size: 12px; font-weight: bold;  padding: 4px 20px; "
+     "min-width: 34px;}QPushButton:hover { background: "
+     "{{color.button.puduedit.hover.background}}; }QPushButton:checked {  background: "
+     "{{color.button.puduedit.checked.background}}; color: "
+     "{{color.button.puduedit.checked.text}}; border: 1px solid "
+     "{{color.button.puduedit.checked.border}};}"},
+
+    // ── ClientTubeEditor.cpp (group tubeeditor)
+    {"tubeeditor.model", "ClientTubeEditor.cpp: btn",
+     /*original*/
+     "QPushButton {  background: #1a2a3a; border: 1px solid #2a4458; border-radius: 3px;  "
+     "color: #8aa8c0; font-size: 11px; font-weight: bold;  padding: 3px 10px; min-width: "
+     "26px;}QPushButton:hover { background: #24384e; }QPushButton:checked {  background: "
+     "#3a2a0e; color: #f2c14e; border: 1px solid #f2c14e;}",
+     /*themed*/
+     "QPushButton {  background: {{color.button.tubeeditor.background}}; border: 1px solid "
+     "{{color.button.tubeeditor.border}}; border-radius: 3px;  color: "
+     "{{color.button.tubeeditor.text}}; font-size: 11px; font-weight: bold;  padding: 3px "
+     "10px; min-width: 26px;}QPushButton:hover { background: "
+     "{{color.button.tubeeditor.hover.background}}; }QPushButton:checked {  background: "
+     "{{color.button.tubeeditor.checked.background}}; color: "
+     "{{color.button.tubeeditor.checked.text}}; border: 1px solid "
+     "{{color.button.tubeeditor.checked.border}};}"},
+
+    // ── CwxPanel.cpp (group cwx)
+    {"cwx.btn", "CwxPanel.cpp: m_sendBtn",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 3px; color: "
+     "#c8d8e8; font-size: 11px; font-weight: bold; padding: 4px 10px; }QPushButton:checked { "
+     "background: #00b4d8; color: #000; border: 1px solid #00d4f8; }QPushButton:hover { "
+     "background: #203040; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.cwx.background}}; border: 1px solid "
+     "{{color.button.cwx.border}}; border-radius: 3px; color: {{color.button.cwx.text}}; "
+     "font-size: 11px; font-weight: bold; padding: 4px 10px; }QPushButton:checked { "
+     "background: {{color.button.cwx.checked.background}}; color: "
+     "{{color.button.cwx.checked.text}}; border: 1px solid "
+     "{{color.button.cwx.checked.border}}; }QPushButton:hover { background: "
+     "{{color.button.cwx.hover.background}}; }"},
+
+    {"cwx.btn.2", "CwxPanel.cpp: m_setupBtn",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 3px; color: "
+     "#c8d8e8; font-size: 11px; font-weight: bold; padding: 4px 10px; }QPushButton:checked { "
+     "background: #00b4d8; color: #000; border: 1px solid #00d4f8; }QPushButton:hover { "
+     "background: #203040; } QPushButton { padding: 4px 6px; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.cwx.background}}; border: 1px solid "
+     "{{color.button.cwx.border}}; border-radius: 3px; color: {{color.button.cwx.text}}; "
+     "font-size: 11px; font-weight: bold; padding: 4px 10px; }QPushButton:checked { "
+     "background: {{color.button.cwx.checked.background}}; color: "
+     "{{color.button.cwx.checked.text}}; border: 1px solid "
+     "{{color.button.cwx.checked.border}}; }QPushButton:hover { background: "
+     "{{color.button.cwx.hover.background}}; } QPushButton { padding: 4px 6px; }"},
+
+    // ── DaxApplet.cpp (group dax)
+    {"dax.section", "DaxApplet.cpp: this",
+     /*original*/
+     "QWidget { background: transparent; }QLabel { color: #8090a0; font-size: 11px; "
+     "}QPushButton { background: #1a2a3a; border: 1px solid #205070;  border-radius: 3px; "
+     "padding: 2px 8px; font-size: 11px; font-weight: bold; color: #c8d8e8; }QPushButton:hover "
+     "{ background: #204060; }",
+     /*themed*/
+     "QWidget { background: transparent; }QLabel { color: #8090a0; font-size: 11px; "
+     "}QPushButton { background: {{color.button.dax.background}}; border: 1px solid "
+     "{{color.button.dax.border}};  border-radius: 3px; padding: 2px 8px; font-size: 11px; "
+     "font-weight: bold; color: {{color.button.dax.text}}; }QPushButton:hover { background: "
+     "{{color.button.dax.hover.background}}; }"},
+
+    {"dax.green.toggle", "DaxApplet.cpp: m_daxEnable",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px; color: "
+     "#c8d8e8; font-size: 11px; font-weight: bold; padding: 2px 8px; }QPushButton:hover { "
+     "background: #204060; }QPushButton:checked { background: #006040; color: #00ff88; border: "
+     "1px solid #00a060; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.dax.background}}; border: 1px solid "
+     "{{color.button.dax.border}}; border-radius: 3px; color: {{color.button.dax.text}}; "
+     "font-size: 11px; font-weight: bold; padding: 2px 8px; }QPushButton:hover { background: "
+     "{{color.button.dax.hover.background}}; }QPushButton:checked { background: "
+     "{{color.button.dax.checked.background}}; color: {{color.button.dax.checked.text}}; "
+     "border: 1px solid {{color.button.dax.checked.border}}; }"},
+
+    // ── DaxIqApplet.cpp (group daxiq)
+    {"daxiq.section", "DaxIqApplet.cpp: this",
+     /*original*/
+     "QWidget { background: transparent; }QLabel { color: #8090a0; font-size: 11px; "
+     "}QPushButton { background: #1a2a3a; border: 1px solid #205070;  border-radius: 3px; "
+     "padding: 2px 8px; font-size: 11px; font-weight: bold; color: #c8d8e8; }QPushButton:hover "
+     "{ background: #204060; }",
+     /*themed*/
+     "QWidget { background: transparent; }QLabel { color: #8090a0; font-size: 11px; "
+     "}QPushButton { background: {{color.button.daxiq.background}}; border: 1px solid "
+     "{{color.button.daxiq.border}};  border-radius: 3px; padding: 2px 8px; font-size: 11px; "
+     "font-weight: bold; color: {{color.button.daxiq.text}}; }QPushButton:hover { background: "
+     "{{color.button.daxiq.hover.background}}; }"},
+
+    {"daxiq.iq.btn.off", "DaxIqApplet.cpp: m_iqEnable[i]",
+     /*original*/
+     "QPushButton { background: #1a2a3a; color: #8090a0; border: 1px solid #205070; padding: "
+     "2px 8px; border-radius: 3px; font-size: 10px; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.daxiq.background}}; color: "
+     "{{color.button.daxiq.iq.btn.off.text}}; border: 1px solid {{color.button.daxiq.border}}; "
+     "padding: 2px 8px; border-radius: 3px; font-size: 10px; }"},
+
+    {"daxiq.iq.btn.on", "DaxIqApplet.cpp: m_iqEnable[i]",
+     /*original*/
+     "QPushButton { background: #00b4d8; color: #0f0f1a; font-weight: bold; border: 1px solid "
+     "#008ba8; padding: 2px 8px; border-radius: 3px; font-size: 10px; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.daxiq.iq.btn.on.background}}; color: "
+     "{{color.button.daxiq.iq.btn.on.text}}; font-weight: bold; border: 1px solid "
+     "{{color.button.daxiq.iq.btn.on.border}}; padding: 2px 8px; border-radius: 3px; "
+     "font-size: 10px; }"},
+
+    // ── DspParamPopup.cpp (group dspparam)
+    {"dspparam.popup", "DspParamPopup.cpp: this",
+     /*original*/
+     "QWidget#DspParamPopup { background: rgba(15, 15, 26, 240);  border: 1px solid #304050; "
+     "border-radius: 4px; }QLabel { color: #8090a0; font-size: 11px; border: none; "
+     "}QRadioButton { color: #c8d8e8; font-size: 11px; }QCheckBox { color: #c8d8e8; font-size: "
+     "11px; }QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #304050;  "
+     "border-radius: 3px; padding: 3px 8px; font-size: 11px; }QPushButton:hover { background: "
+     "rgba(0, 112, 192, 180); border: 1px solid #0090e0; }",
+     /*themed*/
+     "QWidget#DspParamPopup { background: rgba(15, 15, 26, 240);  border: 1px solid #304050; "
+     "border-radius: 4px; }QLabel { color: #8090a0; font-size: 11px; border: none; "
+     "}QRadioButton { color: {{color.button.dspparam.text}}; font-size: 11px; }QCheckBox { "
+     "color: {{color.button.dspparam.text}}; font-size: 11px; }QPushButton { background: "
+     "{{color.button.dspparam.background}}; color: {{color.button.dspparam.text}}; border: 1px "
+     "solid {{color.button.dspparam.border}};  border-radius: 3px; padding: 3px 8px; "
+     "font-size: 11px; }QPushButton:hover { background: rgba(0, 112, 192, 180); border: 1px "
+     "solid {{color.button.dspparam.hover.border}}; }"},
+
+    // ── EqApplet.cpp (group eq)
+    {"eq.btn.base.green.active", "EqApplet.cpp: m_onBtn",
+     /*original*/
+     "QPushButton { background-color: #1a2a3a; color: #c8d8e8; border: 1px solid #205070; "
+     "border-radius: 3px; font-size: 11px; font-weight: bold; padding: 2px 4px; "
+     "}QPushButton:checked { background-color: #006040; color: #00ff88; border: 1px solid "
+     "#00a060; }",
+     /*themed*/
+     "QPushButton { background-color: {{color.button.eq.background}}; color: "
+     "{{color.button.eq.text}}; border: 1px solid {{color.button.eq.border}}; border-radius: "
+     "3px; font-size: 11px; font-weight: bold; padding: 2px 4px; }QPushButton:checked { "
+     "background-color: {{color.button.eq.checked.background}}; color: "
+     "{{color.button.eq.checked.text}}; border: 1px solid {{color.button.eq.checked.border}}; "
+     "}"},
+
+    {"eq.btn.base.blue.active", "EqApplet.cpp: m_rxBtn",
+     /*original*/
+     "QPushButton { background-color: #1a2a3a; color: #c8d8e8; border: 1px solid #205070; "
+     "border-radius: 3px; font-size: 11px; font-weight: bold; padding: 2px 4px; "
+     "}QPushButton:checked { background-color: #0070c0; color: #ffffff; border: 1px solid "
+     "#0090e0; }",
+     /*themed*/
+     "QPushButton { background-color: {{color.button.eq.background}}; color: "
+     "{{color.button.eq.text}}; border: 1px solid {{color.button.eq.border}}; border-radius: "
+     "3px; font-size: 11px; font-weight: bold; padding: 2px 4px; }QPushButton:checked { "
+     "background-color: {{color.button.eq.btn.base.blue.active.checked.background}}; color: "
+     "{{color.button.eq.btn.base.blue.active.checked.text}}; border: 1px solid "
+     "{{color.button.eq.btn.base.blue.active.checked.border}}; }"},
+
+    // ── MeterApplet.cpp (group meter)
+    {"meter.temp.unit", "MeterApplet.cpp: m_tempUnitBtn",
+     /*original*/
+     "QPushButton { background: transparent; border: 1px solid transparent; color: #8090a0; "
+     "font-size: 10px; text-align: right; padding: 0 2px; }QPushButton:hover { border-color: "
+     "#203040; color: #ffffff; }QPushButton:focus { border-color: #00b4d8; }",
+     /*themed*/
+     "QPushButton { background: transparent; border: 1px solid transparent; color: "
+     "{{color.button.meter.text}}; font-size: 10px; text-align: right; padding: 0 2px; "
+     "}QPushButton:hover { border-color: {{color.button.meter.hover.border}}; color: "
+     "{{color.button.meter.hover.text}}; }QPushButton:focus { border-color: "
+     "{{color.button.meter.focus.border}}; }"},
+
+    // ── MqttApplet.cpp (group mqtt)
+    {"mqtt.btn.off", "MqttApplet.cpp: m_enableBtn",
+     /*original*/
+     "QPushButton { background: #1a2a3a; color: #8090a0; border: 1px solid #205070; padding: "
+     "2px 8px; border-radius: 3px; font-size: 10px; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.mqtt.background}}; color: "
+     "{{color.button.mqtt.text}}; border: 1px solid {{color.button.mqtt.border}}; padding: 2px "
+     "8px; border-radius: 3px; font-size: 10px; }"},
+
+    {"mqtt.btn.on", "MqttApplet.cpp: m_enableBtn",
+     /*original*/
+     "QPushButton { background: #00b4d8; color: #0f0f1a; font-weight: bold; border: 1px solid "
+     "#008ba8; padding: 2px 8px; border-radius: 3px; font-size: 10px; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.mqtt.btn.on.background}}; color: "
+     "{{color.button.mqtt.btn.on.text}}; font-weight: bold; border: 1px solid "
+     "{{color.button.mqtt.btn.on.border}}; padding: 2px 8px; border-radius: 3px; font-size: "
+     "10px; }"},
+
+    {"mqtt.pub", "MqttApplet.cpp: btn",
+     /*original*/
+     "QPushButton { background: #1a2a3a; color: #c8d8e8; border: 1px solid #306080; padding: "
+     "4px 6px; border-radius: 3px; font-size: 10px; }QPushButton:hover { background: #203850; "
+     "}QPushButton:pressed { background: #00b4d8; color: #0f0f1a; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.mqtt.background}}; color: "
+     "{{color.button.mqtt.pub.text}}; border: 1px solid {{color.button.mqtt.pub.border}}; "
+     "padding: 4px 6px; border-radius: 3px; font-size: 10px; }QPushButton:hover { background: "
+     "{{color.button.mqtt.hover.background}}; }QPushButton:pressed { background: "
+     "{{color.button.mqtt.pressed.background}}; color: {{color.button.mqtt.pressed.text}}; }"},
+
+    // ── PhoneApplet.cpp (group phone)
+    {"phone.btn.base.green.active", "PhoneApplet.cpp: m_voxBtn",
+     /*original*/
+     "QPushButton { background-color: #1a2a3a; color: #c8d8e8; border: 1px solid #205070; "
+     "border-radius: 3px; font-size: 11px; font-weight: bold; padding: 2px 4px; "
+     "}QPushButton:checked { background-color: #006040; color: #00ff88; border: 1px solid "
+     "#00a060; }",
+     /*themed*/
+     "QPushButton { background-color: {{color.button.phone.background}}; color: "
+     "{{color.button.phone.text}}; border: 1px solid {{color.button.phone.border}}; "
+     "border-radius: 3px; font-size: 11px; font-weight: bold; padding: 2px 4px; "
+     "}QPushButton:checked { background-color: {{color.button.phone.checked.background}}; "
+     "color: {{color.button.phone.checked.text}}; border: 1px solid "
+     "{{color.button.phone.checked.border}}; }"},
+
+    {"phone.btn.base.blue.active", "PhoneApplet.cpp: m_dexpBtn",
+     /*original*/
+     "QPushButton { background-color: #1a2a3a; color: #c8d8e8; border: 1px solid #205070; "
+     "border-radius: 3px; font-size: 11px; font-weight: bold; padding: 2px 4px; "
+     "}QPushButton:checked { background-color: #0070c0; color: #ffffff; border: 1px solid "
+     "#0090e0; }",
+     /*themed*/
+     "QPushButton { background-color: {{color.button.phone.background}}; color: "
+     "{{color.button.phone.text}}; border: 1px solid {{color.button.phone.border}}; "
+     "border-radius: 3px; font-size: 11px; font-weight: bold; padding: 2px 4px; "
+     "}QPushButton:checked { background-color: "
+     "{{color.button.phone.btn.base.blue.active.checked.background}}; color: "
+     "{{color.button.phone.btn.base.blue.active.checked.text}}; border: 1px solid "
+     "{{color.button.phone.btn.base.blue.active.checked.border}}; }"},
+
+    // ── SpectrumOverlayMenu.cpp (group overlay2)
+    {"overlay2.auto.rf.gain.check", "SpectrumOverlayMenu.cpp: m_autoRfGainCheck",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; color: "
+     "#c8d8e8; font-size: 9px; font-weight: bold; padding: 0px; margin: 0px; "
+     "}QPushButton:checked { background: #0070c0; color: #ffffff; border: 1px solid #0090e0; "
+     "}QPushButton:hover { border: 1px solid #0090e0; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.overlay2.background}}; border: 1px solid "
+     "{{color.button.overlay2.border}}; border-radius: 2px; color: "
+     "{{color.button.overlay2.text}}; font-size: 9px; font-weight: bold; padding: 0px; margin: "
+     "0px; }QPushButton:checked { background: {{color.button.overlay2.checked.background}}; "
+     "color: {{color.button.overlay2.checked.text}}; border: 1px solid "
+     "{{color.button.overlay2.checked.border}}; }QPushButton:hover { border: 1px solid "
+     "{{color.button.overlay2.hover.border}}; }"},
+
+    // ── SpectrumWidget.cpp (group spectrum)
+    {"spectrum.zoom.btn", "SpectrumWidget.cpp: btn",
+     /*original*/
+     "QPushButton { background: rgba(15,15,26,180); border: 1px solid #304050; border-radius: "
+     "2px; color: #90a0b0; font-size: 11px; font-weight: bold; padding: 0; margin: 0; "
+     "min-width: 0; }QPushButton:hover { background: rgba(30,50,70,200); color: #c8d8e8; "
+     "}QPushButton:checked { background: rgba(0,180,216,210); color: #000; "
+     "}QPushButton:pressed { background: #00b4d8; color: #000; }QPushButton:disabled { "
+     "background: {{color.spectrum.zoomButton.disabled.background}}; border-color: "
+     "{{color.spectrum.zoomButton.disabled.border}}; color: "
+     "{{color.spectrum.zoomButton.disabled.text}}; }",
+     /*themed*/
+     "QPushButton { background: rgba(15,15,26,180); border: 1px solid "
+     "{{color.button.spectrum.border}}; border-radius: 2px; color: "
+     "{{color.button.spectrum.text}}; font-size: 11px; font-weight: bold; padding: 0; margin: "
+     "0; min-width: 0; }QPushButton:hover { background: rgba(30,50,70,200); color: "
+     "{{color.button.spectrum.hover.text}}; }QPushButton:checked { background: "
+     "rgba(0,180,216,210); color: {{color.button.spectrum.checked.text}}; }QPushButton:pressed "
+     "{ background: {{color.button.spectrum.pressed.background}}; color: "
+     "{{color.button.spectrum.pressed.text}}; }QPushButton:disabled { background: "
+     "{{color.spectrum.zoomButton.disabled.background}}; border-color: "
+     "{{color.spectrum.zoomButton.disabled.border}}; color: "
+     "{{color.spectrum.zoomButton.disabled.text}}; }"},
+
+    {"spectrum.rate.btn", "SpectrumWidget.cpp: btn",
+     /*original*/
+     "QPushButton { background: rgba(15,15,26,90); border: 1px solid rgba(144,160,176,110); "
+     "border-radius: 2px; color: rgba(200,216,232,150); font-size: 13px; font-weight: bold; "
+     "padding: 0; margin: 0; min-width: 0; }QPushButton:hover { background: "
+     "rgba(30,50,70,150); color: rgba(220,232,244,220); }QPushButton:pressed { background: "
+     "rgba(0,180,216,150); color: #000; }",
+     /*themed*/
+     "QPushButton { background: rgba(15,15,26,90); border: 1px solid rgba(144,160,176,110); "
+     "border-radius: 2px; color: rgba(200,216,232,150); font-size: 13px; font-weight: bold; "
+     "padding: 0; margin: 0; min-width: 0; }QPushButton:hover { background: "
+     "rgba(30,50,70,150); color: rgba(220,232,244,220); }QPushButton:pressed { background: "
+     "rgba(0,180,216,150); color: {{color.button.spectrum.pressed.text}}; }"},
+
+    // ── TciApplet.cpp (group tci)
+    {"tci.section", "TciApplet.cpp: this",
+     /*original*/
+     "QWidget { background: transparent; }QLabel { color: #8090a0; font-size: 11px; "
+     "}QPushButton { background: #1a2a3a; border: 1px solid #205070;  border-radius: 3px; "
+     "padding: 2px 8px; font-size: 11px; font-weight: bold; color: #c8d8e8; }QPushButton:hover "
+     "{ background: #204060; }",
+     /*themed*/
+     "QWidget { background: transparent; }QLabel { color: #8090a0; font-size: 11px; "
+     "}QPushButton { background: {{color.button.tci.background}}; border: 1px solid "
+     "{{color.button.tci.border}};  border-radius: 3px; padding: 2px 8px; font-size: 11px; "
+     "font-weight: bold; color: {{color.button.tci.text}}; }QPushButton:hover { background: "
+     "{{color.button.tci.hover.background}}; }"},
+
+    {"tci.center.lock.iq", "TciApplet.cpp: m_centerLockIq",
+     /*original*/
+     "QCheckBox { color: #8090a0; font-size: 11px; }",
+     /*themed*/
+     "QCheckBox { color: {{color.button.tci.center.lock.iq.text}}; font-size: 11px; }"},
+
+    {"tci.green.toggle", "TciApplet.cpp: m_tciEnable",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px; color: "
+     "#c8d8e8; font-size: 11px; font-weight: bold; padding: 2px 8px; }QPushButton:hover { "
+     "background: #204060; }QPushButton:checked { background: #006040; color: #00ff88; border: "
+     "1px solid #00a060; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.tci.background}}; border: 1px solid "
+     "{{color.button.tci.border}}; border-radius: 3px; color: {{color.button.tci.text}}; "
+     "font-size: 11px; font-weight: bold; padding: 2px 8px; }QPushButton:hover { background: "
+     "{{color.button.tci.hover.background}}; }QPushButton:checked { background: "
+     "{{color.button.tci.checked.background}}; color: {{color.button.tci.checked.text}}; "
+     "border: 1px solid {{color.button.tci.checked.border}}; }"},
+
+    // ── TitleBar.cpp (group titlebar)
+    {"titlebar.btn", "TitleBar.cpp: btn",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 3px; color: "
+     "#c8d8e8; font-size: 12px; font-weight: bold; padding: 6px 12px; }QPushButton:hover { "
+     "background: #203040; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.titlebar.background}}; border: 1px solid "
+     "{{color.button.titlebar.border}}; border-radius: 3px; color: "
+     "{{color.button.titlebar.text}}; font-size: 12px; font-weight: bold; padding: 6px 12px; "
+     "}QPushButton:hover { background: {{color.button.titlebar.hover.background}}; }"},
+
+    {"titlebar.bug", "TitleBar.cpp: bugBtn",
+     /*original*/
+     "QPushButton { background: #cc4040; color: {{color.text.primary}}; font-weight: bold; "
+     "border-radius: 4px; padding: 8px 20px; font-size: 13px; }QPushButton:hover { background: "
+     "#dd5050; }",
+     /*themed*/
+     "QPushButton { background: #cc4040; color: {{color.text.primary}}; font-weight: bold; "
+     "border-radius: 4px; padding: 8px 20px; font-size: 13px; }QPushButton:hover { background: "
+     "{{color.button.titlebar.bug.hover.background}}; }"},
+
+    // ── VfoWidget.cpp (group vfo2)
+    {"vfo2.c", "VfoWidget.cpp: c",
+     /*original*/
+     "QCheckBox { background: transparent; color: #c8d8e8; font-size: 12px; spacing: 5px; "
+     "}QCheckBox::indicator { width: 13px; height: 13px; border-radius: 2px; border: 1px solid "
+     "#304050; background: #1a2a3a; }QCheckBox::indicator:checked { background: #0070c0; "
+     "border: 1px solid #0090e0; }QCheckBox:disabled { color: #5a6a78; "
+     "}QCheckBox::indicator:disabled { border: 1px solid #243240; background: #141f2a; }",
+     /*themed*/
+     "QCheckBox { background: transparent; color: {{color.button.vfo2.text}}; font-size: 12px; "
+     "spacing: 5px; }QCheckBox::indicator { width: 13px; height: 13px; border-radius: 2px; "
+     "border: 1px solid {{color.button.vfo2.indicator.border}}; background: "
+     "{{color.button.vfo2.indicator.background}}; }QCheckBox::indicator:checked { background: "
+     "{{color.button.vfo2.indicator.checked.background}}; border: 1px solid "
+     "{{color.button.vfo2.indicator.checked.border}}; }QCheckBox:disabled { color: "
+     "{{color.button.vfo2.disabled.text}}; }QCheckBox::indicator:disabled { border: 1px solid "
+     "{{color.button.vfo2.indicator.disabled.border}}; background: "
+     "{{color.button.vfo2.indicator.disabled.background}}; }"},
+
+    // ── ContainerTitleBar.cpp (group container)
+    {"container.float.btn", "ContainerTitleBar.cpp: m_floatBtn",
+     /*original*/
+     "QPushButton { background: transparent; border: none; color: #c8d8e8; font-size: 15px; "
+     "font-weight: bold; padding: 0px 4px; } QPushButton:hover { color: #ffffff; }",
+     /*themed*/
+     "QPushButton { background: transparent; border: none; color: "
+     "{{color.button.container.text}}; font-size: 15px; font-weight: bold; padding: 0px 4px; } "
+     "QPushButton:hover { color: {{color.button.container.hover.text}}; }"},
+
+    {"container.btn", "ContainerTitleBar.cpp: m_closeBtn",
+     /*original*/
+     "QPushButton { background: transparent; border: none; color: #c8d8e8; font-size: 11px; "
+     "font-weight: bold; padding: 0px 4px; } QPushButton:hover { color: #ffffff; }",
+     /*themed*/
+     "QPushButton { background: transparent; border: none; color: "
+     "{{color.button.container.text}}; font-size: 11px; font-weight: bold; padding: 0px 4px; } "
+     "QPushButton:hover { color: {{color.button.container.hover.text}}; }"},
 };
 // END-ENTRIES
 
