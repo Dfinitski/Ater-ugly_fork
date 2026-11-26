@@ -60,6 +60,7 @@
 #include <QPointer>
 
 #include "core/ThemeManager.h"
+#include "ButtonStyles.h"
 
 namespace AetherSDR {
 
@@ -290,17 +291,9 @@ static const QString kLabelStyle =
     "QLabel { background: transparent; border: none; "
     "color: #8aa8c0; font-size: 10px; font-weight: bold; }";
 
-static const QString kMenuBtnNormal =
-    "QPushButton { background: rgba(20, 30, 45, 240); "
-    "border: 1px solid rgba(255, 255, 255, 40); border-radius: 2px; "
-    "color: #c8d8e8; font-size: 11px; font-weight: bold; }"
-    "QPushButton:hover { background: rgba(0, 112, 192, 180); "
-    "border: 1px solid #0090e0; }";
+// kMenuBtnNormal: in the button-style catalogue (ButtonStyles.cpp), "overlay.menu" -- build 776.
 
-static const QString kMenuBtnActive =
-    "QPushButton { background: rgba(0, 112, 192, 180); "
-    "border: 1px solid #0090e0; border-radius: 2px; "
-    "color: #ffffff; font-size: 11px; font-weight: bold; }";
+// kMenuBtnActive: in the button-style catalogue (ButtonStyles.cpp), "overlay.menu.active" -- build 776.
 
 // ANAN fork build 365 (operator, 13.11: "the labels on the band buttons are
 // cut off, to less than the button's width"). The button is 48 px and the
@@ -308,14 +301,7 @@ static const QString kMenuBtnActive =
 // and the text was left a strip in the middle: three characters fit, "2200"
 // and "XVTR" did not. Build 358 took the padding off the transverter buttons
 // only. No padding on any band button: the whole width is the label's.
-static const QString kBandBtnStyle =
-    "QPushButton { background: rgba(30, 40, 55, 220); "
-    "border: 1px solid #304050; border-radius: 3px; padding: 0px; "
-    "color: #c8d8e8; font-size: 11px; font-weight: bold; }"
-    "QPushButton:hover { background: rgba(0, 112, 192, 180); "
-    "border: 1px solid #0090e0; }"
-    "QPushButton:checked { background: {{color.background.2}}; "
-    "color: {{color.text.primary}}; border: 2px solid {{color.text.primary}}; }";
+// kBandBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "overlay.band" -- build 776.
 
 // Build 358: a transverter's name on its 48 px button. The inherited button
 // padding clipped anything past four characters; without it five fit at
@@ -327,14 +313,7 @@ static QString xvtrNameStyle(const QString& base, const QString& name)
          + (name.size() > 5 ? kXvtrLongNameStyle : QString());
 }
 
-static const QString kXvtrBtnStyle =
-    "QPushButton { background: rgba(30, 40, 55, 220); "
-    "border: 1px solid #304050; border-radius: 3px; padding: 0px; "
-    "color: #00d0ff; font-size: 11px; font-weight: bold; }"
-    "QPushButton:hover { background: rgba(0, 112, 192, 180); "
-    "border: 1px solid #0090e0; }"
-    "QPushButton:checked { background: {{color.background.2}}; "
-    "color: {{color.text.primary}}; border: 2px solid {{color.text.primary}}; }";
+// kXvtrBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "overlay.xvtr" -- build 776.
 
 static inline QString colorPickerBtnStyle(const QString& colorHex)
 {
@@ -346,7 +325,7 @@ static QPushButton* makeMenuBtn(const QString& text, QWidget* parent)
 {
     auto* btn = new QPushButton(text, parent);
     btn->setFixedSize(BTN_W, BTN_H);
-    btn->setStyleSheet(kMenuBtnNormal);
+    AetherSDR::ButtonStyles::apply(btn, "overlay.menu");
     return btn;
 }
 
@@ -448,11 +427,7 @@ SpectrumOverlayMenu::SpectrumOverlayMenu(QWidget* parent)
     // Toggle button (arrow)
     m_toggleBtn = new QPushButton(this);
     m_toggleBtn->setFixedSize(BTN_W, BTN_H);
-    AetherSDR::ThemeManager::instance().applyStyleSheet(m_toggleBtn, "QPushButton { background: rgba(20, 30, 45, 240); "
-        "border: 1px solid rgba(255, 255, 255, 40); border-radius: 2px; "
-        "color: {{color.text.primary}}; font-size: 13px; font-weight: bold; padding: 0px; }"
-        "QPushButton:hover { background: rgba(0, 112, 192, 180); "
-        "border: 1px solid {{color.accent.dim}}; }");
+    AetherSDR::ButtonStyles::apply(m_toggleBtn, "overlay.toggle");
     connect(m_toggleBtn, &QPushButton::clicked, this, &SpectrumOverlayMenu::toggle);
 
     // Menu buttons — Band, ANT, DSP handled specially (sub-panels)
@@ -628,7 +603,7 @@ void SpectrumOverlayMenu::buildBandPanel()
 
             auto* btn = new QPushButton(BAND_GRID[idx].label, m_bandPanel);
             btn->setFixedSize(BAND_BTN_W, BAND_BTN_H);
-            ThemeManager::instance().applyStyleSheet(btn, kBandBtnStyle);
+            AetherSDR::ButtonStyles::apply(btn, "overlay.band");
 
             QString bandName = QString::fromLatin1(BAND_GRID[idx].bandName);
             double freq = BAND_GRID[idx].freqMhz;
@@ -1760,7 +1735,7 @@ void SpectrumOverlayMenu::toggleDaxPanel()
         m_daxPanel->move(x() + width(), std::max(m_topLimit, panelY));
         m_daxPanel->raise();
         m_daxPanel->show();
-        m_menuBtns[kBtnDax]->setStyleSheet(kMenuBtnActive);
+        AetherSDR::ButtonStyles::apply(m_menuBtns[kBtnDax], "overlay.menu.active");
     }
 }
 
@@ -1799,7 +1774,7 @@ void SpectrumOverlayMenu::toggleMemoryPanel()
         m_memoryPanel->move(x() + width(), panelY);
         m_memoryPanel->raise();
         m_memoryPanel->show();
-        m_menuBtns[kBtnMemoryBrowse]->setStyleSheet(kMenuBtnActive);
+        AetherSDR::ButtonStyles::apply(m_menuBtns[kBtnMemoryBrowse], "overlay.menu.active");
         m_memoryPanel->focusClosestToFrequency(m_slice ? m_slice->frequency() : -1.0);
     }
 }
@@ -1823,7 +1798,7 @@ void SpectrumOverlayMenu::hideAllSubPanels()
     for (int idx : {kBtnBand, kBtnAnt, kBtnDisplay,
                     kBtnMemoryBrowse, kBtnDax}) {
         if (idx >= 0 && idx < m_menuBtns.size())
-            m_menuBtns[idx]->setStyleSheet(kMenuBtnNormal);
+            AetherSDR::ButtonStyles::apply(m_menuBtns[idx], "overlay.menu");
     }
 }
 
@@ -1837,7 +1812,7 @@ void SpectrumOverlayMenu::showBandPanelAt(const QPoint& pos)
     m_bandPanel->move(pos);
     m_bandPanel->raise();
     m_bandPanel->show();
-    m_menuBtns[kBtnBand]->setStyleSheet(kMenuBtnActive);
+    AetherSDR::ButtonStyles::apply(m_menuBtns[kBtnBand], "overlay.menu.active");
 }
 
 void SpectrumOverlayMenu::toggleBandPanel()
@@ -1860,7 +1835,7 @@ void SpectrumOverlayMenu::toggleAntPanel()
         m_antPanel->move(x() + width(), std::max(m_topLimit, panelY));
         m_antPanel->raise();
         m_antPanel->show();
-        m_menuBtns[kBtnAnt]->setStyleSheet(kMenuBtnActive);
+        AetherSDR::ButtonStyles::apply(m_menuBtns[kBtnAnt], "overlay.menu.active");
     }
 }
 
@@ -3320,7 +3295,7 @@ void SpectrumOverlayMenu::toggleDisplayPanel()
         layoutDisplayPanel();
         m_displayPanel->raise();
         m_displayPanel->show();
-        m_menuBtns[kBtnDisplay]->setStyleSheet(kMenuBtnActive);
+        AetherSDR::ButtonStyles::apply(m_menuBtns[kBtnDisplay], "overlay.menu.active");
     }
 }
 
@@ -4045,7 +4020,7 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
     auto makeBandBtn = [&](int idx) {
         auto* btn = new QPushButton(BAND_GRID[idx].label, m_bandPanel);
         btn->setFixedSize(BAND_BTN_W, BAND_BTN_H);
-        ThemeManager::instance().applyStyleSheet(btn, kBandBtnStyle);
+        AetherSDR::ButtonStyles::apply(btn, "overlay.band");
         btn->setCheckable(true);
         const QString bandName = QString::fromLatin1(BAND_GRID[idx].bandName);
         const double  freq = BAND_GRID[idx].freqMhz;
@@ -4079,7 +4054,7 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
                 bandName, m_declaredBandRanges);
             auto* btn = new QPushButton(label, m_bandPanel);
             btn->setFixedSize(BAND_BTN_W, BAND_BTN_H);
-            ThemeManager::instance().applyStyleSheet(btn, kBandBtnStyle);
+            AetherSDR::ButtonStyles::apply(btn, "overlay.band");
             btn->setCheckable(true);
             const double  freq = def.defaultFreqMhz;
             const QString mode = QString::fromLatin1(def.defaultMode);
@@ -4127,7 +4102,8 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
     for (int i = 0; i < xvtrBandCount; ++i) {
         auto* btn = new QPushButton(bands[i].name, m_bandPanel);
         btn->setFixedSize(BAND_BTN_W, BAND_BTN_H);
-        ThemeManager::instance().applyStyleSheet(btn, xvtrNameStyle(kXvtrBtnStyle, bands[i].name));
+        ThemeManager::instance().applyStyleSheet(btn, xvtrNameStyle(
+            AetherSDR::ButtonStyles::sheet("overlay.xvtr"), bands[i].name));
         btn->setCheckable(true);
         const double freq = bands[i].rfFreqMhz;
         const QString name = bands[i].name;
@@ -4165,7 +4141,7 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
             }
             auto* btn = new QPushButton(BAND_GRID[idx].label, m_bandPanel);
             btn->setFixedSize(BAND_BTN_W, BAND_BTN_H);
-            ThemeManager::instance().applyStyleSheet(btn, kBandBtnStyle);
+            AetherSDR::ButtonStyles::apply(btn, "overlay.band");
             QString bandName = QString::fromLatin1(BAND_GRID[idx].bandName);
             double freq = BAND_GRID[idx].freqMhz;
             QString mode = QString::fromLatin1(BAND_GRID[idx].mode);
@@ -4196,7 +4172,7 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
     if (bandPanelWasVisible)
         showBandPanelAt(bandPanelPos);
     else
-        m_menuBtns[kBtnBand]->setStyleSheet(kMenuBtnNormal);
+        AetherSDR::ButtonStyles::apply(m_menuBtns[kBtnBand], "overlay.menu");
 
     // Rebuild the XVTR sub-panel (kept as fallback)
     if (m_xvtrPanel) {
@@ -4215,28 +4191,21 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
     xvGrid->setContentsMargins(2, 2, 2, 2);
     xvGrid->setSpacing(2);
 
-    const QString btnStyle =
-        "QPushButton { background: rgba(30, 40, 55, 220); "
-        "border: 1px solid #304050; border-radius: 3px; "
-        "color: #c8d8e8; font-size: 11px; font-weight: bold; }"
-        "QPushButton:hover { background: rgba(0, 112, 192, 180); "
-        "border: 1px solid #0090e0; }";
+    // btnStyle / disabledStyle: in the button-style catalogue (ButtonStyles.cpp),
+    // "overlay.xvtr.panel" / "overlay.xvtr.blank" -- build 776.
 
     static constexpr int XVTR_COLS = 2;
     static constexpr int XVTR_MIN_ROWS = 4;
     int totalSlots = qMax(XVTR_MIN_ROWS * XVTR_COLS,
                           (bands.size() + 1 + XVTR_COLS - 1) / XVTR_COLS * XVTR_COLS);
 
-    const QString disabledStyle = btnStyle +
-        "QPushButton:disabled { background: rgba(15, 15, 26, 180); "
-        "color: #252535; border: 1px solid #1a1a2a; }";
-
     // Fill grid: configured bands first, then empty slots, HF button last
     int slot = 0;
     for (const auto& xvtr : bands) {
         auto* btn = new QPushButton(xvtr.name, m_xvtrPanel);
         btn->setFixedSize(BAND_BTN_W, BAND_BTN_H);
-        btn->setStyleSheet(xvtrNameStyle(btnStyle, xvtr.name));
+        ThemeManager::instance().applyStyleSheet(btn, xvtrNameStyle(
+            AetherSDR::ButtonStyles::sheet("overlay.xvtr.panel"), xvtr.name));
 
         const double freq = xvtr.rfFreqMhz;
         const QString name = xvtr.name;
@@ -4257,7 +4226,7 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
     while (slot < totalSlots - 1) {
         auto* blank = new QPushButton("", m_xvtrPanel);
         blank->setFixedSize(BAND_BTN_W, BAND_BTN_H);
-        blank->setStyleSheet(disabledStyle);
+        AetherSDR::ButtonStyles::apply(blank, "overlay.xvtr.blank");
         blank->setEnabled(false);
         xvGrid->addWidget(blank, slot / XVTR_COLS, slot % XVTR_COLS);
         ++slot;
@@ -4266,7 +4235,7 @@ void SpectrumOverlayMenu::setXvtrBands(const QVector<XvtrBand>& bands)
     // HF button in last slot (bottom-right)
     auto* hfBtn = new QPushButton("HF", m_xvtrPanel);
     hfBtn->setFixedSize(BAND_BTN_W, BAND_BTN_H);
-    hfBtn->setStyleSheet(btnStyle);
+    AetherSDR::ButtonStyles::apply(hfBtn, "overlay.xvtr.panel");
     connect(hfBtn, &QPushButton::clicked, this, [this]() {
         const QPoint pos = m_xvtrPanel->pos();
         if (m_xvtrPanel)

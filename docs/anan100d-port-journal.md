@@ -13239,6 +13239,43 @@ ButtonStyles 0; check_button_styles — идентично; check_theme_seed —
 актуален.
 Не проверено на радио, не собиралось под Windows.
 
+## 765. Сборка 776 — кнопки в редактор тем, шаг 7: меню наложений панорамы (кнопки меню, диапазоны, трансвертеры)
+
+Первый шаг по меню наложений (`SpectrumOverlayMenu.cpp`), группа `overlay`
+(7 записей).
+
+- `overlay.menu` / `overlay.menu.active` (`kMenuBtnNormal` / `kMenuBtnActive`)
+  — кнопки столбца меню: обычная / с открытой панелью (Band, ANT, DAX,
+  Memory, Display); `overlay.toggle` — стрелка открытия меню;
+  `overlay.band` (`kBandBtnStyle`) — кнопки диапазонов; `overlay.xvtr`
+  (`kXvtrBtnStyle`) — трансвертеры на панели диапазонов; `overlay.xvtr.panel`
+  / `overlay.xvtr.blank` — кнопки панели трансвертеров, HF и пустые ячейки.
+  Добавка `xvtrNameStyle()` (отступ, шрифт для длинных имён) приклеивается к
+  тексту из каталога как раньше; кнопки панели трансвертеров теперь идут
+  через `ThemeManager` (раньше — `setStyleSheet`).
+- Исходные тексты извлечены скриптом из констант и вызова стрелки;
+  константы убраны.
+- Полупрозрачные `rgba(...)` оставлены в стилях: токен хранит `#aarrggbb`,
+  а `ThemeManager` выводит его как `rgba(r, g, b, 0.941)` — другой текст, чем
+  `rgba(r, g, b, 240)`. Токенами стали только непрозрачные цвета.
+- Токены `color.button.overlay.*` (13). 60 записей × 3 темы — всё
+  идентично: вид не меняется.
+- Общий помощник генерации записей — скрипт с проверкой исходников; в
+  репозиторий не входит (каталог и проверка — в `ButtonStyles.cpp` и
+  `tools/check_button_styles.py`).
+
+Осталось в меню: кнопки ANT, петли, АЦП, входной части, WNB, WFM, панели
+Display.
+
+Файлы: `src/gui/SpectrumOverlayMenu.cpp`, `src/gui/ButtonStyles.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `docs/button-theming.md`,
+`src/core/ForkBuild.h`.
+Проверка: errcheck SpectrumOverlayMenu 4 (= до правки, WanConnection.h),
+ButtonStyles 0; check_button_styles — идентично; check_theme_seed —
+актуален.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

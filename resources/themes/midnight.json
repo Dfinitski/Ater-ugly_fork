@@ -649,6 +649,21 @@
               "split.on.background": "#cc0000",
               "split.on.text": "{color.gray.200}",
               "split.on.hover.background": "#ee2222"
+            },
+            "overlay": {
+              "text": "#c0caf5",
+              "border": "#2f3549",
+              "hover.border": "#779ef2",
+              "active.border": "#779ef2",
+              "active.text": "#ffffff",
+              "toggle.text": "{color.gray.200}",
+              "toggle.hover.border": "{color.blue.700}",
+              "checked.background": "{color.gray.700}",
+              "checked.text": "{color.gray.200}",
+              "checked.border": "{color.gray.200}",
+              "xvtr.text": "#84a8f8",
+              "disabled.text": "#262a3d",
+              "disabled.border": "#1e2232"
             }
           }
         },

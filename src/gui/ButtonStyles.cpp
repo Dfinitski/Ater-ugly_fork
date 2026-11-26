@@ -769,6 +769,101 @@ const Entry kEntries[] = {
      "QPushButton { background: transparent; border: none; color: rgba(255,255,255,235); "
      "font-size: 11px; font-weight: bold; padding: 0px 3px; }QPushButton:hover { color: "
      "rgba(255,255,255,255); }"},
+
+    // ── Spectrum overlay menu, step 1: menu column, band and transverter buttons (build 776)
+    {"overlay.menu", "SpectrumOverlayMenu.cpp: menu column buttons at rest (kMenuBtnNormal, makeMenuBtn)",
+     /*original*/
+     "QPushButton { background: rgba(20, 30, 45, 240); border: 1px solid rgba(255, 255, 255, "
+     "40); border-radius: 2px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+     "}QPushButton:hover { background: rgba(0, 112, 192, 180); border: 1px solid #0090e0; }",
+     /*themed*/
+     "QPushButton { background: rgba(20, 30, 45, 240); border: 1px solid rgba(255, 255, 255, "
+     "40); border-radius: 2px; color: {{color.button.overlay.text}}; font-size: 11px; "
+     "font-weight: bold; }QPushButton:hover { background: rgba(0, 112, 192, 180); border: 1px "
+     "solid {{color.button.overlay.hover.border}}; }"},
+
+    {"overlay.menu.active", "SpectrumOverlayMenu.cpp: the menu button whose panel is open (kMenuBtnActive)",
+     /*original*/
+     "QPushButton { background: rgba(0, 112, 192, 180); border: 1px solid #0090e0; "
+     "border-radius: 2px; color: #ffffff; font-size: 11px; font-weight: bold; }",
+     /*themed*/
+     "QPushButton { background: rgba(0, 112, 192, 180); border: 1px solid "
+     "{{color.button.overlay.active.border}}; border-radius: 2px; color: "
+     "{{color.button.overlay.active.text}}; font-size: 11px; font-weight: bold; }"},
+
+    {"overlay.toggle", "SpectrumOverlayMenu.cpp: the arrow that opens the menu",
+     /*original*/
+     "QPushButton { background: rgba(20, 30, 45, 240); border: 1px solid rgba(255, 255, 255, "
+     "40); border-radius: 2px; color: {{color.text.primary}}; font-size: 13px; font-weight: "
+     "bold; padding: 0px; }QPushButton:hover { background: rgba(0, 112, 192, 180); border: 1px "
+     "solid {{color.accent.dim}}; }",
+     /*themed*/
+     "QPushButton { background: rgba(20, 30, 45, 240); border: 1px solid rgba(255, 255, 255, "
+     "40); border-radius: 2px; color: {{color.button.overlay.toggle.text}}; font-size: 13px; "
+     "font-weight: bold; padding: 0px; }QPushButton:hover { background: rgba(0, 112, 192, "
+     "180); border: 1px solid {{color.button.overlay.toggle.hover.border}}; }"},
+
+    {"overlay.band", "SpectrumOverlayMenu.cpp: band panel buttons (kBandBtnStyle)",
+     /*original*/
+     "QPushButton { background: rgba(30, 40, 55, 220); border: 1px solid #304050; "
+     "border-radius: 3px; padding: 0px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+     "}QPushButton:hover { background: rgba(0, 112, 192, 180); border: 1px solid #0090e0; "
+     "}QPushButton:checked { background: {{color.background.2}}; color: "
+     "{{color.text.primary}}; border: 2px solid {{color.text.primary}}; }",
+     /*themed*/
+     "QPushButton { background: rgba(30, 40, 55, 220); border: 1px solid "
+     "{{color.button.overlay.border}}; border-radius: 3px; padding: 0px; color: "
+     "{{color.button.overlay.text}}; font-size: 11px; font-weight: bold; }QPushButton:hover { "
+     "background: rgba(0, 112, 192, 180); border: 1px solid "
+     "{{color.button.overlay.hover.border}}; }QPushButton:checked { background: "
+     "{{color.button.overlay.checked.background}}; color: "
+     "{{color.button.overlay.checked.text}}; border: 2px solid "
+     "{{color.button.overlay.checked.border}}; }"},
+
+    {"overlay.xvtr", "SpectrumOverlayMenu.cpp: transverter buttons in the band panel (kXvtrBtnStyle; xvtrNameStyle adds padding / font)",
+     /*original*/
+     "QPushButton { background: rgba(30, 40, 55, 220); border: 1px solid #304050; "
+     "border-radius: 3px; padding: 0px; color: #00d0ff; font-size: 11px; font-weight: bold; "
+     "}QPushButton:hover { background: rgba(0, 112, 192, 180); border: 1px solid #0090e0; "
+     "}QPushButton:checked { background: {{color.background.2}}; color: "
+     "{{color.text.primary}}; border: 2px solid {{color.text.primary}}; }",
+     /*themed*/
+     "QPushButton { background: rgba(30, 40, 55, 220); border: 1px solid "
+     "{{color.button.overlay.border}}; border-radius: 3px; padding: 0px; color: "
+     "{{color.button.overlay.xvtr.text}}; font-size: 11px; font-weight: bold; "
+     "}QPushButton:hover { background: rgba(0, 112, 192, 180); border: 1px solid "
+     "{{color.button.overlay.hover.border}}; }QPushButton:checked { background: "
+     "{{color.button.overlay.checked.background}}; color: "
+     "{{color.button.overlay.checked.text}}; border: 2px solid "
+     "{{color.button.overlay.checked.border}}; }"},
+
+    {"overlay.xvtr.panel", "SpectrumOverlayMenu.cpp: transverter panel buttons, HF (btnStyle; xvtrNameStyle adds padding / font)",
+     /*original*/
+     "QPushButton { background: rgba(30, 40, 55, 220); border: 1px solid #304050; "
+     "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+     "}QPushButton:hover { background: rgba(0, 112, 192, 180); border: 1px solid #0090e0; }",
+     /*themed*/
+     "QPushButton { background: rgba(30, 40, 55, 220); border: 1px solid "
+     "{{color.button.overlay.border}}; border-radius: 3px; color: "
+     "{{color.button.overlay.text}}; font-size: 11px; font-weight: bold; }QPushButton:hover { "
+     "background: rgba(0, 112, 192, 180); border: 1px solid "
+     "{{color.button.overlay.hover.border}}; }"},
+
+    {"overlay.xvtr.blank", "SpectrumOverlayMenu.cpp: empty transverter panel slots (disabledStyle)",
+     /*original*/
+     "QPushButton { background: rgba(30, 40, 55, 220); border: 1px solid #304050; "
+     "border-radius: 3px; color: #c8d8e8; font-size: 11px; font-weight: bold; "
+     "}QPushButton:hover { background: rgba(0, 112, 192, 180); border: 1px solid #0090e0; "
+     "}QPushButton:disabled { background: rgba(15, 15, 26, 180); color: #252535; border: 1px "
+     "solid #1a1a2a; }",
+     /*themed*/
+     "QPushButton { background: rgba(30, 40, 55, 220); border: 1px solid "
+     "{{color.button.overlay.border}}; border-radius: 3px; color: "
+     "{{color.button.overlay.text}}; font-size: 11px; font-weight: bold; }QPushButton:hover { "
+     "background: rgba(0, 112, 192, 180); border: 1px solid "
+     "{{color.button.overlay.hover.border}}; }QPushButton:disabled { background: rgba(15, 15, "
+     "26, 180); color: {{color.button.overlay.disabled.text}}; border: 1px solid "
+     "{{color.button.overlay.disabled.border}}; }"},
 };
 // END-ENTRIES
 
