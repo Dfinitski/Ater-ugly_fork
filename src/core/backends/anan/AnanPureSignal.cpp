@@ -828,13 +828,12 @@ QString AnanPureSignal::scheckText(int v)
     //  bit 1 -- the deadlock reset in COLLECT / CALC: the top amplitude
     //           bucket never filled, i.e. the drive did not reach the peak
     //           the feedback scale expects.
+    // Build 791 (operator, 26.11): the short wording.
     QStringList t;
     if (v & 0x01)
-        t << QStringLiteral("new correction rejected: curve jumped vs the last one or gain < 0 "
-                            "(unsteady feedback / level)");
+        t << QStringLiteral("Low FB Level");
     if (v & 0x02)
-        t << QStringLiteral("no full-drive samples: the top of the drive range was never reached "
-                            "(more drive, or HW peak too high)");
+        t << QStringLiteral("No max Power samples");
     if (v & ~0x03)
         t << QStringLiteral("0x%1").arg(v & ~0x03, 0, 16);
     return t.join(QStringLiteral(", "));
