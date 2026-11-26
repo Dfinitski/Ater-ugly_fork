@@ -79,11 +79,7 @@ static const QString kComboStyle =
     "QComboBox QAbstractItemView { background: #1a2a3a; color: #c8d8e8; "
     "selection-background-color: #00b4d8; }";
 
-static const QString kBtnStyle =
-    "QPushButton { background: #00b4d8; color: #0f0f1a; font-weight: bold; "
-    "border: 1px solid #008ba8; padding: 5px 14px; border-radius: 3px; }"
-    "QPushButton:hover { background: #00c8f0; }"
-    "QPushButton:disabled { background: #404060; color: #808080; }";
+// kBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "midi.btn" -- build 782.
 
 // Muted sibling of kBtnStyle for secondary actions — Learn stays the visually
 // primary way to create bindings; manual entry is the bypass (#4760).

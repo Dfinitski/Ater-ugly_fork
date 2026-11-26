@@ -1,4 +1,5 @@
 #include "FramelessWindowTitleBar.h"
+#include "ButtonStyles.h"
 #include "FramelessMoveHelper.h"
 
 #include <QHBoxLayout>
@@ -25,18 +26,14 @@ QString titleStyle(int px)
 
 QString buttonStyle(int px)
 {
-    return QStringLiteral("QPushButton { background: transparent; border: none;"
-                          " color: #c8d8e8; font-size: %1px; font-weight: bold;"
-                          " padding: 0px 4px; }"
-                          "QPushButton:hover { color: #ffffff; }").arg(px);
+    // Build 784: "frameless.button" in the button-style catalogue (ButtonStyles.cpp).
+    return AetherSDR::ButtonStyles::sheet("frameless.button").arg(px);
 }
 
 QString closeButtonStyle(int px)
 {
-    return QStringLiteral("QPushButton { background: transparent; border: none;"
-                          " color: #c8d8e8; font-size: %1px; font-weight: bold;"
-                          " padding: 0px 4px; }"
-                          "QPushButton:hover { color: #ffffff; background: #cc2030; }").arg(px);
+    // Build 784: "frameless.close" in the button-style catalogue (ButtonStyles.cpp).
+    return AetherSDR::ButtonStyles::sheet("frameless.close").arg(px);
 }
 
 }
@@ -67,7 +64,7 @@ FramelessWindowTitleBar::FramelessWindowTitleBar(const QString& title, QWidget* 
     auto* minButton = new QPushButton(QString::fromUtf8("\xe2\x80\x94"), this);
     minButton->setFixedSize(btn, btn);
     minButton->setCursor(Qt::ArrowCursor);
-    minButton->setStyleSheet(buttonStyle(px(11)));
+    AetherSDR::ThemeManager::instance().applyStyleSheet(minButton, buttonStyle(px(11)));
     minButton->setToolTip("Minimize");
     // Title-bar buttons must never become the dialog's default button, or
     // pressing Return in a text field would trigger them (on macOS this minimized
@@ -84,7 +81,7 @@ FramelessWindowTitleBar::FramelessWindowTitleBar(const QString& title, QWidget* 
     auto* maxButton = new QPushButton(QString::fromUtf8("\xe2\x96\xa1"), this);
     maxButton->setFixedSize(btn, btn);
     maxButton->setCursor(Qt::ArrowCursor);
-    maxButton->setStyleSheet(buttonStyle(px(11)));
+    AetherSDR::ThemeManager::instance().applyStyleSheet(maxButton, buttonStyle(px(11)));
     maxButton->setToolTip("Maximize");
     maxButton->setAutoDefault(false);
     maxButton->setDefault(false);
@@ -103,7 +100,7 @@ FramelessWindowTitleBar::FramelessWindowTitleBar(const QString& title, QWidget* 
     auto* closeButton = new QPushButton(QString::fromUtf8("\xc3\x97"), this);
     closeButton->setFixedSize(btn, btn);
     closeButton->setCursor(Qt::ArrowCursor);
-    closeButton->setStyleSheet(closeButtonStyle(px(11)));
+    AetherSDR::ThemeManager::instance().applyStyleSheet(closeButton, closeButtonStyle(px(11)));
     closeButton->setToolTip("Close");
     closeButton->setAutoDefault(false);
     closeButton->setDefault(false);

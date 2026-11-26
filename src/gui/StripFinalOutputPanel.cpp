@@ -1,4 +1,5 @@
 #include "StripFinalOutputPanel.h"
+#include "ButtonStyles.h"
 
 #include "ClientCompKnob.h"
 #include "EditorFramelessTitleBar.h"
@@ -1291,25 +1292,23 @@ void StripFinalOutputPanel::setQuindarActive(bool active)
     // Signal-driven flash — only re-applies the stylesheet when the
     // active state actually changes (twice per PTT: start of intro,
     // end of intro = start of Live; same for outro).  No polling.
-    const QString css = active
-        ? "QPushButton {"
-          "  background: {{color.accent.danger}}; color: #ffffff;"
-          "  border: 1px solid {{color.accent.danger}};"
-          "  border-radius: 3px; font-size: 10px;"
-          "  font-weight: bold; padding: 1px;"
-          "}"
-        : "QPushButton {"
-          "  background: {{color.background.1}}; border: 1px solid {{color.border.strong}};"
-          "  border-radius: 3px; color: {{color.text.label}};"
-          "  font-size: 10px; font-weight: bold; padding: 1px;"
-          "}"
-          "QPushButton:hover { color: {{color.text.primary}}; }"
-          "QPushButton:checked {"
-          "  background: {{color.toggle.footer.danger.background.checked}}; color: {{color.accent.danger}};"
-          "  border: 1px solid {{color.accent.danger}};"
-          "}"
-          "QPushButton:checked:hover { background: {{color.toggle.footer.danger.background.hover}}; }";
-    AetherSDR::ThemeManager::instance().applyStyleSheet(m_quinBtn, css);
+    // Build 784: "stripout.quin.on" in the button-style catalogue (ButtonStyles.cpp);
+    // the resting look is all theme tokens and stays here.
+    if (active) {
+        AetherSDR::ButtonStyles::apply(m_quinBtn, "stripout.quin.on");
+        return;
+    }
+    AetherSDR::ThemeManager::instance().applyStyleSheet(m_quinBtn, QStringLiteral("QPushButton {"
+        "  background: {{color.background.1}}; border: 1px solid {{color.border.strong}};"
+        "  border-radius: 3px; color: {{color.text.label}};"
+        "  font-size: 10px; font-weight: bold; padding: 1px;"
+        "}"
+        "QPushButton:hover { color: {{color.text.primary}}; }"
+        "QPushButton:checked {"
+        "  background: {{color.toggle.footer.danger.background.checked}}; color: {{color.accent.danger}};"
+        "  border: 1px solid {{color.accent.danger}};"
+        "}"
+        "QPushButton:checked:hover { background: {{color.toggle.footer.danger.background.hover}}; }"));
 }
 
 } // namespace AetherSDR

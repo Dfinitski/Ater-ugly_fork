@@ -228,8 +228,7 @@ PsAmpViewDialog::PsAmpViewDialog(PsApplet* applet, QWidget* parent)
     m_reset = new QPushButton(tr("Reset"));
     m_reset->setToolTip(tr("Drop the correction and start again"));
     // Latched buttons show their state (operator: "they do not stay pressed").
-    const QString latch = QStringLiteral(
-        "QPushButton:checked { background: #0070c0; color: #ffffff; border: 1px solid #40b0ff; }");
+    // (latch: "psampview.latch" in the button-style catalogue -- build 783.)
     for (QPushButton* b : {m_twoTone, m_cal, m_auto, m_single})
         AetherSDR::ButtonStyles::apply(b, "psampview.latch");
     AetherSDR::ButtonStyles::apply(m_twoTone, "psampview.two.tone");

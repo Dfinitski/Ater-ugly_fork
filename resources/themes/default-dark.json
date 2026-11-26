@@ -722,6 +722,8 @@
               "hover.text":       "#c8d8e8"
             },
             "eqeditor": {
+              "checked.background":       "#c8a040",
+              "checked.border":           "#d4b050",
               "checked.hover.background": "#d4b050"
             },
             "gateeditor": {
@@ -868,6 +870,7 @@
               "border":               "#304050",
               "text":                 "#c8d8e8",
               "hover.background":     "#203040",
+              "bug.background":       "#cc4040",
               "bug.hover.background": "#dd5050"
             },
             "vfo2": {
@@ -885,9 +888,12 @@
               "hover.text": "#ffffff"
             },
             "atupretune": {
+              "background":             "#006030",
+              "border":                 "#008040",
               "hover.background":       "#007038",
               "disabled.background":    "#1a2a1a",
               "disabled.text":          "#556070",
+              "abort.background":       "#802020",
               "abort.hover.background": "#903030"
             },
             "audiodevice": {
@@ -1013,7 +1019,49 @@
               "hover.border":     "#00b4d8"
             },
             "swrlicense": {
-              "default.border": "#00f0ff"
+              "default.border":   "#00f0ff",
+              "indicator.border": "#406080"
+            },
+            "clock": {
+              "background":          "{color.gray.800}",
+              "border":              "{color.gray.700}",
+              "text":                "{color.gray.200}",
+              "hover.background":    "{color.gray.700}",
+              "checked.background":  "#006040",
+              "checked.text":        "#00ff88",
+              "checked.border":      "#00a060",
+              "disabled.background": "#1a1a2a",
+              "disabled.text":       "#556070",
+              "disabled.border":     "#2a3040"
+            },
+            "stripout": {
+              "text": "#ffffff"
+            },
+            "whatsnew": {
+              "background":                 "#1a2a3a",
+              "text":                       "#d6e2ee",
+              "border":                     "#304050",
+              "hover.background":           "#20384c",
+              "pressed.background":         "#162838",
+              "primary.background":         "#00b4d8",
+              "primary.text":               "#071018",
+              "primary.hover.background":   "#17c9ea",
+              "primary.pressed.background": "#0798b6"
+            },
+            "adaptive": {
+              "text":                          "#c8d8e8",
+              "indicator.border":              "#304050",
+              "indicator.background":          "#1a2a3a",
+              "indicator.checked.background":  "#0070c0",
+              "indicator.checked.border":      "#0090e0",
+              "disabled.text":                 "#5a6a78",
+              "indicator.disabled.border":     "#243240",
+              "indicator.disabled.background": "#141f2a"
+            },
+            "frameless": {
+              "text":             "#c8d8e8",
+              "hover.text":       "#ffffff",
+              "hover.background": "#cc2030"
             }
           }
         },

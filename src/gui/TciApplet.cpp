@@ -32,11 +32,7 @@ namespace {
 
 // kSectionStyle: in the button-style catalogue (ButtonStyles.cpp), group "tci".
 
-const QString kGreenToggle =
-    "QPushButton { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px;"
-    " color: #c8d8e8; font-size: 11px; font-weight: bold; padding: 2px 8px; }"
-    "QPushButton:hover { background: #204060; }"
-    "QPushButton:checked { background: #006040; color: #00ff88; border: 1px solid #00a060; }";
+// kGreenToggle: in the button-style catalogue (ButtonStyles.cpp), "tci.green.toggle" -- build 782.
 
 constexpr const char* kDimLabel =
     "QLabel { color: #8090a0; font-size: 11px; }";

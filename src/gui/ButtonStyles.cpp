@@ -1511,9 +1511,10 @@ const Entry kEntries[] = {
      "QPushButton {  background: {{color.background.0}}; color: {{color.text.primary}};  "
      "border: 1px solid {{color.background.1}}; border-radius: 3px;  padding: 2px 12px; "
      "font-size: 11px; font-weight: bold;}QPushButton:hover { background: "
-     "{{color.background.1}}; }QPushButton:checked {  background: #c8a040; color: "
-     "{{color.background.0}};  border-color: #d4b050;}QPushButton:checked:hover { background: "
-     "{{color.button.eqeditor.checked.hover.background}}; }"},
+     "{{color.background.1}}; }QPushButton:checked {  background: "
+     "{{color.button.eqeditor.checked.background}}; color: {{color.background.0}};  "
+     "border-color: {{color.button.eqeditor.checked.border}};}QPushButton:checked:hover { "
+     "background: {{color.button.eqeditor.checked.hover.background}}; }"},
 
     // ── ClientGateEditor.cpp (group gateeditor)
     {"gateeditor.flip", "ClientGateEditor.cpp: m_flip",
@@ -1903,8 +1904,9 @@ const Entry kEntries[] = {
      "border-radius: 4px; padding: 8px 20px; font-size: 13px; }QPushButton:hover { background: "
      "#dd5050; }",
      /*themed*/
-     "QPushButton { background: #cc4040; color: {{color.text.primary}}; font-weight: bold; "
-     "border-radius: 4px; padding: 8px 20px; font-size: 13px; }QPushButton:hover { background: "
+     "QPushButton { background: {{color.button.titlebar.bug.background}}; color: "
+     "{{color.text.primary}}; font-weight: bold; border-radius: 4px; padding: 8px 20px; "
+     "font-size: 13px; }QPushButton:hover { background: "
      "{{color.button.titlebar.bug.hover.background}}; }"},
 
     // ── VfoWidget.cpp (group vfo2)
@@ -1952,10 +1954,11 @@ const Entry kEntries[] = {
      "{{color.text.primary}}; padding: 4px 12px; font-weight: bold; }QPushButton:hover { "
      "background: #007038; }QPushButton:disabled { background: #1a2a1a; color: #556070; }",
      /*themed*/
-     "QPushButton { background: #006030; border: 1px solid #008040; color: "
-     "{{color.text.primary}}; padding: 4px 12px; font-weight: bold; }QPushButton:hover { "
-     "background: {{color.button.atupretune.hover.background}}; }QPushButton:disabled { "
-     "background: {{color.button.atupretune.disabled.background}}; color: "
+     "QPushButton { background: {{color.button.atupretune.background}}; border: 1px solid "
+     "{{color.button.atupretune.border}}; color: {{color.text.primary}}; padding: 4px 12px; "
+     "font-weight: bold; }QPushButton:hover { background: "
+     "{{color.button.atupretune.hover.background}}; }QPushButton:disabled { background: "
+     "{{color.button.atupretune.disabled.background}}; color: "
      "{{color.button.atupretune.disabled.text}}; }"},
 
     {"atupretune.abort", "AtuPreTuneDialog.cpp: m_abortBtn",
@@ -1964,9 +1967,10 @@ const Entry kEntries[] = {
      "{{color.text.primary}}; padding: 4px 12px; font-weight: bold; }QPushButton:hover { "
      "background: #903030; }",
      /*themed*/
-     "QPushButton { background: #802020; border: 1px solid {{color.accent.danger}}; color: "
-     "{{color.text.primary}}; padding: 4px 12px; font-weight: bold; }QPushButton:hover { "
-     "background: {{color.button.atupretune.abort.hover.background}}; }"},
+     "QPushButton { background: {{color.button.atupretune.abort.background}}; border: 1px "
+     "solid {{color.accent.danger}}; color: {{color.text.primary}}; padding: 4px 12px; "
+     "font-weight: bold; }QPushButton:hover { background: "
+     "{{color.button.atupretune.abort.hover.background}}; }"},
 
     // ── AudioDeviceChangeDialog.cpp (group audiodevice)
     {"audiodevice.dialog", "AudioDeviceChangeDialog.cpp: this",
@@ -2381,6 +2385,141 @@ const Entry kEntries[] = {
      "bold; border: 1px solid {{color.accent.dim}}; border-radius: 3px; padding: 6px 16px; "
      "font-size: 11px; }QPushButton:hover { background: {{color.accent.bright}}; "
      "}QPushButton:default { border: 2px solid {{color.button.swrlicense.default.border}}; }"},
+
+    // ── AetherClockApplet.cpp (group clock, build 784)
+    {"clock.base", "AetherClockApplet.cpp: drawer toggle, debug toggle (kButtonBase)",
+     /*original*/
+     "QPushButton { background: {{color.background.1}}; border: 1px solid "
+     "{{color.background.2}}; border-radius: 3px; color: {{color.text.primary}}; font-size: "
+     "10px; font-weight: bold; padding: 2px 4px; }QPushButton:hover { background: "
+     "{{color.background.2}}; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.clock.background}}; border: 1px solid "
+     "{{color.button.clock.border}}; border-radius: 3px; color: {{color.button.clock.text}}; "
+     "font-size: 10px; font-weight: bold; padding: 2px 4px; }QPushButton:hover { background: "
+     "{{color.button.clock.hover.background}}; }"},
+
+    {"clock.startstop", "AetherClockApplet.cpp: Start / Stop (kButtonBase + kStartActive + kDisabledBtn)",
+     /*original*/
+     "QPushButton { background: {{color.background.1}}; border: 1px solid "
+     "{{color.background.2}}; border-radius: 3px; color: {{color.text.primary}}; font-size: "
+     "10px; font-weight: bold; padding: 2px 4px; }QPushButton:hover { background: "
+     "{{color.background.2}}; }QPushButton:checked { background-color: #006040; color: "
+     "#00ff88; border: 1px solid #00a060; }QPushButton:disabled { background-color: #1a1a2a; "
+     "color: #556070; border: 1px solid #2a3040; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.clock.background}}; border: 1px solid "
+     "{{color.button.clock.border}}; border-radius: 3px; color: {{color.button.clock.text}}; "
+     "font-size: 10px; font-weight: bold; padding: 2px 4px; }QPushButton:hover { background: "
+     "{{color.button.clock.hover.background}}; }QPushButton:checked { background-color: "
+     "{{color.button.clock.checked.background}}; color: {{color.button.clock.checked.text}}; "
+     "border: 1px solid {{color.button.clock.checked.border}}; }QPushButton:disabled { "
+     "background-color: {{color.button.clock.disabled.background}}; color: "
+     "{{color.button.clock.disabled.text}}; border: 1px solid "
+     "{{color.button.clock.disabled.border}}; }"},
+
+    {"clock.tune", "AetherClockApplet.cpp: Tune (kButtonBase + kDisabledBtn)",
+     /*original*/
+     "QPushButton { background: {{color.background.1}}; border: 1px solid "
+     "{{color.background.2}}; border-radius: 3px; color: {{color.text.primary}}; font-size: "
+     "10px; font-weight: bold; padding: 2px 4px; }QPushButton:hover { background: "
+     "{{color.background.2}}; }QPushButton:disabled { background-color: #1a1a2a; color: "
+     "#556070; border: 1px solid #2a3040; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.clock.background}}; border: 1px solid "
+     "{{color.button.clock.border}}; border-radius: 3px; color: {{color.button.clock.text}}; "
+     "font-size: 10px; font-weight: bold; padding: 2px 4px; }QPushButton:hover { background: "
+     "{{color.button.clock.hover.background}}; }QPushButton:disabled { background-color: "
+     "{{color.button.clock.disabled.background}}; color: {{color.button.clock.disabled.text}}; "
+     "border: 1px solid {{color.button.clock.disabled.border}}; }"},
+
+    // ── stripout (build 784)
+    {"stripout.quin.on", "StripFinalOutputPanel.cpp: QUIN while intro / outro plays",
+     /*original*/
+     "QPushButton {  background: {{color.accent.danger}}; color: #ffffff;  border: 1px solid "
+     "{{color.accent.danger}};  border-radius: 3px; font-size: 10px;  font-weight: bold; "
+     "padding: 1px;}",
+     /*themed*/
+     "QPushButton {  background: {{color.accent.danger}}; color: "
+     "{{color.button.stripout.text}};  border: 1px solid {{color.accent.danger}};  "
+     "border-radius: 3px; font-size: 10px;  font-weight: bold; padding: 1px;}"},
+
+    // ── whatsnew (build 784)
+    {"whatsnew.secondary", "WhatsNewDialog.cpp: Find / Upgrade / Skip (secondaryButtonStyle)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; color: #d6e2ee; font-weight: bold; font-size: 13px; "
+     "border-radius: 6px; padding: 0 24px; border: 1px solid #304050; }QPushButton:hover { "
+     "background: #20384c; }QPushButton:pressed { background: #162838; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.whatsnew.background}}; color: "
+     "{{color.button.whatsnew.text}}; font-weight: bold; font-size: 13px; border-radius: 6px; "
+     "padding: 0 24px; border: 1px solid {{color.button.whatsnew.border}}; }QPushButton:hover "
+     "{ background: {{color.button.whatsnew.hover.background}}; }QPushButton:pressed { "
+     "background: {{color.button.whatsnew.pressed.background}}; }"},
+
+    {"whatsnew.primary", "WhatsNewDialog.cpp: Close (primaryButtonStyle)",
+     /*original*/
+     "QPushButton { background: #00b4d8; color: #071018; font-weight: bold; font-size: 13px; "
+     "border-radius: 6px; padding: 0 28px; border: none; }QPushButton:hover { background: "
+     "#17c9ea; }QPushButton:pressed { background: #0798b6; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.whatsnew.primary.background}}; color: "
+     "{{color.button.whatsnew.primary.text}}; font-weight: bold; font-size: 13px; "
+     "border-radius: 6px; padding: 0 28px; border: none; }QPushButton:hover { background: "
+     "{{color.button.whatsnew.primary.hover.background}}; }QPushButton:pressed { background: "
+     "{{color.button.whatsnew.primary.pressed.background}}; }"},
+
+    // ── adaptive (build 784)
+    {"adaptive.check", "AdaptiveFilterControls.cpp: Adaptive RX filter check box (%1 = font size)",
+     /*original*/
+     "QCheckBox { background: transparent; color: #c8d8e8; font-size: %1px; spacing: 5px; "
+     "}QCheckBox::indicator { width: 13px; height: 13px; border-radius: 2px; border: 1px solid "
+     "#304050; background: #1a2a3a; }QCheckBox::indicator:checked { background: #0070c0; "
+     "border: 1px solid #0090e0; }QCheckBox:disabled { color: #5a6a78; "
+     "}QCheckBox::indicator:disabled { border: 1px solid #243240; background: #141f2a; }",
+     /*themed*/
+     "QCheckBox { background: transparent; color: {{color.button.adaptive.text}}; font-size: "
+     "%1px; spacing: 5px; }QCheckBox::indicator { width: 13px; height: 13px; border-radius: "
+     "2px; border: 1px solid {{color.button.adaptive.indicator.border}}; background: "
+     "{{color.button.adaptive.indicator.background}}; }QCheckBox::indicator:checked { "
+     "background: {{color.button.adaptive.indicator.checked.background}}; border: 1px solid "
+     "{{color.button.adaptive.indicator.checked.border}}; }QCheckBox:disabled { color: "
+     "{{color.button.adaptive.disabled.text}}; }QCheckBox::indicator:disabled { border: 1px "
+     "solid {{color.button.adaptive.indicator.disabled.border}}; background: "
+     "{{color.button.adaptive.indicator.disabled.background}}; }"},
+
+    // ── frameless (build 784)
+    {"frameless.button", "FramelessWindowTitleBar.cpp: minimise / maximise (%1 = font size)",
+     /*original*/
+     "QPushButton { background: transparent; border: none; color: #c8d8e8; font-size: %1px; "
+     "font-weight: bold; padding: 0px 4px; }QPushButton:hover { color: #ffffff; }",
+     /*themed*/
+     "QPushButton { background: transparent; border: none; color: "
+     "{{color.button.frameless.text}}; font-size: %1px; font-weight: bold; padding: 0px 4px; "
+     "}QPushButton:hover { color: {{color.button.frameless.hover.text}}; }"},
+
+    {"frameless.close", "FramelessWindowTitleBar.cpp: close (%1 = font size)",
+     /*original*/
+     "QPushButton { background: transparent; border: none; color: #c8d8e8; font-size: %1px; "
+     "font-weight: bold; padding: 0px 4px; }QPushButton:hover { color: #ffffff; background: "
+     "#cc2030; }",
+     /*themed*/
+     "QPushButton { background: transparent; border: none; color: "
+     "{{color.button.frameless.text}}; font-size: %1px; font-weight: bold; padding: 0px 4px; "
+     "}QPushButton:hover { color: {{color.button.frameless.hover.text}}; background: "
+     "{{color.button.frameless.hover.background}}; }"},
+
+    // ── swrlicense (build 784)
+    {"swrlicense.remember", "SwrSweepLicenseDialog.cpp: Remember my answer",
+     /*original*/
+     "QCheckBox { color: {{color.text.secondary}}; font-size: 11px; }QCheckBox::indicator { "
+     "width: 14px; height: 14px; border: 1px solid #406080; border-radius: 2px; background: "
+     "{{color.background.0}}; }QCheckBox::indicator:checked { background: {{color.accent}}; }",
+     /*themed*/
+     "QCheckBox { color: {{color.text.secondary}}; font-size: 11px; }QCheckBox::indicator { "
+     "width: 14px; height: 14px; border: 1px solid "
+     "{{color.button.swrlicense.indicator.border}}; border-radius: 2px; background: "
+     "{{color.background.0}}; }QCheckBox::indicator:checked { background: {{color.accent}}; }"},
 };
 // END-ENTRIES
 

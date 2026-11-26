@@ -877,6 +877,8 @@
               "hover.text": "#eee8d5"
             },
             "eqeditor": {
+              "checked.background": "#c8a040",
+              "checked.border": "#d4b050",
               "checked.hover.background": "#d4b050"
             },
             "gateeditor": {
@@ -1023,6 +1025,7 @@
               "border": "#0f4c5c",
               "text": "#eee8d5",
               "hover.background": "#093c49",
+              "bug.background": "#cc4040",
               "bug.hover.background": "#dd5050"
             },
             "vfo2": {
@@ -1040,9 +1043,12 @@
               "hover.text": "#ffffff"
             },
             "atupretune": {
+              "background": "#006030",
+              "border": "#008040",
               "hover.background": "#007038",
               "disabled.background": "#1a2a1a",
               "disabled.text": "#5a7077",
+              "abort.background": "#802020",
               "abort.hover.background": "#903030"
             },
             "audiodevice": {
@@ -1168,7 +1174,49 @@
               "hover.border": "#2485ca"
             },
             "swrlicense": {
-              "default.border": "#3492d6"
+              "default.border": "#3492d6",
+              "indicator.border": "#586e75"
+            },
+            "clock": {
+              "background": "{color.gray.800}",
+              "border": "{color.gray.700}",
+              "text": "{color.gray.200}",
+              "hover.background": "{color.gray.700}",
+              "checked.background": "#006040",
+              "checked.text": "#00ff88",
+              "checked.border": "#00a060",
+              "disabled.background": "#05303c",
+              "disabled.text": "#5a7077",
+              "disabled.border": "#0b414f"
+            },
+            "stripout": {
+              "text": "#ffffff"
+            },
+            "whatsnew": {
+              "background": "#073642",
+              "text": "#f4eedb",
+              "border": "#0f4c5c",
+              "hover.background": "#0b4250",
+              "pressed.background": "#06333f",
+              "primary.background": "#2485ca",
+              "primary.text": "#00252e",
+              "primary.hover.background": "#3593d6",
+              "primary.pressed.background": "#217ab9"
+            },
+            "adaptive": {
+              "text": "#eee8d5",
+              "indicator.border": "#0f4c5c",
+              "indicator.background": "#073642",
+              "indicator.checked.background": "#227bbb",
+              "indicator.checked.border": "#2589cf",
+              "disabled.text": "#5f747b",
+              "indicator.disabled.border": "#0a3e4b",
+              "indicator.disabled.background": "#042f3a"
+            },
+            "frameless": {
+              "text": "#eee8d5",
+              "hover.text": "#ffffff",
+              "hover.background": "#cc2030"
             }
           }
         },

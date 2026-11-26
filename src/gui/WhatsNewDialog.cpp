@@ -1,4 +1,5 @@
 #include "WhatsNewDialog.h"
+#include "ButtonStyles.h"
 #include "WhatsNewLinks.h"
 #include "core/UpdateChecker.h"
 #include "core/VersionNumber.h"
@@ -144,24 +145,8 @@ QString releaseMarkdownStyleSheet()
         "hr { color: #304050; background-color: #304050; height: 1px; }");
 }
 
-QString secondaryButtonStyle()
-{
-    return QStringLiteral(
-        "QPushButton { background: #1a2a3a; color: #d6e2ee; font-weight: bold; "
-        "font-size: 13px; border-radius: 6px; padding: 0 24px; "
-        "border: 1px solid #304050; }"
-        "QPushButton:hover { background: #20384c; }"
-        "QPushButton:pressed { background: #162838; }");
-}
-
-QString primaryButtonStyle()
-{
-    return QStringLiteral(
-        "QPushButton { background: #00b4d8; color: #071018; font-weight: bold; "
-        "font-size: 13px; border-radius: 6px; padding: 0 28px; border: none; }"
-        "QPushButton:hover { background: #17c9ea; }"
-        "QPushButton:pressed { background: #0798b6; }");
-}
+// secondaryButtonStyle() / primaryButtonStyle(): in the button-style catalogue
+// (ButtonStyles.cpp), "whatsnew.secondary" / "whatsnew.primary" -- build 784.
 
 void applyReleaseMarkdownSpacing(QTextDocument* document)
 {
@@ -286,7 +271,7 @@ void WhatsNewDialog::buildUI(const QString& lastSeenVersion,
     findBtn->setMinimumWidth(96);
     findBtn->setFixedHeight(36);
     findBtn->setCursor(Qt::PointingHandCursor);
-    findBtn->setStyleSheet(secondaryButtonStyle());
+    AetherSDR::ButtonStyles::apply(findBtn, "whatsnew.secondary");
     connect(findBtn, &QPushButton::clicked, this, &WhatsNewDialog::promptFind);
     footerLayout->addWidget(findBtn, 0, Qt::AlignCenter);
 
@@ -294,7 +279,7 @@ void WhatsNewDialog::buildUI(const QString& lastSeenVersion,
         auto* upgradeBtn = new QPushButton("Upgrade");
         upgradeBtn->setFixedHeight(36);
         upgradeBtn->setCursor(Qt::PointingHandCursor);
-        upgradeBtn->setStyleSheet(secondaryButtonStyle());
+        AetherSDR::ButtonStyles::apply(upgradeBtn, "whatsnew.secondary");
         connect(upgradeBtn, &QPushButton::clicked, this, [this] {
             QDesktopServices::openUrl(QUrl(AetherSDR::UpdateChecker::kReleasesPageUrl));
             close();
@@ -304,7 +289,7 @@ void WhatsNewDialog::buildUI(const QString& lastSeenVersion,
         auto* skipBtn = new QPushButton("Skip this version");
         skipBtn->setFixedHeight(36);
         skipBtn->setCursor(Qt::PointingHandCursor);
-        skipBtn->setStyleSheet(secondaryButtonStyle());
+        AetherSDR::ButtonStyles::apply(skipBtn, "whatsnew.secondary");
         connect(skipBtn, &QPushButton::clicked, this, [currentVersion, this] {
             auto& s = AppSettings::instance();
             s.setValue("LastSeenVersion", currentVersion);
@@ -318,7 +303,7 @@ void WhatsNewDialog::buildUI(const QString& lastSeenVersion,
     closeBtn->setMinimumWidth(96);
     closeBtn->setFixedHeight(36);
     closeBtn->setCursor(Qt::PointingHandCursor);
-    closeBtn->setStyleSheet(primaryButtonStyle());
+    AetherSDR::ButtonStyles::apply(closeBtn, "whatsnew.primary");
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::close);
     footerLayout->addWidget(closeBtn, 0, Qt::AlignCenter);
     footerLayout->addStretch(1);

@@ -1,4 +1,5 @@
 #include "AetherClockApplet.h"
+#include "ButtonStyles.h"
 
 #include "ClockAlignmentWidget.h"
 #include "ComboStyle.h"
@@ -96,26 +97,14 @@ void applyStageStyle(QLabel* cell, StageState st)
 
 // Shared themed button chrome (matches the applet style guide standard
 // button: compact, bold, token-driven so it live-re-themes).
-const QString& kButtonBase()
-{
-    static const QString s = ThemeManager::instance().resolve(
-        "QPushButton { background: {{color.background.1}};"
-        " border: 1px solid {{color.background.2}};"
-        " border-radius: 3px; color: {{color.text.primary}};"
-        " font-size: 10px; font-weight: bold; padding: 2px 4px; }"
-        "QPushButton:hover { background: {{color.background.2}}; }");
-    return s;
-}
+// kButtonBase(): in the button-style catalogue (ButtonStyles.cpp), group "clock" -- build 784.
+// It was resolved once and set untracked, so the remap themes recoloured
+// the resolved colours a second time (as the RX applet did, build 772).
 
 // Green "active" checked state — style guide's activate/running family
 // (background #006040, text #00ff88, border #00a060).
-const QString kStartActive =
-    "QPushButton:checked { background-color: #006040; color: #00ff88;"
-    " border: 1px solid #00a060; }";
+// kStartActive / kDisabledBtn: in the button-style catalogue, group "clock".
 
-const QString kDisabledBtn =
-    "QPushButton:disabled { background-color: #1a1a2a; color: #556070;"
-    " border: 1px solid #2a3040; }";
 
 QLabel* makeSettingLabel(const QString& text, QWidget* parent)
 {
@@ -473,7 +462,7 @@ void AetherClockApplet::buildUi()
         m_startStopButton->setObjectName(QStringLiteral("clockEnable"));
         m_startStopButton->setAccessibleName(QStringLiteral("AetherClock enable"));
         m_startStopButton->setCheckable(true);
-        m_startStopButton->setStyleSheet(kButtonBase() + kStartActive + kDisabledBtn);
+        AetherSDR::ButtonStyles::apply(m_startStopButton, "clock.startstop");
         m_startStopButton->setFixedHeight(20);
         m_startStopButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         connect(m_startStopButton, &QPushButton::clicked, this, [this]() {
@@ -499,7 +488,7 @@ void AetherClockApplet::buildUi()
         controlRow->addWidget(m_startStopButton, 1);
 
         m_drawerToggle = new QPushButton(this);
-        m_drawerToggle->setStyleSheet(kButtonBase());
+        AetherSDR::ButtonStyles::apply(m_drawerToggle, "clock.base");
         m_drawerToggle->setFixedHeight(20);
         m_drawerToggle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         connect(m_drawerToggle, &QPushButton::clicked, this, [this]() {
@@ -593,7 +582,7 @@ void AetherClockApplet::buildSettingsDrawer()
 
     // Tune slice → <preset>.
     m_tuneButton = new QPushButton(m_settingsDrawer);
-    m_tuneButton->setStyleSheet(kButtonBase() + kDisabledBtn);
+    AetherSDR::ButtonStyles::apply(m_tuneButton, "clock.tune");
     m_tuneButton->setFixedHeight(20);
     m_tuneButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     connect(m_tuneButton, &QPushButton::clicked, this,
@@ -617,7 +606,7 @@ void AetherClockApplet::buildSettingsDrawer()
     m_debugToggle = new QPushButton(m_settingsDrawer);
     m_debugToggle->setObjectName(QStringLiteral("clockDebugToggle"));
     m_debugToggle->setAccessibleName(QStringLiteral("AetherClock debug log"));
-    m_debugToggle->setStyleSheet(kButtonBase());
+    AetherSDR::ButtonStyles::apply(m_debugToggle, "clock.base");
     m_debugToggle->setFixedHeight(20);
     m_debugToggle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     connect(m_debugToggle, &QPushButton::clicked, this, [this]() {

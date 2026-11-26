@@ -64,6 +64,7 @@ aliasing one family value).
 | 781 | `rx` (rest), `ps` (PureSignal applet), `pan` (panadapter applet) | `rx.addrx`, `rx.badge.tx`, `rx.badge.rx`, `ps.button`, `ps.ps`, `ps.twotone`, `pan.decoder`, `pan.decoder.close` | +RX, TX badge; PS, 2 Tone and the other PureSignal buttons; CW / RTTY decoder bar buttons and close |
 | 782 | 23 files, converted by `engine` (applets, panels, title bars): `ftpanel`, `js8panel`, `acom`, `bandstack`, `eqeditor`, `gateeditor`, `pudu`, `puduedit`, `tubeeditor`, `cwx`, `dax`, `daxiq`, `dspparam`, `eq`, `meter`, `mqtt`, `phone`, `overlay2`, `spectrum`, `tci`, `titlebar`, `vfo2`, `container` | 38 entries; ids and sites are in the catalogue |
 | 783 | 14 dialogs, by `engine`: `atupretune`, `audiodevice`, `disconnect`, `stations`, `dxcommands`, `help`, `midi`, `mqttsettings`, `profileio`, `profiles`, `psampview`, `settingsbrowser`, `shortcuts`, `swrlicense` | 18 entries; dialog-wide sheets keep their non-button colours literal |
+| 784 | by hand: `clock` (AetherClock -- fixes the same double remap as RX), `stripout` (QUIN flash), `whatsnew`, `adaptive` (`.arg` font size), `frameless` (`.arg` font size), `swrlicense.remember`; sub-dialogs of the settings browser | 10 entries; also tokens the engine missed in sheets that mix `{{tokens}}` and literals (`eqeditor`, `titlebar`, `atupretune`) |
 
 Primitive references. A group token may hold a primitive reference (`{color.gray.800}`) when the
 original sheet used a generic token (`{{color.background.1}}`): the remap themes resolve it to their
@@ -91,9 +92,18 @@ or a ternary of them is converted mechanically: every `#rgb` / `#rrggbb` inside 
 same, qualified by the entry when it differs. Colours in other rules of a dialog-wide sheet stay
 literal. Sheets built with `.arg()` and widgets whose sheet is read back in code are left alone.
 
-## Still to do (31 button sheets with literal colours after build 783)
+## Left as they are (build 784)
 
-Client effect
-editors, container title bars (7), DAX,
-TCI, MQTT, title bars, dialogs. Dynamic sheets (built with `QString::arg`, e.g. quick memory
-buttons) need tokens read in code — handled separately.
+All button sheets with fixed colours are in the catalogue. What is left on purpose:
+
+- **Colour from data:** RX applet receiver buttons (slice colour, sheet compared and dimmed in code),
+  colour-picker swatches (overlay menu, spot settings), quick-memory gradient buttons (band colours).
+- **Read back in code:** the overlay menu's background-colour swatch parses its own sheet.
+- **Not a widget sheet:** `main.cpp` application-wide check-box rule; the overlay Display scope-mode
+  row (one scoped sheet set plainly).
+- **No literal button colour:** the forced-disconnect dialog in `MainWindow.cpp` (its buttons are
+  already theme tokens).
+- **Dead code:** `kEnableStyle` in the comp / de-ess / gate / tube applets, `kBypassStyle` and
+  `kLimBtnStyle` in the comp editor, `kStepBtnStyle` in `PhoneCwApplet.cpp` -- defined, never used.
+
+Next: the family layer (similar groups aliasing one family value) for the theme editor.

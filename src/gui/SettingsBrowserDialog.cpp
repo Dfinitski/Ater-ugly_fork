@@ -51,31 +51,7 @@ constexpr int kRoleSecret = Qt::UserRole + 4;    // bool: rendered redacted
 // never carries a flat value, so no plaintext is stashed for a copy action.
 constexpr int kRoleRawValue = Qt::UserRole + 5;
 
-const QString kDialogStyle =
-    "QDialog { background: #0f0f1a; color: #c8d8e8; }"
-    "QLabel { color: #c8d8e8; }"
-    "QLineEdit { background: #0a0a18; border: 1px solid #1e2e3e; border-radius: 3px;"
-    "  padding: 4px 6px; color: #c8d8e8; }"
-    "QTreeWidget { background: #0a0a18; border: 1px solid #1e2e3e; border-radius: 3px;"
-    "  color: #c8d8e8; outline: none; }"
-    "QTreeWidget::item { min-height: 22px; padding: 1px 4px; }"
-    "QTreeWidget::item:selected { background: #0070c0; color: #ffffff; }"
-    "QTreeWidget::item:hover:!selected { background: #1a2a3a; }"
-    "QTableWidget { background: #0a0a18; border: 1px solid #1e2e3e; border-radius: 3px;"
-    "  color: #c8d8e8; gridline-color: #14202f;"
-    "  selection-background-color: #1b3650; selection-color: #e8f4ff; }"
-    "QHeaderView::section { color: #8d99ad; background: #101c2a; border: none;"
-    "  border-bottom: 1px solid #233246; padding: 4px 8px; font-size: 11px; }"
-    "QPlainTextEdit { background: #0a0a18; border: 1px solid #1e2e3e;"
-    "  border-radius: 3px; color: #c8d8e8;"
-    "  font-family: \"SF Mono\", \"Menlo\", \"Consolas\", monospace; }"
-    "QPushButton { background: #1a2a3a; border: 1px solid #203040;"
-    "  border-radius: 3px; padding: 4px 12px; color: #c8d8e8; }"
-    "QPushButton:hover { background: #2a3a4a; }"
-    "QPushButton:disabled { background: #141c26; border: 1px solid #1a2632;"
-    "  color: #5a6a78; }"
-    "QComboBox { background: #0a0a18; border: 1px solid #1e2e3e; border-radius: 3px;"
-    "  padding: 2px 6px; color: #c8d8e8; }";
+// kDialogStyle: in the button-style catalogue (ButtonStyles.cpp), "settingsbrowser.dialog" -- build 783.
 
 // Same result-line styling as ProfileManagerDialog / ConnectionPanel so the
 // status messages read as the same kind of message app-wide.
@@ -680,7 +656,7 @@ void SettingsBrowserDialog::openDocumentViewer(const QString& family,
     viewer.setWindowTitle(QStringLiteral("%1 — %2 / %3").arg(
         feature, family, scopeLabelForRadioId(radioId)));
     viewer.setMinimumSize(520, 420);
-    viewer.setStyleSheet(kDialogStyle);
+    AetherSDR::ButtonStyles::apply(&viewer, "settingsbrowser.dialog");
     auto* layout = new QVBoxLayout(&viewer);
 
     auto* header = new QLabel(
@@ -816,7 +792,7 @@ void SettingsBrowserDialog::addKey()
     ScopedChildWidget<QDialog> dialogOwner(this);
     QDialog& dlg = *dialogOwner.get();
     dlg.setWindowTitle("Add Key");
-    dlg.setStyleSheet(kDialogStyle);
+    AetherSDR::ButtonStyles::apply(&dlg, "settingsbrowser.dialog");
     auto* form = new QFormLayout(&dlg);
     auto* keyEdit = new QLineEdit;
     keyEdit->setAccessibleName("New key name");

@@ -13478,6 +13478,51 @@ check_button_styles — идентично; check_theme_seed — актуале�
 check_theme_seed — актуален.
 Не проверено на радио, не собиралось под Windows.
 
+## 773. Сборка 784 — кнопки в редактор тем, шаг 15: остаток вручную — перевод закончен
+
+- Исправлен скрипт перевода: в стилях, где литералы соседствуют с
+  `{{токенами}}`, разбор правил спотыкался о двойные фигурные скобки, и
+  часть литералов оставалась литералами (вид не страдал, но редактор их не
+  видел). Записи 782–783 пересчитаны: `eqeditor.peak.hold`, `titlebar.bug`,
+  `atupretune.start`, `atupretune.abort` получили недостающие токены.
+- Вручную (10 записей):
+  `clock.base / .startstop / .tune` — AetherClock: `kButtonBase()`
+  разрешался из токенов один раз и ставился мимо `ThemeManager` — та же
+  двойная перекраска, что была в RX (772); теперь в Midnight / Deep Ocean
+  кнопки часов в настоящих цветах темы (намеренное изменение, Default Dark
+  без изменений). `stripout.quin.on` — вспышка QUIN (покой — уже на
+  токенах, остался в коде). `whatsnew.secondary / .primary` — функции
+  стилей убраны. `adaptive.check`, `frameless.button / .close` — размер
+  шрифта по-прежнему через `.arg()`, теперь поверх текста из каталога и
+  через `ThemeManager`. `swrlicense.remember` — галочка. Вложенные окна
+  браузера настроек (`viewer`, `dlg`) берут тот же `settingsbrowser.dialog`.
+- Убраны определения, оставшиеся без использования после 782–783
+  (`kBtnStyle` MIDI, `latch` PS Amp View, `kRateBtnStyle`, `kGreenToggle`
+  TCI, `kDialogStyle` браузера настроек).
+- 169 записей × 3 темы — всё идентично.
+
+Перевод кнопок закончен. Намеренно оставлены (список в
+`docs/button-theming.md`): цвет из данных — кнопки приёмников RX (цвет
+слайса), образцы выбора цвета, градиентные кнопки быстрой памяти; стиль,
+читаемый обратно в коде (образец цвета фона в меню наложений); не стиль
+виджета — общий для приложения стиль галочек в `main.cpp`, строка режима
+обзора Display; диалог разрыва связи в `MainWindow` (его кнопки уже на
+токенах); мёртвый код — неиспользуемые `kEnableStyle` / `kBypassStyle` /
+`kLimBtnStyle` / `kStepBtnStyle` в аплетах клиентских эффектов и
+`PhoneCwApplet`.
+
+Дальше по плану — слой «семейств» (похожие группы ссылаются на одно
+значение семейства) для редактора тем.
+
+Файлы: `src/gui/{AetherClockApplet,StripFinalOutputPanel,WhatsNewDialog,AdaptiveFilterControls,FramelessWindowTitleBar,SettingsBrowserDialog,MidiMappingDialog,PsAmpViewDialog,SpectrumWidget,TciApplet,SwrSweepLicenseDialog,ButtonStyles}.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `docs/button-theming.md`,
+`src/core/ForkBuild.h`.
+Проверка: errcheck всех файлов — совпадает с исходным (SpectrumWidget 12,
+StripFinalOutputPanel 8, TciApplet 4, остальные 0); check_button_styles —
+идентично; check_theme_seed — актуален.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -2461,12 +2461,7 @@ SpectrumWidget::SpectrumWidget(QWidget* parent)
 
     // ANAN-100D port: [-] rate [+] at the top right, semi-transparent.
     {
-        static const QString kRateBtnStyle =
-            "QPushButton { background: rgba(15,15,26,90); border: 1px solid rgba(144,160,176,110);"
-            " border-radius: 2px; color: rgba(200,216,232,150); font-size: 13px; font-weight: bold;"
-            " padding: 0; margin: 0; min-width: 0; }"
-            "QPushButton:hover { background: rgba(30,50,70,150); color: rgba(220,232,244,220); }"
-            "QPushButton:pressed { background: rgba(0,180,216,150); color: #000; }";
+        // kRateBtnStyle: "spectrum.rate.btn" in the button-style catalogue -- build 782.
         auto makeRateBtn = [&](const QString& text, const QString& objName, const QString& a11y) {
             auto* btn = new QPushButton(text, this);
             btn->setObjectName(objName);

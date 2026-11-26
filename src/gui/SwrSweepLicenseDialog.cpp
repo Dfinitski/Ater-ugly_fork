@@ -47,10 +47,7 @@ SwrSweepLicenseDialog::SwrSweepLicenseDialog(QWidget* parent)
     root->addWidget(disclaimer);
 
     m_rememberCheck = new QCheckBox("Remember my answer");
-    AetherSDR::ThemeManager::instance().applyStyleSheet(m_rememberCheck, "QCheckBox { color: {{color.text.secondary}}; font-size: 11px; }"
-        "QCheckBox::indicator { width: 14px; height: 14px;"
-        " border: 1px solid #406080; border-radius: 2px; background: {{color.background.0}}; }"
-        "QCheckBox::indicator:checked { background: {{color.accent}}; }");
+    AetherSDR::ButtonStyles::apply(m_rememberCheck, "swrlicense.remember");
     root->addWidget(m_rememberCheck);
 
     auto* btnRow = new QHBoxLayout;
