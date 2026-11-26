@@ -76,7 +76,7 @@ protected:
         return false;
     }
 
-private:
+public:   // build 795: also called by attachNativeCaptionColour()
     void apply()
     {
 #ifdef Q_OS_WIN
@@ -100,8 +100,28 @@ private:
 #endif
     }
 
+private:
     QWidget* m_w;
 };
+
+} // namespace
+
+// ANAN fork build 795 (operator, 26.11: "the colour picker opened from
+// Display has a white header; it must be in the theme's colour"). The same
+// native caption colours as the FTX / JS8 windows for any top-level window
+// with a native frame (MainWindow's application event filter calls this for
+// every QColorDialog on its first show). Once per window.
+void attachNativeCaptionColour(QWidget* w)
+{
+    if (!w || w->property("_aetherNativeCaption").toBool())
+        return;
+    w->setProperty("_aetherNativeCaption", true);
+    auto* c = new FtxCaptionColour(w);
+    // Attached during the first Show: the helper's own filter missed it.
+    QTimer::singleShot(0, c, [c] { c->apply(); });
+}
+
+namespace {
 
 
 // Build 384: the arrows of the spin boxes. A styled QSpinBox loses the native

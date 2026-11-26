@@ -56,6 +56,7 @@
 #include <QToolTip>
 #include <QApplication>
 #include <QApplicationStateChangeEvent>
+#include <QColorDialog>
 #include <QComboBox>
 #include <QKeyEvent>
 #include <QLineEdit>
@@ -647,6 +648,9 @@ void MainWindow::releaseSliderShortcutLease(bool clearFocus)
         slider->clearFocus();
 }
 
+// Build 795: defined in MainWindow_Ftx.cpp next to the FTX caption helper.
+void attachNativeCaptionColour(QWidget* w);
+
 bool MainWindow::eventFilter(QObject* obj, QEvent* event)
 {
     if (obj == qApp && event->type() == QEvent::Quit) {
@@ -684,6 +688,13 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
     // flick-scrolls instead of rubber-band selecting, while a stationary tap
     // still falls through as a click. Widgets whose drag means something else
     // (AppletPanel's applet drag-and-drop) opt out via _aetherNoTouchScroll.
+    // ANAN fork build 795: the colour picker's native caption in the
+    // program's title-bar colours (MainWindow_Ftx.cpp), not Windows' white.
+    if (event->type() == QEvent::Show) {
+        if (auto* cd = qobject_cast<QColorDialog*>(obj); cd && cd->isWindow())
+            attachNativeCaptionColour(cd);
+    }
+
     if (event->type() == QEvent::Show) {
         if (auto* area = qobject_cast<QAbstractScrollArea*>(obj)) {
             if (!area->property("_aetherTouchScroll").toBool()
