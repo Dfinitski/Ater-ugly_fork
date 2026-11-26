@@ -1469,6 +1469,7 @@ set(GUI_SOURCES
     src/gui/TunerApplet.cpp
     src/gui/AccessoryPanelWidgets.cpp
     src/gui/TxApplet.cpp
+    src/gui/ButtonStyles.cpp
     src/gui/AtuPreTuneDialog.cpp
     # src/gui/SwrSweepLicenseDialog.cpp  -- ANAN-100D port: SWR sweep removed
     src/gui/PhoneCwApplet.cpp

@@ -13016,6 +13016,56 @@ gauges»**. Подсказка (что прячется в каких аплет
   - Записан в `Desktop\AetherSDR-Release`, считан обратно, хеш совпал.
 - Тег `build-769`, релиз на GitHub и установщик — оператор.
 
+## 759. Сборка 770 — кнопки в редактор тем, шаг 1: каталог стилей и аплет TX
+
+Оператор (26.11): «теперь давай не спеша сделаем пункт 2 по кнопкам…
+Ложи в отдельный файл параметры кнопок, которые меняются, чтобы если
+что-то пойдёт не так, позволит быстро восстановить. В итоге я хотел бы
+видеть возможность менять вид любых кнопок, по группам, по расположению и
+по похожести размеров и стилей… Но главное — не сломать текущий вид, это
+главный приоритет».
+
+**Инфраструктура (документ `docs/button-theming.md`).**
+- `src/gui/ButtonStyles.h/.cpp` — каталог: на каждый переведённый стиль
+  запись `{id, где используется, original, themed}`: исходный текст стиля
+  ровно как был в коде и тот же текст с цветами-токенами
+  `color.button.<группа>.*`. `ButtonStyles::apply(кнопка, id)` — через
+  `ThemeManager::applyStyleSheet` (токены по области, перерисовка при смене
+  темы).
+- Откат без пересборки: настройка `ThemedButtons = False` — все кнопки из
+  каталога берут исходный стиль (вид 769) после перезапуска.
+- Значения токенов в `default-dark.json` = те самые цвета; для тем с
+  перекраской литералов (Midnight, Deep Ocean) — их перекрашенные версии
+  (ThemeManager перекрашивает литералы шаблона, но не значения токенов).
+- `tools/check_button_styles.py` — порт `remapLiteralColor` на Python (сверен
+  с C++ на Qt 6: 24 цвета × 2 темы — совпадение до бита, включая округление
+  Qt float→8 бит); `--write` записывает значения в темы с перекраской;
+  проверка: каждая запись в каждой встроенной теме — шаблон themed с
+  токенами даёт ровно то же, что original. Итог: 6 записей × 3 темы — всё
+  идентично.
+- `ThemeSeedGenerated.cpp` перегенерирован (`tools/gen_theme_seed.py`):
+  новые токены + устаревшие с 755 / 760 значения (дорожки движков,
+  LIVE) — пол для пользовательских тем без новых токенов.
+
+**Аплет TX — группа `tx`.** Записи `tx.action` (TUNE в покое и после
+настройки, ATU, MEM), `tx.toggle` (MON, DUP), `tx.mox.idle`, `tx.mox.active`,
+`tx.tune.active`, `tx.apd`. Токены `color.button.tx.`: `background`, `border`,
+`text`, `hover.background`, `disabled.background/.text/.border`,
+`checked.background/.border/.text`, `active.background/.border/.text`.
+TUNE / ATU / MEM / MON / DUP раньше ставились через `setStyleSheet` (без
+отслеживания) — теперь через `ThemeManager`; перекраска литералов в
+Midnight / Deep Ocean даёт тот же результат обоими путями.
+
+Файлы: `CMakeLists.txt` (+ `src/gui/ButtonStyles.cpp`),
+`src/gui/ButtonStyles.h/.cpp`, `src/gui/TxApplet.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `tools/check_button_styles.py`,
+`docs/button-theming.md`, `src/core/ForkBuild.h`.
+Проверка: errcheck TxApplet 4 (= базовая), ButtonStyles 0,
+ThemeSeedGenerated 0; check_button_styles — всё идентично;
+check_theme_seed — актуален.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

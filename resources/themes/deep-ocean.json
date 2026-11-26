@@ -517,7 +517,22 @@
             "border.disabled": "{color.gray.700}",
             "danger.background.disabled": "#2a1818",
             "danger.foreground.disabled": "#8a6055",
-            "danger.border.disabled": "#4a2828"
+            "danger.border.disabled": "#4a2828",
+            "tx": {
+              "background": "#1a5f94",
+              "border": "#1c669e",
+              "text": "#eee8d5",
+              "hover.background": "#0f4c5c",
+              "disabled.background": "#05303c",
+              "disabled.text": "#5a7077",
+              "disabled.border": "#0b414f",
+              "checked.background": "#006030",
+              "checked.border": "#008040",
+              "checked.text": "#ffffff",
+              "active.background": "#cc2222",
+              "active.border": "#ff4444",
+              "active.text": "#ffffff"
+            }
           }
         },
         "font": {

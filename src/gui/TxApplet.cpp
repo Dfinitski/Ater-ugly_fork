@@ -4,6 +4,7 @@
 #include "GuardedSlider.h"
 #include "ComboStyle.h"
 #include "HGauge.h"
+#include "ButtonStyles.h"   // ANAN fork build 770: the buttons' sheets
 #include "Theme.h"
 #include "core/TxKeyingMarker.h"
 #include "core/AppSettings.h"
@@ -34,14 +35,8 @@ namespace AetherSDR {
 // waterfall LIVE chip (#3761).  Shared between construction and the moxChanged
 // return-to-idle branch so the two can't drift; background / hover-background /
 // disabled colors stay literal (structural, shared with the neighbor buttons).
-static const char* const kMoxIdleStyle =
-    "QPushButton { background: #1a3a5a; border: 1px solid {{color.tx.mox.border}}; "
-    "border-radius: 3px; color: {{color.tx.mox.text}}; font-size: 10px; font-weight: bold; "
-    "padding: 2px; }"
-    "QPushButton:hover { background: #204060; border: 1px solid {{color.tx.mox.border.hover}}; "
-    "color: {{color.tx.mox.text.hover}}; }"
-    "QPushButton:disabled { background-color: #1a1a2a; color: #556070; "
-    "border: 1px solid #2a3040; }";
+// ANAN fork build 770: the sheet is ButtonStyles "tx.mox.idle" (ButtonStyles.cpp
+// keeps the original text; its literal colours are color.button.tx.* tokens).
 
 
 
@@ -241,16 +236,12 @@ void TxApplet::buildUI()
         auto* row = new QHBoxLayout;
         row->setSpacing(2);
 
-        const char* btnStyle =
-            "QPushButton { background: #1a3a5a; border: 1px solid #205070; "
-            "border-radius: 3px; color: #c8d8e8; font-size: 10px; font-weight: bold; "
-            "padding: 2px; }"
-            "QPushButton:hover { background: #204060; }"
-            "QPushButton:disabled { background-color: #1a1a2a; color: #556070; "
-            "border: 1px solid #2a3040; }";
+        // ANAN fork build 770: TUNE / ATU / MEM = ButtonStyles "tx.action",
+        // MON / DUP = "tx.toggle" (the same plus :checked) -- through
+        // ThemeManager, their colours color.button.tx.* tokens.
         m_tuneBtn = new QPushButton("TUNE");
         markTxKeying(m_tuneBtn);   // emits a tune carrier — keys TX (#3646)
-        m_tuneBtn->setStyleSheet(btnStyle);
+        AetherSDR::ButtonStyles::apply(m_tuneBtn, "tx.action");
         m_tuneBtn->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         m_tuneBtn->setFixedHeight(22);
         m_tuneBtn->setAccessibleName("Tune");
@@ -264,7 +255,7 @@ void TxApplet::buildUI()
 
         m_moxBtn = new QPushButton("MOX");
         markTxKeying(m_moxBtn);    // manual transmit (PTT) — keys TX (#3646)
-        AetherSDR::ThemeManager::instance().applyStyleSheet(m_moxBtn, kMoxIdleStyle);
+        AetherSDR::ButtonStyles::apply(m_moxBtn, "tx.mox.idle");   // build 770
         m_moxBtn->setCheckable(true);
         m_moxBtn->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         m_moxBtn->setFixedHeight(22);
@@ -274,7 +265,7 @@ void TxApplet::buildUI()
 
         m_atuBtn = new QPushButton("ATU");
         markTxKeying(m_atuBtn);    // starts ATU tune — keys TX (#3646)
-        m_atuBtn->setStyleSheet(btnStyle);
+        AetherSDR::ButtonStyles::apply(m_atuBtn, "tx.action");   // build 770
         m_atuBtn->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         m_atuBtn->setFixedHeight(22);
         m_atuBtn->setAccessibleName("ATU tune");
@@ -288,7 +279,7 @@ void TxApplet::buildUI()
         ananHiddenBox->addWidget(m_atuBtn);   // ANAN: no tuner
 
         m_memBtn = new QPushButton("MEM");
-        m_memBtn->setStyleSheet(btnStyle);
+        AetherSDR::ButtonStyles::apply(m_memBtn, "tx.action");   // build 770
         m_memBtn->setCheckable(true);
         m_memBtn->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         m_memBtn->setFixedHeight(22);
@@ -299,11 +290,9 @@ void TxApplet::buildUI()
         // ANAN-100D port (operator, 31.10): MON and DUP here, in place of
         // ATU / MEM. MON = the voice monitor (level: "Mon lvl" in Mic); DUP =
         // the panadapters keep showing the receivers while transmitting.
-        const QString togStyle = QString::fromLatin1(btnStyle)
-            + QStringLiteral("QPushButton:checked { background: #006030; border: 1px solid #008040; color: #ffffff; }");
         m_monTxBtn = new QPushButton("MON");
         m_monTxBtn->setCheckable(true);
-        m_monTxBtn->setStyleSheet(togStyle);
+        AetherSDR::ButtonStyles::apply(m_monTxBtn, "tx.toggle");   // build 770
         m_monTxBtn->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         m_monTxBtn->setFixedHeight(22);
         m_monTxBtn->setAccessibleName("TX monitor");
@@ -316,7 +305,7 @@ void TxApplet::buildUI()
 
         m_dupBtn = new QPushButton("DUP");
         m_dupBtn->setCheckable(true);
-        m_dupBtn->setStyleSheet(togStyle);
+        AetherSDR::ButtonStyles::apply(m_dupBtn, "tx.toggle");   // build 770
         m_dupBtn->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         m_dupBtn->setFixedHeight(22);
         m_dupBtn->setAccessibleName("Duplex");
@@ -344,10 +333,7 @@ void TxApplet::buildUI()
         m_apdBtn->setAccessibleName("APD pre-distortion");
         m_apdBtn->setAccessibleDescription("Toggle adaptive pre-distortion");
         m_apdBtn->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-        AetherSDR::ThemeManager::instance().applyStyleSheet(m_apdBtn, "QPushButton { background: {{color.background.2}}; border: 1px solid {{color.background.2}}; "
-            "border-radius: 3px; color: {{color.text.primary}}; font-size: 10px; font-weight: bold; }"
-            "QPushButton:checked { background: #006030; border: 1px solid #008040; color: {{color.text.primary}}; }"
-            "QPushButton:hover { background: {{color.background.1}}; }");
+        AetherSDR::ButtonStyles::apply(m_apdBtn, "tx.apd");   // build 770
         row->addWidget(m_apdBtn, 2);  // 40%
 
         // Inset container for ATU status words (styled like RIT/XIT readout)
@@ -631,9 +617,7 @@ void TxApplet::setTransmitModel(TransmitModel* model)
     // Tune state → red button
     connect(m_model, &TransmitModel::tuneChanged, this, [this](bool tuning) {
         if (tuning) {
-            AetherSDR::ThemeManager::instance().applyStyleSheet(m_tuneBtn, "QPushButton { background: #cc2222; border: 1px solid {{color.accent.danger}}; "
-                "border-radius: 3px; color: {{color.text.primary}}; font-size: 10px; font-weight: bold; "
-                "padding: 2px; }");
+            AetherSDR::ButtonStyles::apply(m_tuneBtn, "tx.tune.active");   // build 770
             m_tuneBtn->setText("TUNING...");
         } else {
             // ANAN fork build 674 (operator, 24.11: "make TUNE like MON" --
@@ -642,13 +626,7 @@ void TxApplet::setTransmitModel(TransmitModel* model)
             // not to the grey theme style. The tuning look is unchanged.
             // Through ThemeManager so a theme repaint keeps this sheet
             // instead of re-applying the recorded tuning template.
-            AetherSDR::ThemeManager::instance().applyStyleSheet(m_tuneBtn,
-                "QPushButton { background: #1a3a5a; border: 1px solid #205070; "
-                "border-radius: 3px; color: #c8d8e8; font-size: 10px; font-weight: bold; "
-                "padding: 2px; }"
-                "QPushButton:hover { background: #204060; }"
-                "QPushButton:disabled { background-color: #1a1a2a; color: #556070; "
-                "border: 1px solid #2a3040; }");
+            AetherSDR::ButtonStyles::apply(m_tuneBtn, "tx.action");   // build 770
             m_tuneBtn->setText("TUNE");
         }
     });
@@ -662,12 +640,9 @@ void TxApplet::setTransmitModel(TransmitModel* model)
         // mid-transmit would re-resolve the stale idle template over the red.
         // Active red stays literal (byte-identical to the prior appearance).
         if (tx) {
-            AetherSDR::ThemeManager::instance().applyStyleSheet(m_moxBtn,
-                "QPushButton { background: #cc2222; border: 1px solid #ff4444; "
-                "border-radius: 3px; color: #ffffff; font-size: 10px; font-weight: bold; "
-                "padding: 2px; }");
+            AetherSDR::ButtonStyles::apply(m_moxBtn, "tx.mox.active");   // build 770
         } else {
-            AetherSDR::ThemeManager::instance().applyStyleSheet(m_moxBtn, kMoxIdleStyle);
+            AetherSDR::ButtonStyles::apply(m_moxBtn, "tx.mox.idle");     // build 770
         }
         m_updatingFromModel = false;
     });

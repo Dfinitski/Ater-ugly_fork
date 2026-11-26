@@ -80,6 +80,19 @@ void ThemeManager::seedGeneratedDefaults()
     m_tokens.insert("color.button.danger.border.disabled", QString("#4a2828"));
     m_tokens.insert("color.button.danger.foreground.disabled", QString("#8a6055"));
     m_tokens.insert("color.button.foreground.disabled", QString("#506070"));
+    m_tokens.insert("color.button.tx.active.background", QString("#cc2222"));
+    m_tokens.insert("color.button.tx.active.border", QString("#ff4444"));
+    m_tokens.insert("color.button.tx.active.text", QString("#ffffff"));
+    m_tokens.insert("color.button.tx.background", QString("#1a3a5a"));
+    m_tokens.insert("color.button.tx.border", QString("#205070"));
+    m_tokens.insert("color.button.tx.checked.background", QString("#006030"));
+    m_tokens.insert("color.button.tx.checked.border", QString("#008040"));
+    m_tokens.insert("color.button.tx.checked.text", QString("#ffffff"));
+    m_tokens.insert("color.button.tx.disabled.background", QString("#1a1a2a"));
+    m_tokens.insert("color.button.tx.disabled.border", QString("#2a3040"));
+    m_tokens.insert("color.button.tx.disabled.text", QString("#556070"));
+    m_tokens.insert("color.button.tx.hover.background", QString("#204060"));
+    m_tokens.insert("color.button.tx.text", QString("#c8d8e8"));
     m_tokens.insert("color.canon.aqua", QString("#8ef7e6"));
     m_tokens.insert("color.canon.bloom.blue", QString("#293aa7ff"));
     m_tokens.insert("color.canon.bloom.teal", QString("#1a7bf2dc"));
@@ -162,7 +175,7 @@ void ThemeManager::seedGeneratedDefaults()
     m_tokens.insert("color.slice.g", QString("#ff6080"));
     m_tokens.insert("color.slice.h", QString("#b080ff"));
     m_tokens.insert("color.slice.tx", QString("#ff4d4d"));
-    m_tokens.insert("color.slider.background", QString("#1a2a3a"));
+    m_tokens.insert("color.slider.background", QString("#1e3043"));
     m_tokens.insert("color.slider.background.disabled", QString("#1a2330"));
     m_tokens.insert("color.slider.foreground", QString("#00b4d8"));
     m_tokens.insert("color.slider.foreground.disabled", QString("#3a4a5a"));
@@ -307,7 +320,7 @@ void ThemeManager::seedGeneratedDefaults()
         m_tokens.insert("color.waterfall.colormap.purple", QVariant::fromValue(g));
     }
     m_tokens.insert("color.waterfall.history", QString("#506070"));
-    m_tokens.insert("color.waterfall.live", QString("#ff4d4d"));
+    m_tokens.insert("color.waterfall.live", QString("#1f5f70"));
     m_tokens.insert("color.waterfall.timeMarker.background", QString("#dc0f0f1a"));
     m_tokens.insert("color.waterfall.timeMarker.foreground", QString("#c8d8e8"));
     {
@@ -395,7 +408,7 @@ void ThemeManager::seedGeneratedDefaults()
     seedScopedToken(QStringLiteral("canon"), "color.border.subtle", QString("#1f78a5d2"));
     seedScopedToken(QStringLiteral("canon"), "color.knob.background", QString("#12233a"));
     seedScopedToken(QStringLiteral("canon"), "color.knob.foreground", QString("#5de3ff"));
-    seedScopedToken(QStringLiteral("canon"), "color.slider.background", QString("#12233a"));
+    seedScopedToken(QStringLiteral("canon"), "color.slider.background", QString("#152843"));
     seedScopedToken(QStringLiteral("canon"), "color.slider.foreground", QString("#5de3ff"));
     seedScopedToken(QStringLiteral("canon"), "color.text.label", QString("#8598b4"));
     seedScopedToken(QStringLiteral("canon"), "color.text.primary", QString("#eaf2fb"));
