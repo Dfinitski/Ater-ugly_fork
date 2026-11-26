@@ -176,6 +176,31 @@ public:
                                   QVector<QColor>* accent);
     bool createThemeFromColors(const QString& name, const NewThemeColors& c,
                                QString* why = nullptr);
+
+    // ANAN fork build 797 (operator, 26.11: editor items 3 and 4).
+    //  * replaceColorEverywhere(): every literal occurrence of `from` (exact
+    //    #rrggbb / alpha) in every scope, gradient stop, font colour and
+    //    palette entry becomes `to`; returns how many were changed.
+    //  * linkTokenToPrimitive(): the token (at a scope) becomes the alias
+    //    {key}, so it follows the palette entry from then on.
+    //  * isThemeFamilyColor(): grey-blue neutral or cyan-blue accent (the
+    //    families the literal remap moves); status / band colours are not.
+    //  * The HSL adjustment: begin snapshots every colour of the theme,
+    //    preview applies hue shift / saturation / lightness from the snapshot
+    //    (live, not saved), end commits (saves) or restores it. With
+    //    `onlyTokens` non-empty only those tokens change (an alias among them
+    //    becomes the adjusted literal); else the whole theme incl. palette and
+    //    code-colour remap. `familyOnly` keeps status / band colours.
+    int  replaceColorEverywhere(const QColor& from, const QColor& to);
+    void linkTokenToPrimitive(const QString& containerPath, const QString& token,
+                              const QString& primitiveKey);
+    static bool isThemeFamilyColor(const QColor& c);
+    static QColor adjustHsl(const QColor& c, double hueDeg, double satPct, double lightPct);
+    void beginColorAdjust();
+    void previewColorAdjust(double hueDeg, double satPct, double lightPct,
+                            const QStringList& onlyTokens, bool familyOnly);
+    void endColorAdjust(bool commit);
+    bool colorAdjustActive() const { return m_adjustActive; }
     // Called once the QApplication exists (main.cpp): watches every widget's
     // plain style sheet and the application's.
     void installLiteralRemapper();
@@ -444,6 +469,12 @@ private:
     // Build 746: the active theme's literal remap ramps (empty = identity).
     QVector<QColor> m_litNeutral;
     QVector<QColor> m_litAccent;
+    // Build 797: the HSL adjustment snapshot.
+    bool m_adjustActive = false;
+    QHash<QString, QHash<QString, QVariant>> m_adjustScopes;   // scope path -> tokens
+    QHash<QString, QVariant> m_adjustPrimitives;
+    QVector<QColor> m_adjustLitNeutral, m_adjustLitAccent;
+    void restoreAdjustSnapshot();
     QString m_appSheetOriginal;
     bool m_litRemapperInstalled = false;
     void remapAllUntracked();

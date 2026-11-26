@@ -21,6 +21,8 @@
 #include <QtMath>
 #include <cmath>
 #include <algorithm>   // build 796
+#include <functional>
+#include <QSet>
 
 namespace AetherSDR {
 
@@ -984,6 +986,232 @@ bool ThemeManager::createThemeFromColors(const QString& nameIn, const NewThemeCo
     }
     remapAllUntracked();
     return true;
+}
+
+// ── ANAN fork build 797: replace a colour, link to the palette, HSL adjust ──
+
+namespace {
+
+bool sameColor(const QColor& a, const QColor& b)
+{
+    return a.isValid() && b.isValid() && a.rgba() == b.rgba();
+}
+
+// Applies `f` to every literal colour of the scope tree (strings "#...",
+// image fallbacks, gradient stops, font colours). `only` (non-null) limits
+// it to those token keys; there an alias is resolved through `resolve` and
+// replaced by the transformed literal. Returns the number of changes.
+int transformScopeColours(ThemeScope* scope, const std::function<QColor(const QColor&)>& f,
+                          const QSet<QString>* only,
+                          const std::function<QVariant(const QVariant&)>& resolve)
+{
+    const int gradId = qMetaTypeId<ThemeGradient>();
+    const int fontId = qMetaTypeId<ThemeFont>();
+    int changed = 0;
+    for (auto it = scope->tokens.begin(); it != scope->tokens.end(); ++it) {
+        if (only && !only->contains(it.key()))
+            continue;
+        QVariant& v = it.value();
+        if (only && v.userType() == QMetaType::QString && v.toString().startsWith(QLatin1Char('{')))
+            v = resolve(v);
+        const int ut = v.userType();
+        if (ut == QMetaType::QString) {
+            const QString str = v.toString();
+            if (str.startsWith(QLatin1Char('#'))) {
+                const QColor col(str);
+                if (!col.isValid())
+                    continue;
+                const QColor out = f(col);
+                if (out.rgba() != col.rgba()) {
+                    v = colorToTokenString(out);
+                    ++changed;
+                }
+            } else if (str.startsWith(QLatin1String("image:"))) {
+                QString file;
+                QColor fb;
+                ThemeManager::parseImageToken(str, &file, &fb);
+                if (fb.isValid()) {
+                    const QColor out = f(fb);
+                    if (out.rgba() != fb.rgba()) {
+                        v = QStringLiteral("image:%1|%2").arg(file, colorToTokenString(out));
+                        ++changed;
+                    }
+                }
+            }
+        } else if (ut == gradId) {
+            ThemeGradient g = v.value<ThemeGradient>();
+            bool any = false;
+            for (auto& st : g.stops) {
+                const QColor out = f(st.color);
+                if (out.rgba() != st.color.rgba()) {
+                    st.color = out;
+                    any = true;
+                }
+            }
+            if (any) {
+                v = QVariant::fromValue(g);
+                ++changed;
+            }
+        } else if (ut == fontId) {
+            ThemeFont fo = v.value<ThemeFont>();
+            if (fo.color.isValid()) {
+                const QColor out = f(fo.color);
+                if (out.rgba() != fo.color.rgba()) {
+                    fo.color = out;
+                    v = QVariant::fromValue(fo);
+                    ++changed;
+                }
+            }
+        }
+    }
+    for (auto& kv : scope->children)
+        changed += transformScopeColours(kv.second.get(), f, only, resolve);
+    return changed;
+}
+
+void snapshotScopes(const ThemeScope* scope, QHash<QString, QHash<QString, QVariant>>& out)
+{
+    out.insert(scope->path, scope->tokens);
+    for (const auto& kv : scope->children)
+        snapshotScopes(kv.second.get(), out);
+}
+
+} // namespace
+
+int ThemeManager::replaceColorEverywhere(const QColor& from, const QColor& to)
+{
+    if (!from.isValid() || !to.isValid() || sameColor(from, to))
+        return 0;
+    const auto f = [&from, &to](const QColor& c) { return sameColor(c, from) ? to : c; };
+    int n = transformScopeColours(m_rootScope.get(), f, nullptr,
+                                  [this](const QVariant& v) { return resolveAlias(v); });
+    for (auto it = m_primitives.begin(); it != m_primitives.end(); ++it) {
+        if (it.value().userType() == QMetaType::QString && sameColor(QColor(it.value().toString()), from)) {
+            it.value() = colorToTokenString(to);
+            ++n;
+        }
+    }
+    if (n > 0) {
+        emit themeChanged();
+        saveActiveTheme();
+    }
+    return n;
+}
+
+void ThemeManager::linkTokenToPrimitive(const QString& containerPath, const QString& token,
+                                        const QString& primitiveKey)
+{
+    if (!m_primitives.contains(primitiveKey))
+        return;
+    ThemeScope* scope = scopeOrCreate(containerPath);
+    scope->tokens.insert(token, QLatin1Char('{') + primitiveKey + QLatin1Char('}'));
+    m_currentEditToken = token;
+    emit themeChanged();
+    m_currentEditToken.clear();
+    saveActiveTheme();
+}
+
+bool ThemeManager::isThemeFamilyColor(const QColor& c)
+{
+    if (!c.isValid())
+        return false;
+    float h = 0, s = 0, l = 0, a = 1;
+    c.getHslF(&h, &s, &l, &a);
+    const double hue = h < 0 ? -1.0 : h * 360.0;
+    // Same classes as remapLiteralColor(): neutral, or the accent family.
+    if (s < 0.12f || (s < 0.55f && hue >= 190.0 && hue <= 260.0))
+        return true;
+    return hue >= 170.0 && hue <= 215.0 && s >= 0.55f;
+}
+
+QColor ThemeManager::adjustHsl(const QColor& c, double hueDeg, double satPct, double lightPct)
+{
+    if (!c.isValid())
+        return c;
+    float h = 0, s = 0, l = 0, a = 1;
+    c.getHslF(&h, &s, &l, &a);
+    double hh = h < 0 ? 0.0 : double(h);
+    if (h >= 0)
+        hh = std::fmod(hh + hueDeg / 360.0 + 1.0, 1.0);
+    auto scale = [](double v, double pct) {   // -100 % -> 0, +100 % -> 1
+        const double k = std::clamp(pct / 100.0, -1.0, 1.0);
+        return k < 0 ? v * (1.0 + k) : v + (1.0 - v) * k;
+    };
+    const double ss = scale(s, satPct);
+    const double ll = scale(l, lightPct);
+    QColor out = QColor::fromHslF(float(h < 0 ? -1.0 : hh), float(std::clamp(ss, 0.0, 1.0)),
+                                  float(std::clamp(ll, 0.0, 1.0)), a);
+    return out.toRgb();
+}
+
+void ThemeManager::beginColorAdjust()
+{
+    m_adjustScopes.clear();
+    snapshotScopes(m_rootScope.get(), m_adjustScopes);
+    m_adjustPrimitives = m_primitives;
+    m_adjustLitNeutral = m_litNeutral;
+    m_adjustLitAccent = m_litAccent;
+    m_adjustActive = true;
+}
+
+void ThemeManager::restoreAdjustSnapshot()
+{
+    for (auto it = m_adjustScopes.constBegin(); it != m_adjustScopes.constEnd(); ++it) {
+        if (ThemeScope* sc = scopeForPath(it.key()))
+            sc->tokens = it.value();
+    }
+    m_primitives = m_adjustPrimitives;
+    m_litNeutral = m_adjustLitNeutral;
+    m_litAccent = m_adjustLitAccent;
+}
+
+void ThemeManager::previewColorAdjust(double hueDeg, double satPct, double lightPct,
+                                      const QStringList& onlyTokens, bool familyOnly)
+{
+    if (!m_adjustActive)
+        return;
+    restoreAdjustSnapshot();
+    const auto f = [familyOnly, hueDeg, satPct, lightPct](const QColor& c) {
+        if (familyOnly && !ThemeManager::isThemeFamilyColor(c))
+            return c;
+        return ThemeManager::adjustHsl(c, hueDeg, satPct, lightPct);
+    };
+    const QSet<QString> only(onlyTokens.begin(), onlyTokens.end());
+    transformScopeColours(m_rootScope.get(), f, onlyTokens.isEmpty() ? nullptr : &only,
+                          [this](const QVariant& v) { return resolveAlias(v); });
+    const bool whole = onlyTokens.isEmpty();
+    if (whole) {
+        for (auto it = m_primitives.begin(); it != m_primitives.end(); ++it) {
+            if (it.value().userType() != QMetaType::QString)
+                continue;
+            const QColor col(it.value().toString());
+            if (col.isValid())
+                it.value() = colorToTokenString(f(col));
+        }
+        for (QColor& c : m_litNeutral)
+            c = f(c);
+        for (QColor& c : m_litAccent)
+            c = f(c);
+    }
+    emit themeChanged();
+    if (whole)
+        remapAllUntracked();
+}
+
+void ThemeManager::endColorAdjust(bool commit)
+{
+    if (!m_adjustActive)
+        return;
+    m_adjustActive = false;
+    if (commit) {
+        saveActiveTheme();
+    } else {
+        restoreAdjustSnapshot();
+        emit themeChanged();
+        remapAllUntracked();
+    }
+    m_adjustScopes.clear();
+    m_adjustPrimitives.clear();
 }
 
 void ThemeManager::installLiteralRemapper()

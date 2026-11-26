@@ -84,6 +84,8 @@ private:
     void         rebuildPalettePage();
     bool         ensureEditableTheme();     // built-in -> Save As first
     void         onNewThemeClicked();
+    void         onAdjustColorsClicked();   // build 797: HSL adjustment
+    QStringList  visibleTokenKeys() const;   // rows not hidden by a filter
 
     QLabel*      m_themeLabel{nullptr};   // "Editing: <name>"
     TokenEditorWidget* m_tokenEditor{nullptr};   // inline editor stack

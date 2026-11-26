@@ -8,6 +8,10 @@
 #include "core/ThemeManager.h"
 
 #include <QAction>
+#include <QSlider>
+#include <QHash>
+#include <cmath>
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <QFormLayout>
@@ -314,6 +318,7 @@ ThemeEditorDialog::ThemeEditorDialog(QWidget* parent)
     auto* themeActionsBtn = new QPushButton(QStringLiteral("Theme actions"), bodyWidget());
     auto* themeActionsMenu = new QMenu(themeActionsBtn);
     auto* newThemeAct = themeActionsMenu->addAction(QStringLiteral("New theme from colors…"));   // build 796
+    auto* adjustAct = themeActionsMenu->addAction(QStringLiteral("Adjust colors (hue / saturation / lightness)…"));   // build 797
     themeActionsMenu->addSeparator();
     auto* renameAct = themeActionsMenu->addAction(QStringLiteral("Rename theme…"));
     auto* deleteAct = themeActionsMenu->addAction(QStringLiteral("Delete theme…"));
@@ -332,6 +337,8 @@ ThemeEditorDialog::ThemeEditorDialog(QWidget* parent)
 
     connect(newThemeAct, &QAction::triggered,
             this, &ThemeEditorDialog::onNewThemeClicked);
+    connect(adjustAct, &QAction::triggered,
+            this, &ThemeEditorDialog::onAdjustColorsClicked);
     connect(renameAct, &QAction::triggered,
             this, &ThemeEditorDialog::onRenameThemeClicked);
     connect(deleteAct, &QAction::triggered,
@@ -1164,48 +1171,151 @@ void ThemeEditorDialog::onTokenContextMenu(const QPoint& pos)
     QTreeWidgetItem* item = m_tokenList->itemAt(pos);
     if (!item) return;
     const int column = m_tokenList->columnAt(pos.x());
-    // Right-click is only meaningful on a scope-chain column (not
-    // Object, not Value) where an actual override could exist.
-    if (column <= 0 || column >= m_tokenList->columnCount() - 1) return;
-    const QString scopePath =
-        m_tokenList->headerItem()->data(column, Qt::UserRole).toString();
-    // Root column has no parent to fall back to — "clear" there would
-    // delete the token tree-wide.  Reset-to-factory belongs to the
-    // dedicated Reset button on the inspect row.
-    if (scopePath.isEmpty()) return;
     const QString token = item->data(0, Qt::UserRole).toString();
     auto& tm = ThemeManager::instance();
-    if (!tm.isOverriddenAt(scopePath, token)) return;  // nothing to clear
+    // "Clear override" -- only on a scope-chain column (not Object, not
+    // Value, not root) where an actual override exists. Reset-to-factory
+    // belongs to the dedicated Reset button on the inspect row.
+    QString scopePath;
+    bool canClear = false;
+    if (column > 0 && column < m_tokenList->columnCount() - 1) {
+        scopePath = m_tokenList->headerItem()->data(column, Qt::UserRole).toString();
+        canClear = !scopePath.isEmpty() && tm.isOverriddenAt(scopePath, token);
+    }
+    // Build 797: colour actions on any column of a plain colour token.
+    const QString path = m_activeContainerPath;
+    const bool isColour = token.startsWith(QStringLiteral("color."))
+                          && tm.gradientAt(path, token).stops.isEmpty();
+    const QColor cur = isColour ? tm.colorAt(path, token) : QColor();
 
-    const QString scopeLabel = scopePath.isEmpty()
-                                   ? QStringLiteral("(root)")
-                                   : scopePath;
     const QString activeTheme = tm.activeTheme();
     const QPointer<ThemeEditorDialog> self(this);
     const QPointer<QTreeWidget> tokenList(m_tokenList);
     ScopedChildWidget<QMenu> menuOwner(this);
     QMenu& menu = *menuOwner.get();
-    QAction* clearAct = menu.addAction(
-        QStringLiteral("Clear override at %1").arg(scopeLabel));
+    QAction* clearAct = nullptr;
+    if (canClear)
+        clearAct = menu.addAction(QStringLiteral("Clear override at %1").arg(scopePath));
+    QAction* replaceAct = nullptr;
+    QAction* sameAct = nullptr;
+    QAction* similarAct = nullptr;
+    QHash<QAction*, QString> linkActs;
+    if (cur.isValid()) {
+        if (clearAct)
+            menu.addSeparator();
+        const QString hex = colorToTokenHex(cur);
+        replaceAct = menu.addAction(swatchIcon(cur),
+                                    QStringLiteral("Replace %1 everywhere…").arg(hex));
+        sameAct = menu.addAction(QStringLiteral("Show tokens with %1").arg(hex));
+        similarAct = menu.addAction(QStringLiteral("Show tokens with similar colors"));
+        // The nearest palette entries (exact first).
+        QMenu* link = menu.addMenu(QStringLiteral("Link to palette color"));
+        QVector<QPair<double, QString>> nearest;   // ("near" is a Windows macro)
+        for (const QString& key : tm.primitiveColorKeys()) {
+            const QColor p = tm.primitiveColor(key);
+            const double d = std::hypot(std::hypot(double(p.red() - cur.red()), double(p.green() - cur.green())),
+                                        double(p.blue() - cur.blue()));
+            nearest.append({d, key});
+        }
+        std::sort(nearest.begin(), nearest.end());
+        for (int i = 0; i < nearest.size() && i < 8; ++i) {
+            const QColor p = tm.primitiveColor(nearest[i].second);
+            QAction* a = link->addAction(swatchIcon(p), QStringLiteral("%1   %2%3")
+                .arg(nearest[i].second, p.name(QColor::HexRgb),
+                     nearest[i].first < 0.5 ? QStringLiteral("  (same)") : QString()));
+            linkActs.insert(a, nearest[i].second);
+        }
+        link->setEnabled(!nearest.isEmpty());
+    }
+    QAction* showAllAct = nullptr;
+    if (!m_activeSubset.isEmpty()) {
+        menu.addSeparator();
+        showAllAct = menu.addAction(QStringLiteral("Show all tokens"));
+    }
+    if (menu.isEmpty())
+        return;
     QAction* picked = menu.exec(m_tokenList->viewport()->mapToGlobal(pos));
     if (!self || !menuOwner || !tokenList
-        || self->m_tokenList != tokenList.data() || picked != clearAct
+        || self->m_tokenList != tokenList.data() || !picked
         || tm.activeTheme() != activeTheme) {
         return;
     }
-    tm.removeOverride(scopePath, token);
-    if (!self || !tokenList || self->m_tokenList != tokenList.data()) {
+
+    auto showSubset = [self](const QStringList& subset, const QString& status) {
+        self->m_activeSubset = subset;
+        self->filterTokensTo(subset);
+        self->updateInspectorStatus(status);
+    };
+    if (picked == clearAct) {
+        tm.removeOverride(scopePath, token);
+        if (!self || !tokenList || self->m_tokenList != tokenList.data()) {
+            return;
+        }
+        // Find the current row after the nested loop; the original item may
+        // have been replaced. Keep selection and scroll position intact.
+        QTreeWidgetItemIterator rows(tokenList.data());
+        while (*rows) {
+            if ((*rows)->data(0, Qt::UserRole).toString() == token) {
+                self->populateRow(*rows);
+                break;
+            }
+            ++rows;
+        }
         return;
     }
-    // Find the current row after the nested loop; the original item may
-    // have been replaced. Keep selection and scroll position intact.
-    QTreeWidgetItemIterator rows(tokenList.data());
-    while (*rows) {
-        if ((*rows)->data(0, Qt::UserRole).toString() == token) {
-            self->populateRow(*rows);
-            break;
+    if (picked == sameAct || picked == similarAct) {
+        const bool similar = picked == similarAct;
+        QStringList subset;
+        for (const QString& key : tm.allTokenKeys()) {
+            if (!key.startsWith(QStringLiteral("color.")) || !tm.gradientAt(path, key).stops.isEmpty())
+                continue;
+            const QColor c = tm.colorAt(path, key);
+            if (!c.isValid())
+                continue;
+            const double d = std::hypot(std::hypot(double(c.red() - cur.red()), double(c.green() - cur.green())),
+                                        double(c.blue() - cur.blue()));
+            if (similar ? (d <= 28.0 && std::abs(c.alpha() - cur.alpha()) <= 40) : c.rgba() == cur.rgba())
+                subset << key;
         }
-        ++rows;
+        showSubset(subset, similar ? QStringLiteral("%1 tokens with colors close to %2 (right-click > Show all tokens).")
+                                         .arg(subset.size()).arg(colorToTokenHex(cur))
+                                   : QStringLiteral("%1 tokens with %2 (right-click > Show all tokens).")
+                                         .arg(subset.size()).arg(colorToTokenHex(cur)));
+        return;
+    }
+    if (picked == showAllAct) {
+        showSubset({}, QString());
+        return;
+    }
+    if (picked == replaceAct) {
+        QColorDialog::ColorDialogOptions opts;
+        if (cur.alpha() < 255)
+            opts |= QColorDialog::ShowAlphaChannel;
+        const QColor to = QColorDialog::getColor(cur, this,
+            QStringLiteral("Replace %1 everywhere").arg(colorToTokenHex(cur)), opts);
+        if (!self || !to.isValid() || !self->ensureEditableTheme())
+            return;
+        const int n = ThemeManager::instance().replaceColorEverywhere(cur, to);
+        if (!self)
+            return;
+        self->refreshTokenList();
+        self->filterTokensTo(self->m_activeSubset);
+        self->rebuildPalettePage();
+        self->updateInspectorStatus(QStringLiteral("%1 → %2: %3 places changed.")
+                                        .arg(colorToTokenHex(cur), colorToTokenHex(to)).arg(n));
+        return;
+    }
+    if (linkActs.contains(picked)) {
+        const QString key = linkActs.value(picked);
+        if (!self->ensureEditableTheme())
+            return;
+        ThemeManager::instance().linkTokenToPrimitive(self->m_activeContainerPath, token, key);
+        if (!self)
+            return;
+        self->refreshTokenList();
+        self->filterTokensTo(self->m_activeSubset);
+        self->rebuildPalettePage();
+        self->updateInspectorStatus(QStringLiteral("%1 now follows {%2}.").arg(token, key));
     }
 }
 
@@ -1689,6 +1799,113 @@ void ThemeEditorDialog::onNewThemeClicked()
         }
         return;   // the new theme is active; onActiveThemeChanged refreshes the editor
     }
+}
+
+QStringList ThemeEditorDialog::visibleTokenKeys() const
+{
+    QStringList out;
+    if (!m_tokenList)
+        return out;
+    for (int i = 0; i < m_tokenList->topLevelItemCount(); ++i) {
+        auto* item = m_tokenList->topLevelItem(i);
+        if (!item->isHidden())
+            out << item->data(0, Qt::UserRole).toString();
+    }
+    return out;
+}
+
+void ThemeEditorDialog::onAdjustColorsClicked()
+{
+    if (!ensureEditableTheme())
+        return;
+    auto& tm = ThemeManager::instance();
+    const QStringList visible = visibleTokenKeys();
+    const bool filtered = m_tokenList && visible.size() < m_tokenList->topLevelItemCount();
+
+    ScopedChildWidget<QDialog> dlgOwner(this);
+    QDialog& dlg = *dlgOwner.get();
+    dlg.setWindowTitle(QStringLiteral("Adjust Colors"));
+    applyAppTheme(&dlg);
+    dlg.setMinimumWidth(420);
+    auto* root = new QVBoxLayout(&dlg);
+    root->addWidget(hintLabel(QStringLiteral(
+        "Shifts the colors of the theme; the program shows the result as you move the "
+        "sliders. OK keeps it, Cancel puts every color back."), &dlg));
+    auto* grid = new QGridLayout;
+    QDialog* const dp = &dlg;
+    auto mkSlider = [dp, grid](int row, const QString& name, int lo, int hi, const QString& unit) {
+        auto* l = new QLabel(name, dp);
+        auto* sl = new QSlider(Qt::Horizontal, dp);
+        sl->setRange(lo, hi);
+        sl->setValue(0);
+        auto* v = new QLabel(QStringLiteral("0%1").arg(unit), dp);
+        v->setMinimumWidth(48);
+        v->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        QObject::connect(sl, &QSlider::valueChanged, v, [v, unit](int x) {
+            v->setText(QStringLiteral("%1%2").arg(x > 0 ? QStringLiteral("+%1").arg(x) : QString::number(x), unit));
+        });
+        grid->addWidget(l, row, 0);
+        grid->addWidget(sl, row, 1);
+        grid->addWidget(v, row, 2);
+        return sl;
+    };
+    QSlider* hue = mkSlider(0, QStringLiteral("Hue"), -180, 180, QStringLiteral("°"));
+    QSlider* sat = mkSlider(1, QStringLiteral("Saturation"), -100, 100, QStringLiteral("%"));
+    QSlider* lig = mkSlider(2, QStringLiteral("Lightness"), -100, 100, QStringLiteral("%"));
+    grid->setColumnStretch(1, 1);
+    root->addLayout(grid);
+    auto* form = new QFormLayout;
+    auto* target = new QComboBox(&dlg);
+    target->addItem(QStringLiteral("Whole theme (tokens, palette, code colors)"));
+    if (filtered)
+        target->addItem(QStringLiteral("Only the %1 tokens shown in the list").arg(visible.size()));
+    form->addRow(QStringLiteral("Apply to:"), target);
+    auto* family = new QCheckBox(QStringLiteral("Keep status, band and special colors (red, yellow, green …)"), &dlg);
+    family->setChecked(true);
+    form->addRow(QString(), family);
+    root->addLayout(form);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    auto* resetBtn = buttons->addButton(QStringLiteral("Reset"), QDialogButtonBox::ResetRole);
+    root->addWidget(buttons);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    QObject::connect(resetBtn, &QPushButton::clicked, &dlg, [hue, sat, lig] {
+        hue->setValue(0);
+        sat->setValue(0);
+        lig->setValue(0);
+    });
+
+    // Live preview, coalesced: a slider drag fires many valueChanged.
+    auto* debounce = new QTimer(&dlg);
+    debounce->setSingleShot(true);
+    debounce->setInterval(120);
+    const auto applyPreview = [hue, sat, lig, target, family, visible] {
+        const QStringList only = target->currentIndex() == 1 ? visible : QStringList();
+        ThemeManager::instance().previewColorAdjust(hue->value(), sat->value(), lig->value(),
+                                                    only, family->isChecked());
+    };
+    QObject::connect(debounce, &QTimer::timeout, &dlg, applyPreview);
+    auto kick = [debounce] { debounce->start(); };
+    QObject::connect(hue, &QSlider::valueChanged, &dlg, kick);
+    QObject::connect(sat, &QSlider::valueChanged, &dlg, kick);
+    QObject::connect(lig, &QSlider::valueChanged, &dlg, kick);
+    QObject::connect(target, qOverload<int>(&QComboBox::currentIndexChanged), &dlg, kick);
+    QObject::connect(family, &QCheckBox::toggled, &dlg, kick);
+
+    tm.beginColorAdjust();
+    const QPointer<ThemeEditorDialog> self(this);
+    const int rc = dlg.exec();
+    if (dlgOwner && debounce->isActive()) {
+        debounce->stop();
+        if (rc == QDialog::Accepted)
+            applyPreview();   // the last slider move not previewed yet
+    }
+    ThemeManager::instance().endColorAdjust(rc == QDialog::Accepted && dlgOwner);
+    if (!self)
+        return;
+    refreshTokenList();
+    filterTokensTo(m_activeSubset);
+    rebuildPalettePage();
 }
 
 } // namespace AetherSDR
