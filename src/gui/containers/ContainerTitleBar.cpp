@@ -1,5 +1,5 @@
 #include "ContainerTitleBar.h"
-#include "ButtonStyles.h"
+#include "gui/ButtonStyles.h"   // build 793: the file is one level down
 #include "gui/FramelessMoveHelper.h"
 
 #include <QCursor>

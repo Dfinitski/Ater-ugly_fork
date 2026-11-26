@@ -13681,6 +13681,10 @@ PS — оператор снял (вход ответвителя без PS не
 - Тело окна Colors... вынесено в свободную функцию `buildBandPlanColorsDialog(PersistentDialog*, BandPlanManager*)`: во вложенных лямбдах больше нет `this` MainWindow, `[&]` заменён явным списком захвата, `connect` → `QObject::connect`.
 - Добавлен `#include "BandStackPanel.h"` в `MainWindow_Menus.cpp`.
 
+### Сборка 793 — путь include ButtonStyles.h в ContainerTitleBar
+
+Ошибка сборки (C1083): `src/gui/containers/ContainerTitleBar.cpp` включал `"ButtonStyles.h"` (появилось в сборке 782), а файл лежит уровнем выше. Исправлено на `"gui/ButtonStyles.h"`, как остальные include этого файла. Остальные файлы подкаталогов `src/gui/*/` проверены скриптом — других таких include нет.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
