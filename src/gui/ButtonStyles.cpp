@@ -1073,6 +1073,84 @@ const Entry kEntries[] = {
      "{{color.button.shack.dummy.active.border}}; border-radius: 3px; padding: 4px 8px; "
      "font-size: 10px; color: {{color.button.shack.dummy.active.text}}; text-align: left; "
      "}QPushButton:hover { background: {{color.button.shack.dummy.active.hover.background}}; }"},
+
+    // ── Antenna Genius applet (build 779)
+    {"ag.connect", "AntennaGeniusApplet.cpp: Connect (kButtonBase + bold)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #203040; border-radius: 3px; "
+     "padding: 2px 2px; font-size: 10px; color: #c8d8e8; }QPushButton:hover { background: "
+     "#243848; }QPushButton { font-size: 10px; font-weight: bold; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.ag.background}}; border: 1px solid "
+     "{{color.button.ag.border}}; border-radius: 3px; padding: 2px 2px; font-size: 10px; "
+     "color: {{color.button.ag.text}}; }QPushButton:hover { background: "
+     "{{color.button.ag.hover.background}}; }QPushButton { font-size: 10px; font-weight: bold; "
+     "}"},
+
+    {"ag.auto", "AntennaGeniusApplet.cpp: port A / B Auto (kButtonBase + kGreenActive)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #203040; border-radius: 3px; "
+     "padding: 2px 2px; font-size: 10px; color: #c8d8e8; }QPushButton:hover { background: "
+     "#243848; }QPushButton:checked { background-color: #006040; color: #00ff88; border: 1px "
+     "solid #00a060; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.ag.background}}; border: 1px solid "
+     "{{color.button.ag.border}}; border-radius: 3px; padding: 2px 2px; font-size: 10px; "
+     "color: {{color.button.ag.text}}; }QPushButton:hover { background: "
+     "{{color.button.ag.hover.background}}; }QPushButton:checked { background-color: "
+     "{{color.button.ag.checked.background}}; color: {{color.button.ag.checked.text}}; border: "
+     "1px solid {{color.button.ag.checked.border}}; }"},
+
+    {"ag.ant", "AntennaGeniusApplet.cpp: antenna buttons, TX + RX or band unknown (kButtonBase + kBlueActive)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #203040; border-radius: 3px; "
+     "padding: 2px 2px; font-size: 10px; color: #c8d8e8; }QPushButton:hover { background: "
+     "#243848; }QPushButton:checked { background-color: #0070c0; color: #ffffff; border: 1px "
+     "solid #0090e0; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.ag.background}}; border: 1px solid "
+     "{{color.button.ag.border}}; border-radius: 3px; padding: 2px 2px; font-size: 10px; "
+     "color: {{color.button.ag.text}}; }QPushButton:hover { background: "
+     "{{color.button.ag.hover.background}}; }QPushButton:checked { background-color: "
+     "{{color.button.ag.selected.background}}; color: {{color.button.ag.selected.text}}; "
+     "border: 1px solid {{color.button.ag.selected.border}}; }"},
+
+    {"ag.ant.rxonly", "AntennaGeniusApplet.cpp: antenna buttons, RX only on this band (kButtonBase + kAmberActive)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #203040; border-radius: 3px; "
+     "padding: 2px 2px; font-size: 10px; color: #c8d8e8; }QPushButton:hover { background: "
+     "#243848; }QPushButton:checked { background-color: #8a6000; color: #ffe080; border: 1px "
+     "solid #a07000; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.ag.background}}; border: 1px solid "
+     "{{color.button.ag.border}}; border-radius: 3px; padding: 2px 2px; font-size: 10px; "
+     "color: {{color.button.ag.text}}; }QPushButton:hover { background: "
+     "{{color.button.ag.hover.background}}; }QPushButton:checked { background-color: "
+     "{{color.button.ag.rxonly.checked.background}}; color: "
+     "{{color.button.ag.rxonly.checked.text}}; border: 1px solid "
+     "{{color.button.ag.rxonly.checked.border}}; }"},
+
+    {"ag.ant.dim", "AntennaGeniusApplet.cpp: antenna buttons in use by the other port / no RX or TX on this band",
+     /*original*/
+     "QPushButton { background: #101820; border: 1px solid #182028; border-radius: 3px; "
+     "padding: 2px 2px; font-size: 10px; color: {{color.background.2}}; }QPushButton:checked { "
+     "background: #202830; color: #606878; border: 1px solid #303848; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.ag.dim.background}}; border: 1px solid "
+     "{{color.button.ag.dim.border}}; border-radius: 3px; padding: 2px 2px; font-size: 10px; "
+     "color: {{color.button.ag.dim.text}}; }QPushButton:checked { background: "
+     "{{color.button.ag.dim.checked.background}}; color: {{color.button.ag.dim.checked.text}}; "
+     "border: 1px solid {{color.button.ag.dim.checked.border}}; }"},
+
+    // ── Spot settings dialog (build 779)
+    {"spots.toggle", "SpotSettingsDialog.cpp: Enabled / Disabled toggles (spots, memories, colour override, background, Auto, spot lines)",
+     /*original*/
+     "QPushButton { background: #206030; color: white; border: 1px solid #305040; padding: "
+     "3px; }QPushButton:!checked { background: #603020; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.spots.on.background}}; color: white; border: "
+     "1px solid {{color.button.spots.border}}; padding: 3px; }QPushButton:!checked { "
+     "background: {{color.button.spots.off.background}}; }"},
 };
 // END-ENTRIES
 

@@ -74,6 +74,25 @@ void ThemeManager::seedGeneratedDefaults()
         m_tokens.insert("color.brand.gradient", QVariant::fromValue(g));
     }
     m_tokens.insert("color.brand.wordmark", QString("#eaf2fb"));
+    m_tokens.insert("color.button.ag.background", QString("#1a2a3a"));
+    m_tokens.insert("color.button.ag.border", QString("#203040"));
+    m_tokens.insert("color.button.ag.checked.background", QString("#006040"));
+    m_tokens.insert("color.button.ag.checked.border", QString("#00a060"));
+    m_tokens.insert("color.button.ag.checked.text", QString("#00ff88"));
+    m_tokens.insert("color.button.ag.dim.background", QString("#101820"));
+    m_tokens.insert("color.button.ag.dim.border", QString("#182028"));
+    m_tokens.insert("color.button.ag.dim.checked.background", QString("#202830"));
+    m_tokens.insert("color.button.ag.dim.checked.border", QString("#303848"));
+    m_tokens.insert("color.button.ag.dim.checked.text", QString("#606878"));
+    m_tokens.insert("color.button.ag.dim.text", QString("#304050"));
+    m_tokens.insert("color.button.ag.hover.background", QString("#243848"));
+    m_tokens.insert("color.button.ag.rxonly.checked.background", QString("#8a6000"));
+    m_tokens.insert("color.button.ag.rxonly.checked.border", QString("#a07000"));
+    m_tokens.insert("color.button.ag.rxonly.checked.text", QString("#ffe080"));
+    m_tokens.insert("color.button.ag.selected.background", QString("#0070c0"));
+    m_tokens.insert("color.button.ag.selected.border", QString("#0090e0"));
+    m_tokens.insert("color.button.ag.selected.text", QString("#ffffff"));
+    m_tokens.insert("color.button.ag.text", QString("#c8d8e8"));
     m_tokens.insert("color.button.background.disabled", QString("#203040"));
     m_tokens.insert("color.button.border.disabled", QString("#304050"));
     m_tokens.insert("color.button.danger.background.disabled", QString("#2a1818"));
@@ -202,6 +221,9 @@ void ThemeManager::seedGeneratedDefaults()
     m_tokens.insert("color.button.shack.settings.hover.background", QString("#041e2a"));
     m_tokens.insert("color.button.shack.settings.text", QString("#00d8ef"));
     m_tokens.insert("color.button.shack.text", QString("#6b8099"));
+    m_tokens.insert("color.button.spots.border", QString("#305040"));
+    m_tokens.insert("color.button.spots.off.background", QString("#603020"));
+    m_tokens.insert("color.button.spots.on.background", QString("#206030"));
     m_tokens.insert("color.button.tx.active.background", QString("#cc2222"));
     m_tokens.insert("color.button.tx.active.border", QString("#ff4444"));
     m_tokens.insert("color.button.tx.active.text", QString("#ffffff"));

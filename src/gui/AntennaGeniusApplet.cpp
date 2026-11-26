@@ -1,4 +1,5 @@
 #include "AntennaGeniusApplet.h"
+#include "ButtonStyles.h"
 #include "PeripheralConnectionSource.h"
 #include "core/PeripheralSettings.h"
 #include "GuardedSlider.h"
@@ -23,22 +24,13 @@ namespace AetherSDR {
 
 // ── Styling constants ───────────────────────────────────────────────────────
 
-static constexpr const char* kButtonBase =
-    "QPushButton { background: #1a2a3a; border: 1px solid #203040; "
-    "border-radius: 3px; padding: 2px 2px; font-size: 10px; color: #c8d8e8; }"
-    "QPushButton:hover { background: #243848; }";
+// kButtonBase: in the button-style catalogue (ButtonStyles.cpp), the base of "ag.*" -- build 779.
 
-static const QString kGreenActive =
-    "QPushButton:checked { background-color: #006040; color: #00ff88; "
-    "border: 1px solid #00a060; }";
+// kGreenActive: in the button-style catalogue (ButtonStyles.cpp), part of "ag.auto" -- build 779.
 
-static const QString kBlueActive =
-    "QPushButton:checked { background-color: #0070c0; color: #ffffff; "
-    "border: 1px solid #0090e0; }";
+// kBlueActive: in the button-style catalogue (ButtonStyles.cpp), part of "ag.ant" -- build 779.
 
-static const QString kAmberActive =
-    "QPushButton:checked { background-color: #8a6000; color: #ffe080; "
-    "border: 1px solid #a07000; }";
+// kAmberActive: in the button-style catalogue (ButtonStyles.cpp), part of "ag.ant.rxonly" -- build 779.
 
 static constexpr const char* kLabelStyle =
     "color: #8090a0; font-size: 10px; font-weight: bold;";
@@ -88,9 +80,7 @@ void AntennaGeniusApplet::buildUI()
 
         m_connectBtn = new QPushButton("Connect");
         m_connectBtn->setFixedWidth(72);
-        m_connectBtn->setStyleSheet(
-            QString(kButtonBase) +
-            "QPushButton { font-size: 10px; font-weight: bold; }");
+        AetherSDR::ButtonStyles::apply(m_connectBtn, "ag.connect");
         row->addWidget(m_connectBtn);
 
         vbox->addLayout(row);
@@ -168,7 +158,7 @@ void AntennaGeniusApplet::buildUI()
         // AUTO button
         m_portAAutoBtn = new QPushButton("AUTO");
         m_portAAutoBtn->setCheckable(true);
-        m_portAAutoBtn->setStyleSheet(QString(kButtonBase) + kGreenActive);
+        AetherSDR::ButtonStyles::apply(m_portAAutoBtn, "ag.auto");
         pv->addWidget(m_portAAutoBtn);
     }
     vbox->addWidget(m_portASection);
@@ -215,7 +205,7 @@ void AntennaGeniusApplet::buildUI()
 
         m_portBAutoBtn = new QPushButton("AUTO");
         m_portBAutoBtn->setCheckable(true);
-        m_portBAutoBtn->setStyleSheet(QString(kButtonBase) + kGreenActive);
+        AetherSDR::ButtonStyles::apply(m_portBAutoBtn, "ag.auto");
         pv->addWidget(m_portBAutoBtn);
     }
     vbox->addWidget(m_portBSection);
@@ -426,7 +416,7 @@ void AntennaGeniusApplet::rebuildAntennaButtons()
         for (const auto& ant : antennas) {
             auto* btn = new QPushButton(ant.name);
             btn->setCheckable(true);
-            btn->setStyleSheet(QString(kButtonBase) + kBlueActive);
+            AetherSDR::ButtonStyles::apply(btn, "ag.ant");
             btn->setToolTip(QString("Antenna %1: %2").arg(ant.id).arg(ant.name));
             btn->setFixedHeight(24);
             btn->setMinimumWidth(0);
@@ -505,10 +495,7 @@ void AntennaGeniusApplet::updatePortDisplay(int portId)
         btns[i]->setChecked(inUseByOther ? false : isActive);
 
         if (inUseByOther) {
-            AetherSDR::ThemeManager::instance().applyStyleSheet(btns[i], "QPushButton { background: #101820; border: 1px solid #182028; "
-                "border-radius: 3px; padding: 2px 2px; font-size: 10px; color: {{color.background.2}}; }"
-                "QPushButton:checked { background: #202830; color: #606878; "
-                "border: 1px solid #303848; }");
+            AetherSDR::ButtonStyles::apply(btns[i], "ag.ant.dim");
             QString otherLabel = (portId == 1) ? "Port B" : "Port A";
             btns[i]->setToolTip(QString("%1 — in use by %2")
                 .arg(antennas[i].name, otherLabel));
@@ -524,24 +511,21 @@ void AntennaGeniusApplet::updatePortDisplay(int portId)
         //   No RX → dim/disabled appearance
         if (band <= 0) {
             // No band known — show all buttons normally
-            btns[i]->setStyleSheet(QString(kButtonBase) + kBlueActive);
+            AetherSDR::ButtonStyles::apply(btns[i], "ag.ant");
             btns[i]->setToolTip(antennas[i].name);
         } else if (!canRx && !canTx) {
             // No permission on this band — dim the button
-            AetherSDR::ThemeManager::instance().applyStyleSheet(btns[i], "QPushButton { background: #101820; border: 1px solid #182028; "
-                "border-radius: 3px; padding: 2px 2px; font-size: 10px; color: {{color.background.2}}; }"
-                "QPushButton:checked { background: #202830; color: #606878; "
-                "border: 1px solid #303848; }");
+            AetherSDR::ButtonStyles::apply(btns[i], "ag.ant.dim");
             btns[i]->setToolTip(QString("%1 — no RX/TX on %2")
                 .arg(antennas[i].name, m_model->bandName(band)));
         } else if (canRx && !canTx) {
             // RX only — amber highlight when active
-            btns[i]->setStyleSheet(QString(kButtonBase) + kAmberActive);
+            AetherSDR::ButtonStyles::apply(btns[i], "ag.ant.rxonly");
             btns[i]->setToolTip(QString("%1 — RX only on %2 (no TX)")
                 .arg(antennas[i].name, m_model->bandName(band)));
         } else {
             // Full TX+RX — normal blue
-            btns[i]->setStyleSheet(QString(kButtonBase) + kBlueActive);
+            AetherSDR::ButtonStyles::apply(btns[i], "ag.ant");
             btns[i]->setToolTip(QString("%1 — TX+RX on %2")
                 .arg(antennas[i].name, m_model->bandName(band)));
         }

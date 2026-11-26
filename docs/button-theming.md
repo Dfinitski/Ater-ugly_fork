@@ -59,6 +59,7 @@ aliasing one family value).
 | 776 | `overlay` (spectrum overlay menu, step 1) | `overlay.menu`, `overlay.menu.active`, `overlay.toggle`, `overlay.band`, `overlay.xvtr`, `overlay.xvtr.panel`, `overlay.xvtr.blank` | menu column buttons (at rest / panel open), the arrow, band panel buttons, transverter buttons (band panel and transverter panel, HF, empty slots) |
 | 777 | `overlay` (spectrum overlay menu, step 2) | `overlay.ant`, `overlay.loop`, `overlay.adc`, `overlay.check`, `overlay.frontend`, `overlay.wnb`, `overlay.wfm`, `overlay.display` | ANT panel: RX / TX antenna, LNA, LoopA / LoopB, ADC, dither / random boxes; front end PRE / ATT; WNB; WFM; Display panel buttons and Clone / Reset |
 | 778 | `shack` (shack switch applet) | `shack.idle`, `shack.a.active`, `shack.b.active`, `shack.b.conflict`, `shack.b.parked`, `shack.settings`, `shack.dummy`, `shack.dummy.active` | A / B antenna buttons (at rest, on, conflict blink, parked on the dummy load), Settings, dummy load |
+| 779 | `ag` (Antenna Genius applet), `spots` (spot settings dialog) | `ag.connect`, `ag.auto`, `ag.ant`, `ag.ant.rxonly`, `ag.ant.dim`, `spots.toggle` | Connect, port Auto, antenna buttons (TX + RX, RX only, unavailable); the dialog's Enabled / Disabled toggles |
 
 Primitive references. A group token may hold a primitive reference (`{color.gray.800}`) when the
 original sheet used a generic token (`{{color.background.1}}`): the remap themes resolve it to their
@@ -75,9 +76,9 @@ Spectrum overlay menu done (build 777). Left as they are: the colour picker butt
 the colour the operator picked) and the Display scope-mode row, whose one scoped sheet is set plainly.
 Three-digit colours (`#444`, WFM) are kept as written: the remap themes do not touch them either.
 
-## Still to do (125 button sheets with literal colours in 57 files after build 778)
+## Still to do (114 button sheets with literal colours in 56 files after build 779)
 
-Client chain (13), spot settings (11), Antenna Genius (10), tuner (10), client effect
+Client chain (13), tuner (10), client effect
 editors, PureSignal (8), container title bars (7), panadapter applet (6), DAX,
 TCI, MQTT, title bars, dialogs. Dynamic sheets (built with `QString::arg`, e.g. quick memory
 buttons) need tokens read in code — handled separately.

@@ -735,6 +735,32 @@
               "dummy.active.border": "#c05000",
               "dummy.active.text": "#f97316",
               "dummy.active.hover.background": "#1e0e00"
+            },
+            "ag": {
+              "background": "#073642",
+              "border": "#093c49",
+              "text": "#eee8d5",
+              "hover.background": "#0b4250",
+              "checked.background": "#006040",
+              "checked.border": "#00a060",
+              "checked.text": "#00ff88",
+              "selected.background": "#227bbb",
+              "selected.border": "#2589cf",
+              "selected.text": "#ffffff",
+              "rxonly.checked.background": "#8a6000",
+              "rxonly.checked.border": "#a07000",
+              "rxonly.checked.text": "#ffe080",
+              "dim.background": "#012c37",
+              "dim.border": "#042f3b",
+              "dim.text": "{color.gray.700}",
+              "dim.checked.background": "#073440",
+              "dim.checked.border": "#0e4857",
+              "dim.checked.text": "#62777c"
+            },
+            "spots": {
+              "on.background": "#206030",
+              "off.background": "#603020",
+              "border": "#305040"
             }
           }
         },

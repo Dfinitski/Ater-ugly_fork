@@ -13335,6 +13335,32 @@ ButtonStyles 0; check_button_styles — идентично; check_theme_seed —
 идентично; check_theme_seed — актуален.
 Не проверено на радио, не собиралось под Windows.
 
+## 768. Сборка 779 — кнопки в редактор тем, шаг 10: Antenna Genius и настройки спотов
+
+- Аплет Antenna Genius (`AntennaGeniusApplet.cpp`), группа `ag`, 5 записей:
+  `ag.connect` (`kButtonBase` + жирный), `ag.auto` (+ `kGreenActive`) —
+  Auto портов A / B, `ag.ant` (+ `kBlueActive`) — кнопки антенн при TX+RX
+  или неизвестном диапазоне, `ag.ant.rxonly` (+ `kAmberActive`) — только
+  приём на этом диапазоне, `ag.ant.dim` — занята другим портом / нет RX и TX
+  (две одинаковые строки в коде — одна запись; общий токен цвета текста —
+  ссылка на примитив). Константы убраны. 19 токенов `color.button.ag.*`.
+- Окно настроек спотов (`SpotSettingsDialog.cpp`), группа `spots`, 1 запись:
+  `spots.toggle` — шесть переключателей Enabled / Disabled (споты, памяти,
+  замена цветов, фон, Auto, линии спотов): одинаковый текст в пяти местах и
+  в переменной `bgStyle`. 3 токена; именованный `white` оставлен как есть.
+- 82 записи × 3 темы — всё идентично: вид не меняется.
+- Осталось: 114 стилей кнопок с литеральными цветами в 56 файлах.
+
+Файлы: `src/gui/AntennaGeniusApplet.cpp`, `src/gui/SpotSettingsDialog.cpp`,
+`src/gui/ButtonStyles.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `docs/button-theming.md`,
+`src/core/ForkBuild.h`.
+Проверка: errcheck AntennaGeniusApplet 0, SpotSettingsDialog 4 (= до правки,
+WanConnection.h); check_button_styles — идентично; check_theme_seed —
+актуален.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
