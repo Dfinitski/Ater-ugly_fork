@@ -695,10 +695,18 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event)
     // every dialog with a native frame (the theme editor's wizard, Adjust
     // Colors, Contrast Check, message and input boxes ...); frameless ones
     // draw their own title bar and are left alone.
-    if (event->type() == QEvent::Show) {
-        if (auto* dlg = qobject_cast<QDialog*>(obj);
-            dlg && dlg->isWindow() && !(dlg->windowFlags() & Qt::FramelessWindowHint))
-            attachNativeCaptionColour(dlg);
+    // Build 800 (operator, 26.11: "for all top-level windows"): any window
+    // with a native caption -- dialogs, the main window when framed, floating
+    // applet / panel windows, tool windows, the FTX / JS8 windows -- not just
+    // QDialog. Popups, menus, tool tips and splash screens have no caption.
+    if (event->type() == QEvent::Show && obj->isWidgetType()) {
+        auto* w = static_cast<QWidget*>(obj);
+        if (w->isWindow() && !(w->windowFlags() & Qt::FramelessWindowHint)) {
+            const Qt::WindowType type = w->windowType();
+            if (type != Qt::Popup && type != Qt::ToolTip && type != Qt::SplashScreen
+                && type != Qt::Desktop && type != Qt::SubWindow)
+                attachNativeCaptionColour(w);
+        }
     }
 
     if (event->type() == QEvent::Show) {
