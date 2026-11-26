@@ -465,8 +465,17 @@ void PsApplet::refresh()
     }
     setLamp(m_fbLamp, fbColor, fbColor == off ? QStringLiteral("#607080") : QStringLiteral("#0b0e12"));
     m_fbLamp->setText(live && fb > 0 ? QStringLiteral("FB %1").arg(fb) : tr("FB"));
-    setLamp(m_corrLamp, live && st.correcting ? QStringLiteral("#30e030") : off,
-            live && st.correcting ? QStringLiteral("#0b0e12") : QStringLiteral("#607080"));
+    // ANAN fork build 788 (operator, 26.11: "the CORR indicator does not seem
+    // to light"): it was tied to "transmitting now" with the other two, so it
+    // was dark the moment the transmission ended, and during a transmission it
+    // lights only after the first calibration (WDSP calcc sets info[14] when a
+    // calculation is done, a few seconds into the first over). As Thetis does,
+    // CORR now shows that a correction is in effect -- PureSignal on and
+    // calcc holding one -- whether or not transmitting; it goes out with PS
+    // off or a reset. FEED and FB stay transmit-only.
+    const bool corr = st.enabled && st.correcting;
+    setLamp(m_corrLamp, corr ? QStringLiteral("#30e030") : off,
+            corr ? QStringLiteral("#0b0e12") : QStringLiteral("#607080"));
     const int si = std::clamp(st.state, 0, 9);
     m_stateLabel->setText(st.enabled ? tr("State: %1").arg(QLatin1String(kStateNames[si]))
                                      : tr("PureSignal off"));
