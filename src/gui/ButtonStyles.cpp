@@ -437,6 +437,20 @@ const Entry kEntries[] = {
      "color: {{color.button.vfo.tab.dsp.text}}; font-size: 13px; font-weight: bold; padding: 3px 0; }"
      "QPushButton:focus { outline: none; }"},
 
+    // Build 786: new -- the X/RIT tab closed while RIT or XIT holds an offset
+    // (amber, the RIT / XIT buttons' colour).
+    {"vfo.tab.rit", "VfoWidget.cpp: X/RIT tab closed with a RIT / XIT offset (updateDspTabAccent)",
+     /*original*/
+     "QPushButton { background: transparent; border: none; "
+     "border-bottom: 2px solid #ffb800; "
+     "color: #ffb800; font-size: 13px; font-weight: bold; padding: 3px 0; }"
+     "QPushButton:focus { outline: none; }",
+     /*themed*/
+     "QPushButton { background: transparent; border: none; "
+     "border-bottom: 2px solid {{color.button.vfo.tab.rit.border}}; "
+     "color: {{color.button.vfo.tab.rit.text}}; font-size: 13px; font-weight: bold; padding: 3px 0; }"
+     "QPushButton:focus { outline: none; }"},
+
     {"vfo.dsp", "VfoWidget.cpp: DSP toggles, DIV, ESC, ESC +180, AetherDSP, AetherVoice (kDspToggle)",
      /*original*/
      "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; "

@@ -1984,6 +1984,15 @@ bool MainWindow::dispatchScopedMidiTx(const QString& id, float value,
         });
 }
 
+// ANAN fork build 786: one detent of the MIDI RIT knob = the flag's RIT step.
+static void midiRitKnobSteps(SliceModel* s, int steps)
+{
+    constexpr int kRitStepHz = 10;   // VfoWidget's RIT_STEP_HZ
+    if (!s || steps == 0)
+        return;
+    s->setRit(s->ritOn(), s->ritFreq() + steps * kRitStepHz);
+}
+
 void MainWindow::registerMidiParams()
 {
     using P = MidiParamType;
@@ -2126,6 +2135,22 @@ void MainWindow::registerMidiParams()
     reg("rx.xitEnable", "XIT Enable", "RX", P::Toggle, 0, 1,
         [this](float v) { if (auto* s = activeSlice()) s->setXit(v > 0.5f, s->xitFreq()); },
         [this]() -> float { auto* s = activeSlice(); return s && s->xitOn() ? 1 : 0; });
+
+    // ANAN fork build 786 (operator, 26.11: "add a knob for RIT and a button
+    // RIT = 0 to MIDI"), as Thetis has them: the knob moves the active
+    // receiver's RIT offset by the flag's RIT step (10 Hz) per detent and
+    // leaves RIT on / off as it is; RIT = 0 zeroes the offset, as the flag's
+    // "0" does. The knob is endless (MidiControlManager::isVfoTuneKnob): a
+    // relative binding arrives in the relativeAction handler; this setter is
+    // the absolute fallback (centre 64).
+    reg("rx.ritKnob", "RIT Knob", "RX", P::Slider, 0, 127,
+        [this](float v) {
+            const int steps = static_cast<int>(v) - 64;
+            if (steps != 0)
+                midiRitKnobSteps(activeSlice(), steps);
+        });
+    reg("rx.ritZero", "RIT = 0", "RX", P::Trigger, 0, 1,
+        [this](float) { if (auto* s = activeSlice()) s->setRit(s->ritOn(), 0); });
 
     reg("rx.nr2Enable", "NR2 (Spectral)", "RX", P::Toggle, 0, 1,
         [this](float v) {
@@ -3084,6 +3109,10 @@ void MainWindow::wireExternalControllers()
 
     connect(m_midiControl, &MidiControlManager::relativeAction,
             this, [this, cap](const QString& paramId, int steps) {
+        if (paramId == QLatin1String("rx.ritKnob")) {   // build 786
+            midiRitKnobSteps(activeSlice(), steps);
+            return;
+        }
         // Build 476: the knobs of VFO A', B', C, D -- fixed slices.
         int knobX = -1;
         int knobXSlice = -1;

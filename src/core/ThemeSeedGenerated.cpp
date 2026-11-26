@@ -653,6 +653,8 @@ void ThemeManager::seedGeneratedDefaults()
     m_tokens.insert("color.button.vfo.tab.focus.border", QString("#6888a0"));
     m_tokens.insert("color.button.vfo.tab.hover.border", QString("#5a7890"));
     m_tokens.insert("color.button.vfo.tab.hover.text", QString("#ffffff"));
+    m_tokens.insert("color.button.vfo.tab.rit.border", QString("#ffb800"));
+    m_tokens.insert("color.button.vfo.tab.rit.text", QString("#ffb800"));
     m_tokens.insert("color.button.vfo.tab.text", QString("#a8b5c3"));
     m_tokens.insert("color.button.vfo.text", QString("#c8d8e8"));
     m_tokens.insert("color.button.vfo2.disabled.text", QString("#5a6a78"));

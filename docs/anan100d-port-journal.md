@@ -13538,6 +13538,48 @@ StripFinalOutputPanel 8, TciApplet 4, остальные 0); check_button_styles
 Проверка: errcheck MainWindow_Wiring 24 (= база).
 Не проверено на радио, не собиралось под Windows.
 
+## 775. Сборка 786 — RIT / XIT: память, подсветка на флажке, MIDI
+
+Оператор (26.11): «посмотри на наш параметр RIT/XIT, всё ли хорошо работает
+и запоминается по кнопкам памяти и по диапазонам для каждой моды. Сделай,
+чтобы значок на флаге был подсвечен, если хоть одно значение не равно 0.
+Потом в миди добавь ручку для RIT и кнопку RIT=0».
+
+Проверка: RIT / XIT (вкл. и смещение) хранились только в памяти сеанса
+приёмника (Hl2Backend::receiverMemoryJson — переживают перезапуск), но не в
+общем снимке вызова (`gui/RecallSnapshot.h`) — то есть ни кнопки
+диапазонов, ни кнопки быстрой памяти, ни памяти станций их не запоминали.
+
+- `RecallSnapshot::capture` пишет `rit` / `ritHz` / `xit` / `xitHz`;
+  `MainWindow::applyRecallSnapshot` восстанавливает их (старые снимки без
+  этих полей RIT / XIT не трогают). Память диапазона — по диапазону (с ней
+  же вызывается и мода диапазона); быстрые памяти и памяти станций — каждая
+  своё.
+- Флажок VFO: вкладка X/RIT (закрытая) подсвечена янтарным — цветом кнопок
+  RIT / XIT, — пока смещение RIT или XIT не 0 (включено ли оно, неважно).
+  Новый стиль `vfo.tab.rit` в каталоге, токены `color.button.vfo.tab.rit.*`.
+  Обновляется вместе с подсветкой DSP и по сигналам `ritChanged` /
+  `xitChanged`.
+- MIDI (как в Thetis): `rx.ritKnob` «RIT Knob» — бесконечная ручка (как ручки
+  VFO: обучается относительной, декодируется и копится так же; можно
+  включить Progressive), один щелчок = шаг RIT флажка 10 Гц, вкл./выкл. RIT
+  не меняет; `rx.ritZero` «RIT = 0» — кнопка, обнуляет смещение, как «0» на
+  флажке. Обе — для активного приёмника.
+
+Внимание: среда синтаксической проверки (errcheck: заголовки Qt и стабы)
+потеряна при сбросе рабочей папки, файлы этой сборки проверены только
+просмотром.
+
+Файлы: `src/core/MidiControlManager.cpp`, `src/gui/MainWindow_Controllers.cpp`,
+`src/gui/RecallSnapshot.h`, `src/gui/MainWindow_Wiring.cpp`,
+`src/gui/VfoWidget.cpp`, `src/gui/ButtonStyles.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `docs/button-theming.md`,
+`src/core/ForkBuild.h`.
+Проверка: check_button_styles — 170 записей × 3 темы, идентично;
+check_theme_seed — актуален; errcheck — недоступен.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

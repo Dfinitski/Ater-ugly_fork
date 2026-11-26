@@ -3649,6 +3649,17 @@ void VfoWidget::updateDspTabAccent()
         // the resolved sheet is unchanged -- the same guard.)
         AetherSDR::ButtonStyles::apply(dspTabButton, dspActive ? "vfo.tab.dsp" : "vfo.tab");
     }
+
+    // ANAN fork build 786 (operator, 26.11: "the flag's icon lit if either
+    // value is not 0"): the X/RIT tab (index 3), closed, is lit amber -- the
+    // RIT / XIT buttons' colour -- while the RIT or the XIT offset is not 0,
+    // whether or not it is switched on. Run with the DSP accent: every place
+    // that refreshes that one refreshes this one too.
+    constexpr int kRitTab = 3;
+    if (m_tabBtns.size() > kRitTab && m_activeTab != kRitTab) {
+        const bool ritSet = m_slice && (m_slice->ritFreq() != 0 || m_slice->xitFreq() != 0);
+        AetherSDR::ButtonStyles::apply(m_tabBtns[kRitTab], ritSet ? "vfo.tab.rit" : "vfo.tab");
+    }
 }
 
 // Drop a just-closed tab button back to its resting style. The caller must
@@ -3661,7 +3672,7 @@ void VfoWidget::deactivateTabButton(int closedTab)
         return;
     }
     m_tabBtns[closedTab]->setChecked(false);
-    if (closedTab == 1) {
+    if (closedTab == 1 || closedTab == 3) {   // build 786: X/RIT has its accent too
         updateDspTabAccent();
     } else {
         AetherSDR::ButtonStyles::apply(m_tabBtns[closedTab], "vfo.tab");
@@ -5802,6 +5813,7 @@ void VfoWidget::setSlice(SliceModel* slice)
         m_ritBtn->setChecked(on);
         m_ritLabel->setText(QString("%1%2 Hz").arg(hz >= 0 ? "+" : "").arg(hz));
         m_updatingFromModel = false;
+        updateDspTabAccent();   // build 786: the X/RIT tab's accent
     });
     connect(m_slice, &SliceModel::xitChanged, this, [this](bool on, int hz) {
         m_updatingFromModel = true;
@@ -5809,6 +5821,7 @@ void VfoWidget::setSlice(SliceModel* slice)
         m_xitBtn->setChecked(on);
         m_xitLabel->setText(QString("%1%2 Hz").arg(hz >= 0 ? "+" : "").arg(hz));
         m_updatingFromModel = false;
+        updateDspTabAccent();   // build 786: the X/RIT tab's accent
     });
     // FM controls
     connect(m_slice, &SliceModel::fmToneModeChanged, this, [this](const QString& mode) {

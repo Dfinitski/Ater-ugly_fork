@@ -4184,6 +4184,19 @@ void MainWindow::applyRecallSnapshot(SliceModel* s, const QJsonObject& mem, bool
     if (mem.contains(QStringLiteral("sq")))
         s->setSquelch(mem.value(QStringLiteral("sq")).toBool(),
                       mem.value(QStringLiteral("sqL")).toInt(s->squelchLevel()));
+    // Build 786: RIT / XIT (snapshots stored before it leave them as they are).
+    if (mem.contains(QStringLiteral("ritHz"))) {
+        const bool on = mem.value(QStringLiteral("rit")).toBool();
+        const int hz = mem.value(QStringLiteral("ritHz")).toInt();
+        if (on != s->ritOn() || hz != s->ritFreq())
+            s->setRit(on, hz);
+    }
+    if (mem.contains(QStringLiteral("xitHz"))) {
+        const bool on = mem.value(QStringLiteral("xit")).toBool();
+        const int hz = mem.value(QStringLiteral("xitHz")).toInt();
+        if (on != s->xitOn() || hz != s->xitFreq())
+            s->setXit(on, hz);
+    }
     // Digital-mode offsets, and the FM repeater only in FM.
     if (mem.contains(QStringLiteral("rttyM")))
         s->setRttyMark(mem.value(QStringLiteral("rttyM")).toInt());

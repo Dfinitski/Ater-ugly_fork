@@ -462,6 +462,8 @@
               "tab.active.border":           "#00b4d8",
               "tab.dsp.text":                "#20a040",
               "tab.dsp.border":              "#20a040",
+              "tab.rit.text":                "#ffb800",
+              "tab.rit.border":              "#ffb800",
               "ant.rx.text":                 "#4488ff",
               "ant.tx.text":                 "#ff4444",
               "hover.background":            "#203040",

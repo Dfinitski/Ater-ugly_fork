@@ -91,6 +91,13 @@ inline QJsonObject capture(const RadioModel& model, const SliceModel* s)
     o.insert(QStringLiteral("rptOff"), s->fmRepeaterOffsetFreq());
     o.insert(QStringLiteral("toneMode"), s->fmToneMode());
     o.insert(QStringLiteral("toneVal"), s->fmToneValue());
+    // ANAN fork build 786 (operator, 26.11: "is RIT / XIT remembered by the
+    // memory buttons and the bands"): it was not -- the receiver's RIT and
+    // XIT, on / off and offset, are part of the snapshot now.
+    o.insert(QStringLiteral("rit"), s->ritOn());
+    o.insert(QStringLiteral("ritHz"), s->ritFreq());
+    o.insert(QStringLiteral("xit"), s->xitOn());
+    o.insert(QStringLiteral("xitHz"), s->xitFreq());
     if (s->sliceId() == 0 || s->sliceId() == 1) {   // build 487: its sub receiver
         if (const SliceModel* sub = rm.slice(6 + s->sliceId())) {
             o.insert(QStringLiteral("sub"), true);

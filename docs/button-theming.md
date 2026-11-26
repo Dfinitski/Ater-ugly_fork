@@ -65,6 +65,7 @@ aliasing one family value).
 | 782 | 23 files, converted by `engine` (applets, panels, title bars): `ftpanel`, `js8panel`, `acom`, `bandstack`, `eqeditor`, `gateeditor`, `pudu`, `puduedit`, `tubeeditor`, `cwx`, `dax`, `daxiq`, `dspparam`, `eq`, `meter`, `mqtt`, `phone`, `overlay2`, `spectrum`, `tci`, `titlebar`, `vfo2`, `container` | 38 entries; ids and sites are in the catalogue |
 | 783 | 14 dialogs, by `engine`: `atupretune`, `audiodevice`, `disconnect`, `stations`, `dxcommands`, `help`, `midi`, `mqttsettings`, `profileio`, `profiles`, `psampview`, `settingsbrowser`, `shortcuts`, `swrlicense` | 18 entries; dialog-wide sheets keep their non-button colours literal |
 | 784 | by hand: `clock` (AetherClock -- fixes the same double remap as RX), `stripout` (QUIN flash), `whatsnew`, `adaptive` (`.arg` font size), `frameless` (`.arg` font size), `swrlicense.remember`; sub-dialogs of the settings browser | 10 entries; also tokens the engine missed in sheets that mix `{{tokens}}` and literals (`eqeditor`, `titlebar`, `atupretune`) |
+| 786 | `vfo` | `vfo.tab.rit` (new) | the VFO flag's X/RIT tab, closed, lit amber while a RIT or XIT offset is not 0 |
 
 Primitive references. A group token may hold a primitive reference (`{color.gray.800}`) when the
 original sheet used a generic token (`{{color.background.1}}`): the remap themes resolve it to their
