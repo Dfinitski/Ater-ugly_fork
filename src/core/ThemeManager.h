@@ -173,6 +173,15 @@ public:
     QStringList tokensForWidget(const QWidget* widget) const;
     // ANAN fork build 763: the widget's style sheet goes through
     // applyStyleSheet() (with or without tokens in it).
+    // ANAN fork build 764: image tokens -- a colour token holding a picture
+    // ("image:<file>|<fallback colour>"); see ThemeManager.cpp.
+    static QColor  scalarColor(const QString& raw);
+    static bool    parseImageToken(const QString& raw, QString* file, QColor* fallback);
+    static QString userThemeImagesDir();
+    static QString imageFilePath(const QString& file);   // absolute path of a stored name
+    QString imageFileAt(const QString& containerPath, const QString& token) const;   // "" = not an image
+    void    setImage(const QString& containerPath, const QString& token,
+                     const QString& file, const QColor& fallback);
     bool isTrackedWidget(const QWidget* widget) const
     {
         return m_trackedWidgets.contains(const_cast<QWidget*>(widget));

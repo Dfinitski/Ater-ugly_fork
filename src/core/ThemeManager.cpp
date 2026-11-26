@@ -97,8 +97,17 @@ QString colorToTokenString(const QColor& c)
 // "#aarrggbb" form, so we route translucent colours through rgba(...)
 // instead.  Opaque colours pass through verbatim — preserves the diffable
 // rendering output every test asserts against.
-QString colorHexToCssFragment(const QString& hex)
+QString colorHexToCssFragment(const QString& hexIn)
 {
+    // Build 764: an image token's fragment, where a colour is wanted, is
+    // its fallback colour (resolveFor() turns `background: {{token}}` into
+    // the picture itself).
+    QString hex = hexIn;
+    if (hex.startsWith(QLatin1String("image:"))) {
+        QColor fb;
+        AetherSDR::ThemeManager::parseImageToken(hex, nullptr, &fb);
+        hex = fb.isValid() ? fb.name(QColor::HexRgb) : QStringLiteral("transparent");
+    }
     const QColor c(hex);
     if (!c.isValid() || c.alpha() == 255) return hex;
     return QStringLiteral("rgba(%1, %2, %3, %4)")
@@ -1004,7 +1013,7 @@ QColor ThemeManager::factoryColor(const QString& token) const
         return g.stops.first().color;
     }
     if (it.value().userType() != QMetaType::QString) return QColor();
-    return QColor(it.value().toString());
+    return ThemeManager::scalarColor(it.value().toString());   // build 764
 }
 
 int ThemeManager::factorySizing(const QString& token) const
@@ -1520,7 +1529,7 @@ QColor ThemeManager::color(const QString& token) const
         if (!g.stops.isEmpty()) return g.stops.first().color;
         return QColor(Qt::transparent);
     }
-    return QColor(v.toString());
+    return scalarColor(v.toString());   // build 764: image tokens give their fallback
 }
 
 QBrush ThemeManager::brush(const QString& token, const QRect& bounds) const
@@ -1532,7 +1541,7 @@ QBrush ThemeManager::brush(const QString& token, const QRect& bounds) const
     }
     if (val.userType() != qMetaTypeId<ThemeGradient>()) {
         // Scalar — wrap the colour into a solid brush.
-        return QBrush(QColor(val.toString()));
+        return QBrush(scalarColor(val.toString()));   // build 764
     }
     const auto g = val.value<ThemeGradient>();
     if (g.type == ThemeGradient::Linear) {
@@ -1749,7 +1758,37 @@ QString ThemeManager::resolveFor(const QWidget* widget,
     // (legacy resolve() callers) lookups go straight to root scope.
     static const QRegularExpression kRe(QStringLiteral(R"(\{\{([^}]+)\}\})"));
     // Build 746: the literal colours of the template first (theme remap).
-    const QString tmpl = remapLiterals(stylesheetTemplate);
+    QString tmpl = remapLiterals(stylesheetTemplate);
+    // Build 764: a background whose token holds a picture becomes the
+    // picture, stretched over the element (border-image), its own
+    // background transparent. Other uses of the token keep its fallback
+    // colour (colorHexToCssFragment).
+    if (tmpl.contains(QLatin1String("{{"))) {
+        static const QRegularExpression kBg(QStringLiteral(
+            R"(background(?:-color)?\s*:\s*\{\{([^}]+)\}\}\s*;?)"));
+        QString rebuilt;
+        qsizetype last = 0;
+        QRegularExpressionMatchIterator bi = kBg.globalMatch(tmpl);
+        while (bi.hasNext()) {
+            const QRegularExpressionMatch m = bi.next();
+            const QString token = m.captured(1).trimmed();
+            const QVariant raw = lookupRaw(widget ? containerPathFor(widget) : QString(), token);
+            QString file;
+            if (raw.userType() == QMetaType::QString
+                && parseImageToken(raw.toString(), &file, nullptr) && !file.isEmpty()) {
+                const QString abs = imageFilePath(file);
+                rebuilt += tmpl.mid(last, m.capturedStart(0) - last);
+                rebuilt += QStringLiteral("border-image: url(\"%1\") 0 0 0 0 stretch stretch; "
+                                          "background: transparent;")
+                               .arg(QDir::fromNativeSeparators(abs));
+                last = m.capturedEnd(0);
+            }
+        }
+        if (last > 0) {
+            rebuilt += tmpl.mid(last);
+            tmpl = rebuilt;
+        }
+    }
     QString out = tmpl;
     QRegularExpressionMatchIterator it = kRe.globalMatch(tmpl);
     int offset = 0;
@@ -2110,7 +2149,7 @@ QColor ThemeManager::colorAt(const QString& containerPath, const QString& token)
         const ThemeGradient g = v.value<ThemeGradient>();
         return g.stops.isEmpty() ? QColor() : g.stops.first().color;
     }
-    return QColor(v.toString());
+    return scalarColor(v.toString());   // build 764: image tokens give their fallback
 }
 
 int ThemeManager::sizingAt(const QString& containerPath, const QString& token) const
@@ -2200,7 +2239,7 @@ QColor ThemeManager::color(const QWidget* widget, const QString& token) const
         const ThemeGradient g = v.value<ThemeGradient>();
         return g.stops.isEmpty() ? QColor() : g.stops.first().color;
     }
-    return QColor(v.toString());
+    return scalarColor(v.toString());   // build 764: image tokens give their fallback
 }
 
 int ThemeManager::sizing(const QWidget* widget, const QString& token) const
@@ -2294,6 +2333,75 @@ void ThemeManager::setColor(const QString& containerPath, const QString& token, 
     const auto it = scope->tokens.constFind(token);
     if (it != scope->tokens.constEnd() && it.value().toString() == hex) return;
     scope->tokens.insert(token, QVariant(hex));
+    m_currentEditToken = token;
+    emit themeChanged();
+    m_currentEditToken.clear();
+    saveActiveTheme();
+}
+
+// ── Build 764: image tokens ────────────────────────────────────────────────
+// A colour token may hold a picture: the string "image:<file>|<fallback>",
+// <file> a name in the user themes' images folder (or an absolute path),
+// <fallback> the colour used wherever a colour, not a background, is read.
+
+QColor ThemeManager::scalarColor(const QString& raw)
+{
+    if (raw.startsWith(QLatin1String("image:"))) {
+        QColor fb;
+        parseImageToken(raw, nullptr, &fb);
+        return fb.isValid() ? fb : QColor(Qt::transparent);
+    }
+    return QColor(raw);
+}
+
+bool ThemeManager::parseImageToken(const QString& raw, QString* file, QColor* fallback)
+{
+    if (!raw.startsWith(QLatin1String("image:")))
+        return false;
+    const QString body = raw.mid(6);
+    const qsizetype bar = body.lastIndexOf(QLatin1Char('|'));
+    if (file)
+        *file = bar >= 0 ? body.left(bar) : body;
+    if (fallback)
+        *fallback = bar >= 0 ? QColor(body.mid(bar + 1)) : QColor();
+    return true;
+}
+
+QString ThemeManager::userThemeImagesDir()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+           + AetherSDR::forkDataDir() + QStringLiteral("/themes/images");
+}
+
+QString ThemeManager::imageFilePath(const QString& file)
+{
+    if (file.isEmpty() || QDir::isAbsolutePath(file))
+        return file;
+    return userThemeImagesDir() + QLatin1Char('/') + file;
+}
+
+QString ThemeManager::imageFileAt(const QString& containerPath, const QString& token) const
+{
+    const QVariant raw = lookupRaw(containerPath, token);
+    QString file;
+    if (raw.userType() == QMetaType::QString && parseImageToken(raw.toString(), &file, nullptr))
+        return file;
+    return QString();
+}
+
+void ThemeManager::setImage(const QString& containerPath, const QString& token,
+                            const QString& file, const QColor& fallback)
+{
+    if (file.isEmpty())
+        return;
+    const QString value = QStringLiteral("image:") + file + QLatin1Char('|')
+        + (fallback.isValid() ? colorToTokenString(fallback) : QStringLiteral("#000000"));
+    QHash<QString, QVariant>& map = containerPath.isEmpty()
+                                        ? m_tokens : scopeOrCreate(containerPath)->tokens;
+    const auto it = map.constFind(token);
+    if (it != map.constEnd() && it.value().toString() == value)
+        return;
+    map.insert(token, QVariant(value));
     m_currentEditToken = token;
     emit themeChanged();
     m_currentEditToken.clear();

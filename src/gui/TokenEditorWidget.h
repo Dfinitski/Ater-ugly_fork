@@ -103,6 +103,7 @@ private:
         TargetGradient,     // picker → m_gradientBuf.stops[selected].color
         TargetFontFamily,   // font toolbar → m_bufferFontFamily
         TargetNumeric,      // numeric spin → m_bufferNumeric
+        TargetImage,        // build 764: a picture -> m_bufferImage (fallback m_bufferColor)
     };
 
     void buildHeaderRow(QVBoxLayout* root);
@@ -139,6 +140,12 @@ private:
     // Type chooser — only meaningful for color.* tokens.
     QRadioButton* m_typeFlat{nullptr};
     QRadioButton* m_typeGradient{nullptr};
+    QRadioButton* m_typeImage{nullptr};        // build 764
+    QPushButton*  m_imageChooseBtn{nullptr};   // build 764
+    QLabel*       m_imageLabel{nullptr};       // build 764
+    QString       m_bufferImage;               // build 764: stored file name
+    bool chooseImageFile();                    // build 764
+    void refreshImageLabel();                  // build 764
     QButtonGroup* m_typeGroup{nullptr};
     QLabel*       m_typeLabel{nullptr};
 
@@ -214,6 +221,7 @@ private:
         int           numeric {0};
         int           fontSize {12};
         bool          pending {false};
+        QString       image;                   // build 764
     };
     DeferredEdit m_deferredEdit;
     bool          m_dirty{false};

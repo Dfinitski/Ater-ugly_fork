@@ -489,6 +489,8 @@ void ThemeEditorDialog::populateRow(QTreeWidgetItem* item)
                               .arg(static_cast<int>(std::round(g.angle)))
                               .arg(g.stops.size());
                 }
+                } else if (const QString img = tm.imageFileAt(scopePath, key); !img.isEmpty()) {
+                    text = QStringLiteral("image: %1").arg(img);   // build 764
                 } else {
                     text = colorToTokenHex(tm.colorAt(scopePath, key));
                 }
@@ -523,6 +525,8 @@ void ThemeEditorDialog::populateRow(QTreeWidgetItem* item)
                           .arg(g.stops.size());
                 item->setText(lastCol, text);
             }
+        } else if (const QString img = tm.imageFileAt(leafPath, key); !img.isEmpty()) {
+            item->setText(lastCol, QStringLiteral("image: %1").arg(img));   // build 764
         } else {
             item->setText(lastCol, colorToTokenHex(tm.colorAt(leafPath, key)));
         }

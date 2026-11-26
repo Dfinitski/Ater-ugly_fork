@@ -5,6 +5,10 @@
 
 #include <QButtonGroup>
 #include <QComboBox>
+#include <QDir>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QDateTime>
 #include <QFontComboBox>
 #include <QFrame>
 #include <QGridLayout>
@@ -168,8 +172,39 @@ void TokenEditorWidget::buildTypeRow(QVBoxLayout* root)
     m_typeGroup->addButton(m_typeGradient, 1);
     row->addWidget(m_typeFlat);
     row->addWidget(m_typeGradient);
+    // ANAN fork build 764 (operator, 26.11: "the option to set a colour
+    // gradient on buttons or one's own picture"): a colour token can hold
+    // a picture -- where it is a background it is drawn stretched over the
+    // element; elsewhere the colour (the Flat colour last chosen) stands in.
+    m_typeImage = new QRadioButton(QStringLiteral("Image"), this);
+    m_typeGroup->addButton(m_typeImage, 2);
+    row->addWidget(m_typeImage);
+    m_imageChooseBtn = new QPushButton(QStringLiteral("Choose image…"), this);
+    m_imageChooseBtn->setToolTip(QStringLiteral(
+        "A PNG / JPG / BMP / SVG picture for this token. It is copied into the\n"
+        "themes' images folder and drawn, stretched, wherever the token is a\n"
+        "background (buttons, panels). Where the token is a text or line colour\n"
+        "the colour chosen under Flat color is used instead."));
+    row->addWidget(m_imageChooseBtn);
+    m_imageLabel = new QLabel(this);
+    m_imageLabel->setStyleSheet(QStringLiteral("QLabel { color: #8ea8c0; }"));
+    row->addWidget(m_imageLabel, 1);
     row->addStretch(1);
     root->addLayout(row);
+    connect(m_imageChooseBtn, &QPushButton::clicked, this, [this] {
+        if (m_currentToken.isEmpty() || !m_currentToken.startsWith(QStringLiteral("color.")))
+            return;
+        if (chooseImageFile()) {
+            m_target = TargetImage;
+            {
+                QSignalBlocker b(m_typeGroup);
+                m_typeImage->setChecked(true);
+            }
+            refreshImageLabel();
+            applyEnableState();
+            markDirty();
+        }
+    });
 
     connect(m_typeGroup, qOverload<int>(&QButtonGroup::idClicked),
             this, &TokenEditorWidget::onColorTypeToggled);
@@ -586,9 +621,13 @@ void TokenEditorWidget::applyEnableState()
     // Type radios — only meaningful for color tokens.
     const bool colorTok = (m_target == TargetScalarColor
                            || m_target == TargetGradient);
-    m_typeLabel->setEnabled(colorTok);
-    m_typeFlat->setEnabled(colorTok);
-    m_typeGradient->setEnabled(colorTok);
+    m_typeLabel->setEnabled(colorTok || m_target == TargetImage);
+    m_typeFlat->setEnabled(colorTok || m_target == TargetImage);
+    m_typeGradient->setEnabled(colorTok || m_target == TargetImage);
+    // Build 764: the picture option, for colour tokens.
+    m_typeImage->setEnabled(colorTok || m_target == TargetImage);
+    m_imageChooseBtn->setEnabled(colorTok || m_target == TargetImage);
+    m_imageLabel->setVisible(m_target == TargetImage);
 
     // Color group — picker is enabled for scalar tokens (binds to buffer),
     // gradient tokens (binds to selected stop), AND font.family.*
@@ -598,10 +637,12 @@ void TokenEditorWidget::applyEnableState()
     const bool colorEnabled =
         m_target == TargetScalarColor ||
         (m_target == TargetGradient && selectedGradientStopIndex() >= 0) ||
-        m_target == TargetFontFamily;
+        m_target == TargetFontFamily ||
+        m_target == TargetImage;   // build 764: the picture's fallback colour
     m_colorGroupLabel->setEnabled(m_target == TargetScalarColor
                                   || m_target == TargetGradient
-                                  || m_target == TargetFontFamily);
+                                  || m_target == TargetFontFamily
+                                  || m_target == TargetImage);
     m_colorPicker->setEnabled(colorEnabled);
 
     // Font group — the row serves two distinct edits depending on
@@ -686,7 +727,23 @@ void TokenEditorWidget::loadCurrentTokenIntoBuffers()
     const QString& path = m_activeContainerPath;
     m_settingControlsFromToken = true;
 
-    if (m_currentToken.startsWith(QStringLiteral("color."))) {
+    m_bufferImage.clear();   // build 764
+    if (m_currentToken.startsWith(QStringLiteral("color."))
+        && !tm.imageFileAt(path, m_currentToken).isEmpty()) {
+        // Build 764: a picture; its fallback colour in the picker.
+        m_target = TargetImage;
+        m_bufferImage = tm.imageFileAt(path, m_currentToken);
+        m_bufferColor = tm.colorAt(path, m_currentToken);
+        {
+            QSignalBlocker bRadio(m_typeGroup);
+            m_typeImage->setChecked(true);
+        }
+        m_gradientBuf = {};
+        syncGradientStripAndList();
+        QSignalBlocker bPick(m_colorPicker);
+        m_colorPicker->setColor(m_bufferColor);
+        refreshImageLabel();
+    } else if (m_currentToken.startsWith(QStringLiteral("color."))) {
         // Gradient detection still uses root brush() — gradient tokens
         // are namespace-shaped (color.waterfall.colormap.*) and not yet
         // overridden in nested scopes.  PR step 4 may revisit this.
@@ -778,6 +835,7 @@ void TokenEditorWidget::setToken(const QString& key)
         case TargetGradient:    typeLabel = QStringLiteral("gradient");    break;
         case TargetFontFamily:  typeLabel = QStringLiteral("font family"); break;
         case TargetNumeric:     typeLabel = QStringLiteral("size (px)");   break;
+        case TargetImage:       typeLabel = QStringLiteral("image");       break;   // build 764
         default:                typeLabel = QStringLiteral("(unknown)");   break;
     }
     // Single-line layout: "Editing:" and the token sit on the same
@@ -813,7 +871,7 @@ void TokenEditorWidget::onColorPickerChanged(const QColor& c)
 {
     if (m_settingControlsFromToken || m_currentToken.isEmpty()) return;
     if (!c.isValid()) return;
-    if (m_target == TargetScalarColor) {
+    if (m_target == TargetScalarColor || m_target == TargetImage) {   // build 764
         m_bufferColor = c;
         markDirty();
     } else if (m_target == TargetFontFamily) {
@@ -844,6 +902,23 @@ void TokenEditorWidget::onColorTypeToggled()
 {
     if (m_settingControlsFromToken || m_currentToken.isEmpty()) return;
     if (!m_currentToken.startsWith(QStringLiteral("color."))) return;
+
+    // Build 764: Image -- a picture is needed; cancelling the file dialog
+    // leaves the type as it was.
+    if (m_typeImage->isChecked() && m_target != TargetImage) {
+        if (m_bufferImage.isEmpty() && !chooseImageFile()) {
+            QSignalBlocker b(m_typeGroup);
+            (m_target == TargetGradient ? m_typeGradient : m_typeFlat)->setChecked(true);
+            return;
+        }
+        if (m_target == TargetGradient && !m_gradientBuf.stops.isEmpty())
+            m_bufferColor = m_gradientBuf.stops.first().color;
+        m_target = TargetImage;
+        refreshImageLabel();
+        applyEnableState();
+        markDirty();
+        return;
+    }
 
     if (m_typeGradient->isChecked() && m_target != TargetGradient) {
         // Flat → gradient: seed a 2-stop ramp with the current scalar
@@ -1198,6 +1273,14 @@ void TokenEditorWidget::onResetClicked()
     if (!tm.hasFactoryValue(m_currentToken)) return;
 
     m_settingControlsFromToken = true;
+    // Build 764: the factory value of a colour token is a colour -- a
+    // picture resets to it.
+    if (m_target == TargetImage && tm.factoryColor(m_currentToken).isValid()) {
+        m_target = TargetScalarColor;
+        m_bufferImage.clear();
+        QSignalBlocker b(m_typeGroup);
+        m_typeFlat->setChecked(true);
+    }
     if (m_target == TargetScalarColor) {
         const QColor c = tm.factoryColor(m_currentToken);
         if (c.isValid()) {
@@ -1268,6 +1351,9 @@ void TokenEditorWidget::commitBufferToThemeManager()
             break;
         }
         case TargetNumeric:     tm.setSizing(path, m_currentToken, m_bufferNumeric); break;
+        case TargetImage:       // build 764
+            tm.setImage(path, m_currentToken, m_bufferImage, m_bufferColor);
+            break;
         default: break;
     }
 }
@@ -1285,7 +1371,7 @@ void TokenEditorWidget::onOkClicked()
     if (tm.isBuiltInTheme(tm.activeTheme())) {
         m_deferredEdit = DeferredEdit{
             m_currentToken, m_target, m_bufferColor, m_gradientBuf,
-            m_bufferFontFamily, m_bufferNumeric, m_bufferFontSize, true};
+            m_bufferFontFamily, m_bufferNumeric, m_bufferFontSize, true, m_bufferImage};
         emit requestSaveAsBeforeCommit();
         return;
     }
@@ -1310,10 +1396,49 @@ void TokenEditorWidget::completeDeferredCommit()
     m_bufferFontFamily = m_deferredEdit.fontFamily;
     m_bufferNumeric   = m_deferredEdit.numeric;
     m_bufferFontSize  = m_deferredEdit.fontSize;
+    m_bufferImage     = m_deferredEdit.image;   // build 764
     m_deferredEdit    = {};
     commitBufferToThemeManager();
     emit tokenChanged(m_currentToken);
     setToken(m_currentToken);
+}
+
+// Build 764: pick a picture, copy it into the themes' images folder under a
+// unique name, and keep that name in the buffer. False = cancelled / failed.
+bool TokenEditorWidget::chooseImageFile()
+{
+    const QString src = QFileDialog::getOpenFileName(
+        this, QStringLiteral("Choose image for %1").arg(m_currentToken), QString(),
+        QStringLiteral("Images (*.png *.jpg *.jpeg *.bmp *.svg *.gif)"));
+    if (src.isEmpty())
+        return false;
+    const QString dir = ThemeManager::userThemeImagesDir();
+    if (!QDir().mkpath(dir)) {
+        QMessageBox::warning(this, QStringLiteral("Image"),
+                             QStringLiteral("Could not create the folder %1").arg(dir));
+        return false;
+    }
+    const QFileInfo fi(src);
+    QString base = m_currentToken;
+    base.replace(QLatin1Char('.'), QLatin1Char('_'));
+    const QString name = QStringLiteral("%1_%2.%3").arg(base)
+        .arg(QDateTime::currentMSecsSinceEpoch()).arg(fi.suffix().toLower());
+    if (!QFile::copy(src, dir + QLatin1Char('/') + name)) {
+        QMessageBox::warning(this, QStringLiteral("Image"),
+                             QStringLiteral("Could not copy %1 into %2").arg(src, dir));
+        return false;
+    }
+    m_bufferImage = name;
+    return true;
+}
+
+void TokenEditorWidget::refreshImageLabel()
+{
+    if (!m_imageLabel)
+        return;
+    m_imageLabel->setText(m_bufferImage.isEmpty() ? QString()
+                                                  : QFileInfo(m_bufferImage).fileName());
+    m_imageLabel->setToolTip(ThemeManager::imageFilePath(m_bufferImage));
 }
 
 void TokenEditorWidget::onCancelClicked()
