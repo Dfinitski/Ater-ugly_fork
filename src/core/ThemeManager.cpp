@@ -20,6 +20,7 @@
 #include <QVector>
 #include <QtMath>
 #include <cmath>
+#include <algorithm>   // build 796
 
 namespace AetherSDR {
 
@@ -763,6 +764,228 @@ QString ThemeManager::remapLiterals(const QString& sheet) const
     return out;
 }
 
+// ── ANAN fork build 796: palette, literal remap editing, new-theme wizard ──
+
+QStringList ThemeManager::literalNeutralSources()
+{
+    QStringList out;
+    for (const char* n : kLitSrcNeutral)
+        out << QString::fromLatin1(n);
+    return out;
+}
+
+void ThemeManager::setLiteralRemap(const QVector<QColor>& neutral, const QVector<QColor>& accent)
+{
+    if (neutral.size() == 12 && accent.size() == 3) {
+        m_litNeutral = neutral;
+        m_litAccent = accent;
+    } else {
+        m_litNeutral.clear();
+        m_litAccent.clear();
+    }
+    emit themeChanged();
+    remapAllUntracked();
+    saveActiveTheme();
+}
+
+QStringList ThemeManager::primitiveColorKeys() const
+{
+    QStringList keys;
+    for (auto it = m_primitives.constBegin(); it != m_primitives.constEnd(); ++it) {
+        if (it.value().userType() == QMetaType::QString && QColor(it.value().toString()).isValid())
+            keys << it.key();
+    }
+    // Natural order: color.gray.50 < color.gray.200 < color.gray.900.
+    std::sort(keys.begin(), keys.end(), [](const QString& a, const QString& b) {
+        const qsizetype da = a.lastIndexOf(QLatin1Char('.'));
+        const qsizetype db = b.lastIndexOf(QLatin1Char('.'));
+        const QString pa = a.left(da), pb = b.left(db);
+        if (pa != pb)
+            return pa < pb;
+        bool oka = false, okb = false;
+        const int na = a.mid(da + 1).toInt(&oka), nb = b.mid(db + 1).toInt(&okb);
+        if (oka && okb)
+            return na < nb;
+        return a < b;
+    });
+    return keys;
+}
+
+QColor ThemeManager::primitiveColor(const QString& key) const
+{
+    const QVariant v = m_primitives.value(key);
+    return v.userType() == QMetaType::QString ? QColor(v.toString()) : QColor();
+}
+
+namespace {
+int countAliases(const ThemeScope* scope, const QString& alias)
+{
+    int n = 0;
+    for (auto it = scope->tokens.constBegin(); it != scope->tokens.constEnd(); ++it) {
+        if (it.value().userType() == QMetaType::QString && it.value().toString() == alias)
+            ++n;
+    }
+    for (const auto& kv : scope->children)
+        n += countAliases(kv.second.get(), alias);
+    return n;
+}
+} // namespace
+
+int ThemeManager::primitiveUseCount(const QString& key) const
+{
+    return countAliases(m_rootScope.get(), QLatin1Char('{') + key + QLatin1Char('}'));
+}
+
+void ThemeManager::setPrimitiveColor(const QString& key, const QColor& color)
+{
+    if (!color.isValid() || !m_primitives.contains(key))
+        return;
+    const QString hex = colorToTokenString(color);
+    if (m_primitives.value(key).toString() == hex)
+        return;
+    m_primitives.insert(key, hex);
+    emit themeChanged();
+    saveActiveTheme();
+}
+
+void ThemeManager::buildLiteralRamps(const NewThemeColors& c, QVector<QColor>* neutral,
+                                     QVector<QColor>* accent)
+{
+    // Knots on default-dark's ramp: #0f0f1a (index 2) is the ground, #1a2a3a
+    // (4) the panels, #c8d8e8 (9) the text. Every source colour is placed by
+    // its lightness, piecewise linear between the knots and extrapolated
+    // (clamped) past them -- a light theme (text darker than the ground)
+    // thereby gets the ramp turned over, as Overcast / Sand have it.
+    const QStringList src = literalNeutralSources();
+    QVector<double> L;
+    for (const QString& h : src)
+        L.append(QColor(h).lightnessF());
+    const double l2 = L[2], l4 = L[4], l9 = L[9];
+    const QColor g = c.background, t = c.text;
+    // A light theme (text darker than the ground) raises its panels toward
+    // white, as Sand and Light Slate do; a dark one toward the text.
+    const bool light = g.lightnessF() > t.lightnessF();
+    const QColor white(255, 255, 255);
+    const QColor p = c.panel.isValid() ? c.panel
+                     : light ? lerpColor(g, white, 0.25)
+                             : lerpColor(g, t, (l4 - l2) / (l9 - l2));
+    auto lerpX = [](const QColor& a, const QColor& b, double k) {   // unclamped, then clamped
+        auto ch = [k](float x, float y) { return std::clamp(double(x) + (double(y) - x) * k, 0.0, 1.0); };
+        return QColor::fromRgbF(float(ch(a.redF(), b.redF())), float(ch(a.greenF(), b.greenF())),
+                                float(ch(a.blueF(), b.blueF())));
+    };
+    if (neutral) {
+        neutral->clear();
+        for (int i = 0; i < 12; ++i) {
+            const double l = L[i];
+            QColor out;
+            if (light && l < l2)   // black and the darkest greys: paler than the ground
+                out = lerpColor(g, white, std::min(1.0, (l2 - l) / l2) * 0.35);
+            else if (l <= l4)
+                out = lerpX(g, p, (l - l2) / (l4 - l2));
+            else
+                out = lerpX(p, t, (l - l4) / (l9 - l4));
+            neutral->append(out);
+        }
+        (*neutral)[2] = g;
+        (*neutral)[4] = p;
+        (*neutral)[9] = t;
+    }
+    if (accent) {
+        accent->clear();
+        float h = 0, s = 0, l = 0, a = 1;
+        c.accent.getHslF(&h, &s, &l, &a);
+        if (h < 0)
+            h = 0;   // achromatic accent
+        // A light theme keeps its accent family close together (a pale
+        // accent would not read on a light ground), as Sand does.
+        accent->append(QColor::fromHslF(h, s, float(l * (light ? 0.75 : 0.62))));
+        accent->append(c.accent);
+        accent->append(QColor::fromHslF(h, s, float(l + (1.0 - l) * (light ? 0.2 : 0.45))));
+    }
+}
+
+namespace {
+// Maps every literal colour of a scope tree through the theme's remap.
+void remapScopeColours(ThemeScope* scope, const ThemeManager& tm)
+{
+    const int gradId = qMetaTypeId<ThemeGradient>();
+    const int fontId = qMetaTypeId<ThemeFont>();
+    for (auto it = scope->tokens.begin(); it != scope->tokens.end(); ++it) {
+        QVariant& v = it.value();
+        const int ut = v.userType();
+        if (ut == QMetaType::QString) {
+            const QString str = v.toString();
+            if (str.startsWith(QLatin1Char('#'))) {
+                const QColor col(str);
+                if (col.isValid())
+                    v = colorToTokenString(tm.remapLiteralColor(col));
+            } else if (str.startsWith(QLatin1String("image:"))) {
+                QString file;
+                QColor fb;
+                ThemeManager::parseImageToken(str, &file, &fb);
+                if (fb.isValid())
+                    v = QStringLiteral("image:%1|%2").arg(file, colorToTokenString(tm.remapLiteralColor(fb)));
+            }
+        } else if (ut == gradId) {
+            ThemeGradient g = v.value<ThemeGradient>();
+            for (auto& st : g.stops)
+                st.color = tm.remapLiteralColor(st.color);
+            v = QVariant::fromValue(g);
+        } else if (ut == fontId) {
+            ThemeFont f = v.value<ThemeFont>();
+            if (f.color.isValid()) {
+                f.color = tm.remapLiteralColor(f.color);
+                v = QVariant::fromValue(f);
+            }
+        }
+    }
+    for (auto& kv : scope->children)
+        remapScopeColours(kv.second.get(), tm);
+}
+} // namespace
+
+bool ThemeManager::createThemeFromColors(const QString& nameIn, const NewThemeColors& c, QString* why)
+{
+    auto fail = [why](const QString& m) { if (why) *why = m; return false; };
+    const QString name = nameIn.trimmed();
+    QString reason;
+    if (!isValidThemeName(name, &reason))
+        return fail(reason);
+    if (isBuiltInTheme(name))
+        return fail(QStringLiteral("\"%1\" is a built-in theme name.").arg(name));
+    if (!c.background.isValid() || !c.text.isValid() || !c.accent.isValid())
+        return fail(QStringLiteral("Background, text and accent colours are required."));
+    // Always from Default Dark's file: its colours are the ones the remap is
+    // defined on (a theme already remapped would be remapped twice).
+    const QString base = m_themePaths.value(QStringLiteral("Default Dark"));
+    if (base.isEmpty() || !loadThemeFromPath(base))
+        return fail(QStringLiteral("Default Dark could not be loaded."));
+    buildLiteralRamps(c, &m_litNeutral, &m_litAccent);
+    for (auto it = m_primitives.begin(); it != m_primitives.end(); ++it) {
+        if (it.value().userType() != QMetaType::QString)
+            continue;
+        const QColor col(it.value().toString());
+        if (col.isValid())
+            it.value() = colorToTokenString(remapLiteralColor(col));
+    }
+    if (m_primitives.contains(QStringLiteral("color.blue.500")))
+        m_primitives.insert(QStringLiteral("color.blue.500"), colorToTokenString(c.accent));
+    remapScopeColours(m_rootScope.get(), *this);
+    m_activeThemeBase = QStringLiteral("Default Dark");
+    if (!saveCurrentThemeAs(name)) {
+        // Back to the theme that was active (its file is unchanged).
+        const QString prev = m_themePaths.value(m_activeTheme);
+        if (!prev.isEmpty() && loadThemeFromPath(prev)) {
+            emit themeChanged();
+            remapAllUntracked();
+        }
+        return fail(QStringLiteral("The theme file could not be written."));
+    }
+    remapAllUntracked();
+    return true;
+}
+
 void ThemeManager::installLiteralRemapper()
 {
     auto* app = qobject_cast<QApplication*>(QCoreApplication::instance());
@@ -1299,6 +1522,14 @@ QJsonObject ThemeManager::themeDocumentJson(const QString& themeName,
     if (!m_activeThemeBase.isEmpty())
         doc.insert("baseTheme", m_activeThemeBase);
     if (!primitives.isEmpty()) doc.insert("primitives", primitives);
+    // Build 796: the literal remap travels with the theme (a Save As of
+    // Midnight or Deep Ocean used to lose it).
+    if (m_litNeutral.size() == 12 && m_litAccent.size() == 3) {
+        QJsonArray n, a;
+        for (const QColor& c : m_litNeutral) n.append(c.name(QColor::HexRgb));
+        for (const QColor& c : m_litAccent) a.append(c.name(QColor::HexRgb));
+        doc.insert("literalRemap", QJsonObject{{"neutral", n}, {"accent", a}});
+    }
     doc.insert("scopes",        scopes);
     return doc;
 }

@@ -13,6 +13,8 @@ class QLabel;
 class QComboBox;
 class QLineEdit;
 class QPushButton;
+class QTabWidget;
+class QWidget;
 
 namespace AetherSDR {
 
@@ -74,6 +76,14 @@ private:
     // Filter the token list down to a specific subset, e.g. tokens
     // returned by tokensForWidget().  An empty list clears the filter.
     void filterTokensTo(const QStringList& subset);
+
+    // ANAN fork build 796: the Palette tab (primitives + literal remap) and
+    // the new-theme wizard (Theme actions > New theme from colors...).
+    QTabWidget*  m_tabs{nullptr};
+    QWidget*     m_palettePage{nullptr};   // rebuilt by rebuildPalettePage()
+    void         rebuildPalettePage();
+    bool         ensureEditableTheme();     // built-in -> Save As first
+    void         onNewThemeClicked();
 
     QLabel*      m_themeLabel{nullptr};   // "Editing: <name>"
     TokenEditorWidget* m_tokenEditor{nullptr};   // inline editor stack

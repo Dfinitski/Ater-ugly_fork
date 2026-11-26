@@ -8,6 +8,17 @@
 #include "core/ThemeManager.h"
 
 #include <QAction>
+#include <functional>
+#include <memory>
+#include <QFormLayout>
+#include <QDialogButtonBox>
+#include <QDialog>
+#include <QCheckBox>
+#include <QColorDialog>
+#include <QToolButton>
+#include <QGridLayout>
+#include <QScrollArea>
+#include <QTabWidget>
 #include <QBrush>
 #include <QComboBox>
 #include <QAbstractSpinBox>
@@ -262,7 +273,13 @@ ThemeEditorDialog::ThemeEditorDialog(QWidget* parent)
     if (auto* hdr = m_tokenEditor->headerLabel()) {
         filterRow->addWidget(hdr, 1, Qt::AlignLeft | Qt::AlignVCenter);
     }
-    root->addLayout(filterRow);
+    // Build 796: the token list and the palette are two tabs.
+    m_tabs = new QTabWidget(bodyWidget());
+    auto* tokensPage = new QWidget(m_tabs);
+    auto* tokensLay = new QVBoxLayout(tokensPage);
+    tokensLay->setContentsMargins(0, 6, 0, 0);
+    tokensLay->setSpacing(6);
+    tokensLay->addLayout(filterRow);
 
     m_tokenList = new QTreeWidget(bodyWidget());
     m_tokenList->setIconSize(QSize(18, 18));
@@ -276,7 +293,15 @@ ThemeEditorDialog::ThemeEditorDialog(QWidget* parent)
     // rebuildColumns().  Initial setup with just the Object + Value
     // pair so the widget has something to render before refreshTokenList.
     rebuildColumns();
-    root->addWidget(m_tokenList, 1);
+    tokensLay->addWidget(m_tokenList, 1);
+    m_tabs->addTab(tokensPage, QStringLiteral("Tokens"));
+    auto* paletteScroll = new QScrollArea(m_tabs);
+    paletteScroll->setWidgetResizable(true);
+    paletteScroll->setFrameShape(QFrame::NoFrame);
+    m_palettePage = new QWidget;
+    paletteScroll->setWidget(m_palettePage);
+    m_tabs->addTab(paletteScroll, QStringLiteral("Palette"));
+    root->addWidget(m_tabs, 1);
 
     auto* btnRow = new QHBoxLayout;
     // Theme-management dropdown — left side, since it's a destructive
@@ -288,6 +313,8 @@ ThemeEditorDialog::ThemeEditorDialog(QWidget* parent)
     // arrow once setMenu() is called below, and the two collide visually.
     auto* themeActionsBtn = new QPushButton(QStringLiteral("Theme actions"), bodyWidget());
     auto* themeActionsMenu = new QMenu(themeActionsBtn);
+    auto* newThemeAct = themeActionsMenu->addAction(QStringLiteral("New theme from colors…"));   // build 796
+    themeActionsMenu->addSeparator();
     auto* renameAct = themeActionsMenu->addAction(QStringLiteral("Rename theme…"));
     auto* deleteAct = themeActionsMenu->addAction(QStringLiteral("Delete theme…"));
     themeActionsMenu->addSeparator();
@@ -303,6 +330,8 @@ ThemeEditorDialog::ThemeEditorDialog(QWidget* parent)
     btnRow->addWidget(closeBtn);
     root->addLayout(btnRow);
 
+    connect(newThemeAct, &QAction::triggered,
+            this, &ThemeEditorDialog::onNewThemeClicked);
     connect(renameAct, &QAction::triggered,
             this, &ThemeEditorDialog::onRenameThemeClicked);
     connect(deleteAct, &QAction::triggered,
@@ -319,6 +348,7 @@ ThemeEditorDialog::ThemeEditorDialog(QWidget* parent)
 
     refreshContainerCombo();
     refreshTokenList();
+    rebuildPalettePage();   // build 796
     updateTitle();
     m_lastRenderedTheme = ThemeManager::instance().activeTheme();
     m_inheritedCellColor = inheritedCellBrush().color();
@@ -1197,6 +1227,7 @@ void ThemeEditorDialog::onActiveThemeChanged()
         m_inheritedCellColor = inheritedCellBrush().color();
         refreshContainerCombo();
         refreshTokenList();
+        rebuildPalettePage();   // build 796
         return;
     }
     // An in-place edit keeps every row, but the "inherited" cells carry
@@ -1214,6 +1245,449 @@ void ThemeEditorDialog::onActiveThemeChanged()
                 (*rows)->setForeground(col, inherited);
             }
         }
+    }
+}
+
+// ── ANAN fork build 796: the Palette tab and the new-theme wizard ───────────
+
+namespace {
+
+QIcon wideSwatch(const QColor& c, int w = 40, int h = 18)
+{
+    QPixmap pm(w, h);
+    pm.fill(c.isValid() ? c : QColor(Qt::transparent));
+    QPainter p(&pm);
+    p.setPen(QColor(0, 0, 0, 140));
+    p.drawRect(pm.rect().adjusted(0, 0, -1, -1));
+    p.end();
+    return QIcon(pm);
+}
+
+// A swatch button: clicking it asks for a colour and calls `set` with it.
+QToolButton* colorButton(QWidget* parent, const QColor& c, const QString& title,
+                         std::function<void(const QColor&)> set)
+{
+    auto* b = new QToolButton(parent);
+    b->setIcon(wideSwatch(c));
+    b->setIconSize(QSize(40, 18));
+    b->setToolTip(c.name(QColor::HexRgb));
+    QObject::connect(b, &QToolButton::clicked, parent, [b, c, title, set] {
+        const QPointer<QToolButton> guard(b);
+        const QColor picked = QColorDialog::getColor(c, b->window(), title);
+        if (guard && picked.isValid())
+            set(picked);
+    });
+    return b;
+}
+
+QLabel* hintLabel(const QString& text, QWidget* parent)
+{
+    auto* l = new QLabel(text, parent);
+    l->setWordWrap(true);
+    ThemeManager::instance().applyStyleSheet(
+        l, QStringLiteral("QLabel { color: {{color.text.secondary}}; }"));
+    return l;
+}
+
+// The wizard's preview: ground, a panel with text and an accent button,
+// then the 12 + 3 code-colour ramp.
+QPixmap themePreview(const ThemeManager::NewThemeColors& c)
+{
+    QVector<QColor> n, a;
+    ThemeManager::buildLiteralRamps(c, &n, &a);
+    QPixmap pm(360, 120);
+    pm.fill(n.value(2));
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    const QColor panel = n.value(4);
+    p.setPen(n.value(5));
+    p.setBrush(panel);
+    p.drawRoundedRect(QRectF(10, 10, 220, 64), 4, 4);
+    p.setPen(n.value(9));
+    p.drawText(QRect(20, 16, 200, 18), Qt::AlignLeft | Qt::AlignVCenter, QStringLiteral("Panel text  14.074.000"));
+    p.setPen(n.value(8));
+    p.drawText(QRect(20, 34, 200, 16), Qt::AlignLeft | Qt::AlignVCenter, QStringLiteral("Secondary label"));
+    p.setPen(a.value(2));
+    p.setBrush(a.value(0));
+    p.drawRoundedRect(QRectF(20, 52, 60, 16), 3, 3);
+    p.setPen(QColor(0xff, 0xff, 0xff));
+    p.drawText(QRect(20, 52, 60, 16), Qt::AlignCenter, QStringLiteral("ON"));
+    p.setPen(n.value(5));
+    p.setBrush(n.value(3));
+    p.drawRoundedRect(QRectF(90, 52, 60, 16), 3, 3);
+    p.setPen(n.value(9));
+    p.drawText(QRect(90, 52, 60, 16), Qt::AlignCenter, QStringLiteral("OFF"));
+    p.setPen(a.value(1));
+    p.drawLine(240, 60, 270, 30);
+    p.drawLine(270, 30, 300, 50);
+    p.drawLine(300, 50, 350, 20);
+    const int sw = 20;
+    for (int i = 0; i < n.size(); ++i) {
+        p.setPen(QColor(0, 0, 0, 120));
+        p.setBrush(n[i]);
+        p.drawRect(10 + i * sw, 86, sw, 22);
+    }
+    for (int i = 0; i < a.size(); ++i) {
+        p.setPen(QColor(0, 0, 0, 120));
+        p.setBrush(a[i]);
+        p.drawRect(10 + 12 * sw + 12 + i * sw, 86, sw, 22);
+    }
+    p.end();
+    return pm;
+}
+
+} // namespace
+
+bool ThemeEditorDialog::ensureEditableTheme()
+{
+    auto& tm = ThemeManager::instance();
+    if (!tm.isBuiltInTheme(tm.activeTheme()))
+        return true;
+    const QPointer<ThemeEditorDialog> self(this);
+    showModalMessage(QMessageBox::Information, this, QStringLiteral("Built-in theme"),
+        QStringLiteral("\"%1\" is a built-in theme and can't be changed. "
+                       "Save a copy first, then edit the copy.").arg(tm.activeTheme()));
+    if (!self)
+        return false;
+    onSaveAsClicked();
+    return self && !tm.isBuiltInTheme(tm.activeTheme());
+}
+
+void ThemeEditorDialog::rebuildPalettePage()
+{
+    if (!m_palettePage)
+        return;
+    if (auto* old = m_palettePage->layout()) {
+        while (QLayoutItem* it = old->takeAt(0)) {
+            if (QWidget* w = it->widget()) {
+                w->hide();
+                w->deleteLater();   // may be the button being clicked
+            }
+            delete it;
+        }
+        delete old;
+    }
+    auto& tm = ThemeManager::instance();
+    auto* page = m_palettePage;
+    auto* lay = new QVBoxLayout(page);
+    lay->setContentsMargins(4, 8, 4, 4);
+    lay->setSpacing(6);
+    const QPointer<ThemeEditorDialog> self(this);
+    // After a palette edit: the swatches of aliasing tokens, and this page.
+    auto refreshLater = [self] {
+        QTimer::singleShot(0, self.data(), [self] {
+            if (!self)
+                return;
+            self->refreshTokenList();
+            self->rebuildPalettePage();
+        });
+    };
+
+    // ── Primitives ──
+    auto* hdr1 = new QLabel(QStringLiteral("<b>Palette</b>"), page);
+    lay->addWidget(hdr1);
+    lay->addWidget(hintLabel(QStringLiteral(
+        "The base colours tokens refer to as {color.…}. Changing one repaints every "
+        "token that uses it."), page));
+    auto* grid1Host = new QWidget(page);
+    auto* grid1 = new QGridLayout(grid1Host);
+    grid1->setContentsMargins(0, 0, 0, 0);
+    grid1->setHorizontalSpacing(8);
+    grid1->setVerticalSpacing(3);
+    grid1->setColumnStretch(1, 1);
+    int row = 0;
+    const QStringList keys = tm.primitiveColorKeys();
+    for (const QString& key : keys) {
+        const QColor c = tm.primitiveColor(key);
+        grid1->addWidget(colorButton(grid1Host, c, key, [self, key, refreshLater](const QColor& col) {
+            if (!self || !self->ensureEditableTheme())
+                return;
+            ThemeManager::instance().setPrimitiveColor(key, col);
+            refreshLater();
+        }), row, 0);
+        grid1->addWidget(new QLabel(key, grid1Host), row, 1);
+        grid1->addWidget(new QLabel(QStringLiteral("%1   ×%2").arg(c.name(QColor::HexRgb))
+                                        .arg(tm.primitiveUseCount(key)), grid1Host), row, 2);
+        ++row;
+    }
+    if (keys.isEmpty())
+        grid1->addWidget(new QLabel(QStringLiteral("This theme has no palette."), grid1Host), 0, 0, 1, 3);
+    lay->addWidget(grid1Host);
+
+    // ── Literal remap ──
+    lay->addSpacing(8);
+    lay->addWidget(new QLabel(QStringLiteral("<b>Colours written in the code</b>"), page));
+    lay->addWidget(hintLabel(QStringLiteral(
+        "Much of the program is painted with colours written in its code for Default Dark. "
+        "A theme maps them onto its own: each Default Dark grey-blue (left) becomes the colour "
+        "on the right, shades in between are blended by lightness; the cyan-blue accent family "
+        "maps onto the three accent colours. Status, band and special colours stay as written."),
+        page));
+    const QVector<QColor> neutral = tm.literalNeutral();
+    const QVector<QColor> accent = tm.literalAccent();
+    auto* btnRow = new QHBoxLayout;
+    auto* gen = new QPushButton(neutral.isEmpty() ? QStringLiteral("Turn on (from theme colours)")
+                                                  : QStringLiteral("Regenerate from theme colours"), page);
+    gen->setToolTip(QStringLiteral("Builds the mapping from color.background.0, color.background.1,\n"
+                                   "color.text.primary and color.accent of this theme."));
+    btnRow->addWidget(gen);
+    QPushButton* off = nullptr;
+    if (!neutral.isEmpty()) {
+        off = new QPushButton(QStringLiteral("Turn off"), page);
+        off->setToolTip(QStringLiteral("Code colours as written (as in Default Dark)."));
+        btnRow->addWidget(off);
+    }
+    btnRow->addStretch(1);
+    lay->addLayout(btnRow);
+    connect(gen, &QPushButton::clicked, this, [self, refreshLater] {
+        if (!self || !self->ensureEditableTheme())
+            return;
+        auto& t = ThemeManager::instance();
+        ThemeManager::NewThemeColors c;
+        c.background = t.color(QStringLiteral("color.background.0"));
+        c.panel = t.color(QStringLiteral("color.background.1"));
+        c.text = t.color(QStringLiteral("color.text.primary"));
+        c.accent = t.color(QStringLiteral("color.accent"));
+        QVector<QColor> n, a;
+        ThemeManager::buildLiteralRamps(c, &n, &a);
+        t.setLiteralRemap(n, a);
+        refreshLater();
+    });
+    if (off) {
+        connect(off, &QPushButton::clicked, this, [self, refreshLater] {
+            if (!self || !self->ensureEditableTheme())
+                return;
+            ThemeManager::instance().setLiteralRemap({}, {});
+            refreshLater();
+        });
+    }
+    if (!neutral.isEmpty()) {
+        auto* grid2Host = new QWidget(page);
+        auto* grid2 = new QGridLayout(grid2Host);
+        grid2->setContentsMargins(0, 0, 0, 0);
+        grid2->setHorizontalSpacing(8);
+        grid2->setVerticalSpacing(3);
+        grid2->setColumnStretch(3, 1);
+        const QStringList src = ThemeManager::literalNeutralSources();
+        auto srcSwatch = [grid2Host](const QColor& c) {
+            auto* l = new QLabel(grid2Host);
+            l->setPixmap(wideSwatch(c).pixmap(40, 18));
+            l->setToolTip(c.name(QColor::HexRgb));
+            return l;
+        };
+        int r = 0;
+        for (int i = 0; i < 12 && i < neutral.size(); ++i, ++r) {
+            grid2->addWidget(srcSwatch(QColor(src[i])), r, 0);
+            grid2->addWidget(new QLabel(QStringLiteral("→"), grid2Host), r, 1);
+            grid2->addWidget(colorButton(grid2Host, neutral[i], src[i], [self, i, refreshLater](const QColor& col) {
+                if (!self || !self->ensureEditableTheme())
+                    return;
+                auto& t = ThemeManager::instance();
+                QVector<QColor> n = t.literalNeutral();
+                const QVector<QColor> a = t.literalAccent();
+                if (n.size() != 12)
+                    return;
+                n[i] = col;
+                t.setLiteralRemap(n, a);
+                refreshLater();
+            }), r, 2);
+            static const char* kRole[12] = {"black", "", "ground", "", "panels", "borders", "", "",
+                                            "secondary text", "text", "", "white"};
+            grid2->addWidget(new QLabel(QStringLiteral("%1   %2").arg(src[i], QLatin1String(kRole[i])),
+                                        grid2Host), r, 3);
+        }
+        static const char* kAccent[3] = {"accent dark (e.g. #0070c0)", "accent (e.g. #00b4d8)",
+                                         "accent light (e.g. #80e0f8)"};
+        for (int i = 0; i < 3 && i < accent.size(); ++i, ++r) {
+            grid2->addWidget(new QLabel(QStringLiteral("A%1").arg(i + 1), grid2Host), r, 0);
+            grid2->addWidget(new QLabel(QStringLiteral("→"), grid2Host), r, 1);
+            grid2->addWidget(colorButton(grid2Host, accent[i], QLatin1String(kAccent[i]),
+                                         [self, i, refreshLater](const QColor& col) {
+                if (!self || !self->ensureEditableTheme())
+                    return;
+                auto& t = ThemeManager::instance();
+                const QVector<QColor> n = t.literalNeutral();
+                QVector<QColor> a = t.literalAccent();
+                if (a.size() != 3)
+                    return;
+                a[i] = col;
+                t.setLiteralRemap(n, a);
+                refreshLater();
+            }), r, 2);
+            grid2->addWidget(new QLabel(QLatin1String(kAccent[i]), grid2Host), r, 3);
+        }
+        lay->addWidget(grid2Host);
+    }
+    lay->addStretch(1);
+}
+
+void ThemeEditorDialog::onNewThemeClicked()
+{
+    auto& tm = ThemeManager::instance();
+    ScopedChildWidget<QDialog> dlgOwner(this);
+    QDialog& dlg = *dlgOwner.get();
+    dlg.setWindowTitle(QStringLiteral("New Theme from Colors"));
+    applyAppTheme(&dlg);
+    auto* root = new QVBoxLayout(&dlg);
+    root->addWidget(hintLabel(QStringLiteral(
+        "Pick four colours; the whole theme is built from Default Dark with them: every "
+        "grey-blue and cyan-blue colour (tokens, palette and the colours written in the code) "
+        "is placed by its lightness on your scale. Status and band colours stay. For a light "
+        "theme pick a light background and dark text. Fine-tune afterwards in Tokens and Palette."),
+        &dlg));
+
+    auto colors = std::make_shared<ThemeManager::NewThemeColors>();
+    colors->background = tm.color(QStringLiteral("color.background.0"));
+    colors->panel = QColor();
+    colors->text = tm.color(QStringLiteral("color.text.primary"));
+    colors->accent = tm.color(QStringLiteral("color.accent"));
+
+    auto* form = new QFormLayout;
+    auto* nameEdit = new QLineEdit(QStringLiteral("My Theme"), &dlg);
+    form->addRow(QStringLiteral("Name:"), nameEdit);
+    auto* preset = new QComboBox(&dlg);
+    preset->addItems({QStringLiteral("Current theme"), QStringLiteral("Navy night"),
+                      QStringLiteral("Teal ocean"), QStringLiteral("Graphite"),
+                      QStringLiteral("Warm paper (light)"), QStringLiteral("Cool slate (light)")});
+    form->addRow(QStringLiteral("Start from:"), preset);
+    struct Row { QToolButton* btn; QLabel* hex; };
+    auto mkRow = [&dlg](const QString& title) {
+        auto* w = new QWidget(&dlg);
+        auto* h = new QHBoxLayout(w);
+        h->setContentsMargins(0, 0, 0, 0);
+        auto* b = new QToolButton(w);
+        b->setIconSize(QSize(40, 18));
+        b->setToolTip(title);
+        auto* l = new QLabel(w);
+        h->addWidget(b);
+        h->addWidget(l, 1);
+        return std::make_pair(w, Row{b, l});
+    };
+    auto bg = mkRow(QStringLiteral("Background"));
+    auto pn = mkRow(QStringLiteral("Panels"));
+    auto tx = mkRow(QStringLiteral("Text"));
+    auto ac = mkRow(QStringLiteral("Accent"));
+    auto* autoPanel = new QCheckBox(QStringLiteral("Auto"), pn.first);
+    autoPanel->setChecked(true);
+    pn.first->layout()->addWidget(autoPanel);
+    form->addRow(QStringLiteral("Background:"), bg.first);
+    form->addRow(QStringLiteral("Panels:"), pn.first);
+    form->addRow(QStringLiteral("Text:"), tx.first);
+    form->addRow(QStringLiteral("Accent:"), ac.first);
+    root->addLayout(form);
+    auto* preview = new QLabel(&dlg);
+    root->addWidget(preview);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, &dlg);
+    auto* create = buttons->addButton(QStringLiteral("Create"), QDialogButtonBox::AcceptRole);
+    root->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    auto refresh = [colors, autoPanel, bg, pn, tx, ac, preview]() {
+        ThemeManager::NewThemeColors c = *colors;
+        if (autoPanel->isChecked())
+            c.panel = QColor();
+        QVector<QColor> n;
+        ThemeManager::buildLiteralRamps(c, &n, nullptr);
+        const QColor shownPanel = c.panel.isValid() ? c.panel : n.value(4);
+        const std::pair<Row, QColor> rows[] = {{bg.second, c.background}, {pn.second, shownPanel},
+                                               {tx.second, c.text}, {ac.second, c.accent}};
+        for (const auto& [r, col] : rows) {
+            r.btn->setIcon(wideSwatch(col));
+            r.hex->setText(col.name(QColor::HexRgb));
+        }
+        pn.second.btn->setEnabled(!autoPanel->isChecked());
+        preview->setPixmap(themePreview(c));
+    };
+    QDialog* const dp = &dlg;
+    auto hook = [dp, colors, refresh](QToolButton* b, QColor ThemeManager::NewThemeColors::*field,
+                                      const QString& title) {
+        QObject::connect(b, &QToolButton::clicked, dp, [dp, colors, refresh, field, title] {
+            const QColor start = (*colors).*field;
+            const QColor c = QColorDialog::getColor(start.isValid() ? start : QColor(0x40, 0x50, 0x60),
+                                                    dp, title);
+            if (c.isValid()) {
+                (*colors).*field = c;
+                refresh();
+            }
+        });
+    };
+    hook(bg.second.btn, &ThemeManager::NewThemeColors::background, QStringLiteral("Background"));
+    hook(pn.second.btn, &ThemeManager::NewThemeColors::panel, QStringLiteral("Panels"));
+    hook(tx.second.btn, &ThemeManager::NewThemeColors::text, QStringLiteral("Text"));
+    hook(ac.second.btn, &ThemeManager::NewThemeColors::accent, QStringLiteral("Accent"));
+    connect(autoPanel, &QCheckBox::toggled, &dlg, [colors, refresh](bool on) {
+        if (!on && !colors->panel.isValid()) {
+            QVector<QColor> n;
+            ThemeManager::buildLiteralRamps(*colors, &n, nullptr);
+            colors->panel = n.value(4);
+        }
+        refresh();
+    });
+    connect(preset, qOverload<int>(&QComboBox::currentIndexChanged), &dlg,
+            [colors, autoPanel, refresh](int i) {
+        struct P { const char *b, *p, *t, *a; };
+        static const P kP[] = {
+            {nullptr, nullptr, nullptr, nullptr},
+            {"#1a1b26", "#24283b", "#c0caf5", "#7aa2f7"},   // navy night
+            {"#002b36", "#073642", "#eee8d5", "#268bd2"},   // teal ocean
+            {"#1c1c1e", "#2a2a2d", "#e2e2e6", "#4ea1ff"},   // graphite
+            {"#d8cfbb", "", "#3a2e1f", "#1f5f99"},          // warm paper
+            {"#c3ccd6", "", "#1e2a38", "#1565c0"},          // cool slate
+        };
+        auto& t = ThemeManager::instance();
+        if (i <= 0) {
+            colors->background = t.color(QStringLiteral("color.background.0"));
+            colors->panel = QColor();
+            colors->text = t.color(QStringLiteral("color.text.primary"));
+            colors->accent = t.color(QStringLiteral("color.accent"));
+        } else if (i < int(sizeof(kP) / sizeof(kP[0]))) {
+            colors->background = QColor(QLatin1String(kP[i].b));
+            colors->panel = QColor(QLatin1String(kP[i].p));
+            colors->text = QColor(QLatin1String(kP[i].t));
+            colors->accent = QColor(QLatin1String(kP[i].a));
+        }
+        {
+            const QSignalBlocker block(autoPanel);
+            autoPanel->setChecked(!colors->panel.isValid());
+        }
+        refresh();
+    });
+    connect(create, &QPushButton::clicked, &dlg, &QDialog::accept);
+    refresh();
+
+    const QPointer<ThemeEditorDialog> self(this);
+    for (;;) {
+        if (dlg.exec() != QDialog::Accepted || !self || !dlgOwner)
+            return;
+        const QString name = nameEdit->text().trimmed();
+        QString why;
+        if (!ThemeManager::isValidThemeName(name, &why)) {
+            showModalMessage(QMessageBox::Warning, &dlg, QStringLiteral("Theme name"), why);
+            continue;
+        }
+        if (tm.isBuiltInTheme(name)) {
+            showModalMessage(QMessageBox::Warning, &dlg, QStringLiteral("Reserved name"),
+                QStringLiteral("\"%1\" is a built-in theme name.").arg(name));
+            continue;
+        }
+        if (tm.availableThemes().contains(name)) {
+            const auto reply = showModalMessage(QMessageBox::Question, &dlg,
+                QStringLiteral("Theme exists"),
+                QStringLiteral("A theme named \"%1\" already exists. Overwrite it?").arg(name),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+            if (!self || !dlgOwner)
+                return;
+            if (reply != QMessageBox::Yes)
+                continue;
+        }
+        ThemeManager::NewThemeColors c = *colors;
+        if (autoPanel->isChecked())
+            c.panel = QColor();
+        if (!tm.createThemeFromColors(name, c, &why)) {
+            showModalMessage(QMessageBox::Warning, &dlg, QStringLiteral("New theme"), why);
+            continue;
+        }
+        return;   // the new theme is active; onActiveThemeChanged refreshes the editor
     }
 }
 

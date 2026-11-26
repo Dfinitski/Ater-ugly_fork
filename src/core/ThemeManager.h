@@ -141,6 +141,41 @@ public:
     QColor  remapLiteralColor(const QColor& c) const;
     QString remapLiterals(const QString& styleSheet) const;
     bool    hasLiteralRemap() const { return !m_litNeutral.isEmpty(); }
+
+    // ANAN fork build 796 (operator, 26.11: the theme editor's palette tab
+    // and the new-theme wizard).
+    //  * The literal remap of the active theme: 12 neutral colours replacing
+    //    literalNeutralSources() entry for entry, 3 accent colours (dark /
+    //    mid / light). setLiteralRemap() with two empty lists turns it off.
+    //    It is now written into saved / exported themes too (Save As of
+    //    Midnight used to drop it).
+    //  * The palette: the colour primitives ({color.gray.900} ...) the scope
+    //    tokens alias. setPrimitiveColor() re-paints every alias.
+    //  * NewThemeColors -> buildLiteralRamps(): the remap ramps from a
+    //    background, an optional panel colour, a text colour and an accent;
+    //    createThemeFromColors() builds a whole theme from Default Dark with
+    //    them (neutral and accent tokens, primitives and code colours mapped
+    //    by lightness, as Midnight / Deep Ocean were made) and saves it as a
+    //    new user theme, which becomes the active one.
+    QVector<QColor>    literalNeutral() const { return m_litNeutral; }
+    QVector<QColor>    literalAccent() const { return m_litAccent; }
+    static QStringList literalNeutralSources();
+    void               setLiteralRemap(const QVector<QColor>& neutral,
+                                       const QVector<QColor>& accent);
+    QStringList        primitiveColorKeys() const;     // colour primitives, natural order
+    QColor             primitiveColor(const QString& key) const;
+    int                primitiveUseCount(const QString& key) const;   // aliasing tokens
+    void               setPrimitiveColor(const QString& key, const QColor& color);
+    struct NewThemeColors {
+        QColor background;   // the ground (color.background.0)
+        QColor panel;        // panels (color.background.1); invalid = derived
+        QColor text;         // the main text
+        QColor accent;       // the accent
+    };
+    static void buildLiteralRamps(const NewThemeColors& c, QVector<QColor>* neutral,
+                                  QVector<QColor>* accent);
+    bool createThemeFromColors(const QString& name, const NewThemeColors& c,
+                               QString* why = nullptr);
     // Called once the QApplication exists (main.cpp): watches every widget's
     // plain style sheet and the application's.
     void installLiteralRemapper();
