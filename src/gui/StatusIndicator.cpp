@@ -7,6 +7,7 @@
 #include <QAccessibleWidget>
 #include <QEvent>
 #include <QKeyEvent>
+#include <QFocusEvent>   // build 769
 #include <QVariant>
 #include <QWidget>
 
@@ -188,10 +189,21 @@ bool StatusIndicator::eventFilter(QObject* watched, QEvent* event)
         }
         break;
     }
-    case QEvent::FocusIn:
-        placeFocusBar();
-        m_focusBar->show();
+    case QEvent::FocusIn: {
+        // ANAN fork build 769 (operator, 26.11: "under the dots at the left
+        // of the bottom bar an underline appears sometimes"): the focus mark
+        // is for the keyboard -- shown when focus comes by Tab / Shift+Tab
+        // (or a shortcut), not after a mouse click or a window activation.
+        const auto reason = static_cast<QFocusEvent*>(event)->reason();
+        if (reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason
+            || reason == Qt::ShortcutFocusReason) {
+            placeFocusBar();
+            m_focusBar->show();
+        } else {
+            m_focusBar->hide();
+        }
         break;
+    }
     case QEvent::FocusOut:
         m_focusBar->hide();
         break;
