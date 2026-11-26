@@ -150,6 +150,9 @@ AnanMultiMeterWidget::AnanMultiMeterWidget(QWidget* parent)
     m_tick.setInterval(kTickMs);
     connect(&m_tick, &QTimer::timeout, this, &AnanMultiMeterWidget::tick);
     m_tick.start();
+    // Build 747: the dark face follows the theme's background.
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, qOverload<>(&QWidget::update));
 }
 
 void AnanMultiMeterWidget::setFace(Face face)
@@ -399,9 +402,12 @@ void AnanMultiMeterWidget::render(QPainter& p, const QRectF& area)
         return;
     const qreal dpr = p.device() ? p.device()->devicePixelRatioF() : 1.0;
     const QSize px(qMax(1, qRound(meter.width() * dpr)), qMax(1, qRound(meter.height() * dpr)));
-    const QString key = QStringLiteral("%1x%2/%3/%4/%5/%6")
+    // Build 747: the theme in the key -- the dark face is the theme's
+    // background, redrawn when the theme changes.
+    const QString key = QStringLiteral("%1x%2/%3/%4/%5/%6/%7")
                             .arg(px.width()).arg(px.height()).arg(dpr).arg(int(m_face))
-                            .arg(m_maxPower).arg(int(m_transmitting) + 2 * int(m_shadowTx));
+                            .arg(m_maxPower).arg(int(m_transmitting) + 2 * int(m_shadowTx))
+                            .arg(ThemeManager::instance().activeTheme());
     if (m_staticCache.isNull() || m_staticKey != key) {
         m_staticCache = QPixmap(px);
         m_staticCache.setDevicePixelRatio(dpr);

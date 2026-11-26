@@ -38,9 +38,8 @@
              themes instead. -->
         <file alias="midnight.json">themes/midnight.json</file>
         <file alias="deep-ocean.json">themes/deep-ocean.json</file>
-        <file alias="overcast.json">themes/overcast.json</file>
-        <file alias="light-slate.json">themes/light-slate.json</file>
-        <file alias="sand.json">themes/sand.json</file>
+        <!-- Build 747 (operator, 25.11): the light themes of 746 (Overcast,
+             Light Slate, Sand) withdrawn as not usable; the files stay. -->
     </qresource>
     <qresource prefix="/meterfaces">
         <file alias="analog-meter-themes-v1.json">meterfaces/analog-meter-themes-v1.json</file>

@@ -3,6 +3,7 @@
 #include "DragValuePopup.h"
 #include "MeterExtremes.h"
 #include "MeterSmoother.h"
+#include "core/ThemeManager.h"   // ANAN fork build 747
 
 #include <QAccessible>
 #include <QAccessibleWidget>
@@ -29,6 +30,22 @@
 
 namespace AetherSDR {
 
+// ANAN fork build 747 (operator, 25.11: the gauge names -- Level,
+// Compression ... -- sat on a dark strip, not on the theme's background):
+// with a theme that remaps the colours written in code, the gauge's track is
+// the theme's background and its frame / tick colours are remapped;
+// Default Dark (no remap) paints as before.
+inline QColor hgaugeTrackColor()
+{
+    const ThemeManager& tm = ThemeManager::instance();
+    return tm.hasLiteralRemap() ? tm.color(QStringLiteral("color.background.0"))
+                                : QColor(0x0a, 0x0a, 0x18);
+}
+inline QColor hgaugeLit(const QColor& c)
+{
+    return ThemeManager::instance().remapLiteralColor(c);
+}
+
 // ── HGauge: reusable horizontal bar gauge ─────────────────────────────────────
 //
 // Draws a horizontal bar with:
@@ -52,6 +69,9 @@ public:
     {
         setFixedHeight(24);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        // Build 747: repaint in the new theme's colours.
+        connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+                this, qOverload<>(&QWidget::update));
 
         applyExtremesScale();
         m_smooth.setTarget(fractionFor(m_value));
@@ -413,13 +433,13 @@ protected:
 
         // Background
         if (m_trackStops.isEmpty()) {
-            p.fillRect(barX, barY, barW, barH, QColor(0x0a, 0x0a, 0x18));
+            p.fillRect(barX, barY, barW, barH, hgaugeTrackColor());
         } else {
             QLinearGradient track(barX, 0, barX + barW, 0);
             track.setStops(m_trackStops);
             p.fillRect(barX, barY, barW, barH, track);
         }
-        p.setPen(QColor(0x20, 0x30, 0x40));
+        p.setPen(hgaugeLit(QColor(0x20, 0x30, 0x40)));
         p.drawRect(barX, barY, barW - 1, barH - 1);
 
         // Filled portion (animated)
@@ -489,7 +509,7 @@ protected:
             int tx = barX + static_cast<int>(tf * barW);
             QColor tickColor = (tick.value >= m_redStart) ? QColor(0xcc, 0x33, 0x33)
                              : (tick.value >= m_yellowStart) ? m_cautionColor
-                             : QColor(0xc8, 0xd8, 0xe8);
+                             : hgaugeLit(QColor(0xc8, 0xd8, 0xe8));
             p.setPen(tickColor);
             const QFontMetrics fm(tickFont);
             int tw = fm.horizontalAdvance(tick.label);
@@ -780,6 +800,8 @@ public:
     {
         setFixedHeight(18);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+                this, qOverload<>(&QWidget::update));   // build 747
         setFocusPolicy(Qt::TabFocus);
         setToolTip(tr("Scroll or use Up/Down keys to adjust relay position"));
 
@@ -874,12 +896,12 @@ protected:
         f.setPixelSize(10);
         f.setBold(true);
         p.setFont(f);
-        p.setPen(QColor(0xc8, 0xd8, 0xe8));
+        p.setPen(hgaugeLit(QColor(0xc8, 0xd8, 0xe8)));
         p.drawText(0, barY + barH / 2 + QFontMetrics(f).ascent() / 2, m_label);
 
         // Bar background
-        p.fillRect(barX, barY, barW, barH, QColor(0x0a, 0x0a, 0x18));
-        p.setPen(QColor(0x20, 0x30, 0x40));
+        p.fillRect(barX, barY, barW, barH, hgaugeTrackColor());
+        p.setPen(hgaugeLit(QColor(0x20, 0x30, 0x40)));
         p.drawRect(barX, barY, barW - 1, barH - 1);
 
         // Filled portion
@@ -889,7 +911,7 @@ protected:
             p.fillRect(barX + 1, barY + 1, fillW, barH - 2, QColor(0x00, 0xb4, 0xd8));
 
         // Value text
-        p.setPen(QColor(0xc8, 0xd8, 0xe8));
+        p.setPen(hgaugeLit(QColor(0xc8, 0xd8, 0xe8)));
         const QString valText = QString::number(m_value);
         const QFontMetrics fm(f);
         p.drawText(w - valueW, barY + barH / 2 + fm.ascent() / 2, valText);
