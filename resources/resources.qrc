@@ -33,7 +33,11 @@
     </qresource>
     <qresource prefix="/themes">
         <file alias="default-dark.json">themes/default-dark.json</file>
-        <file alias="default-light.json">themes/default-light.json</file>
+        <!-- ANAN fork build 745 (operator, 25.11): the light theme is not
+             usable, withdrawn from the list (the file stays); two dark-blue
+             themes instead. -->
+        <file alias="midnight.json">themes/midnight.json</file>
+        <file alias="deep-ocean.json">themes/deep-ocean.json</file>
     </qresource>
     <qresource prefix="/meterfaces">
         <file alias="analog-meter-themes-v1.json">meterfaces/analog-meter-themes-v1.json</file>
