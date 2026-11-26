@@ -389,6 +389,12 @@ void ContainerManager::dockContainer(const QString& id)
     // itself floating is not a special case — Qt reparenting is transparent
     // to which top-level window the body happens to live in.
     restoreToOriginalSlot(id, released);
+    // Build 756: a tile hidden by its button while floating stays hidden
+    // when it is docked some other way.
+    if (released->property(kSessionHiddenProperty).toBool()) {
+        released->setProperty(kSessionHiddenProperty, QVariant());
+        released->setContainerVisible(false);
+    }
     saveState();
 }
 
@@ -529,9 +535,17 @@ void ContainerManager::onCloseRequested()
     // dragging it back first. It goes back to its panel slot hidden -- the
     // same state as closing it in the panel -- so showing it again (applet
     // menu) brings it back in the panel, and its floating window is gone.
-    if (c->isFloating())
+    //
+    // Build 756 (operator, 25.11: "the applet comes back by closing its
+    // window with the cross"): × on a floating applet docks it back into its
+    // panel slot, shown; × on a docked one hides it, as before.
+    if (c->isFloating()) {
+        c->setProperty(kSessionHiddenProperty, QVariant());
         dockContainer(c->id());
-    c->setContainerVisible(false);
+        c->setContainerVisible(true);
+    } else {
+        c->setContainerVisible(false);
+    }
     saveState(); // saveState() flushes to disk (#4427)
 }
 
@@ -567,6 +581,12 @@ void ContainerManager::saveState() const
         QJsonObject entry;
         entry["mode"]        = dockModeToString(c->dockMode());
         entry["visible"]     = c->isContainerVisible();
+        // Build 756: a floating tile hidden by its button is hidden for this
+        // session only -- saved as in its panel slot, off.
+        if (c->isFloating() && c->property(kSessionHiddenProperty).toBool()) {
+            entry["mode"]    = dockModeToString(ContainerWidget::DockMode::PanelDocked);
+            entry["visible"] = false;
+        }
         entry["contentType"] = m_meta.value(id).contentType;
         entry["parent"]      = m_meta.value(id).parentId;
 

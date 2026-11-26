@@ -696,12 +696,25 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
                 // stayed True, so the next start floated and showed it
                 // again. Off now does what the window's x does since build
                 // 261: back to its panel slot, hidden, and saved.
-                if (c->isFloating() && !checked && !c->isPresentationManaged()
-                    && m_containerMgr) {
-                    m_containerMgr->dockContainer(c->id());
-                    c->setContainerVisible(false);
-                    AppSettings::instance().setValue(key, "False");
-                    AppSettings::instance().save();
+                //
+                // Build 756 (operator, 25.11: "a new rule for all applets -- if
+                // the applet is pulled out, switching it off with the button
+                // does not return it to the panel but only hides it; it comes
+                // back by closing its window with the cross; not remembered,
+                // works only within the session"): off on a floating tile
+                // hides its window and marks it hidden for the session
+                // (property kSessionHiddenProperty); on shows the window
+                // again. Nothing of this is kept: ContainerManager::saveState
+                // writes a session-hidden tile as in its panel slot and off,
+                // so the next start has it there, off (build 351's fault --
+                // a hidden floating window coming back -- stays fixed).
+                if (c->isFloating() && !c->isPresentationManaged() && m_containerMgr) {
+                    c->setProperty(ContainerManager::kSessionHiddenProperty,
+                                   checked ? QVariant() : QVariant(true));
+                    if (auto* w = c->window())
+                        w->setVisible(checked);
+                    AppSettings::instance().setValue(key, checked ? "True" : "False");
+                    m_containerMgr->saveState();
                     return;
                 }
                 // Floating containers: raising = show the window,
@@ -776,12 +789,16 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
             // nothing saved -- it came back floating at the next start (the
             // same fault as the other tiles, build 351). Off = back to its
             // place, hidden, saved.
-            if (m_sMeterContainer->isFloating() && !on
+            // Build 756: the same rule as the other tiles -- off hides the
+            // floating window for the session, on shows it; the × docks it.
+            if (m_sMeterContainer->isFloating()
                 && !m_sMeterContainer->isPresentationManaged() && m_containerMgr) {
-                m_containerMgr->dockContainer(m_sMeterContainer->id());
-                m_sMeterContainer->setContainerVisible(false);
-                AppSettings::instance().setValue("Applet_VU", "False");
-                AppSettings::instance().save();
+                m_sMeterContainer->setProperty(ContainerManager::kSessionHiddenProperty,
+                                               on ? QVariant() : QVariant(true));
+                if (auto* w = m_sMeterContainer->window())
+                    w->setVisible(on);
+                AppSettings::instance().setValue("Applet_VU", on ? "True" : "False");
+                m_containerMgr->saveState();
                 return;
             }
             if (m_sMeterContainer->isFloating()) {

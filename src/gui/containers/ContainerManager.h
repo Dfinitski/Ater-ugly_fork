@@ -126,6 +126,9 @@ public:
     // A version mismatch skips restore. Floating geometry is stored separately under
     // geometryKeyFor(id).
     void saveState() const;
+    // Build 756: the dynamic property on a ContainerWidget that marks a
+    // floating tile hidden by its button for this session only.
+    static constexpr const char* kSessionHiddenProperty = "aetherSessionHidden";
     void restoreState();
 
 signals:
