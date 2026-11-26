@@ -293,13 +293,7 @@ int main(int argc, char* argv[])
     // AETHER_NO_GPU: runtime toggle to force software OpenGL rendering.
     // Unlike the compile-time AETHER_GPU_SPECTRUM CMake flag, this works on
     // already-built binaries. Avoids hardware GLX/EGL entirely.
-    // ANAN fork build 757 (operator, 26.11: a user's panadapter and
-    // waterfall stayed empty while everything else ran): View -> No GPU Mode
-    // (setting NoGpuMode) does the same from the menu, read here before
-    // QApplication through the bootstrap reader, as GpuSelector does.
-    if (qEnvironmentVariableIsSet("AETHER_NO_GPU")
-        || AetherSDR::SettingsBootstrap::readValue(QStringLiteral("NoGpuMode"))
-               == QLatin1String("True")) {
+    if (qEnvironmentVariableIsSet("AETHER_NO_GPU")) {
         qputenv("QT_OPENGL", "software");
     }
 

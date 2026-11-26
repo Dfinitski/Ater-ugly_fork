@@ -12902,6 +12902,21 @@ through …`. Счётчики `Hl2RxDsp::spectrumFramesOut()` /
 Проверка: errcheck ThemeManager / TokenEditorWidget / ThemeEditorDialog 0.
 Не проверено на радио, не собиралось под Windows.
 
+## 753. Сборка 765 — пункт No GPU Mode убран из View
+
+Оператор (26.11): «в режиме No GPU процессор нагружен на 65 % — убери этот
+режим из View, это никто не будет использовать».
+
+`MainWindow_Menus.cpp` и `main.cpp` возвращены к состоянию до 757: пункта
+View → No GPU Mode больше нет, настройка `NoGpuMode` не читается (если она
+у кого-то осталась True, на запуск не влияет). Переменная окружения
+`AETHER_NO_GPU` работает, как в исходном AetherSDR. Причина пустой
+панорамы у того пользователя оказалась в потере пакетов (762), не в
+видеокарте.
+
+Файлы: `src/gui/MainWindow_Menus.cpp`, `src/main.cpp`, `src/core/ForkBuild.h`.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

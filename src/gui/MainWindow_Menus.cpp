@@ -78,7 +78,6 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QMessageBox>
-#include <QProcess>   // build 757
 #include <QStandardPaths>
 #include "core/SettingsArchive.h"
 #include "FramelessMessageBox.h"
@@ -1541,50 +1540,6 @@ void MainWindow::buildMenuBar()
 #endif
 
     viewMenu->addSeparator();
-
-    // ANAN fork build 757 (operator, 26.11): "No GPU Mode" -- the panadapter,
-    // waterfall and other GPU views drawn by the software OpenGL rasterizer
-    // instead of the video card (Direct3D 11 on Windows), for a machine whose
-    // driver shows them empty. The same as starting with AETHER_NO_GPU=1;
-    // read at start-up (main.cpp), so a change asks to restart. Uses more CPU.
-    auto* noGpuAct = viewMenu->addAction(tr("No GPU Mode"));
-    noGpuAct->setCheckable(true);
-    noGpuAct->setChecked(
-        AppSettings::instance().value("NoGpuMode", "False").toString() == "True");
-    noGpuAct->setToolTip(tr("Draw the panadapter and waterfall without the video card\n"
-                            "(software rendering; uses more CPU). Takes effect after a restart."));
-    connect(noGpuAct, &QAction::toggled, this, [this](bool on) {
-        AppSettings::instance().setValue("NoGpuMode", on ? "True" : "False");
-        AppSettings::instance().save();
-        const auto answer = FramelessMessageBox::question(this, tr("No GPU Mode"),
-            on ? tr("No GPU Mode is on: the panadapter and waterfall will be drawn without\n"
-                    "the video card. Restart AetherSDR now to apply?")
-               : tr("No GPU Mode is off: the video card will draw the panadapter and\n"
-                    "waterfall again. Restart AetherSDR now to apply?"),
-            QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
-        if (answer != QMessageBox::Yes)
-            return;
-#ifdef Q_OS_MACOS
-        QDir d = QFileInfo(QCoreApplication::applicationFilePath()).dir();
-        d.cdUp();
-        d.cdUp();
-        if (d.dirName().endsWith(".app")) {
-            QStringList openArgs = {"-n", d.absolutePath()};
-            const QStringList childArgs = QCoreApplication::arguments().mid(1);
-            if (!childArgs.isEmpty())
-                openArgs << "--args" << childArgs;
-            QProcess::startDetached("open", openArgs);
-        } else {
-            QProcess::startDetached(QCoreApplication::applicationFilePath(),
-                                    QCoreApplication::arguments().mid(1));
-        }
-#else
-        QProcess::startDetached(QCoreApplication::applicationFilePath(),
-                                QCoreApplication::arguments().mid(1));
-#endif
-        QCoreApplication::quit();
-    });
-
     m_minimalModeAction = viewMenu->addAction("Minimal Mode\tCtrl+Shift+M");
     m_minimalModeAction->setCheckable(true);
     m_minimalModeAction->setChecked(
