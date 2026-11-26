@@ -87,6 +87,10 @@ public:
     // since meters are defined after capabilities publish. Not permissive while
     // disconnected.
     void setHasAlcGainMeter(bool has);
+    // ANAN fork build 758: while the multi meter is up (AppletPanel), the
+    // Compression and ALC gauges -- its COMP and ALC rows -- are hidden and
+    // the applet shrinks to suit; shown again when it is not.
+    void setMultiMeterShown(bool shown);
 
 signals:
     void micLevelChanged(int level);  // slider value 0-100

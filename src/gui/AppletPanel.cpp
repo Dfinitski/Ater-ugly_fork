@@ -821,6 +821,12 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
             }
             AppSettings::instance().setValue(
                 "Applet_VU", visible ? "True" : "False");
+            syncMicMeterDuplicates();   // build 758
+        });
+        // Build 758: the Mic applet's COMP / ALC gauges follow the meter's
+        // visibility (after the handler above has acted on the button).
+        connect(m_vuBtn, &QPushButton::toggled, this, [this](bool) {
+            syncMicMeterDuplicates();
         });
 
         // Legacy float-state migration: if the user had the S-Meter
@@ -1089,6 +1095,7 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
 
     m_phoneCwApplet = new PhoneCwApplet;
     m_appletOrder.append(makeEntry("P/CW", "Mic", m_phoneCwApplet, true, m_drawer, m_drawerLayout, "Mic"));
+    syncMicMeterDuplicates();   // build 758
 
     m_eqApplet = new EqApplet;
     m_appletOrder.append(makeEntry("EQ", "Equalizer", m_eqApplet, true, m_drawer, m_drawerLayout));
@@ -1447,6 +1454,20 @@ void AppletPanel::applyMeterStyle()
         return;
     m_sMeter->setVisible(!m_ananMmShown);
     m_ananMm->setVisible(m_ananMmShown);
+    syncMicMeterDuplicates();   // build 758
+}
+
+// ANAN fork build 758 (operator, 26.11: "the Mic applet's Compression and
+// ALC just copy the multi meter -- while the multi meter is up, hide them and
+// let the applet's window scale to suit"): the multi meter is up when it is
+// the chosen face and its S-meter tile is on (the VU button: docked, or a
+// floating window not hidden). Not saved; follows the two settings.
+void AppletPanel::syncMicMeterDuplicates()
+{
+    if (!m_phoneCwApplet)
+        return;
+    const bool mmUp = m_ananMm && m_ananMmShown && m_vuBtn && m_vuBtn->isChecked();
+    m_phoneCwApplet->setMultiMeterShown(mmUp);
 }
 
 void AppletPanel::showStandardMeterContextMenu(QWidget* source,

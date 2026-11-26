@@ -427,6 +427,7 @@ private:
     AnanMultiMeterWidget* m_ananMm{nullptr};   // build 680
     bool             m_ananMmShown{false};      // build 680: "Meter" = Multi Meter
     void applyMeterStyle();                     // build 680
+    void syncMicMeterDuplicates();              // build 758
     CrossNeedleMeterApplet* m_crossNeedleApplet{nullptr};
     int              m_vuTxSelect{0};
     int              m_vuRxSelect{0};

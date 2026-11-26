@@ -1936,6 +1936,25 @@ void PhoneCwApplet::resetLevelMeter()
     m_levelGauge->clearPeak();
 }
 
+// ANAN fork build 758 (operator, 26.11): see the header.
+void PhoneCwApplet::setMultiMeterShown(bool shown)
+{
+    for (QWidget* w : {static_cast<QWidget*>(m_compGauge),
+                       static_cast<QWidget*>(m_alcGaugePhone),
+                       static_cast<QWidget*>(m_alcGaugeCw)}) {
+        if (w && w->isHidden() != shown)
+            w->setVisible(!shown);
+    }
+    // The applet's height follows its layout; a floating window is resized
+    // to the new height (its width kept).
+    updateGeometry();
+    if (QWidget* top = window(); top && top->inherits("AetherSDR::FloatingContainerWindow")) {
+        QTimer::singleShot(0, top, [top] {
+            top->resize(top->width(), top->sizeHint().height());
+        });
+    }
+}
+
 void PhoneCwApplet::setCompressionMaximumDb(float maximum)
 {
     // ANAN fork build 742: the face is fixed at 0 .. -30 dB (operator), the
