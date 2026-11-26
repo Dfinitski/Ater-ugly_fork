@@ -225,7 +225,6 @@
 #include <QPainterPath>
 #include <QtMath>
 #include <QVBoxLayout>
-#include <QGridLayout>   // build 752
 #include <QHBoxLayout>
 #include <QSplitter>
 #include <QMenuBar>
@@ -6615,17 +6614,22 @@ void MainWindow::buildUI()
         // AeTX); a radio with one ADC has only the ATT1 line.
         QLabel* attSep = addSep();
         // Build 752 (operator, 25.11: "align the lines by changing the gap
-        // between ATTn and the value, so the ends of dB are level"): a grid,
-        // "ATTn" left in one column, the value right-aligned in the other;
+        // between ATTn and the value, so the ends of dB are level"): "ATTn"
+        // left, the value right-aligned (the gap between them varies);
         // the value column is as wide as "-31 dB" (so the bar does not shift
         // as the figures change).
+        // Build 754 (operator, 25.11: the lines were too far apart -- "the
+        // same gap between the lines as the antenna indicator's"): laid out
+        // as the antenna indicator, a vertical box of zero spacing centred in
+        // the bar; each line a row "ATTn", stretch, the value.
         auto* attStack = new QWidget;
-        auto* attGrid = new QGridLayout(attStack);
-        attGrid->setContentsMargins(0, 0, 0, 0);
-        attGrid->setHorizontalSpacing(4);
-        attGrid->setVerticalSpacing(0);
+        auto* attBox = new QVBoxLayout(attStack);
+        attBox->setContentsMargins(0, 0, 0, 0);
+        attBox->setSpacing(0);
+        attBox->setAlignment(Qt::AlignVCenter);
         QLabel* attName[2];
         QLabel* attVal[2];
+        QWidget* attRow[2];
         for (int i = 0; i < 2; ++i) {
             attName[i] = new QLabel(QStringLiteral("ATT%1").arg(i + 1));
             attVal[i] = new QLabel(QStringLiteral("-- dB"));
@@ -6633,8 +6637,14 @@ void MainWindow::buildUI()
                 applyStatusBarCompactLabelStyle(l, QStringLiteral("{{color.text.secondary}}"));
             attName[i]->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
             attVal[i]->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            attGrid->addWidget(attName[i], i, 0);
-            attGrid->addWidget(attVal[i], i, 1);
+            attRow[i] = new QWidget;
+            auto* row = new QHBoxLayout(attRow[i]);
+            row->setContentsMargins(0, 0, 0, 0);
+            row->setSpacing(4);
+            row->addWidget(attName[i]);
+            row->addStretch(1);
+            row->addWidget(attVal[i]);
+            attBox->addWidget(attRow[i]);
         }
         attStack->setObjectName(QStringLiteral("rz3qsAttStatus"));
         attStack->setAccessibleName(QStringLiteral("Attenuators"));
@@ -6642,7 +6652,7 @@ void MainWindow::buildUI()
         hbox->addWidget(attStack);
         attSep->hide();
         attStack->hide();
-        auto attRefresh = [attSep, attStack, n2 = attName[1], v1 = attVal[0], v2 = attVal[1]] {
+        auto attRefresh = [attSep, attStack, r2 = attRow[1], v1 = attVal[0], v2 = attVal[1]] {
             const bool show = fdv::FdvState::instance().callsign == QLatin1String("RZ3QS");
             if (attStack->isHidden() == show) {
                 attSep->setVisible(show);
@@ -6665,10 +6675,8 @@ void MainWindow::buildUI()
                 if (v->minimumWidth() != valW)
                     v->setMinimumWidth(valW);
             const bool two = ui.numAdcs >= 2;
-            if (v2->isHidden() == two) {
-                n2->setVisible(two);
-                v2->setVisible(two);
-            }
+            if (r2->isHidden() == two)
+                r2->setVisible(two);
         };
         // Build 751 (operator, 25.11: "any change of the attenuators must
         // show there at once"): its own 20 ms poll of the values the
