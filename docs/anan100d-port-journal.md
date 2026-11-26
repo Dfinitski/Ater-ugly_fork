@@ -13390,6 +13390,33 @@ WanConnection.h); check_button_styles — идентично; check_theme_seed �
 актуален.
 Не проверено на радио, не собиралось под Windows.
 
+## 770. Сборка 781 — кнопки в редактор тем, шаг 12: остаток RX, PureSignal, панорамный аплет
+
+- Аплет RX, остаток группы `rx`: `rx.addrx` — кнопка «+RX» после кнопок
+  приёмников (ANAN); `rx.badge.tx` / `rx.badge.rx` — бейдж TX (раньше
+  ставился мимо `ThemeManager`). 10 новых токенов `color.button.rx.*`.
+  Кнопки приёмников (слайсов) оставлены: их цвет — цвет слайса, а стиль
+  сравнивается и приглушается в коде.
+- Аплет PureSignal (`PsApplet.cpp`), группа `ps`, 3 записи: `ps.button`
+  (`kBtnStyle`) — Auto, Single, Calibrate, Reset, Amp View; `ps.ps`
+  (+ `kPsOnStyle`); `ps.twotone` (+ `kTwoToneOnStyle`). Помощник
+  `button()` принимает id стиля вместо добавки. 17 токенов.
+- Панорамный аплет (`PanadapterApplet.cpp`), группа `pan`, 2 записи:
+  `pan.decoder` (`cwBtnStyle` = `rttBtnStyle`) — кнопки полос декодеров
+  CW / RTTY (копирование, размер шрифта, очистка); `pan.decoder.close` —
+  их крестик. 10 токенов.
+- 103 записи × 3 темы — всё идентично: вид не меняется.
+- Осталось: 94 стиля кнопок с литеральными цветами в 52 файлах.
+
+Файлы: `src/gui/RxApplet.cpp`, `src/gui/PsApplet.cpp`,
+`src/gui/PanadapterApplet.cpp`, `src/gui/ButtonStyles.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `docs/button-theming.md`,
+`src/core/ForkBuild.h`.
+Проверка: errcheck RxApplet 4, PsApplet 4, PanadapterApplet 0 (= до правки);
+check_button_styles — идентично; check_theme_seed — актуален.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

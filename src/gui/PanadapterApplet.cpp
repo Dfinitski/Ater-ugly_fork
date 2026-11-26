@@ -1,4 +1,5 @@
 #include "PanadapterApplet.h"
+#include "ButtonStyles.h"
 #include "PanSliceTitle.h"
 #include "PanadapterHeader.h"
 #include "models/CwRxModel.h"
@@ -279,15 +280,11 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
 
     cwBar->addStretch();
 
-    const QString cwBtnStyle =
-        "QPushButton { background: #1a2a3a; color: #8090a0; border: 1px solid #203040;"
-        " border-radius: 2px; font-size: 9px; font-weight: bold;"
-        " padding: 1px 6px; }"
-        "QPushButton:hover { color: #c8d8e8; background: #2a3a4a; }";
+    // cwBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "pan.decoder" -- build 781.
 
     auto* copyAllBtn = new QPushButton("CPY ALL");
     copyAllBtn->setToolTip("Copy all decoded text to clipboard");
-    copyAllBtn->setStyleSheet(cwBtnStyle);
+    AetherSDR::ButtonStyles::apply(copyAllBtn, "pan.decoder");
     connect(copyAllBtn, &QPushButton::clicked, this, [this] {
         QGuiApplication::clipboard()->setText(m_cwText->toPlainText());
     });
@@ -295,7 +292,7 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
 
     auto* copyVisBtn = new QPushButton("CPY VIS");
     copyVisBtn->setToolTip("Copy visible text to clipboard");
-    copyVisBtn->setStyleSheet(cwBtnStyle);
+    AetherSDR::ButtonStyles::apply(copyVisBtn, "pan.decoder");
     connect(copyVisBtn, &QPushButton::clicked, this, [this] {
         QRect visibleRect = m_cwText->viewport()->rect();
         QTextCursor topCursor = m_cwText->cursorForPosition(visibleRect.topLeft());
@@ -309,28 +306,25 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
     auto* fontDownBtn = new QPushButton("A-");
     fontDownBtn->setObjectName("cwFontDown");
     fontDownBtn->setToolTip("Decrease decoded-text font size");
-    fontDownBtn->setStyleSheet(cwBtnStyle);
+    AetherSDR::ButtonStyles::apply(fontDownBtn, "pan.decoder");
     connect(fontDownBtn, &QPushButton::clicked, this, [this] { adjustCwFont(-1); });
     cwBar->addWidget(fontDownBtn);
 
     auto* fontUpBtn = new QPushButton("A+");
     fontUpBtn->setObjectName("cwFontUp");
     fontUpBtn->setToolTip("Increase decoded-text font size");
-    fontUpBtn->setStyleSheet(cwBtnStyle);
+    AetherSDR::ButtonStyles::apply(fontUpBtn, "pan.decoder");
     connect(fontUpBtn, &QPushButton::clicked, this, [this] { adjustCwFont(+1); });
     cwBar->addWidget(fontUpBtn);
 
     auto* clearBtn = new QPushButton("CLR");
-    clearBtn->setStyleSheet(cwBtnStyle);
+    AetherSDR::ButtonStyles::apply(clearBtn, "pan.decoder");
     connect(clearBtn, &QPushButton::clicked, this, &PanadapterApplet::clearCwText);
     cwBar->addWidget(clearBtn);
 
     auto* closeBtn = new QPushButton("\u2715");
     closeBtn->setToolTip("Close CW decoder");
-    AetherSDR::ThemeManager::instance().applyStyleSheet(closeBtn, "QPushButton { background: {{color.background.1}}; color: {{color.text.secondary}}; border: 1px solid {{color.background.1}};"
-        " border-radius: 2px; font-size: 9px; font-weight: bold;"
-        " padding: 1px 6px; }"
-        "QPushButton:hover { color: #ff6060; background: {{color.background.1}}; }");
+    AetherSDR::ButtonStyles::apply(closeBtn, "pan.decoder.close");
     connect(closeBtn, &QPushButton::clicked, this, [this]() {
         setCwPanelVisible(false);
         emit cwPanelCloseRequested();
@@ -546,31 +540,24 @@ PanadapterApplet::PanadapterApplet(QWidget* parent)
 
     rttyBar->addStretch();
 
-    const QString rttBtnStyle =
-        "QPushButton { background: #1a2a3a; color: #8090a0; border: 1px solid #203040;"
-        " border-radius: 2px; font-size: 9px; font-weight: bold; padding: 1px 6px; }"
-        "QPushButton:hover { color: #c8d8e8; background: #2a3a4a; }";
+    // rttBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "pan.decoder" -- build 781.
 
     auto* rttyCopyAllBtn = new QPushButton("CPY ALL");
     rttyCopyAllBtn->setToolTip("Copy all decoded text to clipboard");
-    rttyCopyAllBtn->setStyleSheet(rttBtnStyle);
+    AetherSDR::ButtonStyles::apply(rttyCopyAllBtn, "pan.decoder");
     connect(rttyCopyAllBtn, &QPushButton::clicked, this, [this] {
         QGuiApplication::clipboard()->setText(m_rttyText->toPlainText());
     });
     rttyBar->addWidget(rttyCopyAllBtn);
 
     auto* clrBtn = new QPushButton("CLR");
-    clrBtn->setStyleSheet(rttBtnStyle);
+    AetherSDR::ButtonStyles::apply(clrBtn, "pan.decoder");
     connect(clrBtn, &QPushButton::clicked, this, &PanadapterApplet::clearRttyText);
     rttyBar->addWidget(clrBtn);
 
     auto* rttyCloseBtn = new QPushButton("✕");
     rttyCloseBtn->setToolTip("Close RTTY decoder");
-    AetherSDR::ThemeManager::instance().applyStyleSheet(rttyCloseBtn,
-        "QPushButton { background: {{color.background.1}}; color: {{color.text.secondary}};"
-        " border: 1px solid {{color.background.1}}; border-radius: 2px; font-size: 9px;"
-        " font-weight: bold; padding: 1px 6px; }"
-        "QPushButton:hover { color: #ff6060; background: {{color.background.1}}; }");
+    AetherSDR::ButtonStyles::apply(rttyCloseBtn, "pan.decoder.close");
     connect(rttyCloseBtn, &QPushButton::clicked, this, [this] {
         m_rttyPanel->hide();
         emit rttyPanelCloseRequested();

@@ -1,4 +1,5 @@
 #include "PsApplet.h"
+#include "ButtonStyles.h"
 
 #include "ComboStyle.h"
 #include "GuardedSlider.h"
@@ -51,24 +52,16 @@ QLabel* sectionLabel(const QString& text)
     return l;
 }
 
-const QString kBtnStyle = QStringLiteral(
-    "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px;"
-    " color: #c8d8e8; font-size: 11px; font-weight: bold; padding: 1px 4px; }"
-    "QPushButton:hover { border: 1px solid #0090e0; }"
-    "QPushButton:pressed { background: #0a5a90; border: 1px solid #40b0ff; color: #ffffff; }"
-    "QPushButton:checked { background: #0070c0; border: 1px solid #0090e0; color: #ffffff; }"
-    "QPushButton:disabled { color: #607080; }");
-const QString kPsOnStyle = QStringLiteral(
-    "QPushButton:checked { background: #1d8a3a; border: 1px solid #30c060; color: #ffffff; }");
-const QString kTwoToneOnStyle = QStringLiteral(
-    "QPushButton:checked { background: #c03030; border: 1px solid #ff5050; color: #ffffff; }");
+// kBtnStyle / kPsOnStyle / kTwoToneOnStyle: in the button-style catalogue
+// (ButtonStyles.cpp), "ps.button" / "ps.ps" / "ps.twotone" -- build 781.
 
-QPushButton* button(const QString& text, bool checkable, const QString& extra = QString())
+QPushButton* button(const QString& text, bool checkable, const char* styleId = "ps.button")
 {
     auto* b = new QPushButton(text);
     b->setCheckable(checkable);
     b->setFixedHeight(22);
-    b->setStyleSheet(kBtnStyle + extra);
+    // Build 781: the look is in the button-style catalogue (ButtonStyles.cpp).
+    AetherSDR::ButtonStyles::apply(b, styleId);
     return b;
 }
 
@@ -104,7 +97,7 @@ PsApplet::PsApplet(QWidget* parent)
     {
         auto* row = new QHBoxLayout;
         row->setSpacing(4);
-        m_psBtn = button(tr("PS"), true, kPsOnStyle);
+        m_psBtn = button(tr("PS"), true, "ps.ps");
         m_psBtn->setToolTip(tr("PureSignal on / off"));
         m_psBtn->setMinimumWidth(40);
         row->addWidget(m_psBtn);
@@ -125,7 +118,7 @@ PsApplet::PsApplet(QWidget* parent)
     {
         auto* row = new QHBoxLayout;
         row->setSpacing(4);
-        m_twoToneBtn = button(tr("2 Tone"), true, kTwoToneOnStyle);
+        m_twoToneBtn = button(tr("2 Tone"), true, "ps.twotone");
         m_twoToneBtn->setToolTip(tr("Transmit a two-tone test signal (SSB only).\n"
                                     "PureSignal calibrates on it; click again to stop."));
         row->addWidget(m_twoToneBtn, 1);

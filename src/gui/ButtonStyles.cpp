@@ -1313,6 +1313,127 @@ const Entry kEntries[] = {
      "QPushButton { background: {{color.button.tuner.ant.active.background}}; border: 1px "
      "solid {{color.button.tuner.ant.active.border}}; border-radius: 3px; color: "
      "{{color.button.tuner.ant.active.text}}; font-size: 10px; font-weight: bold; }"},
+
+    // ── RX applet +RX and TX badge, PureSignal applet, panadapter decoder bars (build 781)
+    {"rx.addrx", "RxApplet.cpp: +RX after the receiver buttons (ANAN)",
+     /*original*/
+     "QToolButton { background: transparent; color: #c8d8e8; border: 1px solid #6a7a8a; "
+     "border-radius: 3px; font-size: 10px; padding: 0; }QToolButton:hover { color: #ffffff; "
+     "border-color: #c8d8e8; }QToolButton:pressed { background: #2a3a4a; }",
+     /*themed*/
+     "QToolButton { background: transparent; color: {{color.button.rx.addrx.text}}; border: "
+     "1px solid {{color.button.rx.addrx.border}}; border-radius: 3px; font-size: 10px; "
+     "padding: 0; }QToolButton:hover { color: {{color.button.rx.addrx.hover.text}}; "
+     "border-color: {{color.button.rx.addrx.hover.border}}; }QToolButton:pressed { background: "
+     "{{color.button.rx.addrx.pressed.background}}; }"},
+
+    {"rx.badge.tx", "RxApplet.cpp: TX badge, the transmit slice",
+     /*original*/
+     "QPushButton { background: #c03030; color: #ffffff; border-radius: 3px; border: none; "
+     "font-weight: bold; font-size: 10px; padding: 0px; margin: 0px; }QPushButton:hover { "
+     "background: #d04040; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.rx.badge.tx.background}}; color: "
+     "{{color.button.rx.badge.text}}; border-radius: 3px; border: none; font-weight: bold; "
+     "font-size: 10px; padding: 0px; margin: 0px; }QPushButton:hover { background: "
+     "{{color.button.rx.badge.tx.hover.background}}; }"},
+
+    {"rx.badge.rx", "RxApplet.cpp: TX badge, not the transmit slice",
+     /*original*/
+     "QPushButton { background: #405060; color: #ffffff; border-radius: 3px; border: none; "
+     "font-weight: bold; font-size: 10px; padding: 0px; margin: 0px; }QPushButton:hover { "
+     "background: #506070; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.rx.badge.rx.background}}; color: "
+     "{{color.button.rx.badge.text}}; border-radius: 3px; border: none; font-weight: bold; "
+     "font-size: 10px; padding: 0px; margin: 0px; }QPushButton:hover { background: "
+     "{{color.button.rx.badge.rx.hover.background}}; }"},
+
+    {"ps.button", "PsApplet.cpp: Auto, Single, Calibrate, Reset, Amp View (kBtnStyle)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; color: "
+     "#c8d8e8; font-size: 11px; font-weight: bold; padding: 1px 4px; }QPushButton:hover { "
+     "border: 1px solid #0090e0; }QPushButton:pressed { background: #0a5a90; border: 1px solid "
+     "#40b0ff; color: #ffffff; }QPushButton:checked { background: #0070c0; border: 1px solid "
+     "#0090e0; color: #ffffff; }QPushButton:disabled { color: #607080; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.ps.background}}; border: 1px solid "
+     "{{color.button.ps.border}}; border-radius: 2px; color: {{color.button.ps.text}}; "
+     "font-size: 11px; font-weight: bold; padding: 1px 4px; }QPushButton:hover { border: 1px "
+     "solid {{color.button.ps.hover.border}}; }QPushButton:pressed { background: "
+     "{{color.button.ps.pressed.background}}; border: 1px solid "
+     "{{color.button.ps.pressed.border}}; color: {{color.button.ps.pressed.text}}; "
+     "}QPushButton:checked { background: {{color.button.ps.selected.background}}; border: 1px "
+     "solid {{color.button.ps.selected.border}}; color: {{color.button.ps.selected.text}}; "
+     "}QPushButton:disabled { color: {{color.button.ps.disabled.text}}; }"},
+
+    {"ps.ps", "PsApplet.cpp: PS (kBtnStyle + kPsOnStyle)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; color: "
+     "#c8d8e8; font-size: 11px; font-weight: bold; padding: 1px 4px; }QPushButton:hover { "
+     "border: 1px solid #0090e0; }QPushButton:pressed { background: #0a5a90; border: 1px solid "
+     "#40b0ff; color: #ffffff; }QPushButton:checked { background: #0070c0; border: 1px solid "
+     "#0090e0; color: #ffffff; }QPushButton:disabled { color: #607080; }QPushButton:checked { "
+     "background: #1d8a3a; border: 1px solid #30c060; color: #ffffff; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.ps.background}}; border: 1px solid "
+     "{{color.button.ps.border}}; border-radius: 2px; color: {{color.button.ps.text}}; "
+     "font-size: 11px; font-weight: bold; padding: 1px 4px; }QPushButton:hover { border: 1px "
+     "solid {{color.button.ps.hover.border}}; }QPushButton:pressed { background: "
+     "{{color.button.ps.pressed.background}}; border: 1px solid "
+     "{{color.button.ps.pressed.border}}; color: {{color.button.ps.pressed.text}}; "
+     "}QPushButton:checked { background: {{color.button.ps.selected.background}}; border: 1px "
+     "solid {{color.button.ps.selected.border}}; color: {{color.button.ps.selected.text}}; "
+     "}QPushButton:disabled { color: {{color.button.ps.disabled.text}}; }QPushButton:checked { "
+     "background: {{color.button.ps.on.background}}; border: 1px solid "
+     "{{color.button.ps.on.border}}; color: {{color.button.ps.on.text}}; }"},
+
+    {"ps.twotone", "PsApplet.cpp: 2 Tone (kBtnStyle + kTwoToneOnStyle)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #304050; border-radius: 2px; color: "
+     "#c8d8e8; font-size: 11px; font-weight: bold; padding: 1px 4px; }QPushButton:hover { "
+     "border: 1px solid #0090e0; }QPushButton:pressed { background: #0a5a90; border: 1px solid "
+     "#40b0ff; color: #ffffff; }QPushButton:checked { background: #0070c0; border: 1px solid "
+     "#0090e0; color: #ffffff; }QPushButton:disabled { color: #607080; }QPushButton:checked { "
+     "background: #c03030; border: 1px solid #ff5050; color: #ffffff; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.ps.background}}; border: 1px solid "
+     "{{color.button.ps.border}}; border-radius: 2px; color: {{color.button.ps.text}}; "
+     "font-size: 11px; font-weight: bold; padding: 1px 4px; }QPushButton:hover { border: 1px "
+     "solid {{color.button.ps.hover.border}}; }QPushButton:pressed { background: "
+     "{{color.button.ps.pressed.background}}; border: 1px solid "
+     "{{color.button.ps.pressed.border}}; color: {{color.button.ps.pressed.text}}; "
+     "}QPushButton:checked { background: {{color.button.ps.selected.background}}; border: 1px "
+     "solid {{color.button.ps.selected.border}}; color: {{color.button.ps.selected.text}}; "
+     "}QPushButton:disabled { color: {{color.button.ps.disabled.text}}; }QPushButton:checked { "
+     "background: {{color.button.ps.twotone.background}}; border: 1px solid "
+     "{{color.button.ps.twotone.border}}; color: {{color.button.ps.twotone.text}}; }"},
+
+    {"pan.decoder", "PanadapterApplet.cpp: CW / RTTY decoder bar buttons -- copy, font size, clear (cwBtnStyle = rttBtnStyle)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; color: #8090a0; border: 1px solid #203040; "
+     "border-radius: 2px; font-size: 9px; font-weight: bold; padding: 1px 6px; "
+     "}QPushButton:hover { color: #c8d8e8; background: #2a3a4a; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.pan.decoder.background}}; color: "
+     "{{color.button.pan.decoder.text}}; border: 1px solid "
+     "{{color.button.pan.decoder.border}}; border-radius: 2px; font-size: 9px; font-weight: "
+     "bold; padding: 1px 6px; }QPushButton:hover { color: "
+     "{{color.button.pan.decoder.hover.text}}; background: "
+     "{{color.button.pan.decoder.hover.background}}; }"},
+
+    {"pan.decoder.close", "PanadapterApplet.cpp: CW / RTTY decoder close",
+     /*original*/
+     "QPushButton { background: {{color.background.1}}; color: {{color.text.secondary}}; "
+     "border: 1px solid {{color.background.1}}; border-radius: 2px; font-size: 9px; "
+     "font-weight: bold; padding: 1px 6px; }QPushButton:hover { color: #ff6060; background: "
+     "{{color.background.1}}; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.pan.close.background}}; color: "
+     "{{color.button.pan.close.text}}; border: 1px solid {{color.button.pan.close.border}}; "
+     "border-radius: 2px; font-size: 9px; font-weight: bold; padding: 1px 6px; "
+     "}QPushButton:hover { color: {{color.button.pan.close.hover.text}}; background: "
+     "{{color.button.pan.close.hover.background}}; }"},
 };
 // END-ENTRIES
 

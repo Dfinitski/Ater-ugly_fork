@@ -2036,11 +2036,7 @@ void RxApplet::setMaxSlices(int maxSlices)
         m_addRxBtn->setAccessibleName(tr("Add receiver"));
         m_addRxBtn->setToolTip(tr("Open one more receiver (the next after the highest one open)."));
         m_addRxBtn->setFixedSize(30, 20);
-        m_addRxBtn->setStyleSheet(QStringLiteral(
-            "QToolButton { background: transparent; color: #c8d8e8; border: 1px solid #6a7a8a; "
-            "border-radius: 3px; font-size: 10px; padding: 0; }"
-            "QToolButton:hover { color: #ffffff; border-color: #c8d8e8; }"
-            "QToolButton:pressed { background: #2a3a4a; }"));
+        AetherSDR::ButtonStyles::apply(m_addRxBtn, "rx.addrx");
         connect(m_addRxBtn, &QToolButton::clicked, this, [this] { emit addReceiverRequested(); });
         targetLayout->insertWidget(insertIdx + maxSlices, m_addRxBtn);
     }
@@ -2964,15 +2960,7 @@ void RxApplet::connectSlice(SliceModel* s)
 
     // TX slice badge
     auto updateTxBadge = [this](bool tx) {
-        m_txBadge->setStyleSheet(tx
-            ? "QPushButton { background: #c03030; color: #ffffff; "
-              "border-radius: 3px; border: none; font-weight: bold; font-size: 10px;"
-              " padding: 0px; margin: 0px; }"
-              "QPushButton:hover { background: #d04040; }"
-            : "QPushButton { background: #405060; color: #ffffff; "
-              "border-radius: 3px; border: none; font-weight: bold; font-size: 10px;"
-              " padding: 0px; margin: 0px; }"
-              "QPushButton:hover { background: #506070; }");
+        AetherSDR::ButtonStyles::apply(m_txBadge, tx ? "rx.badge.tx" : "rx.badge.rx");
     };
     updateTxBadge(s->isTxSlice());
     connect(s, &SliceModel::txSliceChanged, this, updateTxBadge);

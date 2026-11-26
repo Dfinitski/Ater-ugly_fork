@@ -420,7 +420,17 @@
               "txant.text":                  "{color.red.500}",
               "txant.hover.text":            "#ff6666",
               "qsk.text":                    "{color.gray.400}",
-              "qsk.checked.text":            "#ffb800"
+              "qsk.checked.text":            "#ffb800",
+              "addrx.text":                  "#c8d8e8",
+              "addrx.border":                "#6a7a8a",
+              "addrx.hover.text":            "#ffffff",
+              "addrx.hover.border":          "#c8d8e8",
+              "addrx.pressed.background":    "#2a3a4a",
+              "badge.text":                  "#ffffff",
+              "badge.tx.background":         "#c03030",
+              "badge.tx.hover.background":   "#d04040",
+              "badge.rx.background":         "#405060",
+              "badge.rx.hover.background":   "#506070"
             },
             "vfo": {
               "background":                  "#1a2a3a",
@@ -651,6 +661,37 @@
               "ant.active.background":    "#006030",
               "ant.active.border":        "#008040",
               "ant.active.text":          "#ffffff"
+            },
+            "ps": {
+              "background":          "#1a2a3a",
+              "border":              "#304050",
+              "text":                "#c8d8e8",
+              "hover.border":        "#0090e0",
+              "pressed.background":  "#0a5a90",
+              "pressed.border":      "#40b0ff",
+              "pressed.text":        "#ffffff",
+              "selected.background": "#0070c0",
+              "selected.border":     "#0090e0",
+              "selected.text":       "#ffffff",
+              "disabled.text":       "#607080",
+              "on.background":       "#1d8a3a",
+              "on.border":           "#30c060",
+              "on.text":             "#ffffff",
+              "twotone.background":  "#c03030",
+              "twotone.border":      "#ff5050",
+              "twotone.text":        "#ffffff"
+            },
+            "pan": {
+              "decoder.background":       "#1a2a3a",
+              "decoder.border":           "#203040",
+              "decoder.text":             "#8090a0",
+              "decoder.hover.background": "#2a3a4a",
+              "decoder.hover.text":       "#c8d8e8",
+              "close.background":         "{color.gray.800}",
+              "close.border":             "{color.gray.800}",
+              "close.text":               "{color.gray.400}",
+              "close.hover.background":   "{color.gray.800}",
+              "close.hover.text":         "#ff6060"
             }
           }
         },
