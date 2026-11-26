@@ -13674,6 +13674,13 @@ PS — оператор снял (вход ответвителя без PS не
 
 - `AnanPureSignal::scheckText` (ветка WDSP 2.10): бит 0 → `Low FB Level`, бит 1 → `No max Power samples`; прочие биты по-прежнему выводятся как hex. Классическая ветка не тронута.
 
+### Сборка 792 — исправление компиляции окна цветов бэндплана (MSVC)
+
+Ошибки сборки 790 под MSVC: C3493 («this cannot be implicitly captured») во вложенной лямбде строки цвета и C2027 (неполный тип `BandStackPanel`).
+
+- Тело окна Colors... вынесено в свободную функцию `buildBandPlanColorsDialog(PersistentDialog*, BandPlanManager*)`: во вложенных лямбдах больше нет `this` MainWindow, `[&]` заменён явным списком захвата, `connect` → `QObject::connect`.
+- Добавлен `#include "BandStackPanel.h"` в `MainWindow_Menus.cpp`.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
