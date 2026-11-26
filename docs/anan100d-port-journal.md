@@ -13204,6 +13204,41 @@ ButtonStyles 0; check_button_styles — идентично; check_theme_seed —
 актуален.
 Не проверено на радио, не собиралось под Windows.
 
+## 764. Сборка 775 — кнопки в редактор тем, шаг 6: флажок VFO (запись, mute, бейджи) — флажок готов
+
+Третий, последний шаг по флажку VFO: ещё 11 записей группы `vfo`.
+
+- `vfo.record` (при создании), `vfo.record.idle` (после записи,
+  `setRecordOn(false)` — текст отличается порядком правил, сохранён как был),
+  `vfo.record.pulse.bright` / `vfo.record.pulse.dim` — две половины мигания
+  кнопки записи (раньше строка собиралась по таймеру).
+- `vfo.mute` — MUTE на вкладке звука.
+- `vfo.badge.tx` / `vfo.badge.rx` — бейдж TX (`updateTxBadgeStyle`).
+- `vfo.split.swap`, `vfo.split.on`, `vfo.split.off`, `vfo.split.lit` — бейдж
+  SPLIT / SWAP во всех состояниях. «Призрачный» и «горящий» SPLIT (только
+  rgba) раньше ставились мимо `ThemeManager`, а SWAP и красный — через него;
+  теперь все состояния одинаково отслеживаются, и при смене темы бейдж не
+  может вернуться к прежнему состоянию.
+- Исходные тексты извлечены скриптом из кода и сверены (кроме мигания — оно
+  собиралось из частей, сверено вручную). `sliceBtnStyle` убран.
+- Токены `color.button.vfo.*` (+24, всего 71): `record.*`, `mute.*`,
+  `badge.tx.*`, `badge.rx.*`, `split.swap.*`, `split.on.*`; где стиль брал
+  общие токены — ссылки на примитивы.
+- 53 записи × 3 темы — всё идентично: вид не меняется.
+
+Флажок VFO закончен. Оставлены как есть: буква слайса (метка в цвете
+слайса) и AGC A / сброс DSP — они уже целиком на токенах темы
+(`color.canon.*`).
+
+Файлы: `src/gui/VfoWidget.cpp`, `src/gui/ButtonStyles.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `docs/button-theming.md`,
+`src/core/ForkBuild.h`.
+Проверка: errcheck VfoWidget — те же 4 ошибки WanConnection.h, что до
+правки; ButtonStyles 0; check_button_styles — идентично; check_theme_seed —
+актуален.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

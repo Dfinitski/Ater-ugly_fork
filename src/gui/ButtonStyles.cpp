@@ -645,6 +645,130 @@ const Entry kEntries[] = {
      "QPushButton:hover { background: {{color.button.vfo.autotune.hover.background}}; }"
      "QPushButton:pressed { background: {{color.button.vfo.autotune.pressed.background}}; }"
      "QPushButton:checked { background: {{color.button.vfo.autotune.checked.background}}; color: {{color.button.vfo.autotune.checked.text}}; border-color: {{color.button.vfo.autotune.checked.border}}; }"},
+
+    // ── VFO flag, step 3: record, mute, TX / split badges (build 775) ───────
+    {"vfo.record", "VfoWidget.cpp: slice record button at start (sliceBtnStyle + ...)",
+     /*original*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover { background: rgba(255,255,255,60); "
+     "}QPushButton { color: #c06060; }QPushButton:checked { color: #ff2020; background: "
+     "rgba(255,50,50,110); }",
+     /*themed*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover { background: rgba(255,255,255,60); "
+     "}QPushButton { color: {{color.button.vfo.record.text}}; }QPushButton:checked { color: "
+     "{{color.button.vfo.record.checked.text}}; background: rgba(255,50,50,110); }"},
+
+    {"vfo.record.idle", "VfoWidget.cpp: setRecordOn(false), the record button after recording",
+     /*original*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; border-radius: 10px; "
+     "font-size: 11px; padding: 0; color: #c06060; }QPushButton:checked { color: #ff2020; "
+     "background: rgba(255,50,50,110); }QPushButton:hover { background: rgba(255,255,255,60); }",
+     /*themed*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; border-radius: 10px; "
+     "font-size: 11px; padding: 0; color: {{color.button.vfo.record.text}}; }QPushButton:checked "
+     "{ color: {{color.button.vfo.record.checked.text}}; background: rgba(255,50,50,110); "
+     "}QPushButton:hover { background: rgba(255,255,255,60); }"},
+
+    {"vfo.record.pulse.bright", "VfoWidget.cpp: record pulse, bright half",
+     /*original*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; border-radius: 10px; "
+     "font-size: 11px; padding: 0; color: #ff3030; background: rgba(255,50,50,120); "
+     "}QPushButton:hover { background: rgba(255,255,255,60); }",
+     /*themed*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; border-radius: 10px; "
+     "font-size: 11px; padding: 0; color: {{color.button.vfo.record.pulse.text}}; background: "
+     "rgba(255,50,50,120); }QPushButton:hover { background: rgba(255,255,255,60); }"},
+
+    {"vfo.record.pulse.dim", "VfoWidget.cpp: record pulse, dim half",
+     /*original*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; border-radius: 10px; "
+     "font-size: 11px; padding: 0; color: #a03030; background: rgba(255,50,50,50); "
+     "}QPushButton:hover { background: rgba(255,255,255,60); }",
+     /*themed*/
+     "QPushButton { background: rgba(255,255,255,30); border: none; border-radius: 10px; "
+     "font-size: 11px; padding: 0; color: {{color.button.vfo.record.pulse.dim.text}}; "
+     "background: rgba(255,50,50,50); }QPushButton:hover { background: rgba(255,255,255,60); }"},
+
+    {"vfo.mute", "VfoWidget.cpp: audio tab MUTE",
+     /*original*/
+     "QPushButton { background: {{color.background.1}}; border: 1px solid "
+     "{{color.background.2}}; border-radius: 2px; color: {{color.text.primary}}; font-size: "
+     "13px; font-weight: bold; padding: 1px 4px; }QPushButton:checked { background: #6a2020; "
+     "color: {{color.accent.danger}}; border: 1px solid #a04040; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.mute.background}}; border: 1px solid "
+     "{{color.button.vfo.mute.border}}; border-radius: 2px; color: "
+     "{{color.button.vfo.mute.text}}; font-size: 13px; font-weight: bold; padding: 1px 4px; "
+     "}QPushButton:checked { background: {{color.button.vfo.mute.checked.background}}; color: "
+     "{{color.button.vfo.mute.checked.text}}; border: 1px solid "
+     "{{color.button.vfo.mute.checked.border}}; }"},
+
+    {"vfo.badge.tx", "VfoWidget.cpp: TX badge, transmit slice (updateTxBadgeStyle)",
+     /*original*/
+     "QPushButton { background: #cc0000; color: {{color.text.primary}}; border: none; "
+     "border-radius: 2px; font-size: 12px; font-weight: bold; padding: 0; }QPushButton:hover { "
+     "background: #ff2222; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.badge.tx.background}}; color: "
+     "{{color.button.vfo.badge.tx.text}}; border: none; border-radius: 2px; font-size: 12px; "
+     "font-weight: bold; padding: 0; }QPushButton:hover { background: "
+     "{{color.button.vfo.badge.tx.hover.background}}; }"},
+
+    {"vfo.badge.rx", "VfoWidget.cpp: TX badge, not the transmit slice (updateTxBadgeStyle)",
+     /*original*/
+     "QPushButton { background: #404040; color: {{color.text.label}}; border: none; "
+     "border-radius: 2px; font-size: 12px; font-weight: bold; padding: 0; }QPushButton:hover { "
+     "background: #606060; color: #c0c0c0; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.badge.rx.background}}; color: "
+     "{{color.button.vfo.badge.rx.text}}; border: none; border-radius: 2px; font-size: 12px; "
+     "font-weight: bold; padding: 0; }QPushButton:hover { background: "
+     "{{color.button.vfo.badge.rx.hover.background}}; color: "
+     "{{color.button.vfo.badge.rx.hover.text}}; }"},
+
+    {"vfo.split.swap", "VfoWidget.cpp: SWAP badge (updateSplitBadge)",
+     /*original*/
+     "QPushButton { background: {{color.background.1}}; color: #80c0ff; border: none; "
+     "border-radius: 2px; font-size: 11px; font-weight: bold; padding: 0px 3px; "
+     "}QPushButton:hover { background: #306080; color: {{color.text.primary}}; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.split.swap.background}}; color: "
+     "{{color.button.vfo.split.swap.text}}; border: none; border-radius: 2px; font-size: 11px; "
+     "font-weight: bold; padding: 0px 3px; }QPushButton:hover { background: "
+     "{{color.button.vfo.split.swap.hover.background}}; color: "
+     "{{color.button.vfo.split.swap.hover.text}}; }"},
+
+    {"vfo.split.on", "VfoWidget.cpp: SPLIT badge, split on (updateSplitBadge)",
+     /*original*/
+     "QPushButton { background: #cc0000; color: {{color.text.primary}}; border: none; "
+     "border-radius: 2px; font-size: 11px; font-weight: bold; padding: 0px 3px; "
+     "}QPushButton:hover { background: #ee2222; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.vfo.split.on.background}}; color: "
+     "{{color.button.vfo.split.on.text}}; border: none; border-radius: 2px; font-size: 11px; "
+     "font-weight: bold; padding: 0px 3px; }QPushButton:hover { background: "
+     "{{color.button.vfo.split.on.hover.background}}; }"},
+
+    {"vfo.split.off", "VfoWidget.cpp: SPLIT label ghosted (constructor, updateSplitBadge, setSplitTextLit(false); translucent colours only)",
+     /*original*/
+     "QPushButton { background: transparent; border: none; color: rgba(255,255,255,120); "
+     "font-size: 11px; font-weight: bold; padding: 0px 3px; }QPushButton:hover { color: "
+     "rgba(255,255,255,180); }",
+     /*themed*/
+     "QPushButton { background: transparent; border: none; color: rgba(255,255,255,120); "
+     "font-size: 11px; font-weight: bold; padding: 0px 3px; }QPushButton:hover { color: "
+     "rgba(255,255,255,180); }"},
+
+    {"vfo.split.lit", "VfoWidget.cpp: SPLIT label lit (setSplitTextLit(true); translucent colours only)",
+     /*original*/
+     "QPushButton { background: transparent; border: none; color: rgba(255,255,255,235); "
+     "font-size: 11px; font-weight: bold; padding: 0px 3px; }QPushButton:hover { color: "
+     "rgba(255,255,255,255); }",
+     /*themed*/
+     "QPushButton { background: transparent; border: none; color: rgba(255,255,255,235); "
+     "font-size: 11px; font-weight: bold; padding: 0px 3px; }QPushButton:hover { color: "
+     "rgba(255,255,255,255); }"},
 };
 // END-ENTRIES
 

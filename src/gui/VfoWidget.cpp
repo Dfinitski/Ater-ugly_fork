@@ -1110,11 +1110,7 @@ void VfoWidget::buildUI()
     m_splitBadge = new QPushButton("SPLIT");
     m_splitBadge->setFlat(true);
     m_splitBadge->setFixedHeight(20);  // match TX badge height
-    m_splitBadge->setStyleSheet(
-        "QPushButton { background: transparent; border: none; "
-        "color: rgba(255,255,255,120); font-size: 11px; font-weight: bold; "
-        "padding: 0px 3px; }"
-        "QPushButton:hover { color: rgba(255,255,255,180); }");
+    AetherSDR::ButtonStyles::apply(m_splitBadge, "vfo.split.off");
     m_splitBadge->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     connect(m_splitBadge, &QPushButton::clicked, this, [this]() {
         if (m_splitBadge->text() == "SWAP")
@@ -1157,12 +1153,8 @@ void VfoWidget::buildUI()
     // Shared base style for the four 20x20 slice-side buttons (close, lock,
     // record, play). All use the same background circle so they line up
     // visually when stacked vertically on the slice edge.
-    // Build 774: close / lock / play take theirs from the button-style
-    // catalogue ("vfo.slice.*"); the record button keeps this one (it pulses).
-    static const QString sliceBtnStyle =
-        "QPushButton { background: rgba(255,255,255,30); border: none; "
-        "border-radius: 10px; font-size: 11px; padding: 0; }"
-        "QPushButton:hover { background: rgba(255,255,255,60); }";
+    // sliceBtnStyle: the base of the "vfo.slice.*" / "vfo.record*" styles in the
+    // button-style catalogue (ButtonStyles.cpp) -- builds 774, 775.
 
     m_closeSliceBtn = new QPushButton("\xE2\x9C\x95", btnParent);  // ✕
     m_closeSliceBtn->setFixedSize(20, 20);
@@ -1188,9 +1180,7 @@ void VfoWidget::buildUI()
     m_recordBtn->setFixedSize(20, 20);
     m_recordBtn->setCheckable(true);
     m_recordBtn->setToolTip("Record slice audio");
-    m_recordBtn->setStyleSheet(sliceBtnStyle +
-        "QPushButton { color: #c06060; }"
-        "QPushButton:checked { color: #ff2020; background: rgba(255,50,50,110); }");
+    AetherSDR::ButtonStyles::apply(m_recordBtn, "vfo.record");
     m_recordBtn->show();
     connect(m_recordBtn, &QPushButton::clicked, this, [this](bool checked) {
         emit recordToggled(checked);
@@ -1211,12 +1201,7 @@ void VfoWidget::buildUI()
         if (!m_recordBtn) return;
         static bool dim = false;
         dim = !dim;
-        m_recordBtn->setStyleSheet(
-            "QPushButton { background: rgba(255,255,255,30); border: none; "
-            "border-radius: 10px; font-size: 11px; padding: 0; "
-            "color: " + QString(dim ? "#a03030" : "#ff3030") + "; "
-            "background: rgba(255,50,50," + QString(dim ? "50" : "120") + "); }"
-            "QPushButton:hover { background: rgba(255,255,255,60); }");
+        AetherSDR::ButtonStyles::apply(m_recordBtn, dim ? "vfo.record.pulse.dim" : "vfo.record.pulse.bright");
     });
 
     // Play button
@@ -1892,11 +1877,7 @@ void VfoWidget::buildTabContent()
         m_muteBtn->setCheckable(true);
         m_muteBtn->setFixedHeight(20);
         m_muteBtn->setFixedWidth(60);
-        AetherSDR::ThemeManager::instance().applyStyleSheet(m_muteBtn, "QPushButton { background: {{color.background.1}}; border: 1px solid {{color.background.2}};"
-            " border-radius: 2px; color: {{color.text.primary}}; font-size: 13px;"
-            " font-weight: bold; padding: 1px 4px; }"
-            "QPushButton:checked { background: #6a2020; color: {{color.accent.danger}};"
-            " border: 1px solid #a04040; }");
+        AetherSDR::ButtonStyles::apply(m_muteBtn, "vfo.mute");
         gainRow->addWidget(m_muteBtn);
         m_afGainSlider = new GuardedSlider(Qt::Horizontal);
         m_afGainSlider->setAccessibleName("AF gain");
@@ -5929,13 +5910,9 @@ void VfoWidget::setSlice(SliceModel* slice)
 void VfoWidget::updateTxBadgeStyle(bool isTx)
 {
     if (isTx) {
-        AetherSDR::ThemeManager::instance().applyStyleSheet(m_txBadge, "QPushButton { background: #cc0000; color: {{color.text.primary}}; border: none; "
-            "border-radius: 2px; font-size: 12px; font-weight: bold; padding: 0; }"
-            "QPushButton:hover { background: #ff2222; }");
+        AetherSDR::ButtonStyles::apply(m_txBadge, "vfo.badge.tx");
     } else {
-        AetherSDR::ThemeManager::instance().applyStyleSheet(m_txBadge, "QPushButton { background: #404040; color: {{color.text.label}}; border: none; "
-            "border-radius: 2px; font-size: 12px; font-weight: bold; padding: 0; }"
-            "QPushButton:hover { background: #606060; color: #c0c0c0; }");
+        AetherSDR::ButtonStyles::apply(m_txBadge, "vfo.badge.rx");
     }
 }
 
@@ -5974,25 +5951,15 @@ void VfoWidget::updateSplitBadge(bool isTxSlice, bool isRxSplit)
     if (isTxSlice) {
         // TX slice in split pair — show SWAP button
         m_splitBadge->show();
-        AetherSDR::ThemeManager::instance().applyStyleSheet(m_splitBadge, "QPushButton { background: {{color.background.1}}; color: #80c0ff; border: none; "
-            "border-radius: 2px; font-size: 11px; font-weight: bold; "
-            "padding: 0px 3px; }"
-            "QPushButton:hover { background: #306080; color: {{color.text.primary}}; }");
+        AetherSDR::ButtonStyles::apply(m_splitBadge, "vfo.split.swap");
     } else if (isRxSplit) {
         // RX slice that initiated split — red badge, full opacity
         m_splitBadge->show();
-        AetherSDR::ThemeManager::instance().applyStyleSheet(m_splitBadge, "QPushButton { background: #cc0000; color: {{color.text.primary}}; border: none; "
-            "border-radius: 2px; font-size: 11px; font-weight: bold; "
-            "padding: 0px 3px; }"
-            "QPushButton:hover { background: #ee2222; }");
+        AetherSDR::ButtonStyles::apply(m_splitBadge, "vfo.split.on");
     } else {
         // Split not active — ghosted on all slices
         m_splitBadge->show();
-        m_splitBadge->setStyleSheet(
-            "QPushButton { background: transparent; border: none; "
-            "color: rgba(255,255,255,120); font-size: 11px; font-weight: bold; "
-            "padding: 0px 3px; }"
-            "QPushButton:hover { color: rgba(255,255,255,180); }");
+        AetherSDR::ButtonStyles::apply(m_splitBadge, "vfo.split.off");
     }
     if (m_splitVfo)
         m_splitBadge->hide();   // build 472: no SPLIT on the SPLIT VFO's flag
@@ -6028,15 +5995,7 @@ void VfoWidget::setSplitTextLit(bool lit)
     // means "transmit is not on receiver A"; a click on the lit label puts
     // it back there, on the dim one does nothing (MainWindow).
     m_splitBadge->setText("SPLIT");
-    m_splitBadge->setStyleSheet(lit
-        ? QStringLiteral("QPushButton { background: transparent; border: none; "
-                         "color: rgba(255,255,255,235); font-size: 11px; font-weight: bold; "
-                         "padding: 0px 3px; }"
-                         "QPushButton:hover { color: rgba(255,255,255,255); }")
-        : QStringLiteral("QPushButton { background: transparent; border: none; "
-                         "color: rgba(255,255,255,120); font-size: 11px; font-weight: bold; "
-                         "padding: 0px 3px; }"
-                         "QPushButton:hover { color: rgba(255,255,255,180); }"));
+    AetherSDR::ButtonStyles::apply(m_splitBadge, lit ? "vfo.split.lit" : "vfo.split.off");
     // Build 494 (operator, 17.11: "on the collapsed flag of the main
     // receiver a press on TX shows a white PLI"): never shown on a
     // collapsed flag -- the label was put back there, clipped to its middle.
@@ -6171,11 +6130,7 @@ void VfoWidget::setRecordOn(bool on)
         m_recordPulse->stop();
         // Restore normal checked style
         if (m_recordBtn)
-            m_recordBtn->setStyleSheet(
-                "QPushButton { background: rgba(255,255,255,30); border: none; "
-                "border-radius: 10px; font-size: 11px; padding: 0; color: #c06060; }"
-                "QPushButton:checked { color: #ff2020; background: rgba(255,50,50,110); }"
-                "QPushButton:hover { background: rgba(255,255,255,60); }");
+            AetherSDR::ButtonStyles::apply(m_recordBtn, "vfo.record.idle");
     }
 }
 
