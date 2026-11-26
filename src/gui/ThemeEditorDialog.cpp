@@ -10,6 +10,9 @@
 #include <QAction>
 #include <QBrush>
 #include <QComboBox>
+#include <QAbstractSpinBox>
+#include <QAbstractSlider>
+#include <QAbstractButton>
 #include <QCursor>
 #include <QTimer>
 #include <QDragEnterEvent>
@@ -928,6 +931,52 @@ void ThemeEditorDialog::onInspectorPicked(QWidget* target, QPoint localPos)
     QWidget* w = target;
     QString hitName = target->metaObject()->className();
     QPoint scanPos = localPos;
+
+    // ANAN fork build 763 (operator, 26.11: "users change a button picked
+    // with Inspect and a quite different button changes"). The walk below
+    // went on up to the first ancestor with tokens whenever the picked
+    // widget had none of its own -- and for a button whose colours are
+    // written in its own style sheet (most of the program's buttons) or a
+    // widget that paints itself, that ancestor's tokens are the colours of
+    // OTHER widgets: editing them changed those, never the one picked. Now:
+    // a click inside a control (button, combo, slider, spin box, edit) is
+    // the control; a control -- or any widget -- that has its own style
+    // sheet or paints itself and declares no tokens says so instead of
+    // borrowing its parent's; only a widget without a style of its own (a
+    // label in a panel, a button the panel's QPushButton rule styles) still
+    // takes the tokens of the panel styling it.
+    {
+        const auto isControl = [](const QWidget* x) {
+            return qobject_cast<const QAbstractButton*>(x)
+                || qobject_cast<const QComboBox*>(x)
+                || qobject_cast<const QAbstractSlider*>(x)
+                || qobject_cast<const QAbstractSpinBox*>(x)
+                || qobject_cast<const QLineEdit*>(x);
+        };
+        for (QWidget* x = target; x; x = x->parentWidget()) {
+            if (isControl(x)) {
+                if (x != target) {
+                    scanPos = x->mapFromGlobal(target->mapToGlobal(localPos));
+                    w = x;
+                    hitName = x->metaObject()->className();
+                }
+                break;
+            }
+            if (x->isWindow())
+                break;
+        }
+        const bool ownStyle = tm.isTrackedWidget(w) || !w->styleSheet().isEmpty();
+        const bool selfPainted = QString::fromLatin1(w->metaObject()->className())
+                                     .startsWith(QLatin1String("AetherSDR::"));
+        if (tm.tokensAtPoint(w, scanPos).isEmpty() && (ownStyle || selfPainted)) {
+            updateInspectorStatus(QStringLiteral(
+                "%1: its colours are set in the program's code, not by theme tokens "
+                "-- the theme editor cannot change this element.").arg(hitName));
+            m_activeSubset.clear();
+            filterTokensTo({});
+            return;
+        }
+    }
     while (w && tokens.isEmpty()) {
         tokens = tm.tokensAtPoint(w, scanPos);
         if (!tokens.isEmpty()) break;

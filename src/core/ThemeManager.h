@@ -171,6 +171,12 @@ public:
     // stylesheet template OR declared explicitly via declareWidgetTokens().
     // Empty list if the widget was never tracked.
     QStringList tokensForWidget(const QWidget* widget) const;
+    // ANAN fork build 763: the widget's style sheet goes through
+    // applyStyleSheet() (with or without tokens in it).
+    bool isTrackedWidget(const QWidget* widget) const
+    {
+        return m_trackedWidgets.contains(const_cast<QWidget*>(widget));
+    }
 
     // Custom-paint widgets (panadapter, waterfall, meters, slice indicators)
     // read tokens directly inside paintEvent rather than going through a
