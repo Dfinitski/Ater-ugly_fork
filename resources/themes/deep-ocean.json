@@ -467,7 +467,7 @@
             }
           },
           "slider": {
-            "background": "{color.gray.800}",
+            "background": "#083e4c",
             "foreground": "{color.blue.500}",
             "handle": "{color.gray.200}",
             "background.disabled": "{color.gray.850}",
@@ -593,7 +593,7 @@
             "color.accent.bright": "#7ab8e8",
             "color.knob.background": "#06323e",
             "color.knob.foreground": "#67aee3",
-            "color.slider.background": "#06323e",
+            "color.slider.background": "#073947",
             "color.slider.foreground": "#67aee3"
           }
         },

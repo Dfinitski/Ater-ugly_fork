@@ -45,6 +45,12 @@ inline QColor hgaugeLit(const QColor& c)
 {
     return ThemeManager::instance().remapLiteralColor(c);
 }
+// Build 755 (operator, 25.11: "the frames of all bar indicators 15 %
+// brighter"): the gauge frame, #203040 (remapped by the theme), 15 % up.
+inline QColor hgaugeFrameColor()
+{
+    return hgaugeLit(QColor(0x20, 0x30, 0x40)).lighter(115);
+}
 
 // ── HGauge: reusable horizontal bar gauge ─────────────────────────────────────
 //
@@ -439,7 +445,7 @@ protected:
             track.setStops(m_trackStops);
             p.fillRect(barX, barY, barW, barH, track);
         }
-        p.setPen(hgaugeLit(QColor(0x20, 0x30, 0x40)));
+        p.setPen(hgaugeFrameColor());
         p.drawRect(barX, barY, barW - 1, barH - 1);
 
         // Filled portion (animated)
@@ -901,7 +907,7 @@ protected:
 
         // Bar background
         p.fillRect(barX, barY, barW, barH, hgaugeTrackColor());
-        p.setPen(hgaugeLit(QColor(0x20, 0x30, 0x40)));
+        p.setPen(hgaugeFrameColor());
         p.drawRect(barX, barY, barW - 1, barH - 1);
 
         // Filled portion

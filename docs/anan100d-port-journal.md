@@ -12648,6 +12648,29 @@ AmpApplet 0, TxApplet 4 (= до правки).
 Проверка: errcheck MainWindow 42 (= базовая).
 Не проверено на радио, не собиралось под Windows.
 
+## 743. Сборка 755 — дорожки движков и рамки полосковых индикаторов на 15 % ярче
+
+Оператор (25.11, скриншот аплетов Mic / TX Controls): «давай подсветку
+рабочих зон движков и рамки всех полосковых индикаторов сделаем на 15 %
+ярче».
+
+- **Дорожки движков** (`QSlider` groove / add-page — токен
+  `color.slider.background`): в каждой теме значение +15 % по яркости (HSV
+  V × 1.15), корневой токен и сцена `canon`:
+  - Default Dark: #1a2a3a → #1e3043 (canon #12233a → #152843);
+  - Midnight: #24283b → #292e44 (canon #202436 → #25293e);
+  - Deep Ocean: #073642 → #083e4c (canon #06323e → #073947).
+  Заливка (sub-page), ручка и неактивные дорожки не менялись.
+- **Рамки полосковых индикаторов** (`HGauge`, `RelayBar` — Level,
+  Compression, ALC Gain, ALC, RF Pwr, SWR, усилители, тюнеры):
+  `hgaugeFrameColor()` = #203040 (с перекраской темы) `.lighter(115)`;
+  в Default Dark #203040 → #25374a.
+
+Файлы: `src/gui/HGauge.h`, `resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ForkBuild.h`.
+Проверка: errcheck PhoneCwApplet 0; JSON валидны.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
