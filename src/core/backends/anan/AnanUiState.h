@@ -13,6 +13,7 @@
 
 #include <QHash>
 #include <array>
+#include <atomic>
 #include <functional>
 #include <algorithm>
 #include <limits>
@@ -149,10 +150,14 @@ public:
     // by the backend. Not remembered across starts (Thetis' is a console
     // toggle).
     bool rxOnTxAnt = false;
-    // Build 750: the step attenuation each ADC was last set to, dB (written
-    // by the backend, Hl2Backend::ananPushAttenuators; -1 = not set yet).
-    // Read by the RZ3QS branch's ATT indicator in the status bar.
-    int adcAttDb[2] = {-1, -1};
+    // Build 750 / 751: the step attenuation each ADC has now, dB, as last
+    // sent to the radio (receive or transmit: the transmit attenuator, "Full
+    // ATT when TX", PureSignal's) -- written by the transport thread
+    // (P2Transport::publishAttNow) with every packet that carries it, hence
+    // atomic; -1 = nothing sent yet. Read by the RZ3QS branch's ATT
+    // indicator in the status bar.
+    std::atomic<int> adcAttNowDb[2] = {-1, -1};
+    std::atomic<int> attNowSerial{0};   // bumped on every change
     bool adcOverloadTest = false;
     // What the panadapter adds to a per-bin level to draw it (06.11: the
     // referral of a bin to 500 Hz plus the meter's calibration); lines that

@@ -495,6 +495,9 @@ private:
     qint64 m_statusSnapMs = 0;
     std::atomic<unsigned> m_radioTxLevelSeq{0};    // +1 per status packet (HW Diag)
     void sendTransmitSpecific();
+    // Build 751: the attenuation each ADC has now, for the status bar.
+    void publishAttNow(int adc0Db, int adc1Db) const;
+    void publishP2AttNow() const;
     void beginTxStream();
     void fillTxPacket(std::complex<float>* out, int n = kDucSamplesPerPacket);
     void fillTxPacketSource(std::complex<float>* out, int n);

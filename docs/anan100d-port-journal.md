@@ -12568,6 +12568,36 @@ AmpApplet 0, TxApplet 4 (= до правки).
 Проверка: errcheck MainWindow 42, Hl2Backend 2 (= базовые).
 Не проверено на радио, не собиралось под Windows.
 
+## 739. Сборка 751 — ветка RZ3QS: индикатор ATT показывает любое изменение сразу
+
+Оператор (25.11): «любое изменение аттенюаторов должно немедленно
+показываться там».
+
+В 750 индикатор показывал то, что бэкенд последним задал как приёмное
+ослабление, и опрашивался раз в 250 мс; передача (FullAttOnTx, аттенюатор
+передачи, PureSignal) не была видна. Теперь:
+- Значение публикует транспорт — тот, кто отправляет его в радио
+  (`P2Transport::publishAttNow` → `AnanUiState::adcAttNowDb[2]`, atomic,
+  поток транспорта):
+  - Protocol 2: с каждым High Priority и Transmit Specific. Приём —
+    приёмные аттенюаторы АЦП; передача — то, что Transmit Specific даёт
+    каждому АЦП: PureSignal на АЦП обратной связи, иначе 31 дБ / аттенюатор
+    передачи при «Full ATT when TX», иначе приёмное;
+  - Protocol 1: из состояния C&C (`p1State`, каждый кадр) — `txAdc0AttDb` /
+    `txAdc1AttDb` на передаче, приёмные на приёме; HL2 — усиление LNA как
+    ослабление ниже +48 дБ.
+- Строка состояния опрашивает эти значения своим таймером 20 мс (надписи
+  меняются только при изменении). Ручная установка, AUTO ATT, переход
+  RX↔TX, автоаттенюатор PureSignal видны в пределах ~20 мс.
+- Запись из бэкенда (750, `Hl2Backend::ananPushAttenuators`) убрана —
+  `Hl2Backend.cpp` снова как до 750.
+
+Файлы: `src/core/backends/anan/P2Transport.h/.cpp`,
+`src/core/backends/anan/AnanUiState.h`, `src/core/backends/hl2/Hl2Backend.cpp`,
+`src/gui/MainWindow.cpp`, `src/core/ForkBuild.h`.
+Проверка: errcheck P2Transport 0, Hl2Backend 2, MainWindow 42 (= базовые).
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

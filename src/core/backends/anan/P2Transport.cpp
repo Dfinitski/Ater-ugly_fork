@@ -4,6 +4,7 @@
 #include "core/backends/anan/AnanRoute.h"
 #include "core/backends/anan/AnanCodecFeed.h"
 #include "core/AppSettings.h"
+#include "core/backends/anan/AnanUiState.h"   // build 751
 
 #include <QStringList>
 #include <QCoreApplication>
@@ -890,6 +891,8 @@ void P2Transport::sendHighPriority(bool run)
                                    run ? ((m_mox && m_psEnabled && m_psAdc == 0) ? m_psAttDb : m_adcAtt[0]) : 0,
                                    run ? ((m_mox && m_psEnabled && m_psAdc == 1) ? m_psAttDb : m_adcAtt[1]) : 0, o);
     sendDatagram(*m_sock, pkt, m_txHost, kHighPriorityPort, m_counters.txBytes, m_counters.txPackets);
+    if (run)
+        publishP2AttNow();   // build 751
 }
 
 void P2Transport::onKeepaliveTick()
@@ -2641,6 +2644,42 @@ void P2Transport::sendTransmitSpecific()
                                            m_adc1FullAttOnTx ? kMaxStepAttenuationDb : m_adcAtt[1],
                                            m_adc0FullAttOnTx ? m_txAttDb : m_adcAtt[0]);   // build 561
     sendDatagram(*m_sock, pkt, m_txHost, kTransmitSpecificPort, m_counters.txBytes, m_counters.txPackets);
+    publishP2AttNow();   // build 751
+}
+
+// ANAN fork build 751 (operator, 25.11: "any change of the attenuators must
+// show there at once" -- the RZ3QS branch's ATT indicator, build 750): the
+// attenuation each ADC has now, published by the packets that carry it.
+// Protocol 2: receiving, the receive attenuators; transmitting, what the
+// Transmit Specific packet gives each ADC -- PureSignal's on the feedback
+// ADC, else 31 dB / the transmit attenuator with "Full ATT when TX", else the
+// receive value. Protocol 1: from the C&C state itself (p1State).
+void P2Transport::publishAttNow(int adc0Db, int adc1Db) const
+{
+    auto& ui = AnanUiState::instance();
+    const int old0 = ui.adcAttNowDb[0].exchange(adc0Db, std::memory_order_relaxed);
+    const int old1 = ui.adcAttNowDb[1].exchange(adc1Db, std::memory_order_relaxed);
+    if (old0 != adc0Db || old1 != adc1Db)
+        ui.attNowSerial.fetch_add(1, std::memory_order_relaxed);
+}
+
+void P2Transport::publishP2AttNow() const
+{
+    const int rx0 = std::clamp(m_adcAtt[0], 0, kMaxStepAttenuationDb);
+    const int rx1 = std::clamp(m_adcAtt[1], 0, kMaxStepAttenuationDb);
+    if (!m_mox) {
+        publishAttNow(rx0, rx1);
+        return;
+    }
+    int a0 = m_adc0FullAttOnTx ? m_txAttDb : rx0;
+    int a1 = m_adc1FullAttOnTx ? kMaxStepAttenuationDb : rx1;
+    if (m_psEnabled) {
+        if (m_psAdc == 1)
+            a1 = m_psAttDb;
+        else
+            a0 = m_psAttDb;
+    }
+    publishAttNow(a0, a1);
 }
 
 void P2Transport::setMox(bool keyed, const TxCoordinator::Operation& operation)
@@ -3538,6 +3577,16 @@ P1CcState P2Transport::p1State() const
         if (m_psEnabled)
             s.hl2TxLatencyMs = std::max(s.hl2TxLatencyMs, 40);
     }
+    // Build 751: the attenuation these C&C words give each ADC (the HL2: its
+    // LNA gain as attenuation below +48 dB, as the attenuator control shows).
+    if (s.hermesLite)
+        publishAttNow(kHl2GainAtZeroAttDb - (m_mox ? s.hl2TxGainDb : s.hl2RxGainDb),
+                      kHl2GainAtZeroAttDb - (m_mox ? s.hl2TxGainDb : s.hl2RxGainDb));
+    else if (m_mox)
+        publishAttNow(s.txAdc0AttDb, s.txAdc1AttDb);
+    else
+        publishAttNow(std::clamp(m_adcAtt[0], 0, kMaxStepAttenuationDb),
+                      std::clamp(m_adcAtt[1], 0, kMaxStepAttenuationDb));
     return s;
 }
 

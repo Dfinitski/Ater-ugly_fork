@@ -12585,9 +12585,6 @@ void Hl2Backend::ananPushAttenuators()
         QMetaObject::invokeMethod(m_metis, "setAdcAttenuation", Qt::QueuedConnection,
                                   Q_ARG(int, adc), Q_ARG(int, adcAtt[adc]));
     }
-    // Build 750: for the status bar's ATT indicator (RZ3QS branch).
-    for (int adc = 0; adc < 2; ++adc)
-        anan::AnanUiState::instance().adcAttDb[adc] = m_ananAdcAttPushed[adc];
     // Each pan shows the attenuator of ITS receiver's ADC.
     for (const auto& ids : m_ids.all()) {
         const int rx = ids.ddcIndex;

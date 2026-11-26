@@ -6608,8 +6608,8 @@ void MainWindow::buildUI()
         // new element on the bottom bar, after a separator following the
         // antenna indicator: the attenuators' current values, the same text
         // style, two lines -- ATT1 -28 dB over ATT2 -13 dB"). The step
-        // attenuation each ADC is set to (AnanUiState::adcAttDb, written by
-        // the backend), as a negative dB figure. Shown, with its separator,
+        // attenuation each ADC is set to (AnanUiState::adcAttNowDb, build 751:
+        // as last sent to the radio), as a negative dB figure. Shown, with its separator,
         // only while the FreeDV text field reads RZ3QS (as A1 / A2, AeRX /
         // AeTX); a radio with one ADC has only the ATT1 line.
         QLabel* attSep = addSep();
@@ -6640,8 +6640,9 @@ void MainWindow::buildUI()
             if (!show)
                 return;
             const auto& ui = anan::AnanUiState::instance();
+            // Build 751: what was last sent to the radio, receive or transmit.
             auto text = [&ui](int adc) {
-                const int att = ui.adcAttDb[adc];
+                const int att = ui.adcAttNowDb[adc].load(std::memory_order_relaxed);
                 return att < 0 ? QStringLiteral("ATT%1 -- dB").arg(adc + 1)
                                : QStringLiteral("ATT%1 %2 dB").arg(adc + 1).arg(-att);
             };
@@ -6653,7 +6654,13 @@ void MainWindow::buildUI()
             if (l2->isHidden() == two)
                 l2->setVisible(two);
         };
-        connect(antTimer, &QTimer::timeout, attStack, attRefresh);
+        // Build 751 (operator, 25.11: "any change of the attenuators must
+        // show there at once"): its own 20 ms poll of the values the
+        // transport publishes with each packet (labels touched only on a change).
+        auto* attTimer = new QTimer(attStack);
+        attTimer->setInterval(20);
+        connect(attTimer, &QTimer::timeout, attStack, attRefresh);
+        attTimer->start();
         attRefresh();
     }
 
