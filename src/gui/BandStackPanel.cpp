@@ -279,13 +279,25 @@ void BandStackPanel::rebuildLayout()
                        .arg(bm.entry.panBandwidthMhz * 1000.0, 0, 'f', 1);
         btn->setToolTip(tip);
 
-        QColor bg = bm.color.darker(130);
+        // Build 761 (operator, 26.11: "the quick memory buttons, when orange,
+        // are too bright" -- the muted option chosen): the band plan's colour
+        // mixed into the panel's #1a2a3a (the theme's, via its literal remap)
+        // -- fill 45 %, border 70 %, hover 60 %; text #f0f0f0. Was: fill the
+        // colour 30 % darker, border and hover the colour itself, white text.
         // Build 281 (operator, 11.11): text one size larger, 11 -> 12 px.
+        const QColor base = AetherSDR::ThemeManager::instance().remapLiteralColor(
+            QColor(0x1a, 0x2a, 0x3a));
+        const auto mixed = [&base](const QColor& c, double t) {
+            return QColor::fromRgbF(float(c.redF() * t + base.redF() * (1.0 - t)),
+                                    float(c.greenF() * t + base.greenF() * (1.0 - t)),
+                                    float(c.blueF() * t + base.blueF() * (1.0 - t)));
+        };
         btn->setStyleSheet(
             QString("QPushButton { background: %1; border: 1px solid %2; "
-                    "border-radius: 3px; color: #ffffff; font-size: 12px; font-weight: bold; }"
+                    "border-radius: 3px; color: #f0f0f0; font-size: 12px; font-weight: bold; }"
                     "QPushButton:hover { background: %3; }")
-                .arg(bg.name(), bm.color.name(), bm.color.name()));
+                .arg(mixed(bm.color, 0.45).name(), mixed(bm.color, 0.70).name(),
+                     mixed(bm.color, 0.60).name()));
 
         btn->setContextMenuPolicy(Qt::CustomContextMenu);
         bm.button = btn;
