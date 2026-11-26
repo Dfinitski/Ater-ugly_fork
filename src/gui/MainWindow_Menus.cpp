@@ -74,6 +74,10 @@
 #include "models/SliceModel.h"
 
 #include <QActionGroup>
+#include <QColorDialog>
+#include <QIcon>
+#include <QPixmap>
+#include <QToolButton>
 #include <QApplication>
 #include <QDir>
 #include <QFileDialog>
@@ -117,6 +121,8 @@
 #include <QWidgetAction>
 
 #include <algorithm>
+#include <functional>
+#include <memory>
 #include <cmath>
 #include <utility>
 
@@ -1366,6 +1372,136 @@ void MainWindow::buildMenuBar()
     connect(m_bandPlanMgr, &BandPlanManager::planChanged, planGroup, [this, planGroup] {
         for (QAction* a : planGroup->actions())
             a->setChecked(a->text() == m_bandPlanMgr->activePlanName());
+    });
+
+    // ANAN fork build 790 (operator, 26.11): the band plan colours. One row per
+    // colour group of the active plan (with the segment labels it covers) and
+    // one for a frequency outside the plan (quick-memory buttons); changes
+    // apply at once to the spectrum strip and the quick-memory buttons.
+    bandPlanMenu->addSeparator();
+    auto* colorsAct = bandPlanMenu->addAction("Colors...");
+    connect(colorsAct, &QAction::triggered, this, [this] {
+        static QPointer<PersistentDialog> s_dialog;
+        if (s_dialog) {
+            s_dialog->raise();
+            s_dialog->activateWindow();
+            return;
+        }
+        auto* dlg = new PersistentDialog(QStringLiteral("Band Plan Colors"),
+                                         QStringLiteral("BandPlanColorsDialogGeometry"), this);
+        s_dialog = dlg;
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setObjectName(QStringLiteral("bandPlanColorsDialog"));
+        trackPersistentDialog(dlg);
+        dlg->setMinimumWidth(460);
+        auto* root = new QVBoxLayout(dlg->bodyWidget());
+        root->setSpacing(8);
+        auto* title = new QLabel(dlg);
+        root->addWidget(title);
+        auto* rowsHost = new QWidget(dlg);
+        root->addWidget(rowsHost, 1);
+        auto* hint = new QLabel(QStringLiteral(
+            "Click a color to change it. The colors are kept for each band plan "
+            "and apply to the spectrum band strip and the quick-memory buttons."), dlg);
+        hint->setWordWrap(true);
+        AetherSDR::ThemeManager::instance().applyStyleSheet(
+            hint, "QLabel { color: {{color.text.label}}; font-size: 10px; }");
+        root->addWidget(hint);
+        auto* bottom = new QHBoxLayout;
+        auto* resetAll = new QPushButton(QStringLiteral("Reset All"), dlg);
+        auto* closeBtn = new QPushButton(QStringLiteral("Close"), dlg);
+        bottom->addWidget(resetAll);
+        bottom->addStretch(1);
+        bottom->addWidget(closeBtn);
+        root->addLayout(bottom);
+        connect(closeBtn, &QPushButton::clicked, dlg, &QDialog::close);
+
+        BandPlanManager* const mgr = m_bandPlanMgr;
+        auto swatch = [](const QColor& c) {
+            QPixmap pm(44, 18);
+            pm.fill(c);
+            QPainter pt(&pm);
+            pt.setPen(QColor(0, 0, 0, 160));
+            pt.drawRect(pm.rect().adjusted(0, 0, -1, -1));
+            pt.end();
+            return QIcon(pm);
+        };
+        // Rebuilt on every change (and when another plan is chosen meanwhile).
+        auto rebuild = std::make_shared<std::function<void()>>();
+        // The function holds itself only weakly (no cycle); the strong
+        // references live in the dialog's connections and die with it.
+        *rebuild = [dlg, rowsHost, title, mgr, swatch,
+                    weak = std::weak_ptr<std::function<void()>>(rebuild)] {
+            const auto self = weak.lock();
+            if (!self)
+                return;
+            if (auto* old = rowsHost->layout()) {
+                while (QLayoutItem* it = old->takeAt(0)) {
+                    if (QWidget* w = it->widget()) {
+                        w->hide();
+                        w->deleteLater();   // may be the button being clicked
+                    }
+                    delete it;
+                }
+                delete old;
+            }
+            title->setText(QStringLiteral("Band plan: <b>%1</b>").arg(mgr->activePlanName().toHtmlEscaped()));
+            auto* grid = new QGridLayout(rowsHost);
+            grid->setContentsMargins(0, 0, 0, 0);
+            grid->setHorizontalSpacing(8);
+            grid->setVerticalSpacing(4);
+            grid->setColumnStretch(1, 1);
+            auto addRow = [&](int row, const QColor& cur, bool changed, const QString& text,
+                              std::function<void(const QColor&)> set, const QColor& def) {
+                auto* pick = new QToolButton(rowsHost);
+                pick->setIcon(swatch(cur));
+                pick->setIconSize(QSize(44, 18));
+                pick->setToolTip(QStringLiteral("%1 (original %2)").arg(cur.name(), def.name()));
+                auto* lbl = new QLabel(text, rowsHost);
+                lbl->setWordWrap(true);
+                auto* reset = new QToolButton(rowsHost);
+                reset->setText(QStringLiteral("Reset"));
+                reset->setEnabled(changed);
+                grid->addWidget(pick, row, 0, Qt::AlignTop);
+                grid->addWidget(lbl, row, 1);
+                grid->addWidget(reset, row, 2, Qt::AlignTop);
+                QObject::connect(pick, &QToolButton::clicked, dlg, [dlg, cur, set, self] {
+                    const QPointer<PersistentDialog> guard(dlg);
+                    const QColor c = QColorDialog::getColor(cur, dlg, QStringLiteral("Band Plan Color"));
+                    if (!guard || !c.isValid())
+                        return;
+                    set(c);
+                    (*self)();
+                });
+                QObject::connect(reset, &QToolButton::clicked, dlg, [set, self] {
+                    set(QColor());
+                    (*self)();
+                });
+            };
+            int row = 0;
+            for (const auto& g : mgr->colorGroups()) {
+                const QColor orig = g.original;
+                addRow(row++, g.current, g.current != g.original, g.labels.join(QStringLiteral(", ")),
+                       [mgr, orig](const QColor& c) { mgr->setColorOverride(orig, c); }, orig);
+            }
+            const QColor oop = mgr->outOfPlanColor();
+            addRow(row++, oop, oop != BandPlanManager::defaultOutOfPlanColor(),
+                   QStringLiteral("Outside the band plan (quick-memory buttons)"),
+                   [mgr](const QColor& c) { mgr->setOutOfPlanColor(c); },
+                   BandPlanManager::defaultOutOfPlanColor());
+        };
+        connect(resetAll, &QPushButton::clicked, dlg, [mgr, rebuild] {
+            mgr->resetColorOverrides();
+            mgr->setOutOfPlanColor(QColor());
+            (*rebuild)();
+        });
+        connect(mgr, &BandPlanManager::planChanged, dlg, [rebuild] { (*rebuild)(); });
+        (*rebuild)();
+        dlg->show();
+    });
+    connect(m_bandPlanMgr, &BandPlanManager::colorsChanged, this, [this] {
+        if (m_panStack && m_panStack->bandStackPanel())
+            m_panStack->bandStackPanel()->loadBookmarks(m_radioModel.settingsScope(), m_bandPlanMgr);
     });
 
     // Theme submenu — list every theme ThemeManager discovered in

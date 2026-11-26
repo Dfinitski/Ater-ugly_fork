@@ -186,7 +186,7 @@ QColor BandStackPanel::colorForFrequency(double freqMhz, const BandPlanManager* 
             return seg.color;
         }
     }
-    return QColor(0x30, 0x40, 0x50);
+    return bpm->outOfPlanColor();   // build 790: user-settable (default #304050)
 }
 
 QString BandStackPanel::bandNameForFrequency(double freqMhz)

@@ -3029,6 +3029,11 @@ void SpectrumWidget::setBandPlanManager(BandPlanManager* mgr) {
     }
     if (mgr) {
         connect(mgr, &BandPlanManager::planChanged, this, QOverload<>::of(&QWidget::update));
+        // Build 790: a user band plan colour.
+        connect(mgr, &BandPlanManager::colorsChanged, this, [this]() {
+            markOverlayDirty();
+            update();
+        });
         connect(mgr, &BandPlanManager::kiwiDxSpotsChanged, this, [this]() {
             markOverlayDirty();
             update();

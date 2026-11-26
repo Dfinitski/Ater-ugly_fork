@@ -118,6 +118,7 @@ void BandPlanManager::setActivePlan(const QString& name)
         if (p.name == name) {
             m_activeName = name;
             m_segments = p.segments;
+            applyColorOverrides();   // build 790
             m_spots = p.spots;
             m_licenseClasses = p.licenseClasses;
             AppSettings::instance().setValue("BandPlanName", name);
@@ -126,6 +127,131 @@ void BandPlanManager::setActivePlan(const QString& name)
             return;
         }
     }
+}
+
+// ── ANAN fork build 790: user band plan colours ─────────────────────────────
+// AppSettings "BandPlanColors": {"<plan name>": {"#3060ff": "#4070ff", ...}}
+// (original colour -> user colour, lower-case #rrggbb); "BandPlanOutOfPlanColor":
+// "#rrggbb" (absent = the default).
+namespace {
+
+QJsonObject loadAllColorOverrides()
+{
+    const QString text = AppSettings::instance().value("BandPlanColors").toString();
+    return text.isEmpty() ? QJsonObject{} : QJsonDocument::fromJson(text.toUtf8()).object();
+}
+
+void storeAllColorOverrides(const QJsonObject& all)
+{
+    if (all.isEmpty())
+        AppSettings::instance().remove("BandPlanColors");
+    else
+        AppSettings::instance().setValue(
+            "BandPlanColors",
+            QString::fromUtf8(QJsonDocument(all).toJson(QJsonDocument::Compact)));
+    AppSettings::instance().save();
+}
+
+} // namespace
+
+void BandPlanManager::applyColorOverrides()
+{
+    if (!m_outOfPlanColorLoaded) {
+        m_outOfPlanColorLoaded = true;
+        const QColor c(AppSettings::instance().value("BandPlanOutOfPlanColor").toString());
+        if (c.isValid())
+            m_outOfPlanColor = c;
+    }
+    const QJsonObject map = loadAllColorOverrides().value(m_activeName).toObject();
+    if (map.isEmpty())
+        return;
+    for (auto& seg : m_segments) {
+        const QColor c(map.value(seg.color.name()).toString());
+        if (c.isValid())
+            seg.color = c;
+    }
+}
+
+QVector<BandPlanManager::ColorGroup> BandPlanManager::colorGroups() const
+{
+    QVector<ColorGroup> out;
+    const PlanData* plan = nullptr;
+    for (const auto& p : m_plans) {
+        if (p.name == m_activeName) { plan = &p; break; }
+    }
+    if (!plan)
+        return out;
+    const QJsonObject map = loadAllColorOverrides().value(m_activeName).toObject();
+    for (const auto& seg : plan->segments) {
+        auto it = std::find_if(out.begin(), out.end(), [&](const ColorGroup& g) {
+            return g.original == seg.color;
+        });
+        if (it == out.end()) {
+            ColorGroup g;
+            g.original = seg.color;
+            const QColor c(map.value(seg.color.name()).toString());
+            g.current = c.isValid() ? c : seg.color;
+            out.append(g);
+            it = out.end() - 1;
+        }
+        if (!seg.label.isEmpty() && !it->labels.contains(seg.label))
+            it->labels.append(seg.label);
+    }
+    return out;
+}
+
+void BandPlanManager::setColorOverride(const QColor& original, const QColor& color)
+{
+    if (m_activeName.isEmpty() || !original.isValid())
+        return;
+    QJsonObject all = loadAllColorOverrides();
+    QJsonObject map = all.value(m_activeName).toObject();
+    if (color.isValid() && color != original)
+        map.insert(original.name(), color.name());
+    else
+        map.remove(original.name());
+    if (map.isEmpty())
+        all.remove(m_activeName);
+    else
+        all.insert(m_activeName, map);
+    storeAllColorOverrides(all);
+    setActivePlanColorsOnly();
+}
+
+void BandPlanManager::resetColorOverrides()
+{
+    QJsonObject all = loadAllColorOverrides();
+    if (!all.contains(m_activeName))
+        return;
+    all.remove(m_activeName);
+    storeAllColorOverrides(all);
+    setActivePlanColorsOnly();
+}
+
+void BandPlanManager::setOutOfPlanColor(const QColor& color)
+{
+    const QColor c = color.isValid() ? color : defaultOutOfPlanColor();
+    if (c == defaultOutOfPlanColor())
+        AppSettings::instance().remove("BandPlanOutOfPlanColor");
+    else
+        AppSettings::instance().setValue("BandPlanOutOfPlanColor", c.name());
+    AppSettings::instance().save();
+    m_outOfPlanColor = c;
+    emit colorsChanged();
+}
+
+// Re-colours the active plan without planChanged (the TX band list and the
+// tuner port follow planChanged and must not be re-sent for a colour).
+void BandPlanManager::setActivePlanColorsOnly()
+{
+    for (const auto& p : m_plans) {
+        if (p.name == m_activeName) {
+            m_segments = p.segments;
+            applyColorOverrides();
+            break;
+        }
+    }
+    emit colorsChanged();
 }
 
 QStringList BandPlanManager::availablePlans() const

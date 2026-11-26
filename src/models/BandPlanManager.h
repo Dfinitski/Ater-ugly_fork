@@ -79,6 +79,25 @@ public:
     // Available plans (display names)
     QStringList availablePlans() const;
 
+    // ANAN fork build 790: user colours for the band plan (View > Band Plan >
+    // Colors...). A plan's segments are coloured by group (every segment of a
+    // group carries the same colour in the JSON), so an override replaces one
+    // ORIGINAL colour of the active plan with the user's one; it is kept per
+    // plan. segments() returns the overridden colours, so the spectrum strip
+    // and the quick-memory buttons follow.
+    struct ColorGroup {
+        QColor original;     // the colour in the plan's JSON
+        QColor current;      // the override, or the original
+        QStringList labels;  // the segment labels of the group
+    };
+    QVector<ColorGroup> colorGroups() const;          // active plan, JSON order
+    void setColorOverride(const QColor& original, const QColor& color); // invalid = reset
+    void resetColorOverrides();                       // active plan
+    // The colour of a frequency outside every segment (quick-memory buttons).
+    static QColor defaultOutOfPlanColor() { return QColor(0x30, 0x40, 0x50); }
+    QColor outOfPlanColor() const { return m_outOfPlanColor; }
+    void setOutOfPlanColor(const QColor& color);      // invalid = default
+
     // Test hook: replace the active plan's segments without going through
     // resource loading / AppSettings. Used by the license-filter unit tests
     // (tests/band_plan_license_filter_test.cpp). (#3060)
@@ -114,6 +133,7 @@ public:
 signals:
     void planChanged();
     void kiwiDxSpotsChanged();
+    void colorsChanged();   // build 790: a user colour changed (same plan)
 
 private:
     struct PlanData {
@@ -124,6 +144,8 @@ private:
     };
 
     bool loadPlanFromJson(const QString& path, PlanData& out);
+    void applyColorOverrides();     // build 790: the overrides onto m_segments
+    void setActivePlanColorsOnly(); // build 790: re-colour, emit colorsChanged
 
     QVector<PlanData> m_plans;
     QString m_activeName;
@@ -131,6 +153,8 @@ private:
     QVector<Spot> m_spots;        // active plan's spots
     QMap<QString, QString> m_licenseClasses;  // active plan's class table (#2649)
     QVector<KiwiDxSpot> m_kiwiDxSpots;        // loaded KiwiSDR DX Community spots
+    QColor m_outOfPlanColor{defaultOutOfPlanColor()};  // build 790
+    bool m_outOfPlanColorLoaded{false};
 };
 
 } // namespace AetherSDR
