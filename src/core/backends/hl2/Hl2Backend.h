@@ -1883,6 +1883,12 @@ private:
     TxCoordinator::Operation m_tuneOperation;   // the TUNE carrier's admission
     bool m_cwAutoKeyed = false;
     QTimer* m_cwHangTimer = nullptr;
+    // ANAN fork build 762: once a minute, per receiver, the panadapter's
+    // frame path for the log (see spectrumDiagTick()).
+    QTimer* m_specDiagTimer = nullptr;
+    std::array<quint64, 4> m_specAccepted{};      // frames reaching the backend
+    std::array<quint64, 4> m_specDiagLast[4]{};   // last logged: out / accepted / resets / tolerated
+    void spectrumDiagTick();
     TxCoordinator::Operation m_cwHangOperation;
     TxCoordinator::Operation m_lastTxOperation;
     TxCoordinator::Completion m_cwHangCompletion;

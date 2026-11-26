@@ -1368,6 +1368,21 @@ void Hl2RxDsp::onSequenceGap()
     if (!m_spectrum) {
         return;   // between rebuilds; the new spectrum starts empty
     }
+    // ANAN fork build 762 (operator, 26.11: a user's panadapter and waterfall
+    // stayed empty on some starts -- the starts with ~8 % of the radio's
+    // packets lost, ~80 gaps a second; on the starts with none lost they
+    // worked). Every gap threw the partial window away, and a window (up to
+    // 8192 samples, 170 ms at 48 kHz) never filled between two gaps: no frame
+    // at all. Now the first two gaps after a frame still discard the window
+    // (a rare gap costs nothing, as before); from the third on, while no
+    // frame has come through, the gap is let through -- the window carries
+    // on across it (a lost packet is 38 samples of 8192: a slightly smeared
+    // frame instead of none).
+    if (m_gapResetsSinceFrame >= 2) {
+        m_spectrumGapsTolerated.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    ++m_gapResetsSinceFrame;
     // Counted only when something was actually in flight. A gap that lands on a
     // frame boundary discards nothing and has corrupted nothing, and counting
     // it here would make this row a second, worse copy of `droppedPackets`
@@ -1453,6 +1468,8 @@ void Hl2RxDsp::processIqBlock(const std::vector<std::complex<float>>& iq, bool d
             emit spectrumReady(m_bins, m_spectrum->rawBins());
             m_lastSpectrumMs = m_spectrumClock.elapsed();
             m_specHeld = false;   // build 551: a real frame again
+            m_gapResetsSinceFrame = 0;   // build 762
+            m_spectrumFramesOut.fetch_add(1, std::memory_order_relaxed);
         } else {
             publishHeldSpectrum();   // build 551: the window is still refilling
         }

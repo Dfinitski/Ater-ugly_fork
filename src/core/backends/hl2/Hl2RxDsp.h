@@ -524,6 +524,17 @@ public:
     {
         return m_spectrumGapDiscards.load(std::memory_order_relaxed);
     }
+    // ANAN fork build 762: spectrum frames this chain has published, and gaps
+    // it let through instead of discarding the window (see onSequenceGap()).
+    // Monotonic; written on the I/O thread, read relaxed anywhere.
+    [[nodiscard]] quint64 spectrumFramesOut() const noexcept
+    {
+        return m_spectrumFramesOut.load(std::memory_order_relaxed);
+    }
+    [[nodiscard]] quint64 spectrumGapsTolerated() const noexcept
+    {
+        return m_spectrumGapsTolerated.load(std::memory_order_relaxed);
+    }
 
     // Manual notches. `index` is WDSP's positional handle; Hl2Backend maps stable
     // ids onto it. Centres are absolute RF Hz, so setNotchTuneFrequency() must
@@ -929,6 +940,9 @@ private:
     // See spectrumGapDiscards(). Written on the I/O thread by onSequenceGap(),
     // read from the GUI thread by Hl2Backend::healthSnapshot().
     std::atomic<quint64> m_spectrumGapDiscards {0};
+    std::atomic<quint64> m_spectrumFramesOut {0};       // build 762
+    std::atomic<quint64> m_spectrumGapsTolerated {0};   // build 762
+    int m_gapResetsSinceFrame = 0;                      // build 762, I/O thread
     Config m_config;
     bool m_binaural = false;   // build 307
     bool m_geqOn = false;                       // build 717

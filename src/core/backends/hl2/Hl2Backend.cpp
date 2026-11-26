@@ -1243,6 +1243,12 @@ Hl2Backend::Hl2Backend(QObject* parent)
     m_txTailTimer->setSingleShot(true);
     connect(m_txTailTimer, &QTimer::timeout, this, &Hl2Backend::finishTxTail);
 
+    // Build 762: the panadapter frame-path line, once a minute.
+    m_specDiagTimer = new QTimer(this);
+    m_specDiagTimer->setInterval(60000);
+    connect(m_specDiagTimer, &QTimer::timeout, this, &Hl2Backend::spectrumDiagTick);
+    m_specDiagTimer->start();
+
     m_cwHangTimer = new QTimer(this);
     m_cwHangTimer->setSingleShot(true);
     connect(m_cwHangTimer, &QTimer::timeout, this, [this] {
@@ -1869,6 +1875,8 @@ bool Hl2Backend::openReceiverDsp(int ddc, std::string* error)
         if (!producer || !receiver || receiver->dsp != producer.data()) {
             return;
         }
+        if (ui >= 0 && ui < 4)
+            ++m_specAccepted[static_cast<std::size_t>(ui)];   // build 762
         if ((m_ukKeyed || m_ukPost) && ids->ddcIndex == 0 && bins.size() >= 64) {
             const std::size_t e = static_cast<std::size_t>(   // the usable span
                 static_cast<double>(bins.size()) * (1.0 - anan::kUsableSpanFraction) / 2.0);
@@ -5046,6 +5054,42 @@ void Hl2Backend::onDspSetupWatchdog()
     // a signal that now never comes. The build is still running; the flag above
     // keeps the stale branch from emitting this a second time.
     emit dspSetupFinished();
+}
+
+// ANAN fork build 762 (operator, 26.11: "add the diagnostics"): one line a
+// minute per receiver while connected -- the spectrum frames its DSP chain
+// published, those that reached the backend (and go on to the panadapter),
+// the partial windows a packet gap discarded, and the gaps let through
+// (Hl2RxDsp::onSequenceGap). Counts are for the last minute. "DSP 0" with
+// gaps counted = packet loss starving the FFT; DSP > 0 but "to pan 0" = the
+// frames stop in the backend; both normal and the screen empty = drawing.
+void Hl2Backend::spectrumDiagTick()
+{
+    if (!m_connected)
+        return;
+    for (const auto& ids : m_ids.all()) {
+        const int ui = ids.uiNumber;
+        if (ui < 0 || ui >= 4)
+            continue;
+        const Receiver* r = rx(ids.ddcIndex);
+        if (!r || !r->dsp)
+            continue;
+        const std::size_t u = static_cast<std::size_t>(ui);
+        const std::array<quint64, 4> now{r->dsp->spectrumFramesOut(), m_specAccepted[u],
+                                         r->dsp->spectrumGapDiscards(),
+                                         r->dsp->spectrumGapsTolerated()};
+        std::array<quint64, 4>& last = m_specDiagLast[u];
+        auto d = [&](int k) {
+            return now[static_cast<std::size_t>(k)] >= last[static_cast<std::size_t>(k)]
+                       ? now[static_cast<std::size_t>(k)] - last[static_cast<std::size_t>(k)]
+                       : now[static_cast<std::size_t>(k)];
+        };
+        qCInfo(lcHl2).nospace() << "ANAN spectrum diag RX" << ui + 1 << " (last minute): DSP frames "
+                                << d(0) << ", to the panadapter " << d(1)
+                                << ", windows discarded at packet gaps " << d(2)
+                                << ", packet gaps let through " << d(3);
+        last = now;
+    }
 }
 
 void Hl2Backend::finishDspSetup(const DspSetupResult& result)
