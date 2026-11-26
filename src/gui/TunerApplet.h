@@ -120,7 +120,7 @@ private:
     // site that touches a TUNE button goes through here so the two cannot
     // drift apart.
     void applyTuneButtonText(const QString& text);
-    void applyTuneButtonStyle(const char* styleTemplate);
+    void applyTuneButtonStyle(const QString& styleTemplate);
     void updatePortRows();
     void applyPortInfo(AccessoryPortRow* row, const TunerPortInfo& info);
     // Outlines exactly the port carrying transmit, or neither when that is

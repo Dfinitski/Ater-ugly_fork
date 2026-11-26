@@ -1151,6 +1151,168 @@ const Entry kEntries[] = {
      "QPushButton { background: {{color.button.spots.on.background}}; color: white; border: "
      "1px solid {{color.button.spots.border}}; padding: 3px; }QPushButton:!checked { "
      "background: {{color.button.spots.off.background}}; }"},
+
+    // ── Client chain applet (build 780)
+    {"chain.mode", "ClientChainApplet.cpp: TX / RX chain select (kModeBtnStyle)",
+     /*original*/
+     "QPushButton {  background: #1a2a3a; border: 1px solid #2a4458; border-radius: 3px;  "
+     "color: #8aa8c0; font-size: 10px; font-weight: bold;  padding: 2px 10px; min-width: "
+     "30px;}QPushButton:hover { background: #24384e; }QPushButton:checked {  background: "
+     "#3a2a0e; color: #f2c14e; border: 1px solid #f2c14e;}",
+     /*themed*/
+     "QPushButton {  background: {{color.button.chain.background}}; border: 1px solid "
+     "{{color.button.chain.border}}; border-radius: 3px;  color: {{color.button.chain.text}}; "
+     "font-size: 10px; font-weight: bold;  padding: 2px 10px; min-width: "
+     "30px;}QPushButton:hover { background: {{color.button.chain.hover.background}}; "
+     "}QPushButton:checked {  background: {{color.button.chain.checked.background}}; color: "
+     "{{color.button.chain.checked.text}}; border: 1px solid "
+     "{{color.button.chain.checked.border}};}"},
+
+    {"chain.bypass", "ClientChainApplet.cpp: BYPASS (kBypassBtnStyle)",
+     /*original*/
+     "QPushButton {  background: #1a2a3a; border: 1px solid #4a3020; border-radius: 3px;  "
+     "color: #c8a070; font-size: 10px; font-weight: bold;  padding: 2px "
+     "10px;}QPushButton:hover { background: #3a2818; color: #f2c14e;                    "
+     "border: 1px solid #f2c14e; }QPushButton:checked {  background: #4a3818; color: #f2c14e; "
+     "border: 1px solid #f2c14e;}QPushButton:checked:hover { background: #5a4a28; }",
+     /*themed*/
+     "QPushButton {  background: {{color.button.chain.background}}; border: 1px solid "
+     "{{color.button.chain.bypass.border}}; border-radius: 3px;  color: "
+     "{{color.button.chain.bypass.text}}; font-size: 10px; font-weight: bold;  padding: 2px "
+     "10px;}QPushButton:hover { background: {{color.button.chain.bypass.hover.background}}; "
+     "color: {{color.button.chain.bypass.hover.text}};                    border: 1px solid "
+     "{{color.button.chain.bypass.hover.border}}; }QPushButton:checked {  background: "
+     "{{color.button.chain.bypass.checked.background}}; color: "
+     "{{color.button.chain.bypass.checked.text}}; border: 1px solid "
+     "{{color.button.chain.bypass.checked.border}};}QPushButton:checked:hover { background: "
+     "{{color.button.chain.bypass.checked.hover.background}}; }"},
+
+    {"chain.rec.idle", "ClientChainApplet.cpp: PUDU monitor rec button, idle (kMonBtnBase + kMonRecIdle)",
+     /*original*/
+     "QPushButton { background: rgba(255,255,255,15); border: none;  border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover:enabled { background: "
+     "rgba(255,255,255,40); }QPushButton:disabled { color: #303030;  background: "
+     "rgba(255,255,255,5); }QPushButton:enabled { color: #804040; }",
+     /*themed*/
+     "QPushButton { background: rgba(255,255,255,15); border: none;  border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover:enabled { background: "
+     "rgba(255,255,255,40); }QPushButton:disabled { color: "
+     "{{color.button.chain.mon.disabled.text}};  background: rgba(255,255,255,5); "
+     "}QPushButton:enabled { color: {{color.button.chain.rec.text}}; }"},
+
+    {"chain.rec.bright", "ClientChainApplet.cpp: PUDU monitor rec button, active, bright half of the pulse",
+     /*original*/
+     "QPushButton { background: rgba(255,255,255,15); border: none;  border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover:enabled { background: "
+     "rgba(255,255,255,40); }QPushButton:disabled { color: #303030;  background: "
+     "rgba(255,255,255,5); }QPushButton {  color: #ff2020; background: rgba(255,50,50,60); }",
+     /*themed*/
+     "QPushButton { background: rgba(255,255,255,15); border: none;  border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover:enabled { background: "
+     "rgba(255,255,255,40); }QPushButton:disabled { color: "
+     "{{color.button.chain.mon.disabled.text}};  background: rgba(255,255,255,5); }QPushButton "
+     "{  color: {{color.button.chain.rec.active.text}}; background: rgba(255,50,50,60); }"},
+
+    {"chain.rec.dim", "ClientChainApplet.cpp: PUDU monitor rec button, active, dim half of the pulse",
+     /*original*/
+     "QPushButton { background: rgba(255,255,255,15); border: none;  border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover:enabled { background: "
+     "rgba(255,255,255,40); }QPushButton:disabled { color: #303030;  background: "
+     "rgba(255,255,255,5); }QPushButton {  color: #601010; background: rgba(255,50,50,20); }",
+     /*themed*/
+     "QPushButton { background: rgba(255,255,255,15); border: none;  border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover:enabled { background: "
+     "rgba(255,255,255,40); }QPushButton:disabled { color: "
+     "{{color.button.chain.mon.disabled.text}};  background: rgba(255,255,255,5); }QPushButton "
+     "{  color: {{color.button.chain.rec.active.dim.text}}; background: rgba(255,50,50,20); }"},
+
+    {"chain.play.idle", "ClientChainApplet.cpp: PUDU monitor play button, idle (kMonBtnBase + kMonPlayIdle)",
+     /*original*/
+     "QPushButton { background: rgba(255,255,255,15); border: none;  border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover:enabled { background: "
+     "rgba(255,255,255,40); }QPushButton:disabled { color: #303030;  background: "
+     "rgba(255,255,255,5); }QPushButton:enabled { color: #406040; }",
+     /*themed*/
+     "QPushButton { background: rgba(255,255,255,15); border: none;  border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover:enabled { background: "
+     "rgba(255,255,255,40); }QPushButton:disabled { color: "
+     "{{color.button.chain.mon.disabled.text}};  background: rgba(255,255,255,5); "
+     "}QPushButton:enabled { color: {{color.button.chain.play.text}}; }"},
+
+    {"chain.play.bright", "ClientChainApplet.cpp: PUDU monitor play button, active, bright half of the pulse",
+     /*original*/
+     "QPushButton { background: rgba(255,255,255,15); border: none;  border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover:enabled { background: "
+     "rgba(255,255,255,40); }QPushButton:disabled { color: #303030;  background: "
+     "rgba(255,255,255,5); }QPushButton {  color: #30d050; background: rgba(50,200,80,60); }",
+     /*themed*/
+     "QPushButton { background: rgba(255,255,255,15); border: none;  border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover:enabled { background: "
+     "rgba(255,255,255,40); }QPushButton:disabled { color: "
+     "{{color.button.chain.mon.disabled.text}};  background: rgba(255,255,255,5); }QPushButton "
+     "{  color: {{color.button.chain.play.active.text}}; background: rgba(50,200,80,60); }"},
+
+    {"chain.play.dim", "ClientChainApplet.cpp: PUDU monitor play button, active, dim half of the pulse",
+     /*original*/
+     "QPushButton { background: rgba(255,255,255,15); border: none;  border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover:enabled { background: "
+     "rgba(255,255,255,40); }QPushButton:disabled { color: #303030;  background: "
+     "rgba(255,255,255,5); }QPushButton {  color: #103010; background: rgba(50,200,80,20); }",
+     /*themed*/
+     "QPushButton { background: rgba(255,255,255,15); border: none;  border-radius: 10px; "
+     "font-size: 11px; padding: 0; }QPushButton:hover:enabled { background: "
+     "rgba(255,255,255,40); }QPushButton:disabled { color: "
+     "{{color.button.chain.mon.disabled.text}};  background: rgba(255,255,255,5); }QPushButton "
+     "{  color: {{color.button.chain.play.active.dim.text}}; background: rgba(50,200,80,20); }"},
+
+    // ── Tuner applet (build 780)
+    {"tuner.tune.busy", "TunerApplet.cpp: TUNE while tuning, rail and panel (kTuneBusyStyle; the rail adds its font size)",
+     /*original*/
+     "QPushButton { background: #cc2222; border: 1px solid {{color.accent.danger}}; "
+     "border-radius: 3px; color: {{color.text.primary}}; font-weight: bold; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.tuner.tune.busy.background}}; border: 1px solid "
+     "{{color.button.tuner.tune.busy.border}}; border-radius: 3px; color: "
+     "{{color.button.tuner.tune.busy.text}}; font-weight: bold; }"},
+
+    {"tuner.operate", "TunerApplet.cpp: rail OPERATE key, operating (the rail adds its font size)",
+     /*original*/
+     "QPushButton { background: #006030; border: 1px solid #008040; border-radius: 3px; color: "
+     "{{color.text.primary}}; font-weight: bold; }QPushButton:hover { background: #007040; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.tuner.operate.background}}; border: 1px solid "
+     "{{color.button.tuner.operate.border}}; border-radius: 3px; color: "
+     "{{color.button.tuner.operate.text}}; font-weight: bold; }QPushButton:hover { background: "
+     "{{color.button.tuner.operate.hover.background}}; }"},
+
+    {"tuner.bypass", "TunerApplet.cpp: rail OPERATE key showing BYPASS (the rail adds its font size)",
+     /*original*/
+     "QPushButton { background: #8a6000; border: 1px solid #a07000; border-radius: 3px; color: "
+     "{{color.text.primary}}; font-weight: bold; }QPushButton:hover { background: #9a7000; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.tuner.bypass.background}}; border: 1px solid "
+     "{{color.button.tuner.bypass.border}}; border-radius: 3px; color: "
+     "{{color.button.tuner.bypass.text}}; font-weight: bold; }QPushButton:hover { background: "
+     "{{color.button.tuner.bypass.hover.background}}; }"},
+
+    {"tuner.ant", "TunerApplet.cpp: ANT1-3 (updateAntennaButtons kDefault)",
+     /*original*/
+     "QPushButton { background: #1a2a3a; border: 1px solid #205070; border-radius: 3px; color: "
+     "#c8d8e8; font-size: 10px; font-weight: bold; }QPushButton:hover { background: #204060; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.tuner.ant.background}}; border: 1px solid "
+     "{{color.button.tuner.ant.border}}; border-radius: 3px; color: "
+     "{{color.button.tuner.ant.text}}; font-size: 10px; font-weight: bold; }QPushButton:hover "
+     "{ background: {{color.button.tuner.ant.hover.background}}; }"},
+
+    {"tuner.ant.active", "TunerApplet.cpp: the selected ANT (updateAntennaButtons kActive)",
+     /*original*/
+     "QPushButton { background: #006030; border: 1px solid #008040; border-radius: 3px; color: "
+     "#ffffff; font-size: 10px; font-weight: bold; }",
+     /*themed*/
+     "QPushButton { background: {{color.button.tuner.ant.active.background}}; border: 1px "
+     "solid {{color.button.tuner.ant.active.border}}; border-radius: 3px; color: "
+     "{{color.button.tuner.ant.active.text}}; font-size: 10px; font-weight: bold; }"},
 };
 // END-ENTRIES
 

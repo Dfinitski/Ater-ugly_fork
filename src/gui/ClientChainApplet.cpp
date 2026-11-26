@@ -10,6 +10,7 @@
 #include "core/ClientReverb.h"
 #include "core/ClientTube.h"
 #include "core/ThemeManager.h"
+#include "ButtonStyles.h"
 
 #include <QButtonGroup>
 #include <QHBoxLayout>
@@ -26,58 +27,27 @@ namespace {
 // TX / RX mode-select buttons — checkable, part of an exclusive
 // group.  Checked state uses the amber PooDoo colour so the active
 // chain reads at a glance.
-const QString kModeBtnStyle = QStringLiteral(
-    "QPushButton {"
-    "  background: #1a2a3a; border: 1px solid #2a4458; border-radius: 3px;"
-    "  color: #8aa8c0; font-size: 10px; font-weight: bold;"
-    "  padding: 2px 10px; min-width: 30px;"
-    "}"
-    "QPushButton:hover { background: #24384e; }"
-    "QPushButton:checked {"
-    "  background: #3a2a0e; color: #f2c14e; border: 1px solid #f2c14e;"
-    "}");
+// kModeBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "chain.mode" -- build 780.
 
 // PUDU monitor icon buttons — modelled on VfoWidget's per-slice
 // record/play buttons (see src/gui/VfoWidget.cpp:414-454).  20x20,
 // rounded, unicode glyphs.  Pulsing is a 500 ms tick toggling
 // dim/bright via re-applied stylesheet.
-constexpr const char* kMonBtnBase =
-    "QPushButton { background: rgba(255,255,255,15); border: none; "
-    " border-radius: 10px; font-size: 11px; padding: 0; }"
-    "QPushButton:hover:enabled { background: rgba(255,255,255,40); }"
-    "QPushButton:disabled { color: #303030; "
-    " background: rgba(255,255,255,5); }";
+// kMonBtnBase: in the button-style catalogue (ButtonStyles.cpp), "chain.rec.*" / "chain.play.*" -- build 780.
 
 // Style fragments per state for the record/play buttons.  Idle red
 // is dimmed; active red is bright + filled.  Pulse alternates between
 // two levels.  Play mirrors with green colours.
-constexpr const char* kMonRecIdle  =
-    "QPushButton:enabled { color: #804040; }";
-constexpr const char* kMonRecActiveBright =
-    " color: #ff2020; background: rgba(255,50,50,60);";
-constexpr const char* kMonRecActiveDim =
-    " color: #601010; background: rgba(255,50,50,20);";
-constexpr const char* kMonPlayIdle =
-    "QPushButton:enabled { color: #406040; }";
-constexpr const char* kMonPlayActiveBright =
-    " color: #30d050; background: rgba(50,200,80,60);";
-constexpr const char* kMonPlayActiveDim =
-    " color: #103010; background: rgba(50,200,80,20);";
+// kMonRecIdle: in the button-style catalogue (ButtonStyles.cpp), "chain.rec.*" / "chain.play.*" -- build 780.
+// kMonRecActiveBright: in the button-style catalogue (ButtonStyles.cpp), "chain.rec.*" / "chain.play.*" -- build 780.
+// kMonRecActiveDim: in the button-style catalogue (ButtonStyles.cpp), "chain.rec.*" / "chain.play.*" -- build 780.
+// kMonPlayIdle: in the button-style catalogue (ButtonStyles.cpp), "chain.rec.*" / "chain.play.*" -- build 780.
+// kMonPlayActiveBright: in the button-style catalogue (ButtonStyles.cpp), "chain.rec.*" / "chain.play.*" -- build 780.
+// kMonPlayActiveDim: in the button-style catalogue (ButtonStyles.cpp), "chain.rec.*" / "chain.play.*" -- build 780.
 
 // BYPASS — checkable toggle.  Idle: muted amber.  Checked: saturated
 // amber border + fill so an active bypass can't be missed.
-const QString kBypassBtnStyle = QStringLiteral(
-    "QPushButton {"
-    "  background: #1a2a3a; border: 1px solid #4a3020; border-radius: 3px;"
-    "  color: #c8a070; font-size: 10px; font-weight: bold;"
-    "  padding: 2px 10px;"
-    "}"
-    "QPushButton:hover { background: #3a2818; color: #f2c14e;"
-    "                    border: 1px solid #f2c14e; }"
-    "QPushButton:checked {"
-    "  background: #4a3818; color: #f2c14e; border: 1px solid #f2c14e;"
-    "}"
-    "QPushButton:checked:hover { background: #5a4a28; }");
+// kBypassBtnStyle: in the button-style catalogue (ButtonStyles.cpp), "chain.bypass" -- build 780.
 
 } // namespace
 
@@ -102,7 +72,7 @@ ClientChainApplet::ClientChainApplet(QWidget* parent) : QWidget(parent)
         m_txBtn->setCheckable(true);
         m_txBtn->setAccessibleName(tr("Aetherial TX chain"));
         m_txBtn->setAccessibleDescription(tr("Show the transmit audio chain"));
-        m_txBtn->setStyleSheet(kModeBtnStyle);
+        ButtonStyles::apply(m_txBtn, "chain.mode");
         m_txBtn->setFixedHeight(22);
         m_txBtn->setToolTip("Show and edit the TX DSP chain");
         m_txBtn->setChecked(true);
@@ -113,7 +83,7 @@ ClientChainApplet::ClientChainApplet(QWidget* parent) : QWidget(parent)
         m_rxBtn->setCheckable(true);
         m_rxBtn->setAccessibleName(tr("Aetherial RX chain"));
         m_rxBtn->setAccessibleDescription(tr("Show the receive audio chain"));
-        m_rxBtn->setStyleSheet(kModeBtnStyle);
+        ButtonStyles::apply(m_rxBtn, "chain.mode");
         m_rxBtn->setFixedHeight(22);
         m_rxBtn->setToolTip("Show and edit the RX DSP chain");
         group->addButton(m_rxBtn, static_cast<int>(ChainMode::Rx));
@@ -171,7 +141,7 @@ ClientChainApplet::ClientChainApplet(QWidget* parent) : QWidget(parent)
 
         m_bypassBtn = new QPushButton("BYPASS");
         m_bypassBtn->setCheckable(true);
-        m_bypassBtn->setStyleSheet(kBypassBtnStyle);
+        ButtonStyles::apply(m_bypassBtn, "chain.bypass");
         m_bypassBtn->setFixedHeight(22);
         m_bypassBtn->setToolTip(
             "Disable every stage in the selected chain (including RN2).  "
@@ -363,29 +333,19 @@ void ClientChainApplet::setMonitorHasRecording(bool has)
 void ClientChainApplet::applyRecordButtonStyle()
 {
     if (!m_monRecBtn) return;
-    QString style = kMonBtnBase;
-    if (m_monRecording) {
-        style += "QPushButton { ";
-        style += m_monRecPulseDim ? kMonRecActiveDim : kMonRecActiveBright;
-        style += " }";
-    } else {
-        style += kMonRecIdle;
-    }
-    m_monRecBtn->setStyleSheet(style);
+    // Build 780: the six looks are in the button-style catalogue
+    // (ButtonStyles.cpp, "chain.rec.*"), kMonBtnBase + the state's fragment.
+    ButtonStyles::apply(m_monRecBtn, !m_monRecording ? "chain.rec.idle"
+                            : m_monRecPulseDim ? "chain.rec.dim" : "chain.rec.bright");
 }
 
 void ClientChainApplet::applyPlayButtonStyle()
 {
     if (!m_monPlayBtn) return;
-    QString style = kMonBtnBase;
-    if (m_monPlaying) {
-        style += "QPushButton { ";
-        style += m_monPlayPulseDim ? kMonPlayActiveDim : kMonPlayActiveBright;
-        style += " }";
-    } else {
-        style += kMonPlayIdle;
-    }
-    m_monPlayBtn->setStyleSheet(style);
+    // Build 780: the six looks are in the button-style catalogue
+    // (ButtonStyles.cpp, "chain.play.*"), kMonBtnBase + the state's fragment.
+    ButtonStyles::apply(m_monPlayBtn, !m_monPlaying ? "chain.play.idle"
+                            : m_monPlayPulseDim ? "chain.play.dim" : "chain.play.bright");
 }
 
 void ClientChainApplet::updateMonitorButtonEnables()

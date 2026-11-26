@@ -1,4 +1,5 @@
 #include "TunerApplet.h"
+#include "ButtonStyles.h"
 #include "PeripheralConnectionSource.h"
 #include "HGauge.h"
 #include "MeterSmoother.h"
@@ -73,9 +74,7 @@ constexpr const char* kTuneIdleStyle =
     "QPushButton { background: {{color.background.2}}; border: 1px solid {{color.background.2}}; "
     "border-radius: 3px; color: {{color.text.primary}}; font-weight: bold; }"
     "QPushButton:hover { background: {{color.background.1}}; }";
-constexpr const char* kTuneBusyStyle =
-    "QPushButton { background: #cc2222; border: 1px solid {{color.accent.danger}}; "
-    "border-radius: 3px; color: {{color.text.primary}}; font-weight: bold; }";
+// kTuneBusyStyle: in the button-style catalogue (ButtonStyles.cpp), "tuner.tune.busy" -- build 780.
 
 // The expanded presentation's STBY / BYP keys: resting, and lit while the
 // tuner is in the state that key selects.
@@ -148,11 +147,11 @@ void TunerApplet::applyTuneButtonText(const QString& text)
     m_panelTuneBtn->setText(text);
 }
 
-void TunerApplet::applyTuneButtonStyle(const char* styleTemplate)
+void TunerApplet::applyTuneButtonStyle(const QString& styleTemplate)
 {
     // The rail's key carries its font size in its sheet (applyRailStyle); the
     // panel's is sized by the scale, through its widget font.
-    applyRailStyle(m_tuneBtn, QString::fromLatin1(styleTemplate));
+    applyRailStyle(m_tuneBtn, styleTemplate);
     AetherSDR::ThemeManager::instance().applyStyleSheet(m_panelTuneBtn, styleTemplate);
 }
 
@@ -1135,13 +1134,13 @@ void TunerApplet::setTunerModel(TunerModel* model)
         m_relayDwellTimer->stop();
         if (tuning) {
             setAlertText(QString());
-            applyTuneButtonStyle(kTuneBusyStyle);
+            applyTuneButtonStyle(AetherSDR::ButtonStyles::sheet("tuner.tune.busy"));
             // The key is the abort while a tune is running, so it says what
             // pressing it will do rather than reporting what the tuner is up
             // to — the strips and the red styling already report that.
             applyTuneButtonText(tr("STOP"));
         } else {
-            applyTuneButtonStyle(kTuneIdleStyle);
+            applyTuneButtonStyle(QString::fromLatin1(kTuneIdleStyle));
             applyTuneButtonText(tr("TUNE"));
             // Only where the tuner cannot tell us itself. With the direct
             // connection up its own M| notice is on its way, and composing a
@@ -1190,16 +1189,10 @@ void TunerApplet::syncFromModel()
 
     if (operate && !bypass) {
         m_operateBtn->setText(tr("OPERATE"));
-        applyRailStyle(m_operateBtn, QStringLiteral(
-            "QPushButton { background: #006030; border: 1px solid #008040; "
-            "border-radius: 3px; color: {{color.text.primary}}; font-weight: bold; }"
-            "QPushButton:hover { background: #007040; }"));
+        applyRailStyle(m_operateBtn, AetherSDR::ButtonStyles::sheet("tuner.operate"));
     } else if (operate && bypass) {
         m_operateBtn->setText(tr("BYPASS"));
-        applyRailStyle(m_operateBtn, QStringLiteral(
-            "QPushButton { background: #8a6000; border: 1px solid #a07000; "
-            "border-radius: 3px; color: {{color.text.primary}}; font-weight: bold; }"
-            "QPushButton:hover { background: #9a7000; }"));
+        applyRailStyle(m_operateBtn, AetherSDR::ButtonStyles::sheet("tuner.bypass"));
     } else {
         m_operateBtn->setText(tr("STANDBY"));
         applyRailStyle(m_operateBtn, QStringLiteral(
@@ -1332,17 +1325,12 @@ void TunerApplet::updateValueLabels()
 void TunerApplet::updateAntennaButtons(int antA)
 {
     // antA is 0-indexed: 0=ANT1, 1=ANT2, 2=ANT3
-    static constexpr const char* kDefault =
-        "QPushButton { background: #1a2a3a; border: 1px solid #205070; "
-        "border-radius: 3px; color: #c8d8e8; font-size: 10px; font-weight: bold; }"
-        "QPushButton:hover { background: #204060; }";
-    static constexpr const char* kActive =
-        "QPushButton { background: #006030; border: 1px solid #008040; "
-        "border-radius: 3px; color: #ffffff; font-size: 10px; font-weight: bold; }";
+    // Build 780: kDefault / kActive are "tuner.ant" / "tuner.ant.active" in the
+    // button-style catalogue (ButtonStyles.cpp).
 
-    m_ant1Btn->setStyleSheet(antA == 0 ? kActive : kDefault);
-    m_ant2Btn->setStyleSheet(antA == 1 ? kActive : kDefault);
-    m_ant3Btn->setStyleSheet(antA == 2 ? kActive : kDefault);
+    AetherSDR::ButtonStyles::apply(m_ant1Btn, antA == 0 ? "tuner.ant.active" : "tuner.ant");
+    AetherSDR::ButtonStyles::apply(m_ant2Btn, antA == 1 ? "tuner.ant.active" : "tuner.ant");
+    AetherSDR::ButtonStyles::apply(m_ant3Btn, antA == 2 ? "tuner.ant.active" : "tuner.ant");
 }
 
 } // namespace AetherSDR

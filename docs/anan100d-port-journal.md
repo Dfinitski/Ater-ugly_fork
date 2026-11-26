@@ -13361,6 +13361,35 @@ WanConnection.h); check_button_styles — идентично; check_theme_seed �
 актуален.
 Не проверено на радио, не собиралось под Windows.
 
+## 769. Сборка 780 — кнопки в редактор тем, шаг 11: Client Chain и тюнер
+
+- Аплет Client Chain (`ClientChainApplet.cpp`), группа `chain`, 8 записей:
+  `chain.mode` (`kModeBtnStyle`) — выбор цепочки TX / RX; `chain.bypass`
+  (`kBypassBtnStyle`); `chain.rec.idle / .bright / .dim` и
+  `chain.play.idle / .bright / .dim` — кнопки монитора PUDU (запись /
+  воспроизведение: покой и две половины мигания; раньше строка собиралась
+  из `kMonBtnBase` и кусков по состоянию). Константы убраны. 23 токена.
+- Аплет тюнера (`TunerApplet.cpp`), группа `tuner`, 5 записей:
+  `tuner.tune.busy` (`kTuneBusyStyle`) — TUNE во время настройки (полоса и
+  панель); `tuner.operate`, `tuner.bypass` — клавиша OPERATE на полосе;
+  `tuner.ant` / `tuner.ant.active` — ANT1–3. К стилям полосы, как и раньше,
+  `applyRailStyle` приклеивает размер шрифта. `applyTuneButtonStyle`
+  принимает `QString` (было `const char*`) — правка в `TunerApplet.h`.
+  Стили, уже целиком на токенах темы (TUNE в покое, STANDBY, клавиши
+  STBY / BYP), не тронуты. 18 токенов.
+- 95 записей × 3 темы — всё идентично: вид не меняется.
+- Осталось: 104 стиля кнопок с литеральными цветами в 54 файлах.
+
+Файлы: `src/gui/ClientChainApplet.cpp`, `src/gui/TunerApplet.cpp`,
+`src/gui/TunerApplet.h`, `src/gui/ButtonStyles.cpp`,
+`resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ThemeSeedGenerated.cpp`, `docs/button-theming.md`,
+`src/core/ForkBuild.h`.
+Проверка: errcheck ClientChainApplet 8, TunerApplet 1 (= до правки, обе —
+ошибки окружения стабов); check_button_styles — идентично; check_theme_seed —
+актуален.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
