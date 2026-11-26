@@ -75,17 +75,19 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 744
+## Build 769
 
-Full notes: [docs/release-notes-build-744.md](docs/release-notes-build-744.md).
+Full notes: [docs/release-notes-build-769.md](docs/release-notes-build-769.md).
 
-- The fork's own **Multi Meter** (S, PWR, SWR, ALC, COMP at once; light paper or dark face;
-  Shadow TX scales) replaces the ANAN Multi Meter of builds 713 / 732.
-- The mic applet's PROC button is called COMP; its compression gauge reads 0 … −30 dB left to right.
-- **PureSignal on the Hermes-Lite 2** (untested on a radio).
-- Applet panel docked left: the scroll bar runs from the top of the S-meter.
+- The panadapter and waterfall keep working when the network loses packets; a per-minute
+  spectrum line in the log.
+- Multi Meter: **Hide duplicate gauges** (the applets drop the gauges it repeats); rounded paper face.
+- Themes: **Midnight** and **Deep Ocean**; applet gauges on the theme's background; theme editor
+  **Image** type and a fixed Inspect.
+- Popped-out applets: the button hides, the × docks; muted quick memory buttons; the TX indicator
+  works as MOX; dark teal LIVE chip.
 
-Earlier notes: [build 732](docs/release-notes-build-732.md), [build 713](docs/release-notes-build-713.md), [build 667](docs/release-notes-build-667.md), [build 636](docs/release-notes-build-636.md), [build 572](docs/release-notes-build-572.md), [build 557](docs/release-notes-build-557.md), [build 533](docs/release-notes-build-533.md), [build 494](docs/release-notes-build-494.md), [build 468](docs/release-notes-build-468.md), [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 744](docs/release-notes-build-744.md), [build 732](docs/release-notes-build-732.md), [build 713](docs/release-notes-build-713.md), [build 667](docs/release-notes-build-667.md), [build 636](docs/release-notes-build-636.md), [build 572](docs/release-notes-build-572.md), [build 557](docs/release-notes-build-557.md), [build 533](docs/release-notes-build-533.md), [build 494](docs/release-notes-build-494.md), [build 468](docs/release-notes-build-468.md), [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Downloads
 
