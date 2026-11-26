@@ -52,7 +52,7 @@
           "accent.success": "{color.green.500}",
           "waterfall.timeMarker.foreground": "#c8d8e8",
           "waterfall.timeMarker.background": "#dc0f0f1a",
-          "waterfall.live":    "{color.red.500}",
+          "waterfall.live":    "#1f5f70",
           "waterfall.history": "{color.gray.500}",
           "tx.mox.border":       "#d08020",
           "tx.mox.text":         "#f0c890",

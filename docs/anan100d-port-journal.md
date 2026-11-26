@@ -12764,6 +12764,21 @@ QRhi D3D11 инициализирован без ошибок — вероятн
 Проверка: errcheck MainWindow 42, MainWindow_Shortcuts 28 (= до правки).
 Не проверено на радио, не собиралось под Windows.
 
+## 748. Сборка 760 — кнопка LIVE на водопаде тёмно-бирюзовая
+
+Оператор (26.11): «кнопка Live на панораме слишком красная и отвлекает.
+Предложи приглушённые цвета» — из макета выбран вариант E, «тёмная
+бирюза».
+
+Токен `color.waterfall.live` (заливка кнопки LIVE, пока водопад идёт в
+реальном времени) в Default Dark, Midnight и Deep Ocean: `{color.red.500}`
+(#ff4d4d) → **#1f5f70**. Рамка (#405060), текст (`color.text.primary`) и
+серый цвет режима истории (`color.waterfall.history`) — без изменений.
+
+Файлы: `resources/themes/{default-dark,midnight,deep-ocean}.json`,
+`src/core/ForkBuild.h`.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
