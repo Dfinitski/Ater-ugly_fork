@@ -1,6 +1,7 @@
 #include "FilterPassbandWidget.h"
 #include "FilterPassbandMath.h"
 #include "MacCursorCompat.h"
+#include "core/ThemeManager.h"   // ANAN fork build 749
 
 #include <QPainterPath>
 #include <QFontMetrics>
@@ -17,6 +18,9 @@ FilterPassbandWidget::FilterPassbandWidget(QWidget* parent)
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     setMouseTracking(true);
     setCursor(macSafeCursorShape(Qt::SizeAllCursor));
+    // Build 749: repaint in the new theme's colours.
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, qOverload<>(&QWidget::update));
 }
 
 void FilterPassbandWidget::setFilter(int lo, int hi)
@@ -52,18 +56,25 @@ void FilterPassbandWidget::paintEvent(QPaintEvent*)
     // ControlAvailabilityRegistry resolves the unavailable theme token into
     // the widget palette. Custom-painted traces must consume that treatment
     // too; disabling mouse input alone leaves the passband looking usable.
-    const auto controlColor = [this](const QColor& enabled) {
-        return isEnabled() ? enabled : palette().color(QPalette::Disabled, foregroundRole());
+    // ANAN fork build 749 (operator, 25.11: the RX applet's filter control
+    // was drawn on the old black): with a theme that remaps the colours
+    // written in code, the background is the theme's and the other colours
+    // are remapped; Default Dark (no remap) paints as before.
+    const ThemeManager& tm = ThemeManager::instance();
+    const auto lit = [&tm](const QColor& c) { return tm.remapLiteralColor(c); };
+    const auto controlColor = [this, &lit](const QColor& enabled) {
+        return isEnabled() ? lit(enabled) : palette().color(QPalette::Disabled, foregroundRole());
     };
 
     const int w = width();
     const int h = height();
 
     // Background
-    p.fillRect(rect(), QColor(0x0a, 0x0a, 0x18));
+    p.fillRect(rect(), tm.hasLiteralRemap() ? tm.color(QStringLiteral("color.background.0"))
+                                            : QColor(0x0a, 0x0a, 0x18));
 
     // Border
-    p.setPen(QColor(0x20, 0x30, 0x40));
+    p.setPen(lit(QColor(0x20, 0x30, 0x40)));
     p.drawRect(0, 0, w - 1, h - 1);
 
     // ── Static trapezoid shape ──────────────────────────────────────────
