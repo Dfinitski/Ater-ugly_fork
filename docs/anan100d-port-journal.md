@@ -13635,6 +13635,28 @@ PS — оператор снял (вход ответвителя без PS не
 Проверка: errcheck недоступен, просмотр кода.
 Не проверено на радио, не собиралось под Windows.
 
+## 778. Сборка 789 — расшифровка кода check в Amp View
+
+Оператор (26.11): «в окне Amp View в статусе вторая строка в случае ошибки
+пишет Correcting no, calibration 130, check 0x1 — последний код ошибки
+нужно расшифровывать и писать вкратце суть ошибки».
+
+`AnanPureSignal::scheckText` для WDSP 2.10 возвращал только шестнадцатеричный
+код. Теперь (info[6] calcc):
+- бит 0 — «new correction rejected: curve jumped vs the last one or gain < 0
+  (unsteady feedback / level)»: scheck() отверг новую калибровку — одна из
+  кривых (усиление, cos, sin) ушла от прошлой хорошей больше чем на 0,10,
+  или усиление ниже нуля;
+- бит 1 — «no full-drive samples: the top of the drive range was never
+  reached (more drive, or HW peak too high)»: сброс из-за незаполненного
+  верхнего интервала амплитуд;
+- прочие биты — шестнадцатеричным остатком.
+Та же формулировка — в строке «last failure» (calcFailText) и в логе.
+
+Файлы: `src/core/backends/anan/AnanPureSignal.cpp`, `src/core/ForkBuild.h`.
+Проверка: errcheck недоступен, просмотр кода.
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

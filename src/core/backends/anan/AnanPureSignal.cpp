@@ -820,7 +820,24 @@ QString AnanPureSignal::scheckText(int v)
     if (v & 0x40) t << QStringLiteral("gain moved > 0.05 since the last calibration");
     return t.join(QStringLiteral(", "));
 #else
-    return QStringLiteral("0x%1").arg(v, 0, 16);
+    // ANAN fork build 789 (operator, 26.11: "the check code must be decoded,
+    // the gist of the error in short"). WDSP 2.10 calcc, info[6]:
+    //  bit 0 -- scheck() refused the new calibration: one of the curves
+    //           (gain, cos, sin) moved more than 0.10 from the last good one
+    //           at some point, or the gain went below zero;
+    //  bit 1 -- the deadlock reset in COLLECT / CALC: the top amplitude
+    //           bucket never filled, i.e. the drive did not reach the peak
+    //           the feedback scale expects.
+    QStringList t;
+    if (v & 0x01)
+        t << QStringLiteral("new correction rejected: curve jumped vs the last one or gain < 0 "
+                            "(unsteady feedback / level)");
+    if (v & 0x02)
+        t << QStringLiteral("no full-drive samples: the top of the drive range was never reached "
+                            "(more drive, or HW peak too high)");
+    if (v & ~0x03)
+        t << QStringLiteral("0x%1").arg(v & ~0x03, 0, 16);
+    return t.join(QStringLiteral(", "));
 #endif
 }
 
@@ -854,12 +871,8 @@ QString AnanPureSignal::calcFailText(const std::array<int, 16>& in)
         if (v & ~0x3f) b << QStringLiteral("0x%1").arg(v & ~0x3f, 0, 16);
         t << QStringLiteral("%1: %2").arg(QLatin1String(kCurve[k]), b.join(QStringLiteral("/")));
     }
-    if (in[6] & 0x01)
-        t << QStringLiteral("scheck (curve out of limits)");
-    if (in[6] & 0x02)
-        t << QStringLiteral("top bucket unreachable (deadlock reset)");
-    if (in[6] & ~0x03)
-        t << QStringLiteral("info6 0x%1").arg(in[6] & ~0x03, 0, 16);
+    if (in[6])
+        t << scheckText(in[6]);   // build 789: one wording for the check
 #endif
     return t.join(QStringLiteral("; "));
 }
