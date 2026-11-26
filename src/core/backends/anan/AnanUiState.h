@@ -149,6 +149,10 @@ public:
     // by the backend. Not remembered across starts (Thetis' is a console
     // toggle).
     bool rxOnTxAnt = false;
+    // Build 750: the step attenuation each ADC was last set to, dB (written
+    // by the backend, Hl2Backend::ananPushAttenuators; -1 = not set yet).
+    // Read by the RZ3QS branch's ATT indicator in the status bar.
+    int adcAttDb[2] = {-1, -1};
     bool adcOverloadTest = false;
     // What the panadapter adds to a per-bin level to draw it (06.11: the
     // referral of a bin to 500 Hz plus the meter's calibration); lines that

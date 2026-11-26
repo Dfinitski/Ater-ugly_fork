@@ -6603,6 +6603,58 @@ void MainWindow::buildUI()
         };
         connect(antTimer, &QTimer::timeout, trxBtn, trxRefresh);
         trxRefresh();
+
+        // ANAN fork build 750 (operator, 25.11: "for the RZ3QS branch only, a
+        // new element on the bottom bar, after a separator following the
+        // antenna indicator: the attenuators' current values, the same text
+        // style, two lines -- ATT1 -28 dB over ATT2 -13 dB"). The step
+        // attenuation each ADC is set to (AnanUiState::adcAttDb, written by
+        // the backend), as a negative dB figure. Shown, with its separator,
+        // only while the FreeDV text field reads RZ3QS (as A1 / A2, AeRX /
+        // AeTX); a radio with one ADC has only the ATT1 line.
+        QLabel* attSep = addSep();
+        auto* attStack = new QWidget;
+        auto* attBox = new QVBoxLayout(attStack);
+        attBox->setContentsMargins(0, 0, 0, 0);
+        attBox->setSpacing(0);
+        attBox->setAlignment(Qt::AlignVCenter);
+        QLabel* attLbl[2];
+        for (int i = 0; i < 2; ++i) {
+            attLbl[i] = new QLabel(QStringLiteral("ATT%1 -- dB").arg(i + 1));
+            applyStatusBarCompactLabelStyle(attLbl[i], QStringLiteral("{{color.text.secondary}}"));
+            attLbl[i]->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+            attBox->addWidget(attLbl[i]);
+        }
+        attStack->setObjectName(QStringLiteral("rz3qsAttStatus"));
+        attStack->setAccessibleName(QStringLiteral("Attenuators"));
+        attStack->setToolTip(QStringLiteral("Step attenuators of ADC1 and ADC2"));
+        hbox->addWidget(attStack);
+        attSep->hide();
+        attStack->hide();
+        auto attRefresh = [attSep, attStack, l1 = attLbl[0], l2 = attLbl[1]] {
+            const bool show = fdv::FdvState::instance().callsign == QLatin1String("RZ3QS");
+            if (attStack->isHidden() == show) {
+                attSep->setVisible(show);
+                attStack->setVisible(show);
+            }
+            if (!show)
+                return;
+            const auto& ui = anan::AnanUiState::instance();
+            auto text = [&ui](int adc) {
+                const int att = ui.adcAttDb[adc];
+                return att < 0 ? QStringLiteral("ATT%1 -- dB").arg(adc + 1)
+                               : QStringLiteral("ATT%1 %2 dB").arg(adc + 1).arg(-att);
+            };
+            if (l1->text() != text(0))
+                l1->setText(text(0));
+            if (l2->text() != text(1))
+                l2->setText(text(1));
+            const bool two = ui.numAdcs >= 2;
+            if (l2->isHidden() == two)
+                l2->setVisible(two);
+        };
+        connect(antTimer, &QTimer::timeout, attStack, attRefresh);
+        attRefresh();
     }
 
     // ANAN fork build 564 (operator, 21.11: "TX goes where UTC Time is, UTC
