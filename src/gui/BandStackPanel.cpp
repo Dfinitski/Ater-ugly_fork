@@ -292,12 +292,25 @@ void BandStackPanel::rebuildLayout()
                                     float(c.greenF() * t + base.greenF() * (1.0 - t)),
                                     float(c.blueF() * t + base.blueF() * (1.0 - t)));
         };
+        // Build 767 (operator, 26.11: "the thin frame is still bright -- make
+        // it more muted, for a little volume"): a slight top-to-bottom
+        // gradient (48 % -> 34 % of the colour) and a bevel instead of the
+        // bright frame -- top / left a shade lighter than the fill, bottom /
+        // right the colour in near-black (20 %). Hover: the fill 10 % up.
+        const QColor top = mixed(bm.color, 0.48), bottom = mixed(bm.color, 0.34);
+        const QColor light = top.lighter(112);
+        const QColor dark = QColor::fromRgbF(float(bm.color.redF() * 0.2 + 0.0196 * 0.8),
+                                             float(bm.color.greenF() * 0.2 + 0.0314 * 0.8),
+                                             float(bm.color.blueF() * 0.2 + 0.0471 * 0.8));
         btn->setStyleSheet(
-            QString("QPushButton { background: %1; border: 1px solid %2; "
+            QString("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+                    "stop:0 %1, stop:1 %2); border: 1px solid; border-top-color: %3; "
+                    "border-left-color: %3; border-bottom-color: %4; border-right-color: %4; "
                     "border-radius: 3px; color: #f0f0f0; font-size: 12px; font-weight: bold; }"
-                    "QPushButton:hover { background: %3; }")
-                .arg(mixed(bm.color, 0.45).name(), mixed(bm.color, 0.70).name(),
-                     mixed(bm.color, 0.60).name()));
+                    "QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+                    "stop:0 %5, stop:1 %6); }")
+                .arg(top.name(), bottom.name(), light.name(), dark.name(),
+                     mixed(bm.color, 0.58).name(), mixed(bm.color, 0.44).name()));
 
         btn->setContextMenuPolicy(Qt::CustomContextMenu);
         bm.button = btn;
