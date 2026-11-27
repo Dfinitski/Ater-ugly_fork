@@ -602,6 +602,32 @@ bool layoutBottomGroup(QWidget* group, const char* orderKey,
 
 } // namespace
 
+namespace {
+
+// Build 831 (operator, 27.11: "I do not see that element, yet it is counted
+// -- count only what is shown on the bar now"): a status bar block counts as
+// shown only if it is really on screen and has something to show -- a label
+// with text or a picture inside it (the PA stack, for one, can stand there
+// with all its rows hidden or empty).
+bool statusBlockShown(const QWidget* w)
+{
+    if (!w || !w->isVisible() || w->width() <= 0)
+        return false;
+    if (const auto* l = qobject_cast<const QLabel*>(w))
+        return !l->text().trimmed().isEmpty() || !l->pixmap().isNull();
+    for (const QLabel* l : w->findChildren<QLabel*>()) {
+        if (!l->isVisibleTo(w))
+            continue;
+        if (!l->text().trimmed().isEmpty() || !l->pixmap().isNull())
+            return true;
+    }
+    if (const auto* b = qobject_cast<const QAbstractButton*>(w))
+        return !b->text().trimmed().isEmpty() || !b->icon().isNull();
+    return false;
+}
+
+} // namespace
+
 // ANAN fork build 823 (operator, 27.11): the Bottom Panel elements' order,
 // visibility and separators (View > Appearance > Bottom Panel).
 void MainWindow::applyBottomPanelLayout()
@@ -629,7 +655,8 @@ void MainWindow::applyBottomPanelLayout()
     // Build 826 (operator, 27.11: "the first element on the right must start
     // with a separator"): it always does, unless GPS's own separator is
     // already the last thing before the group (no PA / TGXL / PGXL after it).
-    auto shown = [](const QWidget* w) { return w && !w->isHidden(); };
+    // Build 831: only what is shown on the bar now counts.
+    auto shown = [](const QWidget* w) { return statusBlockShown(w); };
     const bool gpsSepLast = shown(m_gpsSeparator) && !shown(m_paStack)
                             && !shown(m_tgxlContainer) && !shown(m_pgxlContainer);
     const bool before = !gpsSepLast;
