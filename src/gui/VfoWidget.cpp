@@ -3650,14 +3650,14 @@ void VfoWidget::updateDspTabAccent()
         AetherSDR::ButtonStyles::apply(dspTabButton, dspActive ? "vfo.tab.dsp" : "vfo.tab");
     }
 
-    // ANAN fork build 786 (operator, 26.11: "the flag's icon lit if either
-    // value is not 0"): the X/RIT tab (index 3), closed, is lit amber -- the
-    // RIT / XIT buttons' colour -- while the RIT or the XIT offset is not 0,
-    // whether or not it is switched on. Run with the DSP accent: every place
+    // ANAN fork build 786: the X/RIT tab (index 3), closed, is lit amber --
+    // the RIT / XIT buttons' colour. Run with the DSP accent: every place
     // that refreshes that one refreshes this one too.
     constexpr int kRitTab = 3;
     if (m_tabBtns.size() > kRitTab && m_activeTab != kRitTab) {
-        const bool ritSet = m_slice && (m_slice->ritFreq() != 0 || m_slice->xitFreq() != 0);
+        // Build 804 (operator, 26.11): lit only while RIT or XIT is switched
+        // ON by its button (an offset kept while off no longer lights it).
+        const bool ritSet = m_slice && (m_slice->ritOn() || m_slice->xitOn());
         AetherSDR::ButtonStyles::apply(m_tabBtns[kRitTab], ritSet ? "vfo.tab.rit" : "vfo.tab");
     }
 }
