@@ -460,6 +460,9 @@ private:
     // separators of its elements; switching one on / off (ids: ant, tx, att,
     // ae, cpu, utc).
     void applyBottomPanelLayout();
+    // Build 832: the station name centred on the bar; left elements that do
+    // not fit left of it moved past it; the window's minimum width.
+    void layoutBottomCenter();
     void setBottomPanelElement(const QString& id, bool on);
 
     // Audio thread helpers — invoke AudioEngine methods on the worker thread (#502)
@@ -1948,6 +1951,8 @@ private:
     QWidget* m_pgxlContainer{nullptr};
     QWidget* m_bottomLeftGroup{nullptr};    // build 823
     QWidget* m_bottomRightGroup{nullptr};   // build 823
+    QWidget* m_bottomOverflowGroup{nullptr};   // build 832
+    int m_bottomMinWidth{0};                  // build 832
     QLabel*  m_pgxlIndicator{nullptr};   // top row: "AMP"
     QLabel*  m_pgxlStateLabel{nullptr};  // bottom row: OPERATE / STANDBY
     QLabel* m_txIndicator{nullptr};

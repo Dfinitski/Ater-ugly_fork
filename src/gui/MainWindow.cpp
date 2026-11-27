@@ -340,6 +340,26 @@ protected:
     }
 };
 
+// ANAN fork build 832: runs a function after each resize of the watched
+// widget (once its layout has placed the children).
+class BarResizeWatcher : public QObject
+{
+public:
+    BarResizeWatcher(QObject* parent, std::function<void()> fn)
+        : QObject(parent), m_fn(std::move(fn)) {}
+
+protected:
+    bool eventFilter(QObject* obj, QEvent* event) override
+    {
+        if (event->type() == QEvent::Resize)
+            QTimer::singleShot(0, this, [this] { if (m_fn) m_fn(); });
+        return QObject::eventFilter(obj, event);
+    }
+
+private:
+    std::function<void()> m_fn;
+};
+
 // Pan-follow edge-margin constants moved to MainWindow_Wiring.cpp (#3351 Phase 1d).
 // kPanFollowAnimationDurationMs moved to MainWindow_Wiring.cpp (#3351 Phase 1d).
 // kSliderShortcutLeaseMs moved to MainWindow_Shortcuts.cpp (#3351 Phase 1c).
@@ -501,6 +521,7 @@ void MainWindow::refitStationLabel()
         return;
     if (setStatusBarStationText(m_stationNickLabel, m_stationNickLabel->text()))
         updateStatusBarMinimumWidth();
+    layoutBottomCenter();   // build 832: the name stays centred at its new width
 }
 
 namespace {
@@ -634,22 +655,10 @@ void MainWindow::applyBottomPanelLayout()
 {
     if (!m_bottomLeftGroup || !m_bottomRightGroup)
         return;
-    // Left: the band stack icon always stands before the group.
-    bool changed = layoutBottomGroup(m_bottomLeftGroup, "BottomPanelLeftOrder",
-                                     kBottomLeftElements, true);
-    // Build 827: the left group ends with a separator while any unit shows.
-    // The units take indices 0..n-1 above, so it stays after them.
-    if (auto* endSep = m_bottomLeftGroup->findChild<QLabel*>(QStringLiteral("bottomLeftEndSep"),
-                                                             Qt::FindDirectChildrenOnly)) {
-        bool anyOn = false;
-        for (const auto& e : kBottomLeftElements)
-            if (bottomPanelOn(e))
-                anyOn = true;
-        if (endSep->isHidden() == anyOn) {
-            endSep->setVisible(anyOn);
-            changed = true;
-        }
-    }
+    // Build 832: the left elements (order, visibility, separators, which of
+    // them stand left of the station name and which jump past it) are laid
+    // out by layoutBottomCenter() below, with the station name.
+    bool changed = false;
     // Right: before the group stand GPS (its separator after it, set by the
     // GPS code), PA, TGXL / PGXL (each with its separator before it).
     // Build 826 (operator, 27.11: "the first element on the right must start
@@ -677,6 +686,204 @@ void MainWindow::applyBottomPanelLayout()
     }
     if (changed)
         updateStatusBarMinimumWidth();
+    layoutBottomCenter();
+}
+
+// ANAN fork build 832 (operator, 27.11): "the station name always stands in
+// the centre of the whole bar and does not move. If the left elements have
+// no room -- when one is switched on or the window gets narrower -- they jump
+// past the station name. If the window gets too narrow for all the elements,
+// the resize stops."
+//  - The station name is not in the bar's layout: it is placed at the centre
+//    of the bar here.
+//  - The left elements, in their order, stand left of it as far as they fit
+//    (each with its separator, the group ending with one, build 827); the
+//    rest go to the overflow group just right of the name (separators
+//    between them).
+//  - The window's minimum width is the narrowest bar on which some split of
+//    the elements fits with the name centred (m_bottomMinWidth, used by
+//    updateStatusBarMinimumWidth).
+// Called from applyBottomPanelLayout (every 250 ms and on a change), on a
+// resize of the bar and when the name's text changes.
+void MainWindow::layoutBottomCenter()
+{
+    if (!m_statusBarContainer || !m_bottomLeftGroup || !m_bottomOverflowGroup
+        || !m_stationNickLabel || !m_statusMessageLabel)
+        return;
+    auto* bar = qobject_cast<QBoxLayout*>(m_statusBarContainer->layout());
+    auto* leftLay = qobject_cast<QBoxLayout*>(m_bottomLeftGroup->layout());
+    auto* overLay = qobject_cast<QBoxLayout*>(m_bottomOverflowGroup->layout());
+    if (!bar || !leftLay || !overLay)
+        return;
+    const int barW = m_statusBarContainer->width();
+    const int barH = m_statusBarContainer->height();
+    const int sp = bar->spacing();
+    auto* endSep = m_bottomLeftGroup->findChild<QLabel*>(QStringLiteral("bottomLeftEndSep"),
+                                                         Qt::FindDirectChildrenOnly);
+
+    // The left elements in their order.
+    struct LeftUnit {
+        QWidget* w;
+        QLabel* sep;
+        bool on;
+        int wide;    // with its separator
+        int sepW;    // its separator and the gap after it
+    };
+    QList<LeftUnit> units;
+    for (const QString& id : bottomPanelOrder("BottomPanelLeftOrder", kBottomLeftElements)) {
+        auto* w = m_statusBarContainer->findChild<QWidget*>(QStringLiteral("bottomUnit_") + id);
+        if (!w)
+            continue;
+        bool on = false;
+        for (const auto& e : kBottomLeftElements)
+            if (id == QLatin1String(e.id))
+                on = bottomPanelOn(e);
+        auto* sep = w->findChild<QLabel*>(QStringLiteral("bottomSep"), Qt::FindDirectChildrenOnly);
+        const int sepW = sep ? sep->sizeHint().width() + sp : 0;
+        int wide = w->sizeHint().width();
+        if (sep && sep->isHidden())
+            wide += sepW;
+        units.append({w, sep, on, wide, sepW});
+    }
+    QList<int> vis;
+    for (int i = 0; i < units.size(); ++i)
+        if (units[i].on)
+            vis.append(i);
+    const int n = int(vis.size());
+    const int endW = endSep ? endSep->sizeHint().width() : 0;
+    // Width of the left group holding the first p shown elements.
+    auto leftW = [&units, &vis, sp, endW](int p) {
+        if (p <= 0)
+            return 0;
+        int w = 0;
+        for (int i = 0; i < p; ++i)
+            w += units[vis[i]].wide;
+        return w + sp * (p - 1) + sp + endW;
+    };
+    // Width of the overflow group holding the rest (no separator on its first).
+    auto overW = [&units, &vis, sp, n](int p) {
+        if (p >= n)
+            return 0;
+        int w = 0;
+        for (int i = p; i < n; ++i)
+            w += units[vis[i]].wide - (i == p ? units[vis[i]].sepW : 0);
+        return w + sp * (n - p - 1);
+    };
+
+    // Where the left group starts (after the band stack icon) and where the
+    // right section starts (its first widget really on the bar).
+    const int leftStart = m_bottomLeftGroup->x();
+    int rightStart = barW - bar->contentsMargins().right();
+    const int msgIdx = bar->indexOf(m_statusMessageLabel);
+    for (int i = msgIdx + 1; i >= 1 && i < bar->count(); ++i) {
+        QWidget* w = bar->itemAt(i)->widget();
+        if (w && w->isVisibleTo(m_statusBarContainer) && w->width() > 0)
+            rightStart = std::min(rightStart, w->x());
+    }
+    const int rightNeed = barW - rightStart;
+
+    const bool stationOn = !m_stationNickLabel->isHidden();
+    const int sw = stationOn ? m_stationNickLabel->minimumWidth() : 0;
+    const int sh = m_stationNickLabel->minimumHeight() > 0 ? m_stationNickLabel->minimumHeight()
+                                                           : m_stationNickLabel->sizeHint().height();
+    const int nameGap = stationOn ? sp : 0;
+    const int x0 = (barW - sw) / 2;
+
+    // As many as fit left of the name; the rest jump past it.
+    int p = n;
+    while (p > 0 && leftStart + leftW(p) + sp > x0)
+        --p;
+
+    // The narrowest bar on which some split fits with the name centred.
+    int minW = 0;
+    for (int q = 0; q <= n; ++q) {
+        const int leftNeed = leftStart + leftW(q) + sp;
+        const int rightSide = nameGap + overW(q) + (q < n ? sp : 0) + rightNeed;
+        const int w = sw + 2 * std::max(leftNeed, rightSide);
+        if (q == 0 || w < minW)
+            minW = w;
+    }
+
+    // Place the elements: shown ones left of the name, then the hidden ones
+    // (in the left group, before its end separator); the rest in the
+    // overflow group.
+    QList<QWidget*> leftOrder;
+    QList<QWidget*> overOrder;
+    for (int i = 0; i < p; ++i)
+        leftOrder.append(units[vis[i]].w);
+    for (const LeftUnit& u : units)
+        if (!u.on)
+            leftOrder.append(u.w);
+    for (int i = p; i < n; ++i)
+        overOrder.append(units[vis[i]].w);
+    bool moved = false;
+    for (int i = 0; i < leftOrder.size(); ++i) {
+        QWidget* w = leftOrder[i];
+        if (w->parentWidget() != m_bottomLeftGroup) {
+            overLay->removeWidget(w);
+            w->setParent(m_bottomLeftGroup);
+            leftLay->insertWidget(i, w);
+            moved = true;
+        } else if (leftLay->indexOf(w) != i) {
+            leftLay->removeWidget(w);
+            leftLay->insertWidget(i, w);
+            moved = true;
+        }
+    }
+    for (int i = 0; i < overOrder.size(); ++i) {
+        QWidget* w = overOrder[i];
+        if (w->parentWidget() != m_bottomOverflowGroup) {
+            leftLay->removeWidget(w);
+            w->setParent(m_bottomOverflowGroup);
+            overLay->insertWidget(i, w);
+            moved = true;
+        } else if (overLay->indexOf(w) != i) {
+            overLay->removeWidget(w);
+            overLay->insertWidget(i, w);
+            moved = true;
+        }
+    }
+    // Visibility and separators (setParent hides a widget: always re-set).
+    for (const LeftUnit& u : units) {
+        if (u.w->isHidden() == u.on)
+            u.w->setVisible(u.on);
+    }
+    for (int i = 0; i < n; ++i) {
+        const LeftUnit& u = units[vis[i]];
+        const bool sepOn = i < p || i > p;   // the first past the name has none
+        if (u.sep && u.sep->isHidden() == sepOn)
+            u.sep->setVisible(sepOn);
+    }
+    if (endSep && endSep->isHidden() == (p > 0))
+        endSep->setVisible(p > 0);
+
+    // The status message has the room between the left group and the name.
+    const int msgMax = std::max(0, x0 - 2 * sp - (leftStart + leftW(p)));
+    if (m_statusMessageLabel->maximumWidth() != msgMax)
+        m_statusMessageLabel->setMaximumWidth(msgMax);
+
+    // The name at the centre, the overflow just right of it.
+    if (stationOn) {
+        const QRect r(x0, (barH - sh) / 2, sw, sh);
+        if (m_stationNickLabel->geometry() != r)
+            m_stationNickLabel->setGeometry(r);
+        m_stationNickLabel->raise();
+    }
+    const bool overOn = p < n;
+    if (overOn) {
+        const QSize hint = m_bottomOverflowGroup->sizeHint();
+        const QRect r(x0 + sw + nameGap, (barH - hint.height()) / 2, hint.width(), hint.height());
+        if (m_bottomOverflowGroup->geometry() != r)
+            m_bottomOverflowGroup->setGeometry(r);
+        m_bottomOverflowGroup->raise();
+    }
+    if (m_bottomOverflowGroup->isHidden() == overOn)
+        m_bottomOverflowGroup->setVisible(overOn);
+
+    if (moved || minW != m_bottomMinWidth) {
+        m_bottomMinWidth = minW;
+        updateStatusBarMinimumWidth();
+    }
 }
 
 // Build 823: an element switched on in Appearance goes to the end of the left
@@ -4511,8 +4718,11 @@ void MainWindow::updateStatusBarMinimumWidth()
 
     const int sizeGripAllowance =
         (m_sizeGrip && m_sizeGrip->isVisible()) ? m_sizeGrip->width() + 4 : 4;
+    // Build 832: and never narrower than the bar on which the elements fit
+    // around the centred station name (layoutBottomCenter).
     const int statusMinWidth =
-        m_statusBarContainer->minimumSizeHint().width() + sizeGripAllowance;
+        std::max(m_statusBarContainer->minimumSizeHint().width(), m_bottomMinWidth)
+        + sizeGripAllowance;
     const int screenWidthCap =
         screen() ? screen()->availableGeometry().width() : statusMinWidth;
     const int boundedMinWidth =
@@ -6469,7 +6679,13 @@ void MainWindow::buildUI()
     m_bottomLeftGroup->setObjectName(QStringLiteral("bottomLeftGroup"));
     m_bottomRightGroup = new QWidget(m_statusBarContainer);
     m_bottomRightGroup->setObjectName(QStringLiteral("bottomRightGroup"));
-    for (QWidget* g : {m_bottomLeftGroup, m_bottomRightGroup}) {
+    // Build 832: left elements that do not fit left of the centred station
+    // name stand here, just right of it -- placed by hand, not in the bar's
+    // layout (layoutBottomCenter).
+    m_bottomOverflowGroup = new QWidget(m_statusBarContainer);
+    m_bottomOverflowGroup->setObjectName(QStringLiteral("bottomOverflowGroup"));
+    m_bottomOverflowGroup->hide();
+    for (QWidget* g : {m_bottomLeftGroup, m_bottomRightGroup, m_bottomOverflowGroup}) {
         auto* gl = new QHBoxLayout(g);
         gl->setContentsMargins(0, 0, 0, 0);
         gl->setSpacing(6);
@@ -7295,7 +7511,9 @@ void MainWindow::buildUI()
                                       "(set in Radio Setup > Radio > Nickname).\n"
                                       "Click to open the device settings."));
     m_stationNickLabel->installEventFilter(this);
-    hbox->addWidget(m_stationNickLabel, 0, Qt::AlignVCenter);
+    // Build 832: not in the bar's layout -- centred on the whole bar by
+    // layoutBottomCenter().
+    m_stationNickLabel->setParent(m_statusBarContainer);
     m_stationLabel = m_stationNickLabel;  // alias for existing references
     // ANAN fork build 518 (operator, 19.11: "until the radio is on the frame
     // does not follow the text and the text does not fit"). OUR ERROR: the
@@ -7768,6 +7986,10 @@ void MainWindow::buildUI()
     // 250 ms for the right group's first separator, which depends on GPS /
     // PA / TGXL / PGXL (shown per radio by their own code).
     applyBottomPanelLayout();
+    // Build 832: the station name re-centred on every resize of the bar.
+    m_statusBarContainer->installEventFilter(new BarResizeWatcher(m_statusBarContainer, [this] {
+        layoutBottomCenter();
+    }));
     {
         auto* bottomTimer = new QTimer(m_statusBarContainer);
         bottomTimer->setInterval(250);
