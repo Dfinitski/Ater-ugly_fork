@@ -636,6 +636,18 @@ void MainWindow::applyBottomPanelLayout()
     if (layoutBottomGroup(m_bottomRightGroup, "BottomPanelRightOrder",
                           kBottomRightElements, before))
         changed = true;
+    // Build 830: the right section starts with a separator whatever comes
+    // first -- GPS and PA have none of their own (TGXL / PGXL and the group's
+    // units do), so the section's leading separator shows before them.
+    if (auto* startSep = m_statusBarContainer
+            ? m_statusBarContainer->findChild<QLabel*>(QStringLiteral("bottomRightStartSep"))
+            : nullptr) {
+        const bool need = shown(m_gpsStatusButton) || shown(m_paStack);
+        if (startSep->isHidden() == need) {
+            startSep->setVisible(need);
+            changed = true;
+        }
+    }
     if (changed)
         updateStatusBarMinimumWidth();
 }
@@ -7282,6 +7294,16 @@ void MainWindow::buildUI()
     auto reserveTelemetryStack = [](QWidget* stack, const QStringList& samples) {
         reserveStatusBarStackWidth(stack, samples, kTelemetryStackMinWidth);
     };
+
+    // ANAN fork build 830 (operator, 27.11: "the first element on the right
+    // still has no separator"): the right section's leading separator, for
+    // when its first visible element is GPS or PA (neither starts with one of
+    // its own); applyBottomPanelLayout shows it.
+    {
+        QLabel* rightStartSep = addSep();
+        rightStartSep->setObjectName(QStringLiteral("bottomRightStartSep"));
+        rightStartSep->hide();
+    }
 
     // GPS satellites (top) + lock status (bottom) stacked
     auto* gpsStack = new QPushButton;
