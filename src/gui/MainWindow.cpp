@@ -581,6 +581,19 @@ void MainWindow::applyBottomPanelLayout()
     // Left: the band stack icon always stands before the group.
     bool changed = layoutBottomGroup(m_bottomLeftGroup, "BottomPanelLeftOrder",
                                      kBottomLeftElements, true);
+    // Build 827: the left group ends with a separator while any unit shows.
+    // The units take indices 0..n-1 above, so it stays after them.
+    if (auto* endSep = m_bottomLeftGroup->findChild<QLabel*>(QStringLiteral("bottomLeftEndSep"),
+                                                             Qt::FindDirectChildrenOnly)) {
+        bool anyOn = false;
+        for (const auto& e : kBottomLeftElements)
+            if (bottomPanelOn(e))
+                anyOn = true;
+        if (endSep->isHidden() == anyOn) {
+            endSep->setVisible(anyOn);
+            changed = true;
+        }
+    }
     // Right: before the group stand GPS (its separator after it, set by the
     // GPS code), PA, TGXL / PGXL (each with its separator before it).
     // Build 826 (operator, 27.11: "the first element on the right must start
@@ -6391,6 +6404,16 @@ void MainWindow::buildUI()
         auto* gl = new QHBoxLayout(g);
         gl->setContentsMargins(0, 0, 0, 0);
         gl->setSpacing(6);
+    }
+    // Build 827 (operator, 27.11: "the last element on the left must end with
+    // a separator, as the right one starts with one"): a separator after the
+    // left group's units (they are reordered in front of it), shown while any
+    // of them is.
+    {
+        auto* endSep = new QLabel(QStringLiteral(" · "), m_bottomLeftGroup);
+        endSep->setObjectName(QStringLiteral("bottomLeftEndSep"));
+        endSep->setStyleSheet(sepStyle);
+        m_bottomLeftGroup->layout()->addWidget(endSep);
     }
     auto makeBottomUnit = [sepStyle](QWidget* group, const char* id) -> QHBoxLayout* {
         auto* unit = new QWidget(group);
