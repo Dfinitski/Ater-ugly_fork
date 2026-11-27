@@ -275,7 +275,9 @@ bool SMeterWidget::paintPhotoFace(QPainter& p)
     const double rad = qDegreesToRadians(deg);
     const QPointF dir(std::cos(rad), -std::sin(rad));
     const QPointF tip = pivot + dir * (kNeedleLen * k);
-    const double w = std::max(1.5, 10.0 * k);
+    // Build 813 (operator, 27.11: "a bit thin, +50 %"): 10 -> 15 px of the
+    // photo, not below 2.25 px (was 1.5).
+    const double w = std::max(2.25, 15.0 * k);
     p.save();
     p.setClipRect(target);
     p.setRenderHint(QPainter::Antialiasing, true);
