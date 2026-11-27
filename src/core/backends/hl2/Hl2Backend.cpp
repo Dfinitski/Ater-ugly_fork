@@ -3355,6 +3355,9 @@ void Hl2Backend::ananPushCwKeyer()
     m_ananCwTxSilent.store(k.enabled, std::memory_order_relaxed);
     if (m_txEngine)
         m_txEngine->setCwSilent(k.enabled);
+    // Build 840: the CW key trim follows the keyer on / off at once.
+    if (m_ananLastDrivePercent >= 0 && m_ananPaCalApplied != ananPaCalKey())
+        applyDrive(m_ananLastDrivePercent);
     k.mode = std::clamp(st.value(QStringLiteral("AnanKeyerMode"), 2).toInt(), 0, 2);
     k.speedWpm = std::clamp(st.value(QStringLiteral("AnanKeyerSpeed"), 20).toInt(), 10, 63);
     k.weight = std::clamp(st.value(QStringLiteral("AnanKeyerWeight"), 50).toInt(), 33, 66);
@@ -9903,11 +9906,25 @@ void Hl2Backend::applyDrive(int percent)
     double power = static_cast<double>(clamped);
     if (const anan::Xvtr* x = ananTxXvtr())
         power = std::min(power, std::clamp(x->maxDrivePct, 0.0, 100.0));
-    const int drive = static_cast<int>(std::lround(
-        255.0 * cal / 100.0 * std::pow(power / 100.0, e)));
+    double driveF = 255.0 * cal / 100.0 * std::pow(power / 100.0, e);
+    // ANAN fork build 840 (operator, 27.11: CW from the key is ~20 % below
+    // TUNE at the same settings). In CW the radio's FPGA keyer makes the
+    // carrier itself, below the full scale our TUNE tone has; Radio Setup >
+    // PA Level Calibration > "CW Key" trims the drive while it does (CW, no
+    // TUNE): -30 ... +30 % of the drive (+12 % = +1 dB, about +25 % power).
+    if (m_ananCwTxSilent.load(std::memory_order_relaxed) && !m_tuning)
+        driveF *= 1.0 + ananCwKeyTrimPercent() / 100.0;
+    const int drive = static_cast<int>(std::lround(driveF));
     // Build 825: the model's ceiling of the drive byte (Odyssey-3: 130,
     // 255 on the 6 m amateur band).
     setTxDriveLevel(std::clamp(drive, 0, ananDriveCeiling()));
+}
+
+// Build 840: Radio Setup > PA Level Calibration > CW Key, in % of the drive.
+int Hl2Backend::ananCwKeyTrimPercent()
+{
+    return std::clamp(AppSettings::instance()
+                          .value(QStringLiteral("AnanCwKeyDriveTrim"), 0).toInt(), -30, 30);
 }
 
 // ANAN fork build 825 (operator, 27.11): on the Odyssey-3 the drive byte is
@@ -9975,6 +9992,9 @@ QString Hl2Backend::ananPaCalKey() const
     const anan::Xvtr* x = ananTxXvtr();
     // Build 825: with the drive ceiling, so a change of it re-applies the drive.
     return m_currentBandKey + QLatin1Char(':') + QString::number(ananDriveCeiling()) + QLatin1Char(':')
+         // Build 840: the CW key trim, while it is in force.
+         + QString::number((m_ananCwTxSilent.load(std::memory_order_relaxed) && !m_tuning)
+                               ? ananCwKeyTrimPercent() : 0) + QLatin1Char(':')
          + QString::number(ananPaCalPercent()) + QLatin1Char(':')
          + QString::number(ananPaMidDrivePercent(), 'f', 1) + QLatin1Char(':')
          + (x ? QString::number(x->index) + QLatin1Char('/') + QString::number(x->maxDrivePct, 'f', 2)

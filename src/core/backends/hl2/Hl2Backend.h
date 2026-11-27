@@ -695,6 +695,8 @@ private:
     // Build 825: the highest drive byte the model takes (Odyssey-3: 130; 255
     // on the 6 m amateur band); 255 for the others.
     [[nodiscard]] int ananDriveCeiling() const;
+    // Build 840: the drive trim of CW from the radio's keyer (-30..+30 %).
+    [[nodiscard]] static int ananCwKeyTrimPercent();
     // The receiver's own noise, dBm / 500 Hz at the ADC, without the meter's
     // calibration (published with it as AnanUiState::ownFloorDbm).
     double m_ananOwnNoise[2] = {std::numeric_limits<double>::quiet_NaN(),

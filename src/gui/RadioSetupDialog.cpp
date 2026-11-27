@@ -4881,7 +4881,8 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     auto bandCalGroup = [this, vbox](const QString& title, const QString& prefix,
                                      int lo, int hi, int def, bool signedValue,
                                      const QString& tip,
-                                     const std::function<void(QGridLayout*)>& header = {}) {
+                                     const std::function<void(QGridLayout*)>& header = {},
+                                     const std::function<void(QGridLayout*, int, int)>& tail = {}) {
         auto* calGroup = new QGroupBox(title);
         auto* grid = new QGridLayout(calGroup);
         grid->setHorizontalSpacing(8);
@@ -4927,6 +4928,9 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
             grid->addWidget(slider, row, col + 1);
             grid->addWidget(val, row, col + 2);
         }
+        // Build 840: an extra slider in the next free cell (after 6 m).
+        if (tail)
+            tail(grid, rowBase + idx / 3, (idx % 3) * 3);
         grid->setColumnStretch(9, 1);   // spare width after the third column
         vbox->addWidget(calGroup);
     };
@@ -4936,7 +4940,45 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
     bandCalGroup(QStringLiteral("PA Level Calibration"), hl2::Hl2Backend::ananPaCalPrefix(),
                  0, 100, hl2::Hl2Backend::ananPaCalDefault(), false,
                  QStringLiteral("Maximum transmit level on %1: what the RF Power and Tune Power "
-                                "sliders reach at 100 %, in percent of the full drive."));
+                                "sliders reach at 100 %, in percent of the full drive."),
+                 {},
+                 // ANAN fork build 840 (operator, 27.11: CW from the key ~20 %
+                 // below TUNE): the drive trim of the radio's CW keyer, the
+                 // last cell of the band rows.
+                 [this](QGridLayout* grid, int row, int col) {
+                     const QString key = QStringLiteral("AnanCwKeyDriveTrim");
+                     auto* lbl = new QLabel(QStringLiteral("CW"));   // as wide as the band names
+                     lbl->setFixedWidth(34);
+                     auto* slider = new GuardedSlider(Qt::Horizontal);
+                     slider->setRange(-30, 30);
+                     slider->setFixedWidth(110);
+                     slider->setObjectName(QStringLiteral("ananCwKeyDriveTrim"));
+                     slider->setAccessibleName(QStringLiteral("PA Level Calibration CW Key"));
+                     slider->setToolTip(QStringLiteral(
+                         "CW from the key: in CW the radio's own keyer makes the carrier, a little
+"
+                         "below the full scale of TUNE. This trims the drive while it does (all bands),
+"
+                         "in percent of the drive: +12 % = +1 dB, about +25 % power. TUNE unchanged."));
+                     auto* val = new QLabel;
+                     val->setFixedWidth(38);
+                     val->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                     auto text = [](int v) {
+                         return v > 0 ? QStringLiteral("+%1 %").arg(v) : QStringLiteral("%1 %").arg(v);
+                     };
+                     const int v0 = std::clamp(AppSettings::instance().value(key, 0).toInt(), -30, 30);
+                     slider->setValue(v0);
+                     val->setText(text(v0));
+                     connect(slider, &QSlider::valueChanged, this, [key, val, text](int v) {
+                         val->setText(text(v));
+                         auto& st = AppSettings::instance();
+                         st.setValue(key, v);
+                         st.save();
+                     });
+                     grid->addWidget(lbl, row, col);
+                     grid->addWidget(slider, row, col + 1);
+                     grid->addWidget(val, row, col + 2);
+                 });
     // PA Power Law as its mid-scale point (operator, 07.11, build 193): the
     // drive the RF Power and Tune sliders give at 50 %, in % of the calibrated
     // full drive (Hl2Backend::applyDrive). Every PA compresses differently, so
