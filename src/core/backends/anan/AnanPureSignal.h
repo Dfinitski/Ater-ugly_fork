@@ -231,6 +231,11 @@ private:
     // Thetis auto-attenuate state machine.
     enum class AaState { Monitor, SetNewValues, Restore } m_aa = AaState::Monitor;
     int m_aaDelta = 0;
+    // Build 836: the over started at 31 dB ("Full ATT when TX" on the
+    // feedback ADC); the steps down from there keep the correction.
+    bool m_aaFromFullAtt = false;
+    bool fullAttStartWanted() const;
+    void startAtFullAtt(const char* when);
     int m_aaSaveAuto = 0, m_aaSaveSingle = 0;
     // After an attenuator change: when, and calibrations completed since --
     // the next one or two still carry the old level (log 22:36: "feedback

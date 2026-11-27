@@ -2902,10 +2902,29 @@ void P2Transport::fillTxPacketSource(std::complex<float>* out, int n)
 {
     constexpr double fs = kDucSampleRateHz;
     if (m_toneAmp > 0.0) {
+        // ANAN fork build 836 (operator, 27.11: "is the output delay applied
+        // to TUNE?"): it was not -- the TUNE carrier (and the test tone) went
+        // out from the first packet after MOX, while the T/R relays were
+        // still moving. Now as voice: silence for the RF Delay after MOX,
+        // then a 2 ms rise.
+        const std::uint64_t delaySamples = static_cast<std::uint64_t>(
+            std::max(0, m_rfDelayMs.load(std::memory_order_relaxed))) * kDucSampleRateHz / 1000;
+        if (m_txSamplesOut < delaySamples) {
+            std::fill(out, out + n, std::complex<float>{});
+            m_txSamplesOut += static_cast<std::uint64_t>(n);
+            m_txRise = 0;
+            return;
+        }
+        constexpr int kToneRise = kDucSampleRateHz / 500;   // 2 ms
         const double step = 2.0 * std::numbers::pi * m_toneHz / fs;
         for (int i = 0; i < n; ++i) {
-            out[i] = {static_cast<float>(m_toneAmp * std::cos(m_tonePhase)),
-                      static_cast<float>(m_toneAmp * std::sin(m_tonePhase))};
+            double a = m_toneAmp;
+            if (m_txRise < kToneRise) {
+                a *= 0.5 - 0.5 * std::cos(std::numbers::pi * double(m_txRise) / double(kToneRise));
+                ++m_txRise;
+            }
+            out[i] = {static_cast<float>(a * std::cos(m_tonePhase)),
+                      static_cast<float>(a * std::sin(m_tonePhase))};
             m_tonePhase += step;
             if (m_tonePhase > 2.0 * std::numbers::pi)
                 m_tonePhase -= 2.0 * std::numbers::pi;

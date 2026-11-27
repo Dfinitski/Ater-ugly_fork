@@ -371,11 +371,46 @@ void AnanPureSignal::updateFeedGate()
         SetPSMox(m_channel, ok ? 1 : 0);
 }
 
+// ANAN fork build 836 (operator, 27.11: "with PureSignal on, TUNE overloads
+// the ADC -- auto-attenuate had taken the attenuator to 0; always start such
+// a transmission at 31 dB when Full ATT when TX is ticked"). With PS and its
+// auto-attenuate on and "Full ATT RXn when TX" ticked for the feedback ADC
+// (Radio Setup; RX1 = ADC1, RX2 = ADC2), every over starts with the feedback
+// attenuator at 31 dB -- set at the unkey, so it is in the radio before the
+// next MOX, and again at the key-down -- and auto-attenuate brings it down
+// from the first feedback level, keeping the correction (no recalibration).
+bool AnanPureSignal::fullAttStartWanted() const
+{
+    if (!m_s.enabled || !m_s.autoAttenuate || m_measStep >= 0)
+        return false;
+    const char* key = m_s.feedbackAdc == 0 ? "AnanAdc1FullAttOnTx" : "AnanAdc2FullAttOnTx";
+    return AppSettings::instance().value(QString::fromLatin1(key), QStringLiteral("True"))
+               .toString() == QLatin1String("True");
+}
+
+void AnanPureSignal::startAtFullAtt(const char* when)
+{
+    if (!fullAttStartWanted())
+        return;
+    m_aaFromFullAtt = true;
+    m_aaChangedMs = nowMs();
+    m_aaAttemptsSince = 0;
+    m_fbEma = 0.0;
+    if (m_s.attDb != 31) {
+        qCInfo(lcAnanPs).nospace() << "PureSignal auto-attenuate: att " << m_s.attDb
+                                   << " -> 31 dB " << when << " (Full ATT when TX)";
+        setAttenuation(31);
+    }
+}
+
 void AnanPureSignal::setKeyed(bool keyed, bool cw)
 {
     if (keyed == m_keyed && cw == m_cw)
         return;
+    if (!keyed && m_keyed)
+        startAtFullAtt("for the next over");   // build 836
     if (keyed && !m_keyed) {
+        startAtFullAtt("at the key-down");     // build 836: if the unkey did not
 #if !AETHER_WDSP_PS_CLASSIC
         const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
         if (txaHold && m_channel >= 0)
@@ -1950,6 +1985,33 @@ void AnanPureSignal::tick()
                     m_aaChangedMs = nowMs();
                     m_aaAttemptsSince = 0;
                     break;
+                }
+            }
+            // Build 836: started at 31 dB (Full ATT when TX). From the first
+            // feedback level of the over the attenuator goes straight to the
+            // 152 target, keeping the correction (calcc normalises the
+            // feedback per calibration), until the level is in the window.
+            if (m_aaFromFullAtt && m_keyed && attemptsChanged && m_measStep < 0
+                && nowMs() - m_aaChangedMs >= 150) {
+                if (fb >= kFbWinLow && fb <= kFbWinHigh) {
+                    m_aaFromFullAtt = false;
+                } else {
+                    double offDb = fb > 0 ? 20.0 * std::log10(double(fb) / kFbTarget) : -20.0;
+                    if (!std::isfinite(offDb))
+                        offDb = -20.0;
+                    const int newAtt = std::clamp(m_s.attDb + int(std::lround(offDb)), 0, 31);
+                    if (newAtt == m_s.attDb) {
+                        m_aaFromFullAtt = false;   // at a limit: the normal tracking takes over
+                    } else {
+                        qCInfo(lcAnanPs).nospace() << "PureSignal auto-attenuate (from full ATT): feedback " << fb
+                                                   << ", att " << m_s.attDb << " -> " << newAtt
+                                                   << " dB, correction kept";
+                        setAttenuation(newAtt);
+                        m_aaChangedMs = nowMs();
+                        m_aaAttemptsSince = 0;
+                        m_fbEma = 0.0;
+                        break;
+                    }
                 }
             }
             const bool needRecal = fb > kFbCoarseHigh || (fb < kFbCoarseLow && m_s.attDb > 0);
