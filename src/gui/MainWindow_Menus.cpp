@@ -1577,6 +1577,28 @@ void MainWindow::buildMenuBar()
         markerWidthGroup->addAction(action);
         connect(action, &QAction::triggered, this, [this, width = option.second] {
             VfoWidget::setDefaultMarkerWidth(width);
+            // ANAN fork build 835 (a user, 27.11: "View > VFO Marker Size Off,
+            // and after a restart the marker is back"). A slice with its own
+            // stored width (Slice<N>_MarkerWidth, written by the panadapter's
+            // right-click "VFO Marker") loaded that at the next start instead
+            // of this default, which was applied to the live slices without
+            // being saved for them. The choice here is for every slice: their
+            // own widths are dropped, so they follow the default from now on.
+            {
+                auto& st = AppSettings::instance();
+                bool removed = false;
+                for (int id = 0; id < 16; ++id) {
+                    for (const QString& key : {QStringLiteral("Slice%1_MarkerWidth").arg(id),
+                                               QStringLiteral("Slice%1_MarkerThin").arg(id)}) {
+                        if (st.contains(key)) {
+                            st.remove(key);
+                            removed = true;
+                        }
+                    }
+                }
+                if (removed)
+                    st.save();
+            }
             for (auto* vfo : findChildren<VfoWidget*>()) {
                 vfo->setMarkerWidth(width, /*persist=*/false);
             }
