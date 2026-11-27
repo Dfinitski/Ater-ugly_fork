@@ -8173,6 +8173,10 @@ bool Hl2Backend::hzInAmateurBand(double lo, double hi) const
 // bands (P2Transport::setCwBandInhibit).
 void Hl2Backend::updateCwBandInhibit()
 {
+    // Build 825: the TX frequency or the band plan moved -- the Odyssey-3's
+    // drive ceiling (ananDriveCeiling) may have changed with it.
+    if (m_ananLastDrivePercent >= 0 && m_ananPaCalApplied != ananPaCalKey())
+        applyDrive(m_ananLastDrivePercent);
     if (!m_metis)
         return;
     const Receiver* txRx = rx(m_txDdc);
@@ -9901,7 +9905,37 @@ void Hl2Backend::applyDrive(int percent)
         power = std::min(power, std::clamp(x->maxDrivePct, 0.0, 100.0));
     const int drive = static_cast<int>(std::lround(
         255.0 * cal / 100.0 * std::pow(power / 100.0, e)));
-    setTxDriveLevel(std::clamp(drive, 0, 255));
+    // Build 825: the model's ceiling of the drive byte (Odyssey-3: 130,
+    // 255 on the 6 m amateur band).
+    setTxDriveLevel(std::clamp(drive, 0, ananDriveCeiling()));
+}
+
+// ANAN fork build 825 (operator, 27.11): on the Odyssey-3 the drive byte is
+// at most 130; the full 255 only on 6 m, and only while the transmit
+// frequency is inside the 6 m amateur band (of the band plan's IARU region;
+// 50-54 MHz until it arrives) -- where the band's filter is in. Through a
+// transverter the IF is not the 6 m band: 130. Other radios: 255.
+int Hl2Backend::ananDriveCeiling() const
+{
+    if (m_ananModel != anan::AnanModel::Odyssey3)
+        return 255;
+    constexpr int kOdyssey3Ceiling = 130;
+    if (!ananOnSixMeters() || ananTxXvtr())
+        return kOdyssey3Ceiling;
+    const Receiver* txRx = rx(m_txDdc);
+    const double hz = m_txWantedHz > 0.0 ? m_txWantedHz : (txRx ? txRx->sliceFreqHz : 0.0);
+    if (hz <= 0.0)
+        return kOdyssey3Ceiling;
+    const auto [lo, hi] = txSpanHz(hz);
+    static const std::vector<std::pair<double, double>> kSixMetres = {{50'000'000, 54'000'000}};
+    const auto& bands = m_txBandsHz.empty() ? kSixMetres : m_txBandsHz;
+    for (const auto& [bLo, bHi] : bands) {
+        if (bLo < 49'000'000 || bHi > 55'000'000)
+            continue;   // not a 6 m allocation
+        if (lo >= bLo - 0.5 && hi <= bHi + 0.5)
+            return 255;
+    }
+    return kOdyssey3Ceiling;
 }
 
 double Hl2Backend::ananPaMidDrivePercent()
@@ -9939,7 +9973,9 @@ double Hl2Backend::ananPaMidDriveDefault()
 QString Hl2Backend::ananPaCalKey() const
 {
     const anan::Xvtr* x = ananTxXvtr();
-    return m_currentBandKey + QLatin1Char(':') + QString::number(ananPaCalPercent()) + QLatin1Char(':')
+    // Build 825: with the drive ceiling, so a change of it re-applies the drive.
+    return m_currentBandKey + QLatin1Char(':') + QString::number(ananDriveCeiling()) + QLatin1Char(':')
+         + QString::number(ananPaCalPercent()) + QLatin1Char(':')
          + QString::number(ananPaMidDrivePercent(), 'f', 1) + QLatin1Char(':')
          + (x ? QString::number(x->index) + QLatin1Char('/') + QString::number(x->maxDrivePct, 'f', 2)
                     + QLatin1Char('/') + QString::number(x->ifMhz, 'f', 3)
