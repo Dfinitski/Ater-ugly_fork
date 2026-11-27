@@ -2734,6 +2734,21 @@ void MainWindow::registerMidiParams()
         [fireShortcut](float) { fireShortcut("pan_zoom_in"); });
     reg("global.panZoomOut", "Panadapter Zoom Out", "Display", P::Trigger, 0, 1,
         [fireShortcut](float) { fireShortcut("pan_zoom_out"); });
+    // ANAN fork build 839 (operator, 27.11: "the MIDI panadapter zoom knob is
+    // broken, it only goes to the maximum"). There was no zoom knob: a knob
+    // bound to Zoom In / Zoom Out (buttons) fires on every value of 64 and
+    // up -- an encoder's one direction (or a pot's upper half) zooms in and
+    // in, the other does nothing. Now an endless knob, decoded as the tuning
+    // knobs are (MidiControlManager::isVfoTuneKnob): clockwise zooms in,
+    // counter-clockwise out, by the rotary dials' factor per detent.
+    reg("global.panZoomKnob", "Panadapter Zoom Knob", "Display", P::Slider, 0, 127,
+        [this](float v) {
+            const int steps = static_cast<int>(v) - 64;
+            if (steps == 0)
+                return;
+            const double base = steps > 0 ? (1.0 / kRotaryPanZoomFactor) : kRotaryPanZoomFactor;
+            zoomActivePanadapter(std::pow(base, std::abs(steps)));
+        });
     reg("global.openMemories", "Open Memories", "Display", P::Trigger, 0, 1,
         [fireShortcut](float) { fireShortcut("open_memories"); });
     reg("global.nrCycle", "NR Cycle", "RX", P::Trigger, 0, 1,
@@ -3134,6 +3149,11 @@ void MainWindow::wireExternalControllers()
         }
         if (paramId == QLatin1String("rx.xitKnob")) {   // build 807
             midiXitKnobSteps(activeSlice(), steps);
+            return;
+        }
+        if (paramId == QLatin1String("global.panZoomKnob")) {   // build 839
+            const double base = steps > 0 ? (1.0 / kRotaryPanZoomFactor) : kRotaryPanZoomFactor;
+            zoomActivePanadapter(std::pow(base, std::abs(steps)));
             return;
         }
         // Build 476: the knobs of VFO A', B', C, D -- fixed slices.

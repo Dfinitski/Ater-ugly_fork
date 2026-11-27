@@ -59,7 +59,10 @@ bool MidiControlManager::isVfoTuneKnob(const QString& paramId)
         // ANAN fork build 786 (operator, 26.11): the RIT knob is an endless
         // knob too -- learned relative, decoded and coalesced as these are.
         || paramId == QLatin1String("rx.ritKnob")
-        || paramId == QLatin1String("rx.xitKnob");   // build 807
+        || paramId == QLatin1String("rx.xitKnob")    // build 807
+        // Build 839 (operator, 27.11: "the MIDI panadapter zoom knob only
+        // goes to the maximum"): an endless zoom knob, decoded the same way.
+        || paramId == QLatin1String("global.panZoomKnob");
 }
 
 // ── MidiBinding helpers ─────────────────────────────────────────────────────
