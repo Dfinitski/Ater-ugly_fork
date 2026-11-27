@@ -1746,6 +1746,22 @@ void MainWindow::buildMenuBar()
             .value(QStringLiteral("BottomPanelShowStationName"), QStringLiteral("True"))
             .toString() == QLatin1String("True"));
         bottomLay->addWidget(showStation);
+        // Build 822: right-aligned elements -- the CPU / Mem stack and the
+        // UTC clock.
+        auto* showCpu = new QCheckBox(QStringLiteral("Show CPU Usage"), bottom);
+        showCpu->setObjectName(QStringLiteral("appearanceShowCpuCheck"));
+        showCpu->setToolTip(QStringLiteral("The program's CPU usage and memory, on the right of the bottom bar."));
+        showCpu->setChecked(AppSettings::instance()
+            .value(QStringLiteral("BottomPanelShowCpu"), QStringLiteral("True"))
+            .toString() == QLatin1String("True"));
+        bottomLay->addWidget(showCpu);
+        auto* showUtc = new QCheckBox(QStringLiteral("Show UTC Time"), bottom);
+        showUtc->setObjectName(QStringLiteral("appearanceShowUtcCheck"));
+        showUtc->setToolTip(QStringLiteral("The UTC clock at the right end of the bottom bar."));
+        showUtc->setChecked(AppSettings::instance()
+            .value(QStringLiteral("BottomPanelShowUtc"), QStringLiteral("True"))
+            .toString() == QLatin1String("True"));
+        bottomLay->addWidget(showUtc);
         root->addWidget(bottom);
         root->addStretch(1);
         auto* closeRow = new QHBoxLayout;
@@ -1779,6 +1795,21 @@ void MainWindow::buildMenuBar()
                 m_stationNickLabel->setVisible(on);
                 updateStatusBarMinimumWidth();
             }
+        });
+        connect(showCpu, &QCheckBox::toggled, this, [this](bool on) {
+            AppSettings::instance().setValue(QStringLiteral("BottomPanelShowCpu"),
+                                             on ? QStringLiteral("True") : QStringLiteral("False"));
+            if (auto* cpu = findChild<QWidget*>(QStringLiteral("bottomCpuStatus"))) {
+                cpu->setVisible(on);
+                updateStatusBarMinimumWidth();
+            }
+        });
+        connect(showUtc, &QCheckBox::toggled, this, [this](bool on) {
+            AppSettings::instance().setValue(QStringLiteral("BottomPanelShowUtc"),
+                                             on ? QStringLiteral("True") : QStringLiteral("False"));
+            // The clock's poll (250 ms) shows or hides it and its separator.
+            if (auto* utc = findChild<QWidget*>(QStringLiteral("ananUtcClock")))
+                utc->setProperty("bottomShow", on);
         });
         dlg->show();
     });

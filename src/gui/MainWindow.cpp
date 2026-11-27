@@ -7000,6 +7000,14 @@ void MainWindow::buildUI()
         cpuVbox->addWidget(m_cpuLabel);
         cpuVbox->addWidget(m_memLabel);
         hbox->addWidget(cpuStack);
+        // ANAN fork build 822 (operator, 27.11): View > Appearance > Bottom
+        // Panel > "Show CPU Usage" (on by default, AppSettings
+        // "BottomPanelShowCpu") hides / shows this CPU / Mem stack. A right-
+        // aligned element.
+        cpuStack->setObjectName(QStringLiteral("bottomCpuStatus"));
+        cpuStack->setVisible(AppSettings::instance()
+            .value(QStringLiteral("BottomPanelShowCpu"), QStringLiteral("True"))
+            .toString() == QLatin1String("True"));
 
         m_cpuTimer = new QTimer(this);
         m_cpuTimer->setInterval(1500);
@@ -7271,7 +7279,7 @@ void MainWindow::buildUI()
     // Build 564: the "UTC Time:" clock of build 255, at the right end -- the
     // place of the date / time stack, which is no longer shown.
     {
-        addSep();
+        QLabel* utcSep = addSep();
         auto* utcStack = new QWidget;
         utcStack->setObjectName(QStringLiteral("ananUtcClock"));
         utcStack->setAccessibleName(QStringLiteral("UTC time"));
@@ -7310,6 +7318,35 @@ void MainWindow::buildUI()
         utcTimer->setSingleShot(true);
         connect(utcTimer, &QTimer::timeout, utcStack, tick);
         tick();
+        // ANAN fork build 822 (operator, 27.11): View > Appearance > Bottom
+        // Panel > "Show UTC Time" (on by default, AppSettings
+        // "BottomPanelShowUtc"; the Appearance window sets "bottomShow"). A
+        // right-aligned element. Its separator shows only with the clock and
+        // only when something of the right section stands left of it (with
+        // CPU and the rest hidden it would stand alone after the stretch).
+        utcStack->setProperty("bottomShow",
+            AppSettings::instance().value(QStringLiteral("BottomPanelShowUtc"),
+                                          QStringLiteral("True")).toString() == QLatin1String("True"));
+        QWidget* cpuStatus = m_statusBarContainer->findChild<QWidget*>(QStringLiteral("bottomCpuStatus"));
+        const QList<QWidget*> leftOfUtc = {m_gpsStatusButton, cpuStatus, m_paStack,
+                                           m_tgxlContainer, m_pgxlContainer};
+        auto utcVisibility = [utcSep, utcStack, leftOfUtc] {
+            const bool show = utcStack->property("bottomShow").toBool();
+            bool anyLeft = false;
+            for (QWidget* w : leftOfUtc)
+                if (w && !w->isHidden())
+                    anyLeft = true;
+            if (utcStack->isHidden() == show)
+                utcStack->setVisible(show);
+            const bool sep = show && anyLeft;
+            if (utcSep->isHidden() == sep)
+                utcSep->setVisible(sep);
+        };
+        auto* utcVisTimer = new QTimer(utcStack);
+        utcVisTimer->setInterval(250);
+        connect(utcVisTimer, &QTimer::timeout, utcStack, utcVisibility);
+        utcVisTimer->start();
+        utcVisibility();
     }
 
     // The date / time stack that stood here. Kept, hidden: its labels are
