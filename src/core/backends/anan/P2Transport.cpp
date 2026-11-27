@@ -2015,6 +2015,11 @@ void P2Transport::setPureSignal(bool enabled, int feedbackSource, int attDb)
         m_psEnabled = enabled;
     }
     m_psSource = feedbackSource;
+    // Build 837: an attenuation set from outside (auto-attenuate, the PS
+    // window) belongs to the drive in use now; while no drive is out (a
+    // pause) the reference stays the last drive's.
+    if (attDb != m_psAttDb && m_drive > 0)
+        m_psDriveRef = m_drive;
     m_psAttDb = attDb;
     m_psAttNow.store(attDb, std::memory_order_relaxed);
     if (changedOnOff)
@@ -3263,8 +3268,12 @@ void P2Transport::setTxDriveLevel(int level)
             const double predDb = 20.0 * std::log10(double(level) / m_psDriveRef);
             if (std::abs(predDb) >= 1.0) {
                 const int step = int(std::lround(predDb));
-                m_psDriveRef *= std::pow(10.0, step / 20.0);
                 const int newAtt = std::clamp(m_psAttDb + step, 0, 31);
+                // Build 837: the reference moves by what the attenuator really
+                // moved -- at 0 or 31 dB the rest is owed, so coming back the
+                // attenuator does not undershoot (kept across pauses now, a
+                // clamped step would otherwise stay wrong for good).
+                m_psDriveRef *= std::pow(10.0, (newAtt - m_psAttDb) / 20.0);
                 if (newAtt != m_psAttDb) {
                     m_psAttDb = newAtt;
                     m_psAttNow.store(newAtt, std::memory_order_relaxed);
@@ -3272,9 +3281,14 @@ void P2Transport::setTxDriveLevel(int level)
                 }
             }
         }
-    } else if (level <= 0) {
-        m_psDriveRef = 0.0;
     }
+    // ANAN fork build 837 (operator, 27.11: TUNE with PureSignal overloaded
+    // the feedback ADC). The reference used to be forgotten whenever the
+    // drive went to 0 -- between every two overs -- so the next over's drive
+    // became the new reference with the attenuator left where the last one
+    // had it: TUNE at a higher drive than the SSB before it started with the
+    // SSB attenuation. The reference is kept across the pauses now; the
+    // attenuator follows the drive from over to over.
     if (m_run && m_configured) {
         if (attChanged)
             sendTransmitSpecific();

@@ -617,7 +617,7 @@ private:
     int m_psAdc = 0;   // feedback ADC index (0 / 1)
     int m_psAttDb = 0;
     bool m_psAttFollowDrive = false;
-    double m_psDriveRef = 0.0;         // the drive the present m_psAttDb belongs to (0 = next)
+    double m_psDriveRef = 0.0;         // the drive the present m_psAttDb belongs to (0 = next); kept across pauses (build 837)
     std::atomic<int> m_psAttNow{0};
     std::function<void(const double*, const double*, int, double)> m_psSink;
     // HW peak measurement (0.5 s windows, peaks of |x|^2). m_hwDucLast is
