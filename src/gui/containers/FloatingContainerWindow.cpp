@@ -289,14 +289,22 @@ void FloatingContainerWindow::fitHeightToContent()
             // the scroll areas hold), each axis not below the panel's.
             target = QSize(std::max(w, m_openingSize.width()),
                            std::max(h, m_openingSize.height()));
+        } else if (m_geometryRestored) {
+            // ANAN fork build 810 (operator, 27.11: "the applets the user
+            // arranged over the window come back at their original size after
+            // a restart"): restored at start with a saved geometry -- that
+            // size, both axes. Before, the opening passes put the width back
+            // to the content's. Only never below what the content cannot do
+            // without (its layout's minimum).
+            const QSize minS = m_layout->minimumSize();
+            target = QSize(std::max(target.width(), minS.width()),
+                           std::max(target.height(), minS.height()));
         } else {
-            // Restored at start, or never shown in a panel. Width: the
-            // content's (build 219), not narrower than the applet was in the
-            // panel (build 262). Height: the saved one; the content's when
-            // nothing was saved.
+            // Never shown in a panel and nothing saved: the content's width
+            // (build 219), not narrower than the applet was in the panel
+            // (build 262), and the content's height.
             target.setWidth(std::max(w, m_openingWidthFloor));
-            if (!m_geometryRestored)
-                target.setHeight(h);
+            target.setHeight(h);
         }
         if (size() != target)
             resize(target);
