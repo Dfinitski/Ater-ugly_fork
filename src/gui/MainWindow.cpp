@@ -6603,7 +6603,27 @@ void MainWindow::buildUI()
         };
         connect(antTimer, &QTimer::timeout, trxBtn, trxRefresh);
         trxRefresh();
+    }
 
+    // ANAN fork build 564 (operator, 21.11: "TX goes where UTC Time is, UTC
+    // Time goes where the local time is, the local time is removed"). The TX
+    // indicator, after the antennas -- the place of build 255's UTC clock.
+    addSep();
+    m_txIndicator = new QLabel("TX");
+    m_txIndicator->setFixedSize(36, 36);
+    m_txIndicator->setAlignment(Qt::AlignCenter);
+    m_txIndicator->setCursor(Qt::PointingHandCursor);
+    // Build 759: a click works as MOX (MainWindow::activateStatusIndicator).
+    m_txIndicator->setToolTip("Click: MOX on / off (while transmitting: TX off)");
+    m_txIndicator->setAccessibleName("MOX transmit");
+    m_txIndicator->setAccessibleDescription("Click to key MOX; while transmitting, click to send key up, PTT off, Tune off, and MOX off.");
+    m_txIndicator->installEventFilter(this);
+    keyboardOperable(m_txIndicator);
+    m_txIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 21px; }");
+    hbox->addWidget(m_txIndicator);
+
+    // ── Bottom Panel elements (View > Appearance), left to right ──
+    {
         // ANAN fork build 750 (operator, 25.11: "for the RZ3QS branch only, a
         // new element on the bottom bar, after a separator following the
         // antenna indicator: the attenuators' current values, the same text
@@ -6612,6 +6632,11 @@ void MainWindow::buildUI()
         // as last sent to the radio), as a negative dB figure. Shown, with its separator,
         // only while the FreeDV text field reads RZ3QS (as A1 / A2, AeRX /
         // AeTX); a radio with one ADC has only the ATT1 line.
+        // Build 819 (operator, 27.11): out of the RZ3QS branch into View >
+        // Appearance > Bottom Panel > "Show Attenuators" (off by default;
+        // shown only by that box, AppSettings "BottomPanelShowAttenuators").
+        // The Bottom Panel elements are added left to right after the TX
+        // indicator, each after a separator; this is the first.
         QLabel* attSep = addSep();
         // Build 752 (operator, 25.11: "align the lines by changing the gap
         // between ATTn and the value, so the ends of dB are level"): "ATTn"
@@ -6646,14 +6671,18 @@ void MainWindow::buildUI()
             row->addWidget(attVal[i]);
             attBox->addWidget(attRow[i]);
         }
-        attStack->setObjectName(QStringLiteral("rz3qsAttStatus"));
+        attStack->setObjectName(QStringLiteral("bottomAttStatus"));
+        // Read by the poll below; the Appearance window sets it (build 819).
+        attStack->setProperty("bottomShow",
+            AppSettings::instance().value(QStringLiteral("BottomPanelShowAttenuators"),
+                                          QStringLiteral("False")).toString() == QLatin1String("True"));
         attStack->setAccessibleName(QStringLiteral("Attenuators"));
         attStack->setToolTip(QStringLiteral("Step attenuators of ADC1 and ADC2"));
         hbox->addWidget(attStack);
         attSep->hide();
         attStack->hide();
         auto attRefresh = [attSep, attStack, r2 = attRow[1], v1 = attVal[0], v2 = attVal[1]] {
-            const bool show = fdv::FdvState::instance().callsign == QLatin1String("RZ3QS");
+            const bool show = attStack->property("bottomShow").toBool();   // build 819
             if (attStack->isHidden() == show) {
                 attSep->setVisible(show);
                 attStack->setVisible(show);
@@ -6687,23 +6716,6 @@ void MainWindow::buildUI()
         attTimer->start();
         attRefresh();
     }
-
-    // ANAN fork build 564 (operator, 21.11: "TX goes where UTC Time is, UTC
-    // Time goes where the local time is, the local time is removed"). The TX
-    // indicator, after the antennas -- the place of build 255's UTC clock.
-    addSep();
-    m_txIndicator = new QLabel("TX");
-    m_txIndicator->setFixedSize(36, 36);
-    m_txIndicator->setAlignment(Qt::AlignCenter);
-    m_txIndicator->setCursor(Qt::PointingHandCursor);
-    // Build 759: a click works as MOX (MainWindow::activateStatusIndicator).
-    m_txIndicator->setToolTip("Click: MOX on / off (while transmitting: TX off)");
-    m_txIndicator->setAccessibleName("MOX transmit");
-    m_txIndicator->setAccessibleDescription("Click to key MOX; while transmitting, click to send key up, PTT off, Tune off, and MOX off.");
-    m_txIndicator->installEventFilter(this);
-    keyboardOperable(m_txIndicator);
-    m_txIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 21px; }");
-    hbox->addWidget(m_txIndicator);
 
     // ── Center stretch → STATION → stretch ───────────────────────────────
     // Build 259 (operator, 10.11: "when a message appears at the bottom left

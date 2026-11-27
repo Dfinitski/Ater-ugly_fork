@@ -1716,6 +1716,19 @@ void MainWindow::buildMenuBar()
         vintage->setChecked(m_appletPanel && m_appletPanel->vintageMeter());
         metersLay->addWidget(vintage);
         root->addWidget(meters);
+        // ── Bottom Panel ── (build 819) Elements of the bottom bar, added
+        // left to right after the TX indicator, each after a separator.
+        auto* bottom = new QGroupBox(QStringLiteral("Bottom Panel"), dlg);
+        auto* bottomLay = new QVBoxLayout(bottom);
+        auto* showAtt = new QCheckBox(QStringLiteral("Show Attenuators"), bottom);
+        showAtt->setObjectName(QStringLiteral("appearanceShowAttenuatorsCheck"));
+        showAtt->setToolTip(QStringLiteral(
+            "The step attenuators of ADC1 and ADC2 (ATT1 / ATT2, in dB), as last sent to the radio."));
+        showAtt->setChecked(AppSettings::instance()
+            .value(QStringLiteral("BottomPanelShowAttenuators"), QStringLiteral("False"))
+            .toString() == QLatin1String("True"));
+        bottomLay->addWidget(showAtt);
+        root->addWidget(bottom);
         root->addStretch(1);
         auto* closeRow = new QHBoxLayout;
         closeRow->addStretch(1);
@@ -1727,6 +1740,13 @@ void MainWindow::buildMenuBar()
         connect(vintage, &QCheckBox::toggled, this, [this](bool on) {
             if (m_appletPanel)
                 m_appletPanel->setVintageMeter(on);
+        });
+        connect(showAtt, &QCheckBox::toggled, this, [this](bool on) {
+            AppSettings::instance().setValue(QStringLiteral("BottomPanelShowAttenuators"),
+                                             on ? QStringLiteral("True") : QStringLiteral("False"));
+            // The bar's poll (20 ms) shows or hides it.
+            if (auto* att = findChild<QWidget*>(QStringLiteral("bottomAttStatus")))
+                att->setProperty("bottomShow", on);
         });
         dlg->show();
     });
