@@ -5924,6 +5924,8 @@ ReceiveDispatch Hl2Backend::requestSliceControl(int sliceId, const SliceControlR
             logRitXit("XIT", ddc, receiver->xitOn, receiver->xitHz);
             if (moves && ddc == m_txDdc) { setTxFrequency(receiver->sliceFreqHz); }
             emitSliceState(ddc);
+            if (splitOfOwner(sliceId))   // build 805: the sub receiver shows the XIT on TX
+                emitSplitSliceState(sliceId);
         }
         if (alive) { notifyOperatingStateChanged(); }
         break;
@@ -14377,6 +14379,13 @@ void Hl2Backend::emitSplitSliceState(int ownerUi)
     d.agcThreshold = sp->agcThresholdDb;   // build 489: its own
     d.txSlice = sp->tx && ddc == m_txDdc;
     d.active = sp->active && ddc == m_activeDdc;   // build 496
+    // ANAN fork build 805 (operator, 26.11): transmitting on the sub receiver
+    // puts the TX at its frequency + the owner's XIT (setTxFrequency), so the
+    // sub receiver shows that XIT (its dashed line on the panadapter, the TX
+    // waterfall / TX zoom position); off TX it shows none.
+    const bool subTx = sp->tx && ddc == m_txDdc;
+    d.xitOn = subTx && r->xitOn;
+    d.xitFreq = subTx ? r->xitHz : 0;
     emit sliceChanged(splitUiOf(ownerUi), d);
 }
 

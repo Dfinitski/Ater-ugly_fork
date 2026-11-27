@@ -19942,7 +19942,11 @@ void SpectrumWidget::drawSliceMarkers(QPainter& p, const QRect& specRect, const 
             p.setPen(QColor(col.red(), col.green(), col.blue(), 200));
             p.drawText(ritX + 2, specRect.top() + m_topInset + 12, "R");
         }
-        if (so.xitOn && so.xitFreq != 0) {
+        // ANAN fork build 805 (operator, 26.11): the XIT line only on the
+        // transmitting receiver -- XIT moves the transmitter, and a receiver
+        // that does not transmit (the main one while its sub receiver does)
+        // would show it where nothing is sent.
+        if (so.isTxSlice && so.xitOn && so.xitFreq != 0) {
             const int xitX = mhzToX(so.freqMhz + so.xitFreq / 1.0e6);
             QPen xitPen(AetherSDR::theme::withAlpha("color.accent.danger", 180), 1, Qt::DashLine);
             p.setPen(xitPen);
