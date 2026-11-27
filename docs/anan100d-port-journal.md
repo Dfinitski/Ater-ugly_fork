@@ -13768,6 +13768,13 @@ PS — оператор снял (вход ответвителя без PS не
 - `FtxCaptionColour::apply()` (`MainWindow_Ftx.cpp`): цвета шапки, текста и рамки — те же литералы безрамочной шапки программы (FramelessWindowTitleBar), пропущенные через перекраску литералов активной темы (`remapLiteralColor`): в Default Dark как было, в Deep Ocean ≈ #2c5f6c / #f9f3e0 / #083a47, в Midnight, светлых и пользовательских темах — по их шкале. Совпадает с безрамочной шапкой, которую перекрашивает та же перекраска.
 - Помощник подписан на `themeChanged`: при смене темы или правке перекраски видимые окна перекрашивают шапку сразу.
 
+### Сборка 802 — окна мастера, Adjust Colors и Contrast Check с градиентной шапкой
+
+Оператор (26.11): у Theme Editor шапка с градиентом, у New theme from colors — нет; окна должны выглядеть одинаково.
+
+- Причина: Theme Editor — `PersistentDialog` (в безрамочном режиме рисует свою `FramelessWindowTitleBar` с градиентом), а три новых окна были обычными `QDialog` с родной шапкой Windows, которой можно дать только сплошной цвет.
+- `ThemeEditorDialog.cpp`: «New Theme from Colors», «Adjust Colors» и «Contrast Check» теперь `PersistentDialog` (содержимое в `bodyWidget()`), следуют режиму View → Frameless Window и запоминают положение и размер (`ThemeWizardDialogGeometry`, `ThemeAdjustDialogGeometry`, `ThemeContrastDialogGeometry`).
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

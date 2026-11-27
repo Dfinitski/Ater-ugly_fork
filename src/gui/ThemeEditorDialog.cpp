@@ -1692,11 +1692,13 @@ void ThemeEditorDialog::rebuildPalettePage()
 void ThemeEditorDialog::onNewThemeClicked()
 {
     auto& tm = ThemeManager::instance();
-    ScopedChildWidget<QDialog> dlgOwner(this);
-    QDialog& dlg = *dlgOwner.get();
-    dlg.setWindowTitle(QStringLiteral("New Theme from Colors"));
+    // Build 802: a PersistentDialog, so it has the program's own (gradient)
+    // title bar in frameless mode, like the editor itself.
+    ScopedChildWidget<PersistentDialog> dlgOwner(QStringLiteral("New Theme from Colors"),
+                                                 QStringLiteral("ThemeWizardDialogGeometry"), this);
+    PersistentDialog& dlg = *dlgOwner.get();
     applyAppTheme(&dlg);
-    auto* root = new QVBoxLayout(&dlg);
+    auto* root = new QVBoxLayout(dlg.bodyWidget());
     root->addWidget(hintLabel(QStringLiteral(
         "Pick four colours; the whole theme is built from Default Dark with them: every "
         "grey-blue and cyan-blue colour (tokens, palette and the colours written in the code) "
@@ -1880,12 +1882,12 @@ void ThemeEditorDialog::onAdjustColorsClicked()
     const QStringList visible = visibleTokenKeys();
     const bool filtered = m_tokenList && visible.size() < m_tokenList->topLevelItemCount();
 
-    ScopedChildWidget<QDialog> dlgOwner(this);
-    QDialog& dlg = *dlgOwner.get();
-    dlg.setWindowTitle(QStringLiteral("Adjust Colors"));
+    ScopedChildWidget<PersistentDialog> dlgOwner(QStringLiteral("Adjust Colors"),
+                                                 QStringLiteral("ThemeAdjustDialogGeometry"), this);   // build 802
+    PersistentDialog& dlg = *dlgOwner.get();
     applyAppTheme(&dlg);
     dlg.setMinimumWidth(420);
-    auto* root = new QVBoxLayout(&dlg);
+    auto* root = new QVBoxLayout(dlg.bodyWidget());
     root->addWidget(hintLabel(QStringLiteral(
         "Shifts the colors of the theme; the program shows the result as you move the "
         "sliders. OK keeps it, Cancel puts every color back."), &dlg));
@@ -2152,12 +2154,12 @@ void ThemeEditorDialog::onCheckContrastClicked()
         lits.append({QStringLiteral("code white (#ffffff) on code borders (#304050)"), n[11], n[5], contrastRatio(n[11], n[5]), 3.0});
     }
 
-    ScopedChildWidget<QDialog> dlgOwner(this);
-    QDialog& dlg = *dlgOwner.get();
-    dlg.setWindowTitle(QStringLiteral("Contrast Check — %1").arg(tm.activeTheme()));
+    ScopedChildWidget<PersistentDialog> dlgOwner(QStringLiteral("Contrast Check — %1").arg(tm.activeTheme()),
+                                                 QStringLiteral("ThemeContrastDialogGeometry"), this);   // build 802
+    PersistentDialog& dlg = *dlgOwner.get();
     applyAppTheme(&dlg);
     dlg.resize(720, 520);
-    auto* root = new QVBoxLayout(&dlg);
+    auto* root = new QVBoxLayout(dlg.bodyWidget());
     root->addWidget(hintLabel(QStringLiteral(
         "Text / background pairs of this theme with their contrast ratio (WCAG). Main text needs "
         "4.5 : 1, secondary text and labels 3 : 1. Double-click a row to show its two tokens in "
