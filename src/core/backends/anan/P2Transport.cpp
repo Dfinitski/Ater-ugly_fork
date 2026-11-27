@@ -1996,6 +1996,14 @@ void P2Transport::setPsAttFollowsDrive(bool on)
     m_psDriveRef = on ? double(m_drive) : 0.0;
 }
 
+// Build 838: AnanPureSignal set an attenuation that belongs to no drive in
+// use now (TUNE's 31 dB start, the voice value given back after TUNE): the
+// next drive becomes its reference, so it is not moved by that drive.
+void P2Transport::resetPsDriveRef()
+{
+    m_psDriveRef = 0.0;
+}
+
 void P2Transport::setPureSignal(bool enabled, int feedbackSource, int attDb)
 {
     feedbackSource = std::clamp(feedbackSource, 0, 2);

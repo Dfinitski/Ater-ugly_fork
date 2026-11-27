@@ -276,6 +276,8 @@ public:
     // levels (log 04.11 18:07:09: an scheck jump of 5.6). AnanPureSignal
     // adopts psAttNow().
     Q_INVOKABLE void setPsAttFollowsDrive(bool on);
+    // Build 838: the next drive becomes the PS attenuator's reference.
+    Q_INVOKABLE void resetPsDriveRef();
     int psAttNow() const { return m_psAttNow.load(std::memory_order_relaxed); }
     // Firmware test (01.11): DDC0 on the TX DAC like DDC1 (ADC index 2), so
     // the synchronised pair must match sample for sample.

@@ -375,10 +375,10 @@ void AnanPureSignal::updateFeedGate()
 // the ADC -- auto-attenuate had taken the attenuator to 0; always start such
 // a transmission at 31 dB when Full ATT when TX is ticked"). With PS and its
 // auto-attenuate on and "Full ATT RXn when TX" ticked for the feedback ADC
-// (Radio Setup; RX1 = ADC1, RX2 = ADC2), every over starts with the feedback
-// attenuator at 31 dB -- set at the unkey, so it is in the radio before the
-// next MOX, and again at the key-down -- and auto-attenuate brings it down
-// from the first feedback level, keeping the correction (no recalibration).
+// (Radio Setup; RX1 = ADC1, RX2 = ADC2), a TUNE over (build 838: TUNE only;
+// voice keeps its own value) starts with the feedback attenuator at 31 dB,
+// and auto-attenuate brings it down from the first feedback level, keeping
+// the correction (no recalibration).
 bool AnanPureSignal::fullAttStartWanted() const
 {
     if (!m_s.enabled || !m_s.autoAttenuate || m_measStep >= 0)
@@ -403,14 +403,42 @@ void AnanPureSignal::startAtFullAtt(const char* when)
     }
 }
 
-void AnanPureSignal::setKeyed(bool keyed, bool cw)
+// Build 838 (operator, 27.11: "a normal voice transmission with PureSignal
+// remembers the attenuator position; TUNE, depending on Full ATT when TX,
+// goes to the maximum"). Voice: the attenuator auto-attenuate left, moved
+// with the drive (build 837) -- no 31 dB start any more. TUNE: the voice
+// value is put aside at the key-down; with Full ATT when TX ticked the
+// carrier starts at 31 dB (the drive reference dropped, so the start is not
+// moved by the drive) and auto-attenuate brings it down (836), otherwise it
+// starts from the voice value moved by the TUNE drive (837); at the unkey the
+// voice value comes back, with the drive reference dropped -- the next voice
+// drive becomes its reference.
+void AnanPureSignal::setKeyed(bool keyed, bool cw, bool tune)
 {
     if (keyed == m_keyed && cw == m_cw)
         return;
-    if (!keyed && m_keyed)
-        startAtFullAtt("for the next over");   // build 836
+    if (!keyed && m_keyed && m_tuneOver) {
+        m_tuneOver = false;
+        m_aaFromFullAtt = false;
+        if (m_voiceAttDb >= 0 && m_voiceAttDb != m_s.attDb) {
+            qCInfo(lcAnanPs).nospace() << "PureSignal: TUNE over, attenuator back to the voice "
+                                       << m_voiceAttDb << " dB (was " << m_s.attDb << ")";
+            setAttenuation(m_voiceAttDb);
+        }
+        m_voiceAttDb = -1;
+        if (m_transport)
+            QMetaObject::invokeMethod(m_transport, "resetPsDriveRef", Qt::QueuedConnection);
+    }
     if (keyed && !m_keyed) {
-        startAtFullAtt("at the key-down");     // build 836: if the unkey did not
+        m_tuneOver = tune;
+        if (tune) {
+            m_voiceAttDb = m_s.attDb;
+            if (fullAttStartWanted()) {
+                startAtFullAtt("for TUNE");
+                if (m_transport)
+                    QMetaObject::invokeMethod(m_transport, "resetPsDriveRef", Qt::QueuedConnection);
+            }
+        }
 #if !AETHER_WDSP_PS_CLASSIC
         const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
         if (txaHold && m_channel >= 0)

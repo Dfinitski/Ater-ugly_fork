@@ -7698,7 +7698,7 @@ void Hl2Backend::applyKeying(bool key, const TxCoordinator::Operation& operation
             }
         }
         if (m_ps)   // PureSignal: SetPSMox and the feedback gate follow the key
-            m_ps->setKeyed(key, m_ananCwTxSilent.load(std::memory_order_relaxed));
+            m_ps->setKeyed(key, m_ananCwTxSilent.load(std::memory_order_relaxed), m_tuning);   // build 838
         // Build 632: a voice / TUNE unkey keeps MOX for the RF Delay tail
         // (P2Transport::setMox), so the receivers are released when MOX
         // actually drops. CW (break-in, host CW, the radio's keyer) at once.

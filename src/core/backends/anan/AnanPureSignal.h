@@ -127,7 +127,8 @@ public:
     // channel with the same id on a reconnect.
     void setTxChannel(int channel, unsigned generation);
     // Key edges and the CW state (no PS in CW: the FPGA keyer makes the carrier).
-    void setKeyed(bool keyed, bool cw);
+    // Build 838: tune = the over is a TUNE carrier.
+    void setKeyed(bool keyed, bool cw, bool tune = false);
 
     // I/O thread: feedback pairs from P2Transport (interleaved I/Q).
     void feed(const double* tx, const double* rx, int n, double hwPeak = -1.0);
@@ -236,6 +237,10 @@ private:
     bool m_aaFromFullAtt = false;
     bool fullAttStartWanted() const;
     void startAtFullAtt(const char* when);
+    // Build 838: voice keeps its own attenuator; a TUNE over starts from it
+    // (or at 31 dB with Full ATT when TX) and gives it back at the unkey.
+    bool m_tuneOver = false;
+    int m_voiceAttDb = -1;
     int m_aaSaveAuto = 0, m_aaSaveSingle = 0;
     // After an attenuator change: when, and calibrations completed since --
     // the next one or two still carry the old level (log 22:36: "feedback
