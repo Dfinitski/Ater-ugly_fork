@@ -182,7 +182,13 @@ void SMeterWidget::setPhotoFace(bool on)
     if (m_photoFace == on)
         return;
     m_photoFace = on;
+    // Build 818 (operator, 27.11): the photo has only the power scale, so
+    // while it is on the meter always shows power when transmitting; the
+    // TX Select choice is kept and comes back when the photo face is off.
+    m_txMode = m_photoFace ? TxMode::Power : m_txModeSelected;
+    updateNeedleTarget();
     update();
+    scheduleAccessibleValue();
 }
 
 namespace {
@@ -530,10 +536,12 @@ void SMeterWidget::setTransmitting(bool tx)
 
 void SMeterWidget::setTxMode(const QString& mode)
 {
-    if (mode == "Power")            m_txMode = TxMode::Power;
-    else if (mode == "SWR")         m_txMode = TxMode::SWR;
-    else if (mode == "Level")       m_txMode = TxMode::Level;
-    else if (mode == "Compression") m_txMode = TxMode::Compression;
+    if (mode == "Power")            m_txModeSelected = TxMode::Power;
+    else if (mode == "SWR")         m_txModeSelected = TxMode::SWR;
+    else if (mode == "Level")       m_txModeSelected = TxMode::Level;
+    else if (mode == "Compression") m_txModeSelected = TxMode::Compression;
+    // Build 818: the photo face shows power only.
+    m_txMode = m_photoFace ? TxMode::Power : m_txModeSelected;
     setProperty("txMode", mode);
     updateNeedleTarget();
     update();

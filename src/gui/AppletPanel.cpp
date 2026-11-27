@@ -1631,9 +1631,14 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
         }
     }
 
-    addHeader(QStringLiteral("TX Select"));
-    QActionGroup* txGroup = new QActionGroup(&menu);
-    for (int i = 0; i < MeterSettings::txMeterItems().size(); ++i) {
+    // Build 818 (operator, 27.11): the Icom vintage meter always shows power
+    // on transmit, so its menu has no TX Select.
+    QActionGroup* txGroup = nullptr;
+    if (!vintageMeter()) {
+        addHeader(QStringLiteral("TX Select"));
+        txGroup = new QActionGroup(&menu);
+    }
+    for (int i = 0; txGroup && i < MeterSettings::txMeterItems().size(); ++i) {
         QAction* action = menu.addAction(MeterSettings::txMeterItems()[i]);
         action->setCheckable(true);
         action->setChecked(i == m_vuTxSelect);

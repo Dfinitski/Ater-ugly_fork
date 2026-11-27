@@ -175,7 +175,8 @@ private:
     float   m_compLevel{0.0f};
 
     // Mode state
-    TxMode  m_txMode{TxMode::Power};
+    TxMode  m_txMode{TxMode::Power};       // effective (Power with the photo face)
+    TxMode  m_txModeSelected{TxMode::Power}; // the operator's TX Select choice (build 818)
     RxMode  m_rxMode{RxMode::SMeter};
     bool    m_transmitting{false};
 
