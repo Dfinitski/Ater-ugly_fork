@@ -169,6 +169,10 @@ public:
     void setTwoTone(bool on);
     bool saveCorrection(const QString& file);
     bool restoreCorrection(const QString& file);
+    // Build 834: the folder the correction is kept in per band and feedback
+    // ADC (saved after new calibrations, restored at start and on a band
+    // change).
+    static QString correctionFolder();
 
     const Settings& settings() const { return m_s; }
     bool twoToneOn() const { return m_twoTone; }
@@ -201,6 +205,17 @@ private:
     void applyWdspParams();
     void tick();
     void control(int reset, int mancal, int automode, int turnon);
+    // Build 834: the correction kept across restarts, per band and ADC.
+    void correctionStoreTick();
+    QString correctionFile(const QString& band) const;
+    bool restoreCorrectionAuto(const QString& file);
+    int m_calSeen = -1;              // info[5] last seen (-1: not yet, this calcc)
+    bool m_corrUnsaved = false;      // a calibration not saved yet
+    QString m_corrBand;              // the band the correction in force belongs to
+    long long m_corrSavedMs = 0;
+    QString m_restoreKey;            // band / ADC / calcc generation last restored (or tried)
+    bool m_restoreAutoPending = false;   // back to Auto once the restored one is on
+    long long m_genSinceMs = 0;      // when this calcc generation appeared
     void updateFeedGate();
 
     Settings m_s;

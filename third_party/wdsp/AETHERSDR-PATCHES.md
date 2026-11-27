@@ -1395,6 +1395,21 @@ over anyway). The host sets it at key-down and clears it when the guard
 interval has EMNR's own delay left, so EMNR's pipeline refills with
 post-over audio while the output is still muted.
 
+## Patch 32 — a restored PureSignal correction survives Auto
+
+`upstream/calcc.c` (ANAN fork build 834, 27.11.2026). A user: PureSignal
+loses what it learnt when the program restarts. The host now saves the
+correction (`PSSaveCorr`) and restores it at the next start (`PSRestoreCorr`).
+Upstream, a restored correction ends in LSTAYON with Auto switched off
+(LTURNON), and LSTAYON resets -- drops the correction -- as soon as Auto is
+switched on again, so a restored correction could only be used in Single.
+`ctrl.aether_keep` is set by `PSRestoreCorr()`; LSTAYON with Auto on and the
+flag set goes to LWAIT instead of LRESET (no reset: the iqc keeps running the
+restored curves), clears the flag, and Auto learns again from there, its first
+new calibration swapping the curves (`SetTXAiqcSwap`, `ctrl.running` is set).
+A reset, a manual calibration or a restore never taken clears it as before
+(LRESET clears the flag unless a turn-on is pending).
+
 ## Patch 31 — `RXAFlushFilters()`: the receive filters emptied after an over
 
 `upstream/RXA.c`, `include/aether_wdsp.h` (ANAN fork build 601, 21.11.2026).

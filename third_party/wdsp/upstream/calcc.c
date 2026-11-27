@@ -168,6 +168,7 @@ typedef struct _calcc
 		volatile long running;
 		int bs_count;
 		volatile long current_state;
+		int aether_keep;	// AetherSDR patch 32: a restored correction survives Auto
 	} ctrl;
 	struct _disp
 	{
@@ -1087,6 +1088,7 @@ CALCC create_calcc (int channel, int runcal, int size, int rate, double hw_scale
 	a->ctrl.waitcount = 0;
 	a->ctrl.running = 0;
 	a->ctrl.current_state = 0;
+	a->ctrl.aether_keep = 0;	// AetherSDR patch 32
 	InitializeCriticalSectionAndSpinCount (&txa[a->channel].calcc.cs_update, 2500);
 	a->rxdelay = create_delay (
 		1,
@@ -1981,6 +1983,8 @@ void pscc (int channel, int size, double* tx, double* rx)
 				a->info[14] = 0;
 				a->ctrl.env_maxtx = 0.0;
 				a->ctrl.bs_count = 0;
+				if (!a->ctrl.turnon)
+					a->ctrl.aether_keep = 0;	// AetherSDR patch 32: a reset drops it
 				if (a->ctrl.turnon)
 					a->ctrl.state = LTURNON;
 				else if (a->ctrl.automode || a->ctrl.mancal)
@@ -2125,7 +2129,15 @@ void pscc (int channel, int size, double* tx, double* rx)
 				break;
 			case LSTAYON:
 				InterlockedExchange (&a->ctrl.current_state, LSTAYON);
-				if (a->ctrl.reset || a->ctrl.automode || a->ctrl.mancal)
+				// AetherSDR patch 32: a correction restored from a file (PSRestoreCorr)
+				// goes back to Auto without the reset -- it stays applied while Auto
+				// learns again and is swapped by the first new calibration.
+				if (a->ctrl.automode && a->ctrl.aether_keep && !a->ctrl.reset && !a->ctrl.mancal)
+				{
+					a->ctrl.aether_keep = 0;
+					a->ctrl.state = LWAIT;
+				}
+				else if (a->ctrl.reset || a->ctrl.automode || a->ctrl.mancal)
 					a->ctrl.state = LRESET;
 				break;
 			case LTURNON:
@@ -2161,6 +2173,7 @@ void PSRestoreCorr (int channel, char* filename)
 	a = txa[channel].calcc.p;
 	while (a->util.restore_file[i++] = *filename++);
 	a->ctrl.turnon = 1;
+	a->ctrl.aether_keep = 1;	// AetherSDR patch 32
 	ReleaseSemaphore(a->SemsPSCorr[2], 1, 0);
 	LeaveCriticalSection (&txa[channel].calcc.cs_update);
 }

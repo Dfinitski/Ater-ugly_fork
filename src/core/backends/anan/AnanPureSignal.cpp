@@ -7,6 +7,9 @@
 #include "core/backends/anan/P2Transport.h"
 
 #include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QStandardPaths>
 #include <QLoggingCategory>
 #include <QMetaObject>
 #include <QStringList>
@@ -342,6 +345,11 @@ void AnanPureSignal::setTxChannel(int channel, unsigned generation)
         return;
     m_channel = channel;
     m_channelGen = generation;
+    // Build 834: a new calcc -- nothing restored or seen in it yet.
+    m_calSeen = -1;
+    m_corrUnsaved = false;
+    m_restoreAutoPending = false;
+    m_genSinceMs = nowMs();
     m_feedChannel.store(channel, std::memory_order_release);
     if (channel < 0)
         return;
@@ -454,6 +462,9 @@ void AnanPureSignal::setEnabled(bool on)
     m_s.enabled = on;
     save();
     qCInfo(lcAnanPs) << "PureSignal" << (on ? "ON" : "off");
+    // Build 834: switched on, the band's kept correction is restored again.
+    m_restoreKey.clear();
+    m_restoreAutoPending = false;
     if (on) {
         pushTransport();
         applyWdspParams();
@@ -1229,6 +1240,106 @@ bool AnanPureSignal::restoreCorrection(const QString& file)
     return true;
 }
 
+// ANAN fork build 834 (a user, 27.11: "PureSignal loses its learning when the
+// program restarts -- can it be saved and applied?"). The correction is kept
+// per band and feedback ADC in correctionFolder():
+//  - saved (PSSaveCorr) after a new calibration, at most every 5 s, into the
+//    file of the band it was learnt on; on a band change an unsaved one is
+//    written to its own band first;
+//  - restored (PSRestoreCorr) when there is no correction, the radio is not
+//    transmitting and the band / ADC / calcc (connection) is a new one: at
+//    start, after a reconnect, when PS is switched on, on a band change. In
+//    Auto it stays applied while Auto learns again (WDSP patch 32) and is
+//    replaced by the first new calibration; in Single it is kept.
+//  - Reset (the button) drops it, and it is not restored again until the
+//    band or the connection changes.
+// The WDSP 2.10 engine only (the classic one has no patch 32).
+QString AnanPureSignal::correctionFolder()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+           + QStringLiteral("/PureSignal");
+}
+
+QString AnanPureSignal::correctionFile(const QString& band) const
+{
+    return correctionFolder() + QStringLiteral("/ps_corr_%1_adc%2.txt")
+                                    .arg(bandKey(band)).arg(m_s.feedbackAdc + 1);
+}
+
+bool AnanPureSignal::restoreCorrectionAuto(const QString& file)
+{
+    const wdsp::TxaShared txaHold;   // see WdspTxaGuard.h
+    if (!txaHold || m_channel < 0 || !m_s.enabled)
+        return false;
+    QByteArray name = QDir::toNativeSeparators(file).toLocal8Bit();
+    PSRestoreCorr(m_channel, name.data());
+    control(0, 0, 0, 1);   // turn on (Thetis IntiateRestoredCorrection)
+    // Auto: switched on again once calcc has taken it (patch 32 keeps it).
+    m_restoreAutoPending = m_s.mode == Mode::Auto;
+    return true;
+}
+
+void AnanPureSignal::correctionStoreTick()
+{
+#if !AETHER_WDSP_PS_CLASSIC
+    if (!m_s.enabled || m_channel < 0 || m_band.isEmpty())
+        return;
+    const long long now = nowMs();
+    const bool correcting = m_info[14] == 1;
+    // A new calibration belongs to the band transmitted on now.
+    if (m_calSeen < 0) {
+        m_calSeen = m_info[5];
+    } else if (m_info[5] != m_calSeen) {
+        m_calSeen = m_info[5];
+        if (correcting && !m_restoreAutoPending) {
+            m_corrUnsaved = true;
+            m_corrBand = m_band;
+        }
+    }
+    // Restored and taken by calcc: Auto learns again, the restored one kept.
+    if (m_restoreAutoPending && correcting) {
+        m_restoreAutoPending = false;
+        if (m_s.mode == Mode::Auto)
+            control(0, 0, 1, 0);
+        qCInfo(lcAnanPs).nospace() << "PureSignal: restored correction of " << m_corrBand
+                                   << " in force" << (m_s.mode == Mode::Auto ? ", Auto learning on top of it" : "");
+    }
+    const bool bandMoved = !m_corrBand.isEmpty() && m_corrBand != m_band;
+    if (m_corrUnsaved && (bandMoved || now - m_corrSavedMs >= 5000)) {
+        QDir().mkpath(correctionFolder());
+        const QString f = correctionFile(m_corrBand);
+        if (saveCorrection(QDir::toNativeSeparators(f))) {
+            m_corrUnsaved = false;
+            m_corrSavedMs = now;
+            qCInfo(lcAnanPs).nospace() << "PureSignal: correction of " << m_corrBand << " saved ("
+                                       << f << ")";
+        }
+    }
+    // Restore the band's kept correction: not transmitting, no calibration or
+    // measurement under way, the connection settled (its own resets done).
+    if (m_keyed || m_singleRunning || m_measStep >= 0 || m_twoTone)
+        return;
+    if (now - m_genSinceMs < 3000 || now - m_ownResetMs < 2000)
+        return;
+    const QString key = QStringLiteral("%1|%2|%3").arg(m_band).arg(m_s.feedbackAdc).arg(m_channelGen);
+    if (key == m_restoreKey)
+        return;
+    if (correcting && m_corrBand == m_band) {
+        m_restoreKey = key;   // its own band's correction is already in force
+        return;
+    }
+    m_restoreKey = key;
+    const QString f = correctionFile(m_band);
+    if (!QFile::exists(f))
+        return;
+    if (restoreCorrectionAuto(f)) {
+        m_corrBand = m_band;
+        qCInfo(lcAnanPs).nospace() << "PureSignal: kept correction of " << m_band << " restored ("
+                                   << f << ")";
+    }
+#endif
+}
+
 AnanPureSignal::Status AnanPureSignal::status() const
 {
     Status s;
@@ -1607,6 +1718,7 @@ void AnanPureSignal::tick()
     m_oldInfo = m_info;
     GetPSInfo(m_channel, m_info.data());
     const bool changed = m_info != m_oldInfo;
+    correctionStoreTick();   // build 834
     // calcc health (02.11: "continuous recalibration after re-measuring the
     // delay"; the calibration line only appears for a SUCCESSFUL calcc --
     // binfo[5] counts those -- so failures and calcc's own resets were
