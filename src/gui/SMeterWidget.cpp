@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <optional>
 
 namespace AetherSDR {
@@ -167,6 +168,15 @@ QString SMeterWidget::accessibleValueText() const
         .arg(static_cast<int>(displayDbm));
 }
 
+void SMeterWidget::setPhotoVariant(int variant)
+{
+    variant = variant == 1 ? 1 : 0;
+    if (m_photoVariant == variant)
+        return;
+    m_photoVariant = variant;
+    update();
+}
+
 void SMeterWidget::setPhotoFace(bool on)
 {
     if (m_photoFace == on)
@@ -188,9 +198,7 @@ namespace {
 // is the real one (its tip on the original, 944 px). Not concentric with the
 // arcs (they centre ~1100 px lower): the mark angles below are those of the
 // lines from the pivot through each mark's point on its arc.
-constexpr double kPhotoW = 1774.0, kPhotoH = 887.0;
-constexpr double kPivotX = 885.5, kPivotY = 1051.9;
-constexpr double kNeedleLen = 944.0;
+constexpr double kPhotoW = 1774.0, kPhotoH = 887.0;   // both pictures
 struct AnglePoint { double value, deg; };
 constexpr AnglePoint kSAngles[] = {     // dBm -> angle (deg, 90 = up)
     {-127.0, 132.58},                    // the rest
@@ -206,18 +214,34 @@ constexpr AnglePoint kPoAngles[] = {    // per cent of the rated power -> angle
     {125.0, 46.76}, {150.0, 40.0},
 };
 
-template <size_t N>
-double angleFor(const AnglePoint (&table)[N], double v)
+// Build 816 (operator, 27.11): the light picture is the dark photo itself,
+// recoloured (black -> old paper, the lit amber -> printing ink, red and the
+// lamp window as they were), so it shares the geometry above.
+
+struct PhotoFace {
+    const char* resource;
+    double pivotX, pivotY, needleLen;
+    const AnglePoint* s; int sCount;
+    const AnglePoint* po; int poCount;
+};
+const PhotoFace kPhotoFaces[2] = {
+    {":/meterfaces/vintage-s-meter.jpg", 885.5, 1051.9, 944.0,
+     kSAngles, int(std::size(kSAngles)), kPoAngles, int(std::size(kPoAngles))},
+    {":/meterfaces/vintage-s-meter-light.jpg", 885.5, 1051.9, 944.0,
+     kSAngles, int(std::size(kSAngles)), kPoAngles, int(std::size(kPoAngles))},
+};
+
+double angleFor(const AnglePoint* table, int n, double v)
 {
     if (v <= table[0].value)
         return table[0].deg;
-    for (size_t i = 1; i < N; ++i) {
+    for (int i = 1; i < n; ++i) {
         if (v <= table[i].value) {
             const double t = (v - table[i - 1].value) / (table[i].value - table[i - 1].value);
             return table[i - 1].deg + (table[i].deg - table[i - 1].deg) * t;
         }
     }
-    return table[N - 1].deg;
+    return table[n - 1].deg;
 }
 
 } // namespace
@@ -227,8 +251,11 @@ bool SMeterWidget::paintPhotoFace(QPainter& p)
     // TX readings other than power have no scale on the photo.
     if (m_transmitting && m_txMode != TxMode::Power)
         return false;
-    if (m_photo.isNull()) {
-        m_photo = QPixmap(QStringLiteral(":/meterfaces/vintage-s-meter.jpg"));
+    const PhotoFace& face = kPhotoFaces[m_photoVariant == 1 ? 1 : 0];
+    if (m_photoLoaded != m_photoVariant || m_photo.isNull()) {
+        m_photo = QPixmap(QString::fromLatin1(face.resource));
+        m_photoLoaded = m_photoVariant;
+        m_photoScaledFor = QSize();   // rescale
         if (m_photo.isNull())
             return false;
     }
@@ -251,7 +278,7 @@ bool SMeterWidget::paintPhotoFace(QPainter& p)
     if (m_transmitting) {
         const double watts = double(m_needleFraction) * m_powerScaleMax;
         const double rated = m_powerRedStart > 0.0f ? m_powerRedStart : m_powerScaleMax;
-        deg = angleFor(kPoAngles, rated > 0.0 ? watts / rated * 100.0 : 0.0);
+        deg = angleFor(face.po, face.poCount, rated > 0.0 ? watts / rated * 100.0 : 0.0);
     } else {
         double dbm;
         const double f = m_needleFraction;
@@ -264,17 +291,17 @@ bool SMeterWidget::paintPhotoFace(QPainter& p)
                 : sc.s9Dbm + (f - sc.s9Fraction) / (1.0 - sc.s9Fraction)
                       * (sc.maximumDbm - sc.s9Dbm);
         }
-        deg = angleFor(kSAngles, dbm);
+        deg = angleFor(face.s, face.sCount, dbm);
     }
 
     // The needle: a thin bordeaux-red blade from the pivot, as on the
     // operator's reference meter -- the blade and a lighter core. Build 812:
     // no shadow (the operator: it looked bad).
     const double k = fit.width() / kPhotoW;
-    const QPointF pivot = target.topLeft() + QPointF(kPivotX, kPivotY) * k;
+    const QPointF pivot = target.topLeft() + QPointF(face.pivotX, face.pivotY) * k;
     const double rad = qDegreesToRadians(deg);
     const QPointF dir(std::cos(rad), -std::sin(rad));
-    const QPointF tip = pivot + dir * (kNeedleLen * k);
+    const QPointF tip = pivot + dir * (face.needleLen * k);
     // Build 813 (operator, 27.11: "a bit thin, +50 %"): 10 -> 15 px of the
     // photo, not below 2.25 px (was 1.5).
     const double w = std::max(2.25, 15.0 * k);

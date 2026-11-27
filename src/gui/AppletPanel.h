@@ -262,6 +262,9 @@ public:
     // (View > Appearance > Meters), AppSettings SMeterPhotoFace, default off.
     void setVintageMeter(bool on);
     bool vintageMeter() const;
+    // Build 816: 0 the dark photo, 1 the light one (SMeterPhotoVariant).
+    void setVintageMeterVariant(int variant);
+    int vintageMeterVariant() const;
 
     // Move the vertical scroll bar to the left edge of the panel.  When the
     // applet panel is docked on the left side of the panadapter, this puts

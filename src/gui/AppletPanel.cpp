@@ -376,6 +376,9 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     m_sMeter->setPhotoFace(AppSettings::instance()
         .value(QStringLiteral("SMeterPhotoFace"), QStringLiteral("False")).toString()
         == QStringLiteral("True"));
+    m_sMeter->setPhotoVariant(AppSettings::instance()
+        .value(QStringLiteral("SMeterPhotoVariant"), QStringLiteral("dark")).toString()
+        == QStringLiteral("light") ? 1 : 0);   // build 816
     m_sMeter->setTxMode(MeterSettings::txMeterItems()[m_vuTxSelect]);
     m_sMeter->setRxMode(MeterSettings::rxMeterItems()[m_vuRxSelect]);
     m_sMeter->setPeakHoldEnabled(m_vuPeakHoldEnabled);
@@ -1582,42 +1585,50 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
         }
     }
 
-    addHeader(QStringLiteral("Face theme"));
-    QActionGroup* faceThemeGroup = new QActionGroup(&menu);
-    struct FaceThemeAction {
-        const char* label;
-        const char* id;
-        const char* objectName;
-    };
-    static constexpr FaceThemeAction faceThemes[] = {
-        {"Aether default", "aether-default", "standardSMeterAetherFaceThemeAction"},
-        {"Classic warm", "classic-warm", "standardSMeterClassicFaceThemeAction"},
-        {"Dark-room uplight", "dark-room-uplight", "standardSMeterUplightFaceThemeAction"},
-        {"Graphite dark", "graphite-dark", "standardSMeterDarkFaceThemeAction"},
-    };
-    for (const FaceThemeAction& faceTheme : faceThemes) {
-        const QString id = QString::fromLatin1(faceTheme.id);
-        QAction* action = menu.addAction(QString::fromLatin1(faceTheme.label));
-        action->setObjectName(QString::fromLatin1(faceTheme.objectName));
-        action->setCheckable(true);
-        action->setChecked(m_vuFaceTheme == id);
-        faceThemeGroup->addAction(action);
-        connect(action, &QAction::triggered, this, [this, id]() {
-            m_vuFaceTheme = MeterSettings::normalizeFaceTheme(id);
-            m_sMeter->setFaceTheme(analogMeterFaceThemeFromId(
-                m_vuFaceTheme, AnalogMeterFaceTheme::AetherDefault));
-            persistVuMeterSettings();
-        });
-    }
-
-    // Build 811: the vintage photo face (a trial) over any face theme.
-    {
-        // Build 814: the same switch as View > Appearance > Meters.
-        QAction* photo = menu.addAction(QStringLiteral("Use Icom Vintage Meter"));
-        photo->setObjectName(QStringLiteral("standardSMeterPhotoFaceAction"));
-        photo->setCheckable(true);
-        photo->setChecked(vintageMeter());
-        connect(photo, &QAction::toggled, this, [this](bool on) { setVintageMeter(on); });
+    // Build 816 (operator, 27.11): with the Icom vintage meter on (View >
+    // Appearance > Meters) the face choice is just Light / Dark, as in the
+    // Multi Meter's menu; the drawn face themes otherwise.
+    if (vintageMeter()) {
+        addHeader(QStringLiteral("Face"));
+        QActionGroup* photoGroup = new QActionGroup(&menu);
+        const std::pair<const char*, int> photos[] = {{"Light", 1}, {"Dark", 0}};
+        for (const auto& ph : photos) {
+            QAction* action = menu.addAction(QString::fromLatin1(ph.first));
+            action->setCheckable(true);
+            action->setChecked(vintageMeterVariant() == ph.second);
+            photoGroup->addAction(action);
+            const int variant = ph.second;
+            connect(action, &QAction::triggered, this,
+                    [this, variant]() { setVintageMeterVariant(variant); });
+        }
+    } else {
+        addHeader(QStringLiteral("Face theme"));
+        QActionGroup* faceThemeGroup = new QActionGroup(&menu);
+        struct FaceThemeAction {
+            const char* label;
+            const char* id;
+            const char* objectName;
+        };
+        static constexpr FaceThemeAction faceThemes[] = {
+            {"Aether default", "aether-default", "standardSMeterAetherFaceThemeAction"},
+            {"Classic warm", "classic-warm", "standardSMeterClassicFaceThemeAction"},
+            {"Dark-room uplight", "dark-room-uplight", "standardSMeterUplightFaceThemeAction"},
+            {"Graphite dark", "graphite-dark", "standardSMeterDarkFaceThemeAction"},
+        };
+        for (const FaceThemeAction& faceTheme : faceThemes) {
+            const QString id = QString::fromLatin1(faceTheme.id);
+            QAction* action = menu.addAction(QString::fromLatin1(faceTheme.label));
+            action->setObjectName(QString::fromLatin1(faceTheme.objectName));
+            action->setCheckable(true);
+            action->setChecked(m_vuFaceTheme == id);
+            faceThemeGroup->addAction(action);
+            connect(action, &QAction::triggered, this, [this, id]() {
+                m_vuFaceTheme = MeterSettings::normalizeFaceTheme(id);
+                m_sMeter->setFaceTheme(analogMeterFaceThemeFromId(
+                    m_vuFaceTheme, AnalogMeterFaceTheme::AetherDefault));
+                persistVuMeterSettings();
+            });
+        }
     }
 
     addHeader(QStringLiteral("TX Select"));
@@ -1947,6 +1958,26 @@ void AppletPanel::setVintageMeter(bool on)
     st.setValue(QStringLiteral("SMeterPhotoFace"),
                 on ? QStringLiteral("True") : QStringLiteral("False"));
     st.save();
+}
+
+void AppletPanel::setVintageMeterVariant(int variant)
+{
+    variant = variant == 1 ? 1 : 0;
+    if (m_sMeter)
+        m_sMeter->setPhotoVariant(variant);
+    auto& st = AppSettings::instance();
+    st.setValue(QStringLiteral("SMeterPhotoVariant"),
+                variant == 1 ? QStringLiteral("light") : QStringLiteral("dark"));
+    st.save();
+}
+
+int AppletPanel::vintageMeterVariant() const
+{
+    if (m_sMeter)
+        return m_sMeter->photoVariant();
+    return AppSettings::instance().value(QStringLiteral("SMeterPhotoVariant"),
+                                         QStringLiteral("dark")).toString()
+               == QStringLiteral("light") ? 1 : 0;
 }
 
 bool AppletPanel::vintageMeter() const

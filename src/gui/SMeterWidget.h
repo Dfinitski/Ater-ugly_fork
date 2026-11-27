@@ -54,6 +54,10 @@ public:
     // drawn face.
     void setPhotoFace(bool on);
     bool photoFace() const { return m_photoFace; }
+    // Build 816: which photo -- 0 the dark (lit) original, 1 the light
+    // (paper) version.
+    void setPhotoVariant(int variant);
+    int photoVariant() const { return m_photoVariant; }
 
     enum class TxMode { Power, SWR, Level, Compression };
     enum class RxMode { SMeter, SMeterPeak };
@@ -143,6 +147,8 @@ private:
     bool m_backgroundCacheValid{false};
     // Build 811: the photo face.
     bool m_photoFace{false};
+    int m_photoVariant{0};      // build 816
+    int m_photoLoaded{-1};      // which variant m_photo holds
     QPixmap m_photo;
     QPixmap m_photoScaled;
     QSize m_photoScaledFor;
