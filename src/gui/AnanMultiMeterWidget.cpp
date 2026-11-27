@@ -28,7 +28,9 @@ constexpr double kBottom = 4.0;                // below the last row
 constexpr double kScaleX0 = 52.0;              // where the scales start
 constexpr double kScaleX1 = kW - 60.0;         // ... and end
 constexpr double kNamePx = 15.0, kNameSmallPx = 11.0, kMarkPx = 11.0;
-constexpr double kValuePx = 15.0, kUnitPx = 10.0;
+// Build 809 (operator, 26.11: "the values are a bit small, +25 %"): 15 -> 18.75
+// (19 px) for the number, 10 -> 12.5 (13 px) for the unit under it.
+constexpr double kValuePx = 18.75, kUnitPx = 12.5;
 constexpr double kLineW = 2.2, kRedW = 4.6, kTickLen = 7.0, kTickW = 1.8;
 constexpr int kTickMs = 50;
 constexpr double kPaperCornerR = 14.0;   // build 748: the paper card's corners (design units)
@@ -126,7 +128,7 @@ double centredBaseline(const QFontMetricsF& fm, double cy)
 QFont meterFont(double px, bool bold)
 {
     QFont f;
-    f.setPixelSize(int(px));
+    f.setPixelSize(int(std::lround(px)));   // build 809: rounded (18.75 -> 19), was truncated
     f.setBold(bold);
     f.setHintingPreference(QFont::PreferNoHinting);
     return f;
