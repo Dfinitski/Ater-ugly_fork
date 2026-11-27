@@ -3757,14 +3757,18 @@ void TciServer::broadcastStatus()
         return;
 
     // Broadcast S-meter for each owned slice (throttled to 200ms)
-    // TCI spec: rx_smeter:receiver,value; (2 args)
+    // TCI 1.x spec: rx_smeter:trx,channel,level_dbm; (3 args, as ExpertSDR
+    // sends it). ANAN fork build 833 (a user, 27.11: 5M Contest reports
+    // "RX_METER:0 is not valid integer value"): it went out with 2 args --
+    // trx and level, no channel -- so a client reading the level from the
+    // third field found none. Channel 0 (the receiver's own meter).
     for (auto* s : m_model->slices()) {
         const int trx = m_trxMap.trxForSlice(m_model,s);
         const int meterIndex = s->sliceId();
         if (trx >= 0 && meterIndex >= 0 && meterIndex < 8) {
             float dbm = m_cachedSLevel[meterIndex];
             if (dbm > -200.0f)
-                broadcast(QStringLiteral("rx_smeter:%1,%2;")
+                broadcast(QStringLiteral("rx_smeter:%1,0,%2;")
                               .arg(trx).arg(static_cast<int>(dbm)));
         }
     }

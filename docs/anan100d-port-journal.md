@@ -14111,6 +14111,17 @@ PS — оператор снял (вход ответвителя без PS не
 
 Не проверено на радио, не собиралось под Windows.
 
+### Сборка 833 — TCI: rx_smeter с тремя аргументами (ошибка в 5M Contest)
+
+Оператор (27.11): пользователь жалуется, что при подключении по TCI программа 5M Contest выдаёт «RX_METER:0 is not valid integer value».
+
+- Причина. `TciServer::broadcastStatus` слал `rx_smeter:<trx>,<dBm>;` — два аргумента (комментарий в коде так и говорил: «2 args»). По протоколу TCI 1.x и так, как шлёт ExpertSDR, формат — `rx_smeter:trx,channel,level_dbm;`, три аргумента. Клиент, который берёт уровень из третьего поля, его не находил и ругался на первое значение.
+- `TciServer.cpp`: теперь `rx_smeter:<trx>,0,<dBm целое>;` — канал 0, собственный измеритель приёмника. `rx_channel_sensors` (уже был с тремя аргументами) не менялся.
+- Источник формата: описание протокола TCI (pe5jw/tci-protocol-overview: «trx, channel, level_dbm»). Обсуждение rx_smeter в TCI 2.1 — в aethersdr/AetherSDR#7131.
+- `ForkBuild.h`: 833.
+
+Не проверено с 5M Contest, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
