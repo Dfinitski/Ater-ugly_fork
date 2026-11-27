@@ -13775,6 +13775,13 @@ PS — оператор снял (вход ответвителя без PS не
 - Причина: Theme Editor — `PersistentDialog` (в безрамочном режиме рисует свою `FramelessWindowTitleBar` с градиентом), а три новых окна были обычными `QDialog` с родной шапкой Windows, которой можно дать только сплошной цвет.
 - `ThemeEditorDialog.cpp`: «New Theme from Colors», «Adjust Colors» и «Contrast Check» теперь `PersistentDialog` (содержимое в `bodyWidget()`), следуют режиму View → Frameless Window и запоминают положение и размер (`ThemeWizardDialogGeometry`, `ThemeAdjustDialogGeometry`, `ThemeContrastDialogGeometry`).
 
+### Сборка 803 — живой предпросмотр в мастере новой темы
+
+Оператор (26.11): в окне мастера «Secondary label», ON и OFF не переключаются (это была картинка). Сделать и подпись, и живой образец.
+
+- Над образцом подпись «**Preview** — the buttons can be clicked».
+- `ThemePreviewWidget` (рисуется QPainter, без листа стилей — перекраска литералов текущей темы его не трогает) вместо картинки: земля, панель с основным текстом и «Secondary label», кнопка-переключатель (клик — ON/OFF; ON — акцент, OFF — нейтральная) и обычная кнопка «Button», у обеих наведение (светлее, рамка акцента) и нажатие, курсор-рука, линия акцента и шкала 12 + 3. Обновляется при смене цветов и стартового набора.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -8,6 +8,7 @@
 #include "core/ThemeManager.h"
 
 #include <QAction>
+#include <QMouseEvent>
 #include <QShortcut>
 #include <QKeySequence>
 #include <QSlider>
@@ -1457,52 +1458,133 @@ QLabel* hintLabel(const QString& text, QWidget* parent)
     return l;
 }
 
-// The wizard's preview: ground, a panel with text and an accent button,
-// then the 12 + 3 code-colour ramp.
-QPixmap themePreview(const ThemeManager::NewThemeColors& c)
+// Build 803 (operator, 26.11: "Secondary label, ON and OFF do nothing"):
+// the wizard's preview is a live sample, painted (no style sheet, so the
+// current theme's literal remap cannot touch its colours): ground, a panel
+// with text, a toggle button (click: ON / OFF) and a push button, both with
+// hover and pressed states, an accent trace, and the 12 + 3 code-colour ramp.
+class ThemePreviewWidget : public QWidget
 {
-    QVector<QColor> n, a;
-    ThemeManager::buildLiteralRamps(c, &n, &a);
-    QPixmap pm(360, 120);
-    pm.fill(n.value(2));
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing);
-    const QColor panel = n.value(4);
-    p.setPen(n.value(5));
-    p.setBrush(panel);
-    p.drawRoundedRect(QRectF(10, 10, 220, 64), 4, 4);
-    p.setPen(n.value(9));
-    p.drawText(QRect(20, 16, 200, 18), Qt::AlignLeft | Qt::AlignVCenter, QStringLiteral("Panel text  14.074.000"));
-    p.setPen(n.value(8));
-    p.drawText(QRect(20, 34, 200, 16), Qt::AlignLeft | Qt::AlignVCenter, QStringLiteral("Secondary label"));
-    p.setPen(a.value(2));
-    p.setBrush(a.value(0));
-    p.drawRoundedRect(QRectF(20, 52, 60, 16), 3, 3);
-    p.setPen(QColor(0xff, 0xff, 0xff));
-    p.drawText(QRect(20, 52, 60, 16), Qt::AlignCenter, QStringLiteral("ON"));
-    p.setPen(n.value(5));
-    p.setBrush(n.value(3));
-    p.drawRoundedRect(QRectF(90, 52, 60, 16), 3, 3);
-    p.setPen(n.value(9));
-    p.drawText(QRect(90, 52, 60, 16), Qt::AlignCenter, QStringLiteral("OFF"));
-    p.setPen(a.value(1));
-    p.drawLine(240, 60, 270, 30);
-    p.drawLine(270, 30, 300, 50);
-    p.drawLine(300, 50, 350, 20);
-    const int sw = 20;
-    for (int i = 0; i < n.size(); ++i) {
-        p.setPen(QColor(0, 0, 0, 120));
-        p.setBrush(n[i]);
-        p.drawRect(10 + i * sw, 86, sw, 22);
+public:
+    explicit ThemePreviewWidget(QWidget* parent) : QWidget(parent)
+    {
+        setMouseTracking(true);
+        setFixedSize(360, 124);
+        setToolTip(QStringLiteral("Preview of the new theme -- the buttons can be clicked."));
     }
-    for (int i = 0; i < a.size(); ++i) {
-        p.setPen(QColor(0, 0, 0, 120));
-        p.setBrush(a[i]);
-        p.drawRect(10 + 12 * sw + 12 + i * sw, 86, sw, 22);
+    void setColors(const ThemeManager::NewThemeColors& c)
+    {
+        ThemeManager::buildLiteralRamps(c, &m_n, &m_a);
+        update();
     }
-    p.end();
-    return pm;
-}
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        if (m_n.size() != 12 || m_a.size() != 3)
+            return;
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.fillRect(rect(), m_n[2]);
+        p.setPen(m_n[5]);
+        p.setBrush(m_n[4]);
+        p.drawRoundedRect(QRectF(10.5, 10.5, 230, 66), 4, 4);
+        QFont f = font();
+        p.setFont(f);
+        p.setPen(m_n[9]);
+        p.drawText(QRect(20, 15, 210, 18), Qt::AlignLeft | Qt::AlignVCenter,
+                   QStringLiteral("Panel text  14.074.000"));
+        p.setPen(m_n[8]);
+        p.drawText(QRect(20, 32, 210, 16), Qt::AlignLeft | Qt::AlignVCenter,
+                   QStringLiteral("Secondary label"));
+        // Toggle button: ON = accent, OFF = neutral; hover lighter, pressed darker.
+        {
+            const bool hov = m_hover == 1, prs = m_press == 1;
+            QColor bg = m_on ? m_a[0] : m_n[3];
+            QColor bd = m_on ? m_a[1] : m_n[5];
+            if (hov) { bg = m_on ? m_a[1] : m_n[5]; bd = m_on ? m_a[2] : m_n[7]; }
+            if (prs) bg = bg.darker(130);
+            p.setPen(bd);
+            p.setBrush(bg);
+            p.drawRoundedRect(QRectF(kToggle).adjusted(0.5, 0.5, -0.5, -0.5), 3, 3);
+            p.setPen(m_on ? QColor(255, 255, 255) : m_n[9]);
+            p.drawText(kToggle, Qt::AlignCenter, m_on ? QStringLiteral("ON") : QStringLiteral("OFF"));
+        }
+        // Push button.
+        {
+            const bool hov = m_hover == 2, prs = m_press == 2;
+            QColor bg = hov ? m_n[5] : m_n[3];
+            if (prs) bg = m_a[0];
+            p.setPen(hov ? m_a[1] : m_n[5]);
+            p.setBrush(bg);
+            p.drawRoundedRect(QRectF(kPush).adjusted(0.5, 0.5, -0.5, -0.5), 3, 3);
+            p.setPen(m_n[9]);
+            p.drawText(kPush, Qt::AlignCenter, QStringLiteral("Button"));
+        }
+        // Accent trace.
+        QPen tr(m_a[1]);
+        tr.setWidthF(1.5);
+        p.setPen(tr);
+        const QPointF pts[] = {{250, 66}, {268, 40}, {286, 54}, {304, 24}, {322, 46}, {350, 30}};
+        p.drawPolyline(pts, 6);
+        // The ramp.
+        const int sw = 20;
+        p.setPen(QColor(0, 0, 0, 120));
+        for (int i = 0; i < 12; ++i) {
+            p.setBrush(m_n[i]);
+            p.drawRect(10 + i * sw, 90, sw, 22);
+        }
+        for (int i = 0; i < 3; ++i) {
+            p.setBrush(m_a[i]);
+            p.drawRect(10 + 12 * sw + 12 + i * sw, 90, sw, 22);
+        }
+    }
+    void mouseMoveEvent(QMouseEvent* e) override
+    {
+        const int h = hitTest(e->position().toPoint());
+        if (h != m_hover) {
+            m_hover = h;
+            setCursor(h ? Qt::PointingHandCursor : Qt::ArrowCursor);
+            update();
+        }
+    }
+    void leaveEvent(QEvent*) override
+    {
+        m_hover = 0;
+        m_press = 0;
+        update();
+    }
+    void mousePressEvent(QMouseEvent* e) override
+    {
+        if (e->button() == Qt::LeftButton) {
+            m_press = hitTest(e->position().toPoint());
+            update();
+        }
+    }
+    void mouseReleaseEvent(QMouseEvent* e) override
+    {
+        if (e->button() != Qt::LeftButton)
+            return;
+        if (m_press == 1 && hitTest(e->position().toPoint()) == 1)
+            m_on = !m_on;
+        m_press = 0;
+        update();
+    }
+
+private:
+    static constexpr QRect kToggle{20, 52, 64, 18};
+    static constexpr QRect kPush{94, 52, 64, 18};
+    int hitTest(const QPoint& pt) const
+    {
+        if (kToggle.contains(pt)) return 1;
+        if (kPush.contains(pt)) return 2;
+        return 0;
+    }
+    QVector<QColor> m_n, m_a;
+    bool m_on = true;
+    int m_hover = 0;   // 0 none, 1 toggle, 2 push
+    int m_press = 0;
+};
 
 } // namespace
 
@@ -1745,7 +1827,9 @@ void ThemeEditorDialog::onNewThemeClicked()
     form->addRow(QStringLiteral("Text:"), tx.first);
     form->addRow(QStringLiteral("Accent:"), ac.first);
     root->addLayout(form);
-    auto* preview = new QLabel(&dlg);
+    auto* previewCaption = new QLabel(QStringLiteral("<b>Preview</b> — the buttons can be clicked"), &dlg);   // build 803
+    root->addWidget(previewCaption);
+    auto* preview = new ThemePreviewWidget(&dlg);
     root->addWidget(preview);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, &dlg);
     auto* create = buttons->addButton(QStringLiteral("Create"), QDialogButtonBox::AcceptRole);
@@ -1766,7 +1850,7 @@ void ThemeEditorDialog::onNewThemeClicked()
             r.hex->setText(col.name(QColor::HexRgb));
         }
         pn.second.btn->setEnabled(!autoPanel->isChecked());
-        preview->setPixmap(themePreview(c));
+        preview->setColors(c);
     };
     QDialog* const dp = &dlg;
     auto hook = [dp, colors, refresh](QToolButton* b, QColor ThemeManager::NewThemeColors::*field,
