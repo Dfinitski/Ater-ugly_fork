@@ -215,8 +215,9 @@ constexpr AnglePoint kPoAngles[] = {    // per cent of the rated power -> angle
 };
 
 // Build 816 (operator, 27.11): the light picture is the dark photo itself,
-// recoloured (black -> old paper, the lit amber -> printing ink, red and the
-// lamp window as they were), so it shares the geometry above.
+// recoloured (black -> old paper, the lit amber -> printing ink, red as it
+// was; build 817: the lamp window from the operator's redrawn picture), so it
+// shares the geometry above.
 
 struct PhotoFace {
     const char* resource;

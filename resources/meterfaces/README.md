@@ -274,7 +274,8 @@ product logo or copied face artwork.
   distributed under the same licence (CC BY-SA 4.0). The needle is drawn by the program
   (`SMeterWidget::paintPhotoFace`).
 - `vintage-s-meter-light.jpg` (build 816): the same photo recoloured (black -> an old-paper
-  texture, the amber markings -> black, red and the lamp window unchanged) -- an adaptation,
+  texture, the amber markings -> black, red unchanged; the lamp window from a redrawn
+  picture supplied by the operator) -- an adaptation,
   so under the same licence (CC BY-SA 4.0), with the same attribution.
 - ICOM is a trademark of Icom Inc.; no ICOM name or logo appears in the picture, and the
   program is not affiliated with or endorsed by Icom Inc. or the photographer.
