@@ -226,6 +226,8 @@
 #include <QtMath>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QGridLayout>   // build 829
+#include <cstring>       // build 829
 #include <QSplitter>
 #include <QMenuBar>
 #include <QDialog>
@@ -515,6 +517,7 @@ constexpr BottomPanelElement kBottomLeftElements[] = {
     {"att", "BottomPanelShowAttenuators", false},
     {"ae", "BottomPanelFastAeDsp", false},
     {"dr", "BottomPanelShowDithRand", false},   // build 824
+    {"bands", "BottomPanelShowHamBands", false},   // build 829
 };
 constexpr BottomPanelElement kBottomRightElements[] = {
     {"cpu", "BottomPanelShowCpu", true},
@@ -7125,6 +7128,115 @@ void MainWindow::buildUI()
         connect(rzTimer, &QTimer::timeout, drBox, refresh);
         rzTimer->start();
         refresh();
+    }
+
+    // ANAN fork build 829 (operator, 27.11): View > Appearance > Bottom Panel
+    // > "Show HAM Bands" (off by default, AppSettings
+    // "BottomPanelShowHamBands"): a left-group element of 12 small buttons in
+    // two rows -- 160 ... 6 m and GEN -- drawn as AeRX / AeTX (smaller). The
+    // frame of the band the active receiver is on is lit (GEN when it is on
+    // none of them); a click changes band as the panadapter's band buttons
+    // and the band shortcuts do (selectBand on the active receiver's pan).
+    {
+        QHBoxLayout* bandsUnit = makeBottomUnit(m_bottomLeftGroup, "bands");
+        auto* bandsBox = new QWidget;
+        bandsBox->setObjectName(QStringLiteral("bottomHamBands"));
+        auto* grid = new QGridLayout(bandsBox);
+        grid->setContentsMargins(0, 0, 0, 0);
+        grid->setHorizontalSpacing(2);
+        grid->setVerticalSpacing(2);
+        static const char* const kHamBandsButtonStyle =
+            "QPushButton { background: transparent; "
+            "border: 1px solid {{color.background.2}}; "
+            "border-radius: 2px; color: {{color.text.secondary}}; "
+            "font-size: 9px; font-weight: normal; padding: 0px; }"
+            "QPushButton:hover { color: {{color.text.primary}}; }"
+            "QPushButton:checked { background: transparent; "
+            "color: {{color.text.primary}}; "
+            "border: 1px solid {{color.accent.dim}}; }"
+            "QPushButton:pressed { border: 1px solid {{color.accent.dim}}; }";
+        struct HamBandButton {
+            const char* label;
+            const char* band;   // a kBands name, or "GEN"
+        };
+        static constexpr HamBandButton kHamBands[] = {
+            {"160", "160m"}, {"80", "80m"}, {"60", "60m"}, {"40", "40m"},
+            {"30", "30m"}, {"20", "20m"}, {"17", "17m"}, {"15", "15m"},
+            {"12", "12m"}, {"10", "10m"}, {"6", "6m"}, {"GEN", "GEN"},
+        };
+        QList<QPushButton*> bandButtons;
+        int index = 0;
+        for (const HamBandButton& def : kHamBands) {
+            const BandDef* bd = &kGenBand;
+            for (const BandDef& b : kBands)
+                if (std::strcmp(b.name, def.band) == 0)
+                    bd = &b;
+            const QString bandName = QString::fromLatin1(bd->name);
+            const double freq = bd->defaultFreqMhz;
+            const QString mode = QString::fromLatin1(bd->defaultMode);
+            auto* b = new QPushButton(QString::fromLatin1(def.label));
+            b->setObjectName(QStringLiteral("bottomBand_") + bandName);
+            b->setAccessibleName(bandName == QLatin1String("GEN") ? QStringLiteral("General coverage")
+                                                                  : bandName);
+            b->setToolTip(bandName == QLatin1String("GEN") ? QStringLiteral("GEN -- general coverage")
+                                                           : QStringLiteral("%1 band").arg(bandName));
+            b->setCheckable(true);
+            b->setAutoDefault(false);
+            b->setFocusPolicy(Qt::NoFocus);
+            b->setFixedSize(24, 15);
+            b->setProperty("hamBandLow", bd->lowMhz);
+            b->setProperty("hamBandHigh", bd->highMhz);
+            AetherSDR::ThemeManager::instance().applyStyleSheet(b, kHamBandsButtonStyle);
+            connect(b, &QPushButton::clicked, this, [this, b, bandName, freq, mode] {
+                // The lit frame follows the receiver (the poll below), not the click.
+                {
+                    const QSignalBlocker blocker(b);
+                    b->setChecked(!b->isChecked());
+                }
+                if (!m_radioModel.isConnected())
+                    return;
+                auto* s = activeSlice();
+                if (!s)
+                    return;
+                if (s->isLocked()) {
+                    s->notifyTuneBlockedByLock();
+                    return;
+                }
+                selectBand(s->panId(), bandName, freq, mode);
+            });
+            grid->addWidget(b, index / 6, index % 6);
+            ++index;
+            bandButtons.append(b);
+        }
+        bandsUnit->addWidget(bandsBox, 0, Qt::AlignVCenter);
+        auto* bandsTimer = new QTimer(bandsBox);
+        bandsTimer->setInterval(250);
+        connect(bandsTimer, &QTimer::timeout, bandsBox, [this, bandsBox, bandButtons] {
+            if (!bandsBox->isVisible())
+                return;
+            const SliceModel* s = m_radioModel.isConnected() ? activeSlice() : nullptr;
+            const double mhz = s ? s->frequency() : -1.0;
+            QPushButton* lit = nullptr;
+            QPushButton* gen = bandButtons.isEmpty() ? nullptr : bandButtons.last();
+            if (s) {
+                for (QPushButton* b : bandButtons) {
+                    if (b == gen)
+                        continue;
+                    if (mhz >= b->property("hamBandLow").toDouble()
+                        && mhz <= b->property("hamBandHigh").toDouble())
+                        lit = b;
+                }
+                if (!lit)
+                    lit = gen;
+            }
+            for (QPushButton* b : bandButtons) {
+                if (b->isChecked() != (b == lit)) {
+                    const QSignalBlocker blocker(b);
+                    b->setChecked(b == lit);
+                }
+            }
+        });
+        bandsTimer->start();
     }
 
     m_stationNickLabel = new QLabel("N0CALL");
