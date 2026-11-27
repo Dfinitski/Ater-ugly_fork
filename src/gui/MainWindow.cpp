@@ -583,9 +583,13 @@ void MainWindow::applyBottomPanelLayout()
                                      kBottomLeftElements, true);
     // Right: before the group stand GPS (its separator after it, set by the
     // GPS code), PA, TGXL / PGXL (each with its separator before it).
+    // Build 826 (operator, 27.11: "the first element on the right must start
+    // with a separator"): it always does, unless GPS's own separator is
+    // already the last thing before the group (no PA / TGXL / PGXL after it).
     auto shown = [](const QWidget* w) { return w && !w->isHidden(); };
-    const bool before = shown(m_paStack) || shown(m_tgxlContainer) || shown(m_pgxlContainer)
-                        || (shown(m_gpsStatusButton) && !shown(m_gpsSeparator));
+    const bool gpsSepLast = shown(m_gpsSeparator) && !shown(m_paStack)
+                            && !shown(m_tgxlContainer) && !shown(m_pgxlContainer);
+    const bool before = !gpsSepLast;
     if (layoutBottomGroup(m_bottomRightGroup, "BottomPanelRightOrder",
                           kBottomRightElements, before))
         changed = true;
@@ -7139,21 +7143,25 @@ void MainWindow::buildUI()
     // CPU (top) + Memory (bottom) stacked
     {
         auto* cpuStack = new QWidget;
-        reserveTelemetryStack(cpuStack, {
-            QStringLiteral("CPU: 100.0%"),
-            QStringLiteral("Mem: 99999 MB")
-        });
+        // Build 826 (operator, 27.11: on the right "the distance to the start
+        // of the elements is too large" -- the text sat centred in a reserved
+        // 84 px + 16 px box): the lines left-aligned, next to the separator
+        // as on the left, the box only as wide as the widest usual text.
+        cpuStack->setMinimumWidth(statusBarCompactTextWidth({
+            QStringLiteral("CPU: 99.9%"),
+            QStringLiteral("Mem: 9999 MB")
+        }, 2));
         auto* cpuVbox = new QVBoxLayout(cpuStack);
         cpuVbox->setContentsMargins(0, 0, 0, 0);
         cpuVbox->setSpacing(0);
         cpuVbox->setAlignment(Qt::AlignVCenter);
         m_cpuLabel = new QLabel("CPU: \u2014");
         applyStatusBarCompactLabelStyle(m_cpuLabel, QStringLiteral("{{color.text.secondary}}"));
-        m_cpuLabel->setAlignment(Qt::AlignCenter);
+        m_cpuLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);   // build 826
         m_cpuLabel->setToolTip("AetherSDR process CPU usage");
         m_memLabel = new QLabel("Mem: \u2014");
         applyStatusBarCompactLabelStyle(m_memLabel, QStringLiteral("{{color.text.label}}"));
-        m_memLabel->setAlignment(Qt::AlignCenter);
+        m_memLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);   // build 826
 #if defined(Q_OS_WIN)
         m_memLabel->setToolTip("AetherSDR process working set (matches Task Manager)");
 #elif defined(Q_OS_MACOS)
@@ -7448,24 +7456,23 @@ void MainWindow::buildUI()
         // Build 569 (operator, 21.11: "pressed to the right edge, the text is
         // cut"): the width of the date / time stack whose place this is --
         // reserved the same way, both rows at the telemetry minimum.
-        reserveTelemetryStack(utcStack, {
+        // Build 826: left-aligned, as wide as its text (as CPU above).
+        utcStack->setMinimumWidth(statusBarCompactTextWidth({
             QStringLiteral("UTC Time:"),
             QStringLiteral("00:00:00")
-        });
+        }, 2));
         auto* utcBox = new QVBoxLayout(utcStack);
         utcBox->setContentsMargins(0, 0, 0, 0);
         utcBox->setSpacing(0);
         utcBox->setAlignment(Qt::AlignVCenter);
         auto* utcTitle = new QLabel(QStringLiteral("UTC Time:"));
         applyStatusBarCompactLabelStyle(utcTitle, QStringLiteral("{{color.text.secondary}}"));
-        utcTitle->setAlignment(Qt::AlignCenter);
-        utcTitle->setMinimumWidth(kTelemetryStackMinWidth);
+        utcTitle->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);   // build 826
         auto* utcValue = new QLabel(QStringLiteral("00:00:00"));
         // Build 328 (operator, 12.11: the time line stood out on its own): the
         // same colour as its "UTC Time:" title and the bar's other labels.
         applyStatusBarCompactLabelStyle(utcValue, QStringLiteral("{{color.text.secondary}}"));
-        utcValue->setAlignment(Qt::AlignCenter);
-        utcValue->setMinimumWidth(kTelemetryStackMinWidth);
+        utcValue->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);   // build 826
         utcBox->addWidget(utcTitle);
         utcBox->addWidget(utcValue);
         utcUnit->addWidget(utcStack);
