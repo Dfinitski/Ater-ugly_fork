@@ -311,6 +311,33 @@ namespace AetherSDR {
 
 namespace {
 
+// ANAN fork build 828 (operator, 27.11): two red lines crossing the TX
+// indicator while transmitting is not possible for any reason. Drawn over the
+// label, transparent for the mouse (a click still works as MOX).
+class TxBlockedCross : public QWidget
+{
+public:
+    explicit TxBlockedCross(QWidget* parent) : QWidget(parent)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_NoSystemBackground);
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        QColor red = ThemeManager::instance().color(QStringLiteral("color.accent.danger"));
+        if (!red.isValid())
+            red = QColor(0xe0, 0x30, 0x30);
+        p.setPen(QPen(red, 2.5, Qt::SolidLine, Qt::RoundCap));
+        const QRectF r = QRectF(rect()).adjusted(5, 5, -5, -5);
+        p.drawLine(r.topLeft(), r.bottomRight());
+        p.drawLine(r.topRight(), r.bottomLeft());
+    }
+};
+
 // Pan-follow edge-margin constants moved to MainWindow_Wiring.cpp (#3351 Phase 1d).
 // kPanFollowAnimationDurationMs moved to MainWindow_Wiring.cpp (#3351 Phase 1d).
 // kSliderShortcutLeaseMs moved to MainWindow_Shortcuts.cpp (#3351 Phase 1c).
@@ -6830,6 +6857,37 @@ void MainWindow::buildUI()
     keyboardOperable(m_txIndicator);
     m_txIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 21px; }");
     txUnit->addWidget(m_txIndicator);
+    // Build 828 (operator, 27.11): crossed with red lines while a
+    // transmission could not start now, for any reason
+    // (RadioModel::transmitBlockedReason); the reason is in the tooltip. Not
+    // while transmitting or disconnected. Polled: the reasons (band, mode,
+    // FTX, inhibit, transmit permission) have no common signal.
+    {
+        auto* cross = new TxBlockedCross(m_txIndicator);
+        cross->setGeometry(m_txIndicator->rect());
+        cross->hide();
+        auto* blockTimer = new QTimer(m_txIndicator);
+        blockTimer->setInterval(250);
+        connect(blockTimer, &QTimer::timeout, m_txIndicator, [this, cross] {
+            QString reason;
+            if (m_radioModel.isConnected() && !m_radioModel.transmitModel().isTransmitting())
+                reason = m_radioModel.transmitBlockedReason();
+            const bool blocked = !reason.isEmpty();
+            if (cross->geometry() != m_txIndicator->rect())
+                cross->setGeometry(m_txIndicator->rect());
+            if (cross->isHidden() == blocked) {
+                cross->setVisible(blocked);
+                if (blocked)
+                    cross->raise();
+            }
+            const QString tip = blocked
+                ? QStringLiteral("Transmit is not possible now: %1").arg(reason)
+                : QStringLiteral("Click: MOX on / off (while transmitting: TX off)");
+            if (m_txIndicator->toolTip() != tip)
+                m_txIndicator->setToolTip(tip);
+        });
+        blockTimer->start();
+    }
 
     // ANAN fork build 612 (operator, 22.11: "make the RZ3QS branch's buttons on
     // the bottom bar muted in colour, as the antenna indicator or the time

@@ -180,6 +180,15 @@ public:
     // stays the unadorned token that rigctl and the bridge serve.
     QString versionLabel() const { return m_versionLabel; }
     bool isConnected() const;
+    // ANAN fork build 828: why a transmission could not start now (any
+    // source: receive-only radio, the backend's refusal -- band, FTX --, the
+    // pan / slice inhibit, a receive-only mode), empty if it could. The
+    // checks of localPttInterlockMessage() for an external (DAX) key, so the
+    // voice-in-DIGU and TX filter rules of the MOX path are not counted.
+    QString transmitBlockedReason() const
+    {
+        return localPttInterlockMessage(TransmitModel::PttSource::Dax);
+    }
     TuneOutputControlState tuneOutputControl(int bandId) const;
     void requestTuneOutputSuppression(int bandId, bool suppressed);
 
