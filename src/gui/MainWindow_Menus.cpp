@@ -2566,49 +2566,79 @@ void MainWindow::wireUpdateChecker()
     // left running sees a new release too. 4 requests an hour stay far below
     // GitHub's 60/hour for unauthenticated clients. A later check updates the
     // one status-bar link instead of adding another.
+    //
+    // Build 808 (operator, 26.11: "thousands of programs polling GitHub"):
+    // a conditional request. The ETag of the last full answer is kept with
+    // the newest release it named (AppSettings ForkRelease*); while nothing
+    // changed GitHub answers 304 Not Modified with no body, which by its
+    // documentation does not count against the 60/hour limit, and the kept
+    // result is used. Only the last 5 releases are asked for.
     const auto checkForkRelease = [this] {
         auto* net = new QNetworkAccessManager(this);
         QNetworkRequest req(QUrl(QStringLiteral(
-            "https://api.github.com/repos/Dfinitski/Ater-ugly_fork/releases?per_page=20")));
+            "https://api.github.com/repos/Dfinitski/Ater-ugly_fork/releases?per_page=5")));
         req.setRawHeader("Accept", "application/vnd.github+json");
         req.setHeader(QNetworkRequest::UserAgentHeader,
                       QStringLiteral(AETHER_FORK_NAME "/%1").arg(AETHER_FORK_BUILD));
+        const QString etag = AppSettings::instance().value(QStringLiteral("ForkReleaseETag")).toString();
+        if (!etag.isEmpty())
+            req.setRawHeader("If-None-Match", etag.toUtf8());
         req.setTransferTimeout(15000);
         QNetworkReply* reply = net->get(req);
         connect(reply, &QNetworkReply::finished, this, [this, net, reply] {
             reply->deleteLater();
             net->deleteLater();
-            if (reply->error() != QNetworkReply::NoError) {
-                qCInfo(lcGui) << "Fork release check:" << reply->errorString();
-                return;
-            }
-            const QJsonDocument doc = QJsonDocument::fromJson(reply->read(4 * 1024 * 1024));
-            if (!doc.isArray())
-                return;
-            static const QRegularExpression tagRe(QStringLiteral("^build-(\\d{1,6})$"));
-            static const QString pagePrefix =
-                QStringLiteral("https://github.com/Dfinitski/Ater-ugly_fork/releases/");
-            int best = AETHER_FORK_BUILD;
+            auto& st = AppSettings::instance();
+            const int http = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            int best = 0;
             QString bestName;
             QString bestUrl;
-            for (const QJsonValue& v : doc.array()) {
-                const QJsonObject o = v.toObject();
-                if (o.value(QStringLiteral("draft")).toBool())
-                    continue;
-                const auto m = tagRe.match(o.value(QStringLiteral("tag_name")).toString());
-                const QString url = o.value(QStringLiteral("html_url")).toString();
-                if (!m.hasMatch() || !url.startsWith(pagePrefix))
-                    continue;
-                const int build = m.captured(1).toInt();
-                if (build <= best)
-                    continue;
-                best = build;
-                bestUrl = url;
-                bestName = o.value(QStringLiteral("name")).toString().simplified().left(80);
-                if (bestName.isEmpty())
-                    bestName = QStringLiteral("build %1").arg(build);
+            if (http == 304) {
+                // Nothing changed since the kept answer.
+                best = st.value(QStringLiteral("ForkReleaseBestBuild"), 0).toInt();
+                bestName = st.value(QStringLiteral("ForkReleaseBestName")).toString();
+                bestUrl = st.value(QStringLiteral("ForkReleaseBestUrl")).toString();
+                qCInfo(lcGui) << "Fork release check: not modified (newest build" << best << ")";
+            } else {
+                if (reply->error() != QNetworkReply::NoError) {
+                    qCInfo(lcGui) << "Fork release check:" << reply->errorString();
+                    return;
+                }
+                const QJsonDocument doc = QJsonDocument::fromJson(reply->read(4 * 1024 * 1024));
+                if (!doc.isArray())
+                    return;
+                static const QRegularExpression tagRe(QStringLiteral("^build-(\\d{1,6})$"));
+                static const QString pagePrefix =
+                    QStringLiteral("https://github.com/Dfinitski/Ater-ugly_fork/releases/");
+                for (const QJsonValue& v : doc.array()) {
+                    const QJsonObject o = v.toObject();
+                    if (o.value(QStringLiteral("draft")).toBool())
+                        continue;
+                    const auto m = tagRe.match(o.value(QStringLiteral("tag_name")).toString());
+                    const QString url = o.value(QStringLiteral("html_url")).toString();
+                    if (!m.hasMatch() || !url.startsWith(pagePrefix))
+                        continue;
+                    const int build = m.captured(1).toInt();
+                    if (build <= best)
+                        continue;
+                    best = build;
+                    bestUrl = url;
+                    bestName = o.value(QStringLiteral("name")).toString().simplified().left(80);
+                    if (bestName.isEmpty())
+                        bestName = QStringLiteral("build %1").arg(build);
+                }
+                // Kept with the answer's ETag, for the next 304.
+                const QString newTag = QString::fromUtf8(reply->rawHeader("ETag"));
+                if (newTag.isEmpty())
+                    st.remove(QStringLiteral("ForkReleaseETag"));
+                else
+                    st.setValue(QStringLiteral("ForkReleaseETag"), newTag);
+                st.setValue(QStringLiteral("ForkReleaseBestBuild"), best);
+                st.setValue(QStringLiteral("ForkReleaseBestName"), bestName);
+                st.setValue(QStringLiteral("ForkReleaseBestUrl"), bestUrl);
+                st.save();
             }
-            if (bestUrl.isEmpty()) {
+            if (best <= AETHER_FORK_BUILD || bestUrl.isEmpty()) {
                 qCInfo(lcGui) << "Fork release check: build" << AETHER_FORK_BUILD << "is the newest";
                 return;
             }
