@@ -1738,6 +1738,14 @@ void MainWindow::buildMenuBar()
             .value(QStringLiteral("BottomPanelFastAeDsp"), QStringLiteral("False"))
             .toString() == QLatin1String("True"));
         bottomLay->addWidget(fastAe);
+        // Build 821: the station name in the middle of the bar.
+        auto* showStation = new QCheckBox(QStringLiteral("Show Station Name"), bottom);
+        showStation->setObjectName(QStringLiteral("appearanceShowStationNameCheck"));
+        showStation->setToolTip(QStringLiteral("The station name (the radio's nickname) in the middle of the bottom bar."));
+        showStation->setChecked(AppSettings::instance()
+            .value(QStringLiteral("BottomPanelShowStationName"), QStringLiteral("True"))
+            .toString() == QLatin1String("True"));
+        bottomLay->addWidget(showStation);
         root->addWidget(bottom);
         root->addStretch(1);
         auto* closeRow = new QHBoxLayout;
@@ -1763,6 +1771,14 @@ void MainWindow::buildMenuBar()
                                              on ? QStringLiteral("True") : QStringLiteral("False"));
             if (auto* ae = findChild<QWidget*>(QStringLiteral("bottomAeDspButtons")))
                 ae->setProperty("bottomShow", on);
+        });
+        connect(showStation, &QCheckBox::toggled, this, [this](bool on) {
+            AppSettings::instance().setValue(QStringLiteral("BottomPanelShowStationName"),
+                                             on ? QStringLiteral("True") : QStringLiteral("False"));
+            if (m_stationNickLabel) {
+                m_stationNickLabel->setVisible(on);
+                updateStatusBarMinimumWidth();
+            }
         });
         dlg->show();
     });

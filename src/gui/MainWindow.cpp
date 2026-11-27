@@ -6904,6 +6904,13 @@ void MainWindow::buildUI()
     // it again until a radio connected. It is sized again now that it is in
     // place, and whenever its font or style changes (MainWindow::eventFilter).
     refitStationLabel();
+    // ANAN fork build 821 (operator, 27.11): View > Appearance > Bottom
+    // Panel > "Show Station Name" (on by default, AppSettings
+    // "BottomPanelShowStationName") hides / shows the station name in the
+    // middle of the bar.
+    m_stationNickLabel->setVisible(AppSettings::instance()
+        .value(QStringLiteral("BottomPanelShowStationName"), QStringLiteral("True"))
+        .toString() == QLatin1String("True"));
 
     hbox->addStretch(1);
 
