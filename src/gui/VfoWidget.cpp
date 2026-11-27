@@ -3429,6 +3429,19 @@ void VfoWidget::buildTabContent()
                 if (m_slice) m_slice->setRit(m_ritBtn->isChecked(),
                     m_slice->ritFreq() + dir * RIT_STEP_HZ);
             });
+            // ANAN fork build 806 (operator, 26.11): the offset can be typed --
+            // double-click (or Enter on the focused value), a number in Hz,
+            // -9999..9999 (the radio's limit). The ON / OFF state stays as it is.
+            m_ritLabel->setEditable(-9999, 9999);
+            m_ritLabel->setToolTip(QStringLiteral("Wheel or arrows: 10 Hz steps. Double-click to type the offset in Hz."));
+            m_ritLabel->setEditorStyler([](QWidget* editor) {
+                AetherSDR::ThemeManager::instance().applyStyleSheet(editor,
+                    "QLineEdit { font-size: 11px; color: {{color.text.primary}}; background: {{color.background.0}}; "
+                    "border: 1px solid {{color.background.1}}; border-radius: 3px; padding: 1px 3px; }");
+            });
+            connect(m_ritLabel, &ScrollableLabel::editCommitted, this, [this](int hz) {
+                if (m_slice) m_slice->setRit(m_ritBtn->isChecked(), hz);
+            });
 
             vb->addLayout(row);
         }
@@ -3479,6 +3492,19 @@ void VfoWidget::buildTabContent()
             connect(m_xitLabel, &ScrollableLabel::scrolled, this, [this](int dir) {
                 if (m_slice) m_slice->setXit(m_xitBtn->isChecked(),
                     m_slice->xitFreq() + dir * RIT_STEP_HZ);
+            });
+            // ANAN fork build 806 (operator, 26.11): the offset can be typed --
+            // double-click (or Enter on the focused value), a number in Hz,
+            // -9999..9999 (the radio's limit). The ON / OFF state stays as it is.
+            m_xitLabel->setEditable(-9999, 9999);
+            m_xitLabel->setToolTip(QStringLiteral("Wheel or arrows: 10 Hz steps. Double-click to type the offset in Hz."));
+            m_xitLabel->setEditorStyler([](QWidget* editor) {
+                AetherSDR::ThemeManager::instance().applyStyleSheet(editor,
+                    "QLineEdit { font-size: 11px; color: {{color.text.primary}}; background: {{color.background.0}}; "
+                    "border: 1px solid {{color.background.1}}; border-radius: 3px; padding: 1px 3px; }");
+            });
+            connect(m_xitLabel, &ScrollableLabel::editCommitted, this, [this](int hz) {
+                if (m_slice) m_slice->setXit(m_xitBtn->isChecked(), hz);
             });
 
             vb->addLayout(row);
