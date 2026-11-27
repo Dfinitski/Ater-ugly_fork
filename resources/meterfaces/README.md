@@ -261,3 +261,17 @@ perspective-corrected measurements of a Daiwa-style physical cross-needle
 meter. Mechanical SWR calibration comes from the stored movement scales and
 the power-ratio relationship above. The resource intentionally contains no
 product logo or copied face artwork.
+
+## Vintage S / Po meter photo (ANAN fork build 811, a trial)
+
+`vintage-s-meter.jpg` — the lit scale of an ICOM IC-732 S / RF output meter.
+
+- Photo: "S-Meter (ICOM IC-732 HF Transceiver)" by **Chaz360**, Wikimedia Commons,
+  https://commons.wikimedia.org/wiki/File:ICOM_IC-732_S-Meter.jpg
+- Licence: **Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)**,
+  https://creativecommons.org/licenses/by-sa/4.0/
+- Changes: the needle retouched out of the picture; saved as JPEG. This modified file is
+  distributed under the same licence (CC BY-SA 4.0). The needle is drawn by the program
+  (`SMeterWidget::paintPhotoFace`).
+- ICOM is a trademark of Icom Inc.; no ICOM name or logo appears in the picture, and the
+  program is not affiliated with or endorsed by Icom Inc. or the photographer.

@@ -47,6 +47,13 @@ public:
     // compact fixed-height sidebar layout when docked.
     void setFloating(bool floating);
     void setFaceTheme(AnalogMeterFaceTheme theme);
+    // ANAN fork build 811 (operator, 27.11, a trial): a photographed vintage
+    // S / Po meter face (resources/meterfaces/vintage-s-meter.jpg, CC BY-SA
+    // 4.0, see resources/meterfaces/README.md) with a drawn needle, for the
+    // RX S-meter and the TX power reading; other TX readings keep the
+    // drawn face.
+    void setPhotoFace(bool on);
+    bool photoFace() const { return m_photoFace; }
 
     enum class TxMode { Power, SWR, Level, Compression };
     enum class RxMode { SMeter, SMeterPeak };
@@ -106,6 +113,7 @@ private:
     void scheduleAccessibleValue();
     void publishAccessibleValue();
     void rebuildBackgroundLayer();
+    bool paintPhotoFace(QPainter& p);   // build 811; false = not drawn
     void drawPhysicalNeedle(QPainter& painter, const QPointF& pivot,
                             const QPointF& tip,
                             const QSizeF& faceSize,
@@ -133,6 +141,12 @@ private:
     qreal m_backgroundCacheDpr{0.0};
     AnalogMeterFaceTheme m_backgroundCacheTheme{AnalogMeterFaceTheme::AetherDefault};
     bool m_backgroundCacheValid{false};
+    // Build 811: the photo face.
+    bool m_photoFace{false};
+    QPixmap m_photo;
+    QPixmap m_photoScaled;
+    QSize m_photoScaledFor;
+    qreal m_photoScaledDpr{0.0};
     QTimer m_accessibilityTimer;
     QString m_lastAccessibleValue;
     bool m_relativeLevel = false;

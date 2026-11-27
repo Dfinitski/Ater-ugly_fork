@@ -371,6 +371,11 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
 
     m_sMeter->setFaceTheme(analogMeterFaceThemeFromId(
         m_vuFaceTheme, AnalogMeterFaceTheme::AetherDefault));
+    // ANAN fork build 811 (operator, 27.11, a trial): the vintage photo face,
+    // on unless switched off in the meter's menu.
+    m_sMeter->setPhotoFace(AppSettings::instance()
+        .value(QStringLiteral("SMeterPhotoFace"), QStringLiteral("True")).toString()
+        == QStringLiteral("True"));
     m_sMeter->setTxMode(MeterSettings::txMeterItems()[m_vuTxSelect]);
     m_sMeter->setRxMode(MeterSettings::rxMeterItems()[m_vuRxSelect]);
     m_sMeter->setPeakHoldEnabled(m_vuPeakHoldEnabled);
@@ -1602,6 +1607,21 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
             m_sMeter->setFaceTheme(analogMeterFaceThemeFromId(
                 m_vuFaceTheme, AnalogMeterFaceTheme::AetherDefault));
             persistVuMeterSettings();
+        });
+    }
+
+    // Build 811: the vintage photo face (a trial) over any face theme.
+    {
+        QAction* photo = menu.addAction(QStringLiteral("Vintage photo face (trial)"));
+        photo->setObjectName(QStringLiteral("standardSMeterPhotoFaceAction"));
+        photo->setCheckable(true);
+        photo->setChecked(m_sMeter->photoFace());
+        connect(photo, &QAction::toggled, this, [this](bool on) {
+            m_sMeter->setPhotoFace(on);
+            auto& st = AppSettings::instance();
+            st.setValue(QStringLiteral("SMeterPhotoFace"),
+                        on ? QStringLiteral("True") : QStringLiteral("False"));
+            st.save();
         });
     }
 

@@ -167,6 +167,122 @@ QString SMeterWidget::accessibleValueText() const
         .arg(static_cast<int>(displayDbm));
 }
 
+void SMeterWidget::setPhotoFace(bool on)
+{
+    if (m_photoFace == on)
+        return;
+    m_photoFace = on;
+    update();
+}
+
+namespace {
+
+// Build 811: the photo's own geometry (pixels of the 1774 x 887 photo). The
+// S and Po arcs are concentric about a pivot far below the picture; the
+// angles of the scale marks were measured on the photo (degrees, 90 =
+// straight up, larger = to the left).
+constexpr double kPhotoW = 1774.0, kPhotoH = 887.0;
+constexpr double kPivotX = 880.34, kPivotY = 2155.0;
+constexpr double kNeedleTipR = 1872.0;   // just past the S marks
+struct AnglePoint { double value, deg; };
+constexpr AnglePoint kSAngles[] = {     // dBm -> angle
+    {-127.0, 113.0},                     // the rest, left of S1
+    {-121.0, 106.97}, {-115.0, 103.19}, {-109.0, 100.88}, {-103.0, 98.69},
+    {-97.0, 96.52},   {-91.0, 94.46},   {-85.0, 92.36},   {-79.0, 90.31},
+    {-73.0, 88.31},                      // S9
+    {-63.0, 84.56},   {-53.0, 81.69},   {-43.0, 78.61},   {-33.0, 76.34},
+    {-23.0, 73.49},   {-13.0, 70.98},    // S9+60
+    {-3.0, 68.6},                        // the end of the arc
+};
+constexpr AnglePoint kPoAngles[] = {    // per cent of the rated power -> angle
+    {0.0, 105.0}, {10.0, 96.15}, {25.0, 89.58}, {50.0, 83.86}, {100.0, 77.96},
+    {125.0, 74.06}, {150.0, 69.0},
+};
+
+template <size_t N>
+double angleFor(const AnglePoint (&table)[N], double v)
+{
+    if (v <= table[0].value)
+        return table[0].deg;
+    for (size_t i = 1; i < N; ++i) {
+        if (v <= table[i].value) {
+            const double t = (v - table[i - 1].value) / (table[i].value - table[i - 1].value);
+            return table[i - 1].deg + (table[i].deg - table[i - 1].deg) * t;
+        }
+    }
+    return table[N - 1].deg;
+}
+
+} // namespace
+
+bool SMeterWidget::paintPhotoFace(QPainter& p)
+{
+    // TX readings other than power have no scale on the photo.
+    if (m_transmitting && m_txMode != TxMode::Power)
+        return false;
+    if (m_photo.isNull()) {
+        m_photo = QPixmap(QStringLiteral(":/meterfaces/vintage-s-meter.jpg"));
+        if (m_photo.isNull())
+            return false;
+    }
+    // The photo, whole, centred (aspect kept), black around it.
+    const QSizeF fit = QSizeF(kPhotoW, kPhotoH).scaled(QSizeF(size()), Qt::KeepAspectRatio);
+    const QRectF target(QPointF((width() - fit.width()) / 2.0, (height() - fit.height()) / 2.0), fit);
+    const qreal dpr = devicePixelRatioF();
+    if (m_photoScaledFor != size() || !qFuzzyCompare(m_photoScaledDpr, dpr)) {
+        m_photoScaled = m_photo.scaled((fit * dpr).toSize(), Qt::KeepAspectRatio,
+                                       Qt::SmoothTransformation);
+        m_photoScaled.setDevicePixelRatio(dpr);
+        m_photoScaledFor = size();
+        m_photoScaledDpr = dpr;
+    }
+    p.fillRect(rect(), Qt::black);
+    p.drawPixmap(target.topLeft(), m_photoScaled);
+
+    // The reading, from the animated needle fraction of the drawn face.
+    double deg;
+    if (m_transmitting) {
+        const double watts = double(m_needleFraction) * m_powerScaleMax;
+        const double rated = m_powerRedStart > 0.0f ? m_powerRedStart : m_powerScaleMax;
+        deg = angleFor(kPoAngles, rated > 0.0 ? watts / rated * 100.0 : 0.0);
+    } else {
+        double dbm;
+        const double f = m_needleFraction;
+        if (m_relativeLevel) {
+            dbm = f * 120.0 - 120.0;
+        } else {
+            const auto& sc = m_geometry.rxScale;
+            dbm = f <= sc.s9Fraction
+                ? sc.minimumDbm + f / sc.s9Fraction * (sc.s9Dbm - sc.minimumDbm)
+                : sc.s9Dbm + (f - sc.s9Fraction) / (1.0 - sc.s9Fraction)
+                      * (sc.maximumDbm - sc.s9Dbm);
+        }
+        deg = angleFor(kSAngles, dbm);
+    }
+
+    // The needle: a thin bordeaux-red blade from below the picture, as on
+    // the operator's reference meter -- a faint shadow, the blade, a lighter
+    // core.
+    const double k = fit.width() / kPhotoW;
+    const QPointF pivot = target.topLeft() + QPointF(kPivotX, kPivotY) * k;
+    const double rad = qDegreesToRadians(deg);
+    const QPointF dir(std::cos(rad), -std::sin(rad));
+    const QPointF tip = pivot + dir * (kNeedleTipR * k);
+    const double w = std::max(1.5, 10.0 * k);
+    p.save();
+    p.setClipRect(target);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(QPen(QColor(0, 0, 0, 110), w * 1.9, Qt::SolidLine, Qt::FlatCap));
+    p.drawLine(pivot + QPointF(w * 0.6, w * 0.5), tip + QPointF(w * 0.6, w * 0.5));
+    p.setPen(QPen(QColor(0x8e, 0x12, 0x24), w, Qt::SolidLine, Qt::FlatCap));
+    p.drawLine(pivot, tip);
+    p.setPen(QPen(QColor(0xc4, 0x2a, 0x3c, 190), std::max(0.6, w * 0.35), Qt::SolidLine,
+                  Qt::FlatCap));
+    p.drawLine(pivot, tip);
+    p.restore();
+    return true;
+}
+
 void SMeterWidget::setFaceTheme(AnalogMeterFaceTheme theme)
 {
     if (m_faceTheme == theme) {
@@ -724,6 +840,8 @@ void SMeterWidget::paintEvent(QPaintEvent*)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
+    if (m_photoFace && paintPhotoFace(p))   // build 811
+        return;
 
     const int w = width();
     const int h = height();
