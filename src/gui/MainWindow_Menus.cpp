@@ -89,6 +89,7 @@
 #include <QColor>
 #include <QCoreApplication>
 #include <QCheckBox>
+#include <QGroupBox>
 #include <QDesktopServices>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -1682,6 +1683,53 @@ void MainWindow::buildMenuBar()
     connect(fdvReporterAct, &QAction::triggered, this, &MainWindow::showFreeDvReporter);
 #endif
 
+    viewMenu->addSeparator();
+    // ANAN fork build 814 (operator, 27.11): View > Appearance..., a window of
+    // the fork's own look settings, between separators. First group: Meters.
+    auto* appearanceAct = viewMenu->addAction(QStringLiteral("Appearance..."));
+    appearanceAct->setMenuRole(QAction::NoRole);
+    connect(appearanceAct, &QAction::triggered, this, [this] {
+        static QPointer<PersistentDialog> s_dialog;
+        if (s_dialog) {
+            s_dialog->raise();
+            s_dialog->activateWindow();
+            return;
+        }
+        auto* dlg = new PersistentDialog(QStringLiteral("Appearance"),
+                                         QStringLiteral("AppearanceDialogGeometry"), this);
+        s_dialog = dlg;
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setObjectName(QStringLiteral("appearanceDialog"));
+        trackPersistentDialog(dlg);
+        dlg->setMinimumWidth(340);
+        auto* root = new QVBoxLayout(dlg->bodyWidget());
+        root->setSpacing(10);
+        // ── Meters ──
+        auto* meters = new QGroupBox(QStringLiteral("Meters"), dlg);
+        auto* metersLay = new QVBoxLayout(meters);
+        auto* vintage = new QCheckBox(QStringLiteral("Use Icom Vintage Meter"), meters);
+        vintage->setObjectName(QStringLiteral("appearanceVintageMeterCheck"));
+        vintage->setToolTip(QStringLiteral(
+            "The S-meter as a photographed vintage Icom S / RF output meter with a needle\n"
+            "(receive: S scale; transmit: RF output in % of the rated power).\n"
+            "Photo: Chaz360, Wikimedia Commons, CC BY-SA 4.0."));
+        vintage->setChecked(m_appletPanel && m_appletPanel->vintageMeter());
+        metersLay->addWidget(vintage);
+        root->addWidget(meters);
+        root->addStretch(1);
+        auto* closeRow = new QHBoxLayout;
+        closeRow->addStretch(1);
+        auto* closeBtn = new QPushButton(QStringLiteral("Close"), dlg);
+        closeRow->addWidget(closeBtn);
+        root->addLayout(closeRow);
+        connect(closeBtn, &QPushButton::clicked, dlg, &QDialog::close);
+        // Applied at once.
+        connect(vintage, &QCheckBox::toggled, this, [this](bool on) {
+            if (m_appletPanel)
+                m_appletPanel->setVintageMeter(on);
+        });
+        dlg->show();
+    });
     viewMenu->addSeparator();
     m_minimalModeAction = viewMenu->addAction("Minimal Mode\tCtrl+Shift+M");
     m_minimalModeAction->setCheckable(true);

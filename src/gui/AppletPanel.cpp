@@ -371,10 +371,10 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
 
     m_sMeter->setFaceTheme(analogMeterFaceThemeFromId(
         m_vuFaceTheme, AnalogMeterFaceTheme::AetherDefault));
-    // ANAN fork build 811 (operator, 27.11, a trial): the vintage photo face,
-    // on unless switched off in the meter's menu.
+    // ANAN fork build 811: the Icom vintage photo face. Build 814 (operator,
+    // 27.11): set in View > Appearance > Meters, off by default.
     m_sMeter->setPhotoFace(AppSettings::instance()
-        .value(QStringLiteral("SMeterPhotoFace"), QStringLiteral("True")).toString()
+        .value(QStringLiteral("SMeterPhotoFace"), QStringLiteral("False")).toString()
         == QStringLiteral("True"));
     m_sMeter->setTxMode(MeterSettings::txMeterItems()[m_vuTxSelect]);
     m_sMeter->setRxMode(MeterSettings::rxMeterItems()[m_vuRxSelect]);
@@ -1612,17 +1612,12 @@ void AppletPanel::showStandardMeterContextMenu(QWidget* source,
 
     // Build 811: the vintage photo face (a trial) over any face theme.
     {
-        QAction* photo = menu.addAction(QStringLiteral("Vintage photo face (trial)"));
+        // Build 814: the same switch as View > Appearance > Meters.
+        QAction* photo = menu.addAction(QStringLiteral("Use Icom Vintage Meter"));
         photo->setObjectName(QStringLiteral("standardSMeterPhotoFaceAction"));
         photo->setCheckable(true);
-        photo->setChecked(m_sMeter->photoFace());
-        connect(photo, &QAction::toggled, this, [this](bool on) {
-            m_sMeter->setPhotoFace(on);
-            auto& st = AppSettings::instance();
-            st.setValue(QStringLiteral("SMeterPhotoFace"),
-                        on ? QStringLiteral("True") : QStringLiteral("False"));
-            st.save();
-        });
+        photo->setChecked(vintageMeter());
+        connect(photo, &QAction::toggled, this, [this](bool on) { setVintageMeter(on); });
     }
 
     addHeader(QStringLiteral("TX Select"));
@@ -1942,6 +1937,24 @@ void AppletPanel::setScrollBarOnLeft(bool onLeft)
         m_scrollRow->removeWidget(m_vBar);
         m_scrollRow->insertWidget(onLeft ? 0 : -1, m_vBar);
     }
+}
+
+void AppletPanel::setVintageMeter(bool on)
+{
+    if (m_sMeter)
+        m_sMeter->setPhotoFace(on);
+    auto& st = AppSettings::instance();
+    st.setValue(QStringLiteral("SMeterPhotoFace"),
+                on ? QStringLiteral("True") : QStringLiteral("False"));
+    st.save();
+}
+
+bool AppletPanel::vintageMeter() const
+{
+    return m_sMeter ? m_sMeter->photoFace()
+                    : AppSettings::instance().value(QStringLiteral("SMeterPhotoFace"),
+                                                    QStringLiteral("False")).toString()
+                          == QStringLiteral("True");
 }
 
 void AppletPanel::resetOrder()

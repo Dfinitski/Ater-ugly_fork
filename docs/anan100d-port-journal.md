@@ -13867,6 +13867,13 @@ PS — оператор снял (вход ответвителя без PS не
 
 Оператор (27.11): стрелка тонковата, +50 %. `SMeterWidget::paintPhotoFace`: толщина лезвия 10 → 15 px снимка, минимум 1,5 → 2,25 px; светлая сердцевина — по-прежнему 35 % толщины.
 
+### Сборка 814 — View → Appearance…: группа Meters, «Use Icom Vintage Meter»
+
+Оператор (27.11): в меню View пункт Appearance между разделителями (верхний уже есть перед Minimal Mode, нижний добавлен); по нажатию — окно для «своих хотелок»; первая группа Meters с галкой «Use Icom Vintage Meter», по умолчанию выключено, изменение — сразу.
+
+- `MainWindow_Menus.cpp`: пункт «Appearance...» сразу после разделителя перед Minimal Mode, за ним новый разделитель. Окно — `PersistentDialog` «Appearance» (одно, немодальное, геометрия `AppearanceDialogGeometry`), группа `QGroupBox` «Meters», галка «Use Icom Vintage Meter» (подсказка с атрибуцией фото), кнопка Close; переключение применяется сразу через `AppletPanel::setVintageMeter()`.
+- `AppletPanel::setVintageMeter()/vintageMeter()`: S-метр + AppSettings `SMeterPhotoFace`; **по умолчанию теперь выключено** (в 811 было включено как проба). Пункт в правом клике по S-метру переименован из «Vintage photo face (trial)» в «Use Icom Vintage Meter» и работает через ту же функцию.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

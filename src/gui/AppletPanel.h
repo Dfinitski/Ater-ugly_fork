@@ -258,6 +258,10 @@ public:
 
     // Reset applet order to default
     void resetOrder();
+    // ANAN fork build 814: the Icom vintage photo face of the S-meter
+    // (View > Appearance > Meters), AppSettings SMeterPhotoFace, default off.
+    void setVintageMeter(bool on);
+    bool vintageMeter() const;
 
     // Move the vertical scroll bar to the left edge of the panel.  When the
     // applet panel is docked on the left side of the panadapter, this puts
