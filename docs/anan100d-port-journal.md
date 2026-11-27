@@ -13874,6 +13874,13 @@ PS — оператор снял (вход ответвителя без PS не
 - `MainWindow_Menus.cpp`: пункт «Appearance...» сразу после разделителя перед Minimal Mode, за ним новый разделитель. Окно — `PersistentDialog` «Appearance» (одно, немодальное, геометрия `AppearanceDialogGeometry`), группа `QGroupBox` «Meters», галка «Use Icom Vintage Meter» (подсказка с атрибуцией фото), кнопка Close; переключение применяется сразу через `AppletPanel::setVintageMeter()`.
 - `AppletPanel::setVintageMeter()/vintageMeter()`: S-метр + AppSettings `SMeterPhotoFace`; **по умолчанию теперь выключено** (в 811 было включено как проба). Пункт в правом клике по S-метру переименован из «Vintage photo face (trial)» в «Use Icom Vintage Meter» и работает через ту же функцию.
 
+### Сборка 815 — атрибуция фото Icom-шкалы (CC BY-SA 4.0)
+
+Оператор (27.11): добавить всё необходимое по лицензиям, только минимум.
+
+- Окно About, таблица благодарностей: строка «METER PHOTO — IC-732 S-meter photo by Chaz360, Wikimedia Commons, CC BY-SA 4.0 (creativecommons.org/licenses/by-sa/4.0); needle removed» — автор, источник, лицензия со ссылкой, отметка об изменении (то, что требует CC BY-SA 4.0).
+- Подробная запись уже есть в `resources/meterfaces/README.md` (сборка 811); подсказка галки в Appearance называет автора и лицензию (814). В заметки к следующему релизу — одна строка.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

@@ -2322,6 +2322,8 @@ void MainWindow::buildMenuBar()
             {QStringLiteral("THIS VERSION"), QStringLiteral("Modified by N7DDC (dfainitski@gmail.com) for the Apache Labs ANAN-100D")},
             {QStringLiteral("DSP"), QStringLiteral("WDSP \u00a9 2011-2026 Warren Pratt, NR0V, and contributors (GPL-2.0-or-later)")},
             {QStringLiteral("FREEDV"), QStringLiteral("codec2 \u00a9 David Rowe, VK5DGR, and contributors (LGPL-2.1); RADE, Opus (BSD)")},
+            // Build 815: CC BY-SA 4.0 attribution of the Icom vintage meter photo.
+            {QStringLiteral("METER PHOTO"), QStringLiteral("IC-732 S-meter photo by Chaz360, Wikimedia Commons, CC BY-SA 4.0 (creativecommons.org/licenses/by-sa/4.0); needle removed")},
             {QStringLiteral("BUILT WITH"), QStringLiteral("Qt %1 \u00b7 C++20 \u00b7 %2").arg(QString::fromLatin1(qVersion()), QStringLiteral(__DATE__))},
         };
         const QMargins vm = vbox->contentsMargins();
