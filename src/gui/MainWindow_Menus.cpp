@@ -1716,52 +1716,65 @@ void MainWindow::buildMenuBar()
         vintage->setChecked(m_appletPanel && m_appletPanel->vintageMeter());
         metersLay->addWidget(vintage);
         root->addWidget(meters);
-        // ── Bottom Panel ── (build 819) Elements of the bottom bar, added
-        // left to right after the TX indicator, each after a separator.
+        // ── Bottom Panel ── (builds 819-823) Elements of the bottom bar. Left
+        // ones are added left to right, right ones right to left; one switched
+        // on goes after the last (left) / before the first (right) and keeps
+        // that place (MainWindow::setBottomPanelElement).
         auto* bottom = new QGroupBox(QStringLiteral("Bottom Panel"), dlg);
         auto* bottomLay = new QVBoxLayout(bottom);
-        auto* showAtt = new QCheckBox(QStringLiteral("Show Attenuators"), bottom);
-        showAtt->setObjectName(QStringLiteral("appearanceShowAttenuatorsCheck"));
-        showAtt->setToolTip(QStringLiteral(
-            "The step attenuators of ADC1 and ADC2 (ATT1 / ATT2, in dB), as last sent to the radio."));
-        showAtt->setChecked(AppSettings::instance()
-            .value(QStringLiteral("BottomPanelShowAttenuators"), QStringLiteral("False"))
-            .toString() == QLatin1String("True"));
-        bottomLay->addWidget(showAtt);
-        // Build 820: AeRX / AeTX, the fast buttons for AetherRX / AetherTX.
-        auto* fastAe = new QCheckBox(QStringLiteral("Fast AeDSP Buttons"), bottom);
-        fastAe->setObjectName(QStringLiteral("appearanceFastAeDspCheck"));
-        fastAe->setToolTip(QStringLiteral(
-            "AeRX / AeTX buttons: a click opens or closes AetherRX / AetherTX,\n"
-            "as the DSP flag's AetherRX / AetherTX buttons do."));
-        fastAe->setChecked(AppSettings::instance()
-            .value(QStringLiteral("BottomPanelFastAeDsp"), QStringLiteral("False"))
-            .toString() == QLatin1String("True"));
-        bottomLay->addWidget(fastAe);
-        // Build 821: the station name in the middle of the bar.
-        auto* showStation = new QCheckBox(QStringLiteral("Show Station Name"), bottom);
-        showStation->setObjectName(QStringLiteral("appearanceShowStationNameCheck"));
-        showStation->setToolTip(QStringLiteral("The station name (the radio's nickname) in the middle of the bottom bar."));
-        showStation->setChecked(AppSettings::instance()
-            .value(QStringLiteral("BottomPanelShowStationName"), QStringLiteral("True"))
-            .toString() == QLatin1String("True"));
-        bottomLay->addWidget(showStation);
-        // Build 822: right-aligned elements -- the CPU / Mem stack and the
-        // UTC clock.
-        auto* showCpu = new QCheckBox(QStringLiteral("Show CPU Usage"), bottom);
-        showCpu->setObjectName(QStringLiteral("appearanceShowCpuCheck"));
-        showCpu->setToolTip(QStringLiteral("The program's CPU usage and memory, on the right of the bottom bar."));
-        showCpu->setChecked(AppSettings::instance()
-            .value(QStringLiteral("BottomPanelShowCpu"), QStringLiteral("True"))
-            .toString() == QLatin1String("True"));
-        bottomLay->addWidget(showCpu);
-        auto* showUtc = new QCheckBox(QStringLiteral("Show UTC Time"), bottom);
-        showUtc->setObjectName(QStringLiteral("appearanceShowUtcCheck"));
-        showUtc->setToolTip(QStringLiteral("The UTC clock at the right end of the bottom bar."));
-        showUtc->setChecked(AppSettings::instance()
-            .value(QStringLiteral("BottomPanelShowUtc"), QStringLiteral("True"))
-            .toString() == QLatin1String("True"));
-        bottomLay->addWidget(showUtc);
+        struct BottomCheck {
+            const char* id;
+            const char* text;
+            const char* key;
+            bool defaultOn;
+            const char* objectName;
+            const char* tip;
+        };
+        static constexpr BottomCheck kBottomChecks[] = {
+            {"ant", "Show Antenna", "BottomPanelShowAntenna", true, "appearanceShowAntennaCheck",
+             "The antennas in use (RX / TX) and the receive-on-TX-antenna arrow."},
+            {"tx", "Show TX Button", "BottomPanelShowTx", true, "appearanceShowTxCheck",
+             "The TX indicator; a click works as MOX."},
+            {"att", "Show Attenuators", "BottomPanelShowAttenuators", false,
+             "appearanceShowAttenuatorsCheck",
+             "The step attenuators of ADC1 and ADC2 (ATT1 / ATT2, in dB), as last sent to the radio."},
+            {"ae", "Fast AeDSP Buttons", "BottomPanelFastAeDsp", false, "appearanceFastAeDspCheck",
+             "AeRX / AeTX buttons: a click opens or closes AetherRX / AetherTX,\n"
+             "as the DSP flag's AetherRX / AetherTX buttons do."},
+            {"station", "Show Station Name", "BottomPanelShowStationName", true,
+             "appearanceShowStationNameCheck",
+             "The station name (the radio's nickname) in the middle of the bottom bar."},
+            {"cpu", "Show CPU Usage", "BottomPanelShowCpu", true, "appearanceShowCpuCheck",
+             "The program's CPU usage and memory, on the right of the bottom bar."},
+            {"utc", "Show UTC Time", "BottomPanelShowUtc", true, "appearanceShowUtcCheck",
+             "The UTC clock, on the right of the bottom bar."},
+        };
+        for (const BottomCheck& def : kBottomChecks) {
+            auto* cb = new QCheckBox(QString::fromLatin1(def.text), bottom);
+            cb->setObjectName(QString::fromLatin1(def.objectName));
+            cb->setToolTip(QString::fromLatin1(def.tip));
+            cb->setChecked(AppSettings::instance()
+                .value(QString::fromLatin1(def.key),
+                       def.defaultOn ? QStringLiteral("True") : QStringLiteral("False"))
+                .toString() == QLatin1String("True"));
+            bottomLay->addWidget(cb);
+            const QString id = QString::fromLatin1(def.id);
+            // Applied at once.
+            if (id == QLatin1String("station")) {
+                connect(cb, &QCheckBox::toggled, this, [this](bool on) {
+                    AppSettings::instance().setValue(QStringLiteral("BottomPanelShowStationName"),
+                                                     on ? QStringLiteral("True") : QStringLiteral("False"));
+                    if (m_stationNickLabel) {
+                        m_stationNickLabel->setVisible(on);
+                        updateStatusBarMinimumWidth();
+                    }
+                });
+            } else {
+                connect(cb, &QCheckBox::toggled, this, [this, id](bool on) {
+                    setBottomPanelElement(id, on);
+                });
+            }
+        }
         root->addWidget(bottom);
         root->addStretch(1);
         auto* closeRow = new QHBoxLayout;
@@ -1774,42 +1787,6 @@ void MainWindow::buildMenuBar()
         connect(vintage, &QCheckBox::toggled, this, [this](bool on) {
             if (m_appletPanel)
                 m_appletPanel->setVintageMeter(on);
-        });
-        connect(showAtt, &QCheckBox::toggled, this, [this](bool on) {
-            AppSettings::instance().setValue(QStringLiteral("BottomPanelShowAttenuators"),
-                                             on ? QStringLiteral("True") : QStringLiteral("False"));
-            // The bar's poll (20 ms) shows or hides it.
-            if (auto* att = findChild<QWidget*>(QStringLiteral("bottomAttStatus")))
-                att->setProperty("bottomShow", on);
-        });
-        connect(fastAe, &QCheckBox::toggled, this, [this](bool on) {
-            AppSettings::instance().setValue(QStringLiteral("BottomPanelFastAeDsp"),
-                                             on ? QStringLiteral("True") : QStringLiteral("False"));
-            if (auto* ae = findChild<QWidget*>(QStringLiteral("bottomAeDspButtons")))
-                ae->setProperty("bottomShow", on);
-        });
-        connect(showStation, &QCheckBox::toggled, this, [this](bool on) {
-            AppSettings::instance().setValue(QStringLiteral("BottomPanelShowStationName"),
-                                             on ? QStringLiteral("True") : QStringLiteral("False"));
-            if (m_stationNickLabel) {
-                m_stationNickLabel->setVisible(on);
-                updateStatusBarMinimumWidth();
-            }
-        });
-        connect(showCpu, &QCheckBox::toggled, this, [this](bool on) {
-            AppSettings::instance().setValue(QStringLiteral("BottomPanelShowCpu"),
-                                             on ? QStringLiteral("True") : QStringLiteral("False"));
-            if (auto* cpu = findChild<QWidget*>(QStringLiteral("bottomCpuStatus"))) {
-                cpu->setVisible(on);
-                updateStatusBarMinimumWidth();
-            }
-        });
-        connect(showUtc, &QCheckBox::toggled, this, [this](bool on) {
-            AppSettings::instance().setValue(QStringLiteral("BottomPanelShowUtc"),
-                                             on ? QStringLiteral("True") : QStringLiteral("False"));
-            // The clock's poll (250 ms) shows or hides it and its separator.
-            if (auto* utc = findChild<QWidget*>(QStringLiteral("ananUtcClock")))
-                utc->setProperty("bottomShow", on);
         });
         dlg->show();
     });

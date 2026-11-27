@@ -476,6 +476,154 @@ void MainWindow::refitStationLabel()
 
 namespace {
 
+// ANAN fork build 823: the Bottom Panel elements -- id, show key, default.
+struct BottomPanelElement {
+    const char* id;
+    const char* key;
+    bool defaultOn;
+};
+constexpr BottomPanelElement kBottomLeftElements[] = {
+    {"ant", "BottomPanelShowAntenna", true},
+    {"tx", "BottomPanelShowTx", true},
+    {"att", "BottomPanelShowAttenuators", false},
+    {"ae", "BottomPanelFastAeDsp", false},
+};
+constexpr BottomPanelElement kBottomRightElements[] = {
+    {"cpu", "BottomPanelShowCpu", true},
+    {"utc", "BottomPanelShowUtc", true},
+};
+
+bool bottomPanelOn(const BottomPanelElement& e)
+{
+    return AppSettings::instance()
+               .value(QString::fromLatin1(e.key),
+                      e.defaultOn ? QStringLiteral("True") : QStringLiteral("False"))
+               .toString() == QLatin1String("True");
+}
+
+// The saved order of a group: its known ids in the saved order, then any
+// missing ones in the default order.
+template <size_t N>
+QStringList bottomPanelOrder(const char* orderKey, const BottomPanelElement (&elems)[N])
+{
+    QStringList known;
+    for (const auto& e : elems)
+        known << QString::fromLatin1(e.id);
+    QStringList order;
+    const QStringList saved = AppSettings::instance()
+                                  .value(QString::fromLatin1(orderKey), QString())
+                                  .toString().split(QLatin1Char(','), Qt::SkipEmptyParts);
+    for (const QString& id : saved)
+        if (known.contains(id) && !order.contains(id))
+            order << id;
+    for (const QString& id : known)
+        if (!order.contains(id))
+            order << id;
+    return order;
+}
+
+// Order, visibility and separators of one group. leadingSep: whether the
+// first visible unit needs its separator (something visible stands before
+// the group and does not end with a separator of its own).
+template <size_t N>
+bool layoutBottomGroup(QWidget* group, const char* orderKey,
+                       const BottomPanelElement (&elems)[N], bool leadingSep)
+{
+    auto* lay = group ? qobject_cast<QBoxLayout*>(group->layout()) : nullptr;
+    if (!lay)
+        return false;
+    bool changed = false;
+    const QStringList order = bottomPanelOrder(orderKey, elems);
+    int pos = 0;
+    bool anyBefore = leadingSep;
+    for (const QString& id : order) {
+        auto* unit = group->findChild<QWidget*>(QStringLiteral("bottomUnit_") + id,
+                                                Qt::FindDirectChildrenOnly);
+        if (!unit)
+            continue;
+        if (lay->indexOf(unit) != pos) {
+            lay->removeWidget(unit);
+            lay->insertWidget(pos, unit);
+            changed = true;
+        }
+        ++pos;
+        bool on = false;
+        for (const auto& e : elems)
+            if (id == QLatin1String(e.id))
+                on = bottomPanelOn(e);
+        if (unit->isHidden() == on) {
+            unit->setVisible(on);
+            changed = true;
+        }
+        if (auto* sep = unit->findChild<QLabel*>(QStringLiteral("bottomSep"),
+                                                 Qt::FindDirectChildrenOnly)) {
+            const bool sepOn = on && anyBefore;
+            if (sep->isHidden() == sepOn) {
+                sep->setVisible(sepOn);
+                changed = true;
+            }
+        }
+        if (on)
+            anyBefore = true;
+    }
+    return changed;
+}
+
+} // namespace
+
+// ANAN fork build 823 (operator, 27.11): the Bottom Panel elements' order,
+// visibility and separators (View > Appearance > Bottom Panel).
+void MainWindow::applyBottomPanelLayout()
+{
+    if (!m_bottomLeftGroup || !m_bottomRightGroup)
+        return;
+    // Left: the band stack icon always stands before the group.
+    bool changed = layoutBottomGroup(m_bottomLeftGroup, "BottomPanelLeftOrder",
+                                     kBottomLeftElements, true);
+    // Right: before the group stand GPS (its separator after it, set by the
+    // GPS code), PA, TGXL / PGXL (each with its separator before it).
+    auto shown = [](const QWidget* w) { return w && !w->isHidden(); };
+    const bool before = shown(m_paStack) || shown(m_tgxlContainer) || shown(m_pgxlContainer)
+                        || (shown(m_gpsStatusButton) && !shown(m_gpsSeparator));
+    if (layoutBottomGroup(m_bottomRightGroup, "BottomPanelRightOrder",
+                          kBottomRightElements, before))
+        changed = true;
+    if (changed)
+        updateStatusBarMinimumWidth();
+}
+
+// Build 823: an element switched on in Appearance goes to the end of the left
+// group / the start of the right one; the order is saved.
+void MainWindow::setBottomPanelElement(const QString& id, bool on)
+{
+    auto& st = AppSettings::instance();
+    for (const auto& e : kBottomLeftElements) {
+        if (id != QLatin1String(e.id))
+            continue;
+        st.setValue(QString::fromLatin1(e.key), on ? QStringLiteral("True") : QStringLiteral("False"));
+        if (on) {
+            QStringList order = bottomPanelOrder("BottomPanelLeftOrder", kBottomLeftElements);
+            order.removeAll(id);
+            order.append(id);
+            st.setValue(QStringLiteral("BottomPanelLeftOrder"), order.join(QLatin1Char(',')));
+        }
+    }
+    for (const auto& e : kBottomRightElements) {
+        if (id != QLatin1String(e.id))
+            continue;
+        st.setValue(QString::fromLatin1(e.key), on ? QStringLiteral("True") : QStringLiteral("False"));
+        if (on) {
+            QStringList order = bottomPanelOrder("BottomPanelRightOrder", kBottomRightElements);
+            order.removeAll(id);
+            order.prepend(id);
+            st.setValue(QStringLiteral("BottomPanelRightOrder"), order.join(QLatin1Char(',')));
+        }
+    }
+    applyBottomPanelLayout();
+}
+
+namespace {
+
 // "Gateware 75" on a radio that supplies a label, "4.2.20.41343" on one that
 // does not. The caller never asks which family it is talking to — the word
 // arrives from the backend, so a future Icom/Yaesu gets this for free.
@@ -6222,6 +6370,37 @@ void MainWindow::buildUI()
         return sep;
     };
 
+    // ANAN fork build 823 (operator, 27.11): the Bottom Panel elements (View >
+    // Appearance > Bottom Panel). Each is a unit -- its own separator, then
+    // its widgets -- in one of two groups: the left one (antennas, TX, ATT,
+    // AeRX / AeTX) after the band stack icon, the right one (CPU, UTC) at the
+    // right end. An element switched on goes to the end of the left group /
+    // the start of the right one; the order is kept (AppSettings
+    // "BottomPanelLeftOrder" / "BottomPanelRightOrder") and restored at start.
+    // MainWindow::applyBottomPanelLayout sets order, visibility, separators.
+    m_bottomLeftGroup = new QWidget(m_statusBarContainer);
+    m_bottomLeftGroup->setObjectName(QStringLiteral("bottomLeftGroup"));
+    m_bottomRightGroup = new QWidget(m_statusBarContainer);
+    m_bottomRightGroup->setObjectName(QStringLiteral("bottomRightGroup"));
+    for (QWidget* g : {m_bottomLeftGroup, m_bottomRightGroup}) {
+        auto* gl = new QHBoxLayout(g);
+        gl->setContentsMargins(0, 0, 0, 0);
+        gl->setSpacing(6);
+    }
+    auto makeBottomUnit = [sepStyle](QWidget* group, const char* id) -> QHBoxLayout* {
+        auto* unit = new QWidget(group);
+        unit->setObjectName(QStringLiteral("bottomUnit_") + QLatin1String(id));
+        auto* lay = new QHBoxLayout(unit);
+        lay->setContentsMargins(0, 0, 0, 0);
+        lay->setSpacing(6);
+        auto* sep = new QLabel(QStringLiteral(" · "), unit);
+        sep->setObjectName(QStringLiteral("bottomSep"));
+        sep->setStyleSheet(sepStyle);
+        lay->addWidget(sep);
+        group->layout()->addWidget(unit);
+        return lay;
+    };
+
     // Automation indicator chip — visible ONLY when the agent automation bridge
     // is active (AETHER_AUTOMATION). Uses the canonical AppSettings automation
     // agent name so the chip and tooltip match the identity announced to the
@@ -6415,8 +6594,9 @@ void MainWindow::buildUI()
     // Antennas, "AnanAntName1..3"). RX ANT while receiving, TX ANT while
     // transmitting (shown in red). Polled: the keys are written by the ANT
     // panel and the setup page, neither of which signals the main window.
+    hbox->addWidget(m_bottomLeftGroup);   // build 823
     {
-        addSep();
+        QHBoxLayout* antUnit = makeBottomUnit(m_bottomLeftGroup, "ant");   // build 823
         auto* antStack = new QWidget;
         auto* antBox = new QVBoxLayout(antStack);
         antBox->setContentsMargins(0, 0, 0, 0);
@@ -6435,7 +6615,7 @@ void MainWindow::buildUI()
         antBox->addWidget(txLbl);
         antStack->setObjectName(QStringLiteral("ananAntennaStatus"));
         antStack->setAccessibleName(QStringLiteral("Antennas in use"));
-        hbox->addWidget(antStack);
+        antUnit->addWidget(antStack);
         auto* antTimer = new QTimer(antStack);
         antTimer->setInterval(250);
         auto refresh = [this, rxLbl, txLbl, antStack] {
@@ -6496,7 +6676,7 @@ void MainWindow::buildUI()
         trxBtn->setCursor(Qt::PointingHandCursor);
         trxBtn->setContentsMargins(5, 0, 0, 0);
         trxBtn->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        hbox->addWidget(trxBtn);
+        antUnit->addWidget(trxBtn);
         // One line of the antenna indicator is rxLbl's height; the arrow
         // spans both lines, its ends at their centres.
         auto trxIcon = [trxBtn, rxLbl](const QColor& color) {
@@ -6608,7 +6788,8 @@ void MainWindow::buildUI()
     // ANAN fork build 564 (operator, 21.11: "TX goes where UTC Time is, UTC
     // Time goes where the local time is, the local time is removed"). The TX
     // indicator, after the antennas -- the place of build 255's UTC clock.
-    addSep();
+    // Build 823: a Bottom Panel unit ("Show TX Button").
+    QHBoxLayout* txUnit = makeBottomUnit(m_bottomLeftGroup, "tx");
     m_txIndicator = new QLabel("TX");
     m_txIndicator->setFixedSize(36, 36);
     m_txIndicator->setAlignment(Qt::AlignCenter);
@@ -6620,7 +6801,7 @@ void MainWindow::buildUI()
     m_txIndicator->installEventFilter(this);
     keyboardOperable(m_txIndicator);
     m_txIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 21px; }");
-    hbox->addWidget(m_txIndicator);
+    txUnit->addWidget(m_txIndicator);
 
     // ANAN fork build 612 (operator, 22.11: "make the RZ3QS branch's buttons on
     // the bottom bar muted in colour, as the antenna indicator or the time
@@ -6654,7 +6835,7 @@ void MainWindow::buildUI()
         // shown only by that box, AppSettings "BottomPanelShowAttenuators").
         // The Bottom Panel elements are added left to right after the TX
         // indicator, each after a separator; this is the first.
-        QLabel* attSep = addSep();
+        QHBoxLayout* attUnit = makeBottomUnit(m_bottomLeftGroup, "att");   // build 823
         // Build 752 (operator, 25.11: "align the lines by changing the gap
         // between ATTn and the value, so the ends of dB are level"): "ATTn"
         // left, the value right-aligned (the gap between them varies);
@@ -6689,22 +6870,12 @@ void MainWindow::buildUI()
             attBox->addWidget(attRow[i]);
         }
         attStack->setObjectName(QStringLiteral("bottomAttStatus"));
-        // Read by the poll below; the Appearance window sets it (build 819).
-        attStack->setProperty("bottomShow",
-            AppSettings::instance().value(QStringLiteral("BottomPanelShowAttenuators"),
-                                          QStringLiteral("False")).toString() == QLatin1String("True"));
         attStack->setAccessibleName(QStringLiteral("Attenuators"));
         attStack->setToolTip(QStringLiteral("Step attenuators of ADC1 and ADC2"));
-        hbox->addWidget(attStack);
-        attSep->hide();
-        attStack->hide();
-        auto attRefresh = [attSep, attStack, r2 = attRow[1], v1 = attVal[0], v2 = attVal[1]] {
-            const bool show = attStack->property("bottomShow").toBool();   // build 819
-            if (attStack->isHidden() == show) {
-                attSep->setVisible(show);
-                attStack->setVisible(show);
-            }
-            if (!show)
+        attUnit->addWidget(attStack);
+        // Build 823: shown / hidden with its unit (applyBottomPanelLayout).
+        auto attRefresh = [attStack, r2 = attRow[1], v1 = attVal[0], v2 = attVal[1]] {
+            if (!attStack->isVisible())
                 return;
             const auto& ui = anan::AnanUiState::instance();
             // Build 751: what was last sent to the radio, receive or transmit.
@@ -6744,13 +6915,9 @@ void MainWindow::buildUI()
     // AppSettings "BottomPanelFastAeDsp"; shown only by that box). A Bottom
     // Panel element: after the last one, behind a separator, left-aligned.
     {
-        QLabel* aeSep = addSep();
-        aeSep->hide();
+        QHBoxLayout* aeUnit = makeBottomUnit(m_bottomLeftGroup, "ae");   // build 823
         auto* aeBox = new QWidget;
         aeBox->setObjectName(QStringLiteral("bottomAeDspButtons"));
-        aeBox->setProperty("bottomShow",
-            AppSettings::instance().value(QStringLiteral("BottomPanelFastAeDsp"),
-                                          QStringLiteral("False")).toString() == QLatin1String("True"));
         auto* aeLay = new QHBoxLayout(aeBox);
         aeLay->setContentsMargins(0, 0, 0, 0);
         aeLay->setSpacing(4);
@@ -6780,21 +6947,8 @@ void MainWindow::buildUI()
                 connect(b, &QPushButton::clicked, this, [this] { toggleAetherialStrip(); });
             aeLay->addWidget(b, 0, Qt::AlignVCenter);
         }
-        hbox->addWidget(aeBox, 0, Qt::AlignVCenter);
-        aeBox->hide();
-        // The Appearance window sets "bottomShow" (build 820).
-        auto* aeTimer = new QTimer(aeBox);
-        aeTimer->setInterval(100);
-        auto aeRefresh = [aeSep, aeBox] {
-            const bool show = aeBox->property("bottomShow").toBool();
-            if (aeBox->isHidden() == show) {
-                aeSep->setVisible(show);
-                aeBox->setVisible(show);
-            }
-        };
-        connect(aeTimer, &QTimer::timeout, aeBox, aeRefresh);
-        aeTimer->start();
-        aeRefresh();
+        aeUnit->addWidget(aeBox, 0, Qt::AlignVCenter);
+        // Build 823: shown / hidden with its unit (applyBottomPanelLayout).
     }
 
     // ── Center stretch → STATION → stretch ───────────────────────────────
@@ -6999,15 +7153,12 @@ void MainWindow::buildUI()
 #endif
         cpuVbox->addWidget(m_cpuLabel);
         cpuVbox->addWidget(m_memLabel);
-        hbox->addWidget(cpuStack);
         // ANAN fork build 822 (operator, 27.11): View > Appearance > Bottom
         // Panel > "Show CPU Usage" (on by default, AppSettings
-        // "BottomPanelShowCpu") hides / shows this CPU / Mem stack. A right-
-        // aligned element.
+        // "BottomPanelShowCpu"). Build 823: a unit of the right group (the
+        // group stands at the right end, after PA / TGXL / PGXL).
         cpuStack->setObjectName(QStringLiteral("bottomCpuStatus"));
-        cpuStack->setVisible(AppSettings::instance()
-            .value(QStringLiteral("BottomPanelShowCpu"), QStringLiteral("True"))
-            .toString() == QLatin1String("True"));
+        makeBottomUnit(m_bottomRightGroup, "cpu")->addWidget(cpuStack);
 
         m_cpuTimer = new QTimer(this);
         m_cpuTimer->setInterval(1500);
@@ -7278,8 +7429,9 @@ void MainWindow::buildUI()
 
     // Build 564: the "UTC Time:" clock of build 255, at the right end -- the
     // place of the date / time stack, which is no longer shown.
+    hbox->addWidget(m_bottomRightGroup);   // build 823
     {
-        QLabel* utcSep = addSep();
+        QHBoxLayout* utcUnit = makeBottomUnit(m_bottomRightGroup, "utc");   // build 823
         auto* utcStack = new QWidget;
         utcStack->setObjectName(QStringLiteral("ananUtcClock"));
         utcStack->setAccessibleName(QStringLiteral("UTC time"));
@@ -7306,7 +7458,7 @@ void MainWindow::buildUI()
         utcValue->setMinimumWidth(kTelemetryStackMinWidth);
         utcBox->addWidget(utcTitle);
         utcBox->addWidget(utcValue);
-        hbox->addWidget(utcStack);
+        utcUnit->addWidget(utcStack);
         auto* utcTimer = new QTimer(utcStack);
         auto tick = [utcValue, utcStack, utcTimer] {
             const QDateTime now = QDateTime::currentDateTimeUtc();
@@ -7318,35 +7470,9 @@ void MainWindow::buildUI()
         utcTimer->setSingleShot(true);
         connect(utcTimer, &QTimer::timeout, utcStack, tick);
         tick();
-        // ANAN fork build 822 (operator, 27.11): View > Appearance > Bottom
-        // Panel > "Show UTC Time" (on by default, AppSettings
-        // "BottomPanelShowUtc"; the Appearance window sets "bottomShow"). A
-        // right-aligned element. Its separator shows only with the clock and
-        // only when something of the right section stands left of it (with
-        // CPU and the rest hidden it would stand alone after the stretch).
-        utcStack->setProperty("bottomShow",
-            AppSettings::instance().value(QStringLiteral("BottomPanelShowUtc"),
-                                          QStringLiteral("True")).toString() == QLatin1String("True"));
-        QWidget* cpuStatus = m_statusBarContainer->findChild<QWidget*>(QStringLiteral("bottomCpuStatus"));
-        const QList<QWidget*> leftOfUtc = {m_gpsStatusButton, cpuStatus, m_paStack,
-                                           m_tgxlContainer, m_pgxlContainer};
-        auto utcVisibility = [utcSep, utcStack, leftOfUtc] {
-            const bool show = utcStack->property("bottomShow").toBool();
-            bool anyLeft = false;
-            for (QWidget* w : leftOfUtc)
-                if (w && !w->isHidden())
-                    anyLeft = true;
-            if (utcStack->isHidden() == show)
-                utcStack->setVisible(show);
-            const bool sep = show && anyLeft;
-            if (utcSep->isHidden() == sep)
-                utcSep->setVisible(sep);
-        };
-        auto* utcVisTimer = new QTimer(utcStack);
-        utcVisTimer->setInterval(250);
-        connect(utcVisTimer, &QTimer::timeout, utcStack, utcVisibility);
-        utcVisTimer->start();
-        utcVisibility();
+        // Build 822: View > Appearance > Bottom Panel > "Show UTC Time" (on by
+        // default, AppSettings "BottomPanelShowUtc"). Build 823: a unit of the
+        // right group.
     }
 
     // The date / time stack that stood here. Kept, hidden: its labels are
@@ -7379,6 +7505,16 @@ void MainWindow::buildUI()
 
     statusBar()->addWidget(m_statusBarContainer, 1);
     wireStatusBarMessages();
+    // Build 823: the Bottom Panel's order and visibility; re-checked every
+    // 250 ms for the right group's first separator, which depends on GPS /
+    // PA / TGXL / PGXL (shown per radio by their own code).
+    applyBottomPanelLayout();
+    {
+        auto* bottomTimer = new QTimer(m_statusBarContainer);
+        bottomTimer->setInterval(250);
+        connect(bottomTimer, &QTimer::timeout, this, [this] { applyBottomPanelLayout(); });
+        bottomTimer->start();
+    }
     updateStatusBarMinimumWidth();
     updateBandStackIndicator();
 

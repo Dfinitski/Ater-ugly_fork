@@ -13958,6 +13958,26 @@ PS — оператор снял (вход ответвителя без PS не
 
 Не проверено на радио, не собиралось под Windows.
 
+### Сборка 823 — Bottom Panel: «Show TX Button», «Show Antenna», порядок элементов запоминается
+
+Оператор (27.11): галка Show TX Button управляет элементом TX на нижней панели, по умолчанию включена. Все элементы должны запоминать номер своего положения, чтобы при запуске оставаться на своих местах. Ответы оператора: порядок — по порядку включения; индикатор антенн тоже получает свою галку.
+
+- `MainWindow.cpp`. Элементы нижней панели стали «узлами»: у каждого свой разделитель «·» и свои виджеты. Узлы стоят в двух группах.
+  - Левая группа (`bottomLeftGroup`) идёт после значка band stack: `ant` (индикатор антенн со стрелкой), `tx` (индикатор TX), `att`, `ae` (AeRX/AeTX).
+  - Правая группа (`bottomRightGroup`) стоит в конце панели, после PA / TGXL / PGXL: `cpu`, `utc`. Блок CPU/Mem поэтому теперь правее PA (раньше был левее).
+- `MainWindow::applyBottomPanelLayout()`:
+  - Ставит порядок из AppSettings `BottomPanelLeftOrder` / `BottomPanelRightOrder`: сохранённые id по порядку, недостающие — в порядке по умолчанию.
+  - Задаёт видимость по ключам `BottomPanelShowAntenna`, `BottomPanelShowTx`, `BottomPanelShowAttenuators`, `BottomPanelFastAeDsp`, `BottomPanelShowCpu`, `BottomPanelShowUtc`.
+  - Разделители. В левой группе разделитель есть у каждого видимого узла: слева всегда стоит значок band stack. В правой группе первый видимый узел получает разделитель, только если перед группой что-то видно и оно не кончается своим разделителем: PA, TGXL, PGXL или GPS без разделителя.
+  - Вызывается при построении и каждые 250 мс: видимость GPS / PA / TGXL / PGXL меняется по радио. Изменения применяются только при отличии, после них пересчитывается минимальная ширина окна.
+- `MainWindow::setBottomPanelElement(id, on)`: сохраняет галку. Включённый элемент переносится в конец левой группы или в начало правой, порядок записывается.
+- Опросы видимости ATT (819), AeRX/AeTX (820) и UTC (822) убраны: видимостью управляет узел. Опрос значений ATT (20 мс) работает, пока индикатор виден.
+- `MainWindow_Menus.cpp`: группа Bottom Panel собрана из одной таблицы галок: Show Antenna, Show TX Button (новые, по умолчанию True), Show Attenuators, Fast AeDSP Buttons, Show Station Name, Show CPU Usage, Show UTC Time. Имя станции по-прежнему в центре, в порядке не участвует.
+- `MainWindow.h`: `applyBottomPanelLayout`, `setBottomPanelElement`, `m_bottomLeftGroup`, `m_bottomRightGroup`.
+- `ForkBuild.h`: 823.
+
+Не проверено на радио, не собиралось под Windows.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии

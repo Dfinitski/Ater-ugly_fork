@@ -456,6 +456,11 @@ private:
     void updateStatusBarMinimumWidth();
     // Build 518: the station name's frame sized to its text again.
     void refitStationLabel();
+    // Build 823: View > Appearance > Bottom Panel -- order, visibility and
+    // separators of its elements; switching one on / off (ids: ant, tx, att,
+    // ae, cpu, utc).
+    void applyBottomPanelLayout();
+    void setBottomPanelElement(const QString& id, bool on);
 
     // Audio thread helpers — invoke AudioEngine methods on the worker thread (#502)
     void audioStartRx();
@@ -1941,6 +1946,8 @@ private:
     QLabel*  m_tgxlStateLabel{nullptr};  // bottom row: OPERATE / BYPASS / STANDBY
     QLabel*  m_pgxlSeparator{nullptr};
     QWidget* m_pgxlContainer{nullptr};
+    QWidget* m_bottomLeftGroup{nullptr};    // build 823
+    QWidget* m_bottomRightGroup{nullptr};   // build 823
     QLabel*  m_pgxlIndicator{nullptr};   // top row: "AMP"
     QLabel*  m_pgxlStateLabel{nullptr};  // bottom row: OPERATE / STANDBY
     QLabel* m_txIndicator{nullptr};
