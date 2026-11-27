@@ -1728,6 +1728,16 @@ void MainWindow::buildMenuBar()
             .value(QStringLiteral("BottomPanelShowAttenuators"), QStringLiteral("False"))
             .toString() == QLatin1String("True"));
         bottomLay->addWidget(showAtt);
+        // Build 820: AeRX / AeTX, the fast buttons for AetherRX / AetherTX.
+        auto* fastAe = new QCheckBox(QStringLiteral("Fast AeDSP Buttons"), bottom);
+        fastAe->setObjectName(QStringLiteral("appearanceFastAeDspCheck"));
+        fastAe->setToolTip(QStringLiteral(
+            "AeRX / AeTX buttons: a click opens or closes AetherRX / AetherTX,\n"
+            "as the DSP flag's AetherRX / AetherTX buttons do."));
+        fastAe->setChecked(AppSettings::instance()
+            .value(QStringLiteral("BottomPanelFastAeDsp"), QStringLiteral("False"))
+            .toString() == QLatin1String("True"));
+        bottomLay->addWidget(fastAe);
         root->addWidget(bottom);
         root->addStretch(1);
         auto* closeRow = new QHBoxLayout;
@@ -1747,6 +1757,12 @@ void MainWindow::buildMenuBar()
             // The bar's poll (20 ms) shows or hides it.
             if (auto* att = findChild<QWidget*>(QStringLiteral("bottomAttStatus")))
                 att->setProperty("bottomShow", on);
+        });
+        connect(fastAe, &QCheckBox::toggled, this, [this](bool on) {
+            AppSettings::instance().setValue(QStringLiteral("BottomPanelFastAeDsp"),
+                                             on ? QStringLiteral("True") : QStringLiteral("False"));
+            if (auto* ae = findChild<QWidget*>(QStringLiteral("bottomAeDspButtons")))
+                ae->setProperty("bottomShow", on);
         });
         dlg->show();
     });

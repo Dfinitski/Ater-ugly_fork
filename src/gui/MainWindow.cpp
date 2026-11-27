@@ -6622,6 +6622,23 @@ void MainWindow::buildUI()
     m_txIndicator->setStyleSheet("QLabel { color: rgba(255,255,255,128); font-weight: bold; font-size: 21px; }");
     hbox->addWidget(m_txIndicator);
 
+    // ANAN fork build 612 (operator, 22.11: "make the RZ3QS branch's buttons on
+    // the bottom bar muted in colour, as the antenna indicator or the time
+    // text are"): the status bar's secondary text colour, no fill, a faint
+    // frame; hover brings the text up; on / pressed is a dim accent frame.
+    // Build 820: defined here, before the Bottom Panel elements (AeRX / AeTX
+    // use it too).
+    static const char* const kRz3qsMutedButtonStyle =
+        "QPushButton { background: transparent; "
+        "border: 1px solid {{color.background.2}}; "
+        "border-radius: 3px; color: {{color.text.secondary}}; "
+        "font-size: 10px; font-weight: normal; padding: 1px 2px; }"
+        "QPushButton:hover { color: {{color.text.primary}}; }"
+        "QPushButton:checked { background: transparent; "
+        "color: {{color.text.primary}}; "
+        "border: 1px solid {{color.accent.dim}}; }"
+        "QPushButton:pressed { border: 1px solid {{color.accent.dim}}; }";
+
     // ── Bottom Panel elements (View > Appearance), left to right ──
     {
         // ANAN fork build 750 (operator, 25.11: "for the RZ3QS branch only, a
@@ -6717,6 +6734,69 @@ void MainWindow::buildUI()
         attRefresh();
     }
 
+    // ANAN fork build 606 (operator, 21.11): the RZ3QS branch again (see the
+    // A1 / A2 buttons above). Right of the station name, "AeRX" and "AeTX",
+    // drawn as A1 / A2 but not latching: a click opens / closes AetherRX and
+    // AetherTX exactly as the DSP flag's AetherRX / AetherTX buttons do
+    // (toggleAetherRxDialog, toggleAetherialStrip). Hidden for everybody else.
+    // Build 820 (operator, 27.11): out of the RZ3QS branch into View >
+    // Appearance > Bottom Panel > "Fast AeDSP Buttons" (off by default,
+    // AppSettings "BottomPanelFastAeDsp"; shown only by that box). A Bottom
+    // Panel element: after the last one, behind a separator, left-aligned.
+    {
+        QLabel* aeSep = addSep();
+        aeSep->hide();
+        auto* aeBox = new QWidget;
+        aeBox->setObjectName(QStringLiteral("bottomAeDspButtons"));
+        aeBox->setProperty("bottomShow",
+            AppSettings::instance().value(QStringLiteral("BottomPanelFastAeDsp"),
+                                          QStringLiteral("False")).toString() == QLatin1String("True"));
+        auto* aeLay = new QHBoxLayout(aeBox);
+        aeLay->setContentsMargins(0, 0, 0, 0);
+        aeLay->setSpacing(4);
+        struct AeButton {
+            const char* text;
+            const char* objectName;
+            const char* tip;
+            bool rx;
+        };
+        static constexpr AeButton kAe[] = {
+            {"AeRX", "bottomAeRx", "AeRX -- open AetherRX (the receive chain)", true},
+            {"AeTX", "bottomAeTx", "AeTX -- open AetherTX (the transmit chain)", false},
+        };
+        for (const AeButton& def : kAe) {
+            auto* b = new QPushButton(QString::fromLatin1(def.text));
+            b->setObjectName(QString::fromLatin1(def.objectName));
+            b->setAccessibleName(QString::fromLatin1(def.text));
+            b->setToolTip(QString::fromLatin1(def.tip));
+            b->setCheckable(false);
+            b->setAutoDefault(false);
+            b->setFocusPolicy(Qt::NoFocus);
+            b->setFixedSize(36, 20);
+            AetherSDR::ThemeManager::instance().applyStyleSheet(b, kRz3qsMutedButtonStyle);   // build 612
+            if (def.rx)
+                connect(b, &QPushButton::clicked, this, [this] { toggleAetherRxDialog(); });
+            else
+                connect(b, &QPushButton::clicked, this, [this] { toggleAetherialStrip(); });
+            aeLay->addWidget(b, 0, Qt::AlignVCenter);
+        }
+        hbox->addWidget(aeBox, 0, Qt::AlignVCenter);
+        aeBox->hide();
+        // The Appearance window sets "bottomShow" (build 820).
+        auto* aeTimer = new QTimer(aeBox);
+        aeTimer->setInterval(100);
+        auto aeRefresh = [aeSep, aeBox] {
+            const bool show = aeBox->property("bottomShow").toBool();
+            if (aeBox->isHidden() == show) {
+                aeSep->setVisible(show);
+                aeBox->setVisible(show);
+            }
+        };
+        connect(aeTimer, &QTimer::timeout, aeBox, aeRefresh);
+        aeTimer->start();
+        aeRefresh();
+    }
+
     // ── Center stretch → STATION → stretch ───────────────────────────────
     // Build 259 (operator, 10.11: "when a message appears at the bottom left
     // everything to the right flies away"): the left stretch is a message
@@ -6731,21 +6811,6 @@ void MainWindow::buildUI()
     m_statusMessageLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     applyStatusBarCompactLabelStyle(m_statusMessageLabel, QStringLiteral("{{color.text.primary}}"));
     hbox->addWidget(m_statusMessageLabel, 1);
-
-    // ANAN fork build 612 (operator, 22.11: "make the RZ3QS branch's buttons on
-    // the bottom bar muted in colour, as the antenna indicator or the time
-    // text are"): the status bar's secondary text colour, no fill, a faint
-    // frame; hover brings the text up; on / pressed is a dim accent frame.
-    static const char* const kRz3qsMutedButtonStyle =
-        "QPushButton { background: transparent; "
-        "border: 1px solid {{color.background.2}}; "
-        "border-radius: 3px; color: {{color.text.secondary}}; "
-        "font-size: 10px; font-weight: normal; padding: 1px 2px; }"
-        "QPushButton:hover { color: {{color.text.primary}}; }"
-        "QPushButton:checked { background: transparent; "
-        "color: {{color.text.primary}}; "
-        "border: 1px solid {{color.accent.dim}}; }"
-        "QPushButton:pressed { border: 1px solid {{color.accent.dim}}; }";
 
     // ANAN fork build 572 (operator, 21.11): a branch for one user. While the
     // FreeDV text field (FdvState::callsign) reads RZ3QS, two buttons stand
@@ -6839,54 +6904,6 @@ void MainWindow::buildUI()
     // it again until a radio connected. It is sized again now that it is in
     // place, and whenever its font or style changes (MainWindow::eventFilter).
     refitStationLabel();
-
-    // ANAN fork build 606 (operator, 21.11): the RZ3QS branch again (see the
-    // A1 / A2 buttons above). Right of the station name, "AeRX" and "AeTX",
-    // drawn as A1 / A2 but not latching: a click opens / closes AetherRX and
-    // AetherTX exactly as the DSP flag's AetherRX / AetherTX buttons do
-    // (toggleAetherRxDialog, toggleAetherialStrip). Hidden for everybody else.
-    {
-        struct AeButton {
-            const char* text;
-            const char* objectName;
-            const char* tip;
-            bool rx;
-        };
-        static constexpr AeButton kAe[] = {
-            {"AeRX", "rz3qsAeRx", "AeRX -- open AetherRX (the receive chain)", true},
-            {"AeTX", "rz3qsAeTx", "AeTX -- open AetherTX (the transmit chain)", false},
-        };
-        QList<QPushButton*> aeButtons;
-        for (const AeButton& def : kAe) {
-            auto* b = new QPushButton(QString::fromLatin1(def.text));
-            b->setObjectName(QString::fromLatin1(def.objectName));
-            b->setAccessibleName(QString::fromLatin1(def.text));
-            b->setToolTip(QString::fromLatin1(def.tip));
-            b->setCheckable(false);
-            b->setAutoDefault(false);
-            b->setFocusPolicy(Qt::NoFocus);
-            b->setFixedSize(36, 20);
-            AetherSDR::ThemeManager::instance().applyStyleSheet(b, kRz3qsMutedButtonStyle);   // build 612
-            b->hide();
-            if (def.rx)
-                connect(b, &QPushButton::clicked, this, [this] { toggleAetherRxDialog(); });
-            else
-                connect(b, &QPushButton::clicked, this, [this] { toggleAetherialStrip(); });
-            hbox->addWidget(b, 0, Qt::AlignVCenter);
-            aeButtons.append(b);
-        }
-        auto* aeTimer = new QTimer(m_statusBarContainer);
-        aeTimer->setInterval(500);
-        auto aeRefresh = [aeButtons] {
-            const bool show = fdv::FdvState::instance().callsign == QLatin1String("RZ3QS");
-            for (QPushButton* b : aeButtons)
-                if (b->isHidden() == show)
-                    b->setVisible(show);
-        };
-        connect(aeTimer, &QTimer::timeout, m_statusBarContainer, aeRefresh);
-        aeTimer->start();
-        aeRefresh();
-    }
 
     hbox->addStretch(1);
 
