@@ -58,7 +58,8 @@ bool MidiControlManager::isVfoTuneKnob(const QString& paramId)
         || paramId == QLatin1String("rx.tuneKnobC") || paramId == QLatin1String("rx.tuneKnobD")
         // ANAN fork build 786 (operator, 26.11): the RIT knob is an endless
         // knob too -- learned relative, decoded and coalesced as these are.
-        || paramId == QLatin1String("rx.ritKnob");
+        || paramId == QLatin1String("rx.ritKnob")
+        || paramId == QLatin1String("rx.xitKnob");   // build 807
 }
 
 // ── MidiBinding helpers ─────────────────────────────────────────────────────

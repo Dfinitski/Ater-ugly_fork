@@ -1993,6 +1993,15 @@ static void midiRitKnobSteps(SliceModel* s, int steps)
     s->setRit(s->ritOn(), s->ritFreq() + steps * kRitStepHz);
 }
 
+// ANAN fork build 807: the same for XIT.
+static void midiXitKnobSteps(SliceModel* s, int steps)
+{
+    constexpr int kXitStepHz = 10;   // VfoWidget's RIT_STEP_HZ (XIT uses it too)
+    if (!s || steps == 0)
+        return;
+    s->setXit(s->xitOn(), s->xitFreq() + steps * kXitStepHz);
+}
+
 void MainWindow::registerMidiParams()
 {
     using P = MidiParamType;
@@ -2151,6 +2160,16 @@ void MainWindow::registerMidiParams()
         });
     reg("rx.ritZero", "RIT = 0", "RX", P::Trigger, 0, 1,
         [this](float) { if (auto* s = activeSlice()) s->setRit(s->ritOn(), 0); });
+    // ANAN fork build 807 (operator, 26.11): the same knob and zero button
+    // for XIT (the active receiver's XIT; on / off left as it is).
+    reg("rx.xitKnob", "XIT Knob", "RX", P::Slider, 0, 127,
+        [this](float v) {
+            const int steps = static_cast<int>(v) - 64;
+            if (steps != 0)
+                midiXitKnobSteps(activeSlice(), steps);
+        });
+    reg("rx.xitZero", "XIT = 0", "RX", P::Trigger, 0, 1,
+        [this](float) { if (auto* s = activeSlice()) s->setXit(s->xitOn(), 0); });
 
     reg("rx.nr2Enable", "NR2 (Spectral)", "RX", P::Toggle, 0, 1,
         [this](float v) {
@@ -3111,6 +3130,10 @@ void MainWindow::wireExternalControllers()
             this, [this, cap](const QString& paramId, int steps) {
         if (paramId == QLatin1String("rx.ritKnob")) {   // build 786
             midiRitKnobSteps(activeSlice(), steps);
+            return;
+        }
+        if (paramId == QLatin1String("rx.xitKnob")) {   // build 807
+            midiXitKnobSteps(activeSlice(), steps);
             return;
         }
         // Build 476: the knobs of VFO A', B', C, D -- fixed slices.
