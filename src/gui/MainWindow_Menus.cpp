@@ -1721,7 +1721,10 @@ void MainWindow::buildMenuBar()
         // on goes after the last (left) / before the first (right) and keeps
         // that place (MainWindow::setBottomPanelElement).
         auto* bottom = new QGroupBox(QStringLiteral("Bottom Panel"), dlg);
-        auto* bottomLay = new QVBoxLayout(bottom);
+        // Build 824 (operator, 27.11): two columns, to save height.
+        auto* bottomLay = new QGridLayout(bottom);
+        bottomLay->setHorizontalSpacing(16);
+        int bottomIndex = 0;
         struct BottomCheck {
             const char* id;
             const char* text;
@@ -1741,6 +1744,9 @@ void MainWindow::buildMenuBar()
             {"ae", "Fast AeDSP Buttons", "BottomPanelFastAeDsp", false, "appearanceFastAeDspCheck",
              "AeRX / AeTX buttons: a click opens or closes AetherRX / AetherTX,\n"
              "as the DSP flag's AetherRX / AetherTX buttons do."},
+            {"dr", "Show Dith and Rand buttons", "BottomPanelShowDithRand", false,
+             "appearanceShowDithRandCheck",
+             "A1 / A2 buttons: the ANT menu's Dith and Rand of ADC1."},
             {"station", "Show Station Name", "BottomPanelShowStationName", true,
              "appearanceShowStationNameCheck",
              "The station name (the radio's nickname) in the middle of the bottom bar."},
@@ -1757,7 +1763,8 @@ void MainWindow::buildMenuBar()
                 .value(QString::fromLatin1(def.key),
                        def.defaultOn ? QStringLiteral("True") : QStringLiteral("False"))
                 .toString() == QLatin1String("True"));
-            bottomLay->addWidget(cb);
+            bottomLay->addWidget(cb, bottomIndex / 2, bottomIndex % 2);
+            ++bottomIndex;
             const QString id = QString::fromLatin1(def.id);
             // Applied at once.
             if (id == QLatin1String("station")) {

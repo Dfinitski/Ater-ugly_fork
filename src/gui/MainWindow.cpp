@@ -487,6 +487,7 @@ constexpr BottomPanelElement kBottomLeftElements[] = {
     {"tx", "BottomPanelShowTx", true},
     {"att", "BottomPanelShowAttenuators", false},
     {"ae", "BottomPanelFastAeDsp", false},
+    {"dr", "BottomPanelShowDithRand", false},   // build 824
 };
 constexpr BottomPanelElement kBottomRightElements[] = {
     {"cpu", "BottomPanelShowCpu", true},
@@ -6973,7 +6974,17 @@ void MainWindow::buildUI()
     // AnanAdc1Dither / AnanAdc1Random): a click writes the key, which the
     // backend sends and the menu's checkbox shows; a change made in the menu
     // shows here (polled). Hidden for everybody else.
+    // Build 824 (operator, 27.11): out of the RZ3QS branch into View >
+    // Appearance > Bottom Panel > "Show Dith and Rand buttons" (off by
+    // default, AppSettings "BottomPanelShowDithRand"): one element of the
+    // left group (a unit, ordered as the others; applyBottomPanelLayout).
     {
+        QHBoxLayout* drUnit = makeBottomUnit(m_bottomLeftGroup, "dr");
+        auto* drBox = new QWidget;
+        drBox->setObjectName(QStringLiteral("bottomDithRandButtons"));
+        auto* drLay = new QHBoxLayout(drBox);
+        drLay->setContentsMargins(0, 0, 0, 0);
+        drLay->setSpacing(4);
         struct Rz3qsButton {
             const char* text;
             const char* key;
@@ -6981,8 +6992,8 @@ void MainWindow::buildUI()
             const char* tip;
         };
         static constexpr Rz3qsButton kButtons[] = {
-            {"A1", "AnanAdc1Dither", "rz3qsA1", "A1 -- the ANT menu's Dith (ADC1)"},
-            {"A2", "AnanAdc1Random", "rz3qsA2", "A2 -- the ANT menu's Rand (ADC1)"},
+            {"A1", "AnanAdc1Dither", "bottomA1", "A1 -- the ANT menu's Dith (ADC1)"},
+            {"A2", "AnanAdc1Random", "bottomA2", "A2 -- the ANT menu's Rand (ADC1)"},
         };
         QList<QPushButton*> buttons;
         for (const Rz3qsButton& def : kButtons) {
@@ -6998,7 +7009,6 @@ void MainWindow::buildUI()
             // antenna indicator and time text (color.text.secondary, no
             // fill); "on" is a dim accent frame, not the bright blue.
             AetherSDR::ThemeManager::instance().applyStyleSheet(b, kRz3qsMutedButtonStyle);
-            b->hide();
             const QString key = QString::fromLatin1(def.key);
             b->setProperty("rz3qsKey", key);
             connect(b, &QPushButton::clicked, this, [key](bool on) {
@@ -7006,18 +7016,18 @@ void MainWindow::buildUI()
                 st.setValue(key, on ? QStringLiteral("True") : QStringLiteral("False"));
                 st.save();
             });
-            hbox->addWidget(b, 0, Qt::AlignVCenter);
+            drLay->addWidget(b, 0, Qt::AlignVCenter);
             buttons.append(b);
         }
-        auto* rzTimer = new QTimer(m_statusBarContainer);
+        drUnit->addWidget(drBox, 0, Qt::AlignVCenter);
+        auto* rzTimer = new QTimer(drBox);
         rzTimer->setInterval(500);
-        auto refresh = [buttons] {
-            const bool show = fdv::FdvState::instance().callsign == QLatin1String("RZ3QS");
+        // The checked state follows the keys (a change in the ANT menu);
+        // shown / hidden with its unit.
+        auto refresh = [buttons, drBox] {
+            if (!drBox->isVisible())
+                return;
             for (QPushButton* b : buttons) {
-                if (b->isHidden() == show)
-                    b->setVisible(show);
-                if (!show)
-                    continue;
                 const bool on = AppSettings::instance()
                                     .value(b->property("rz3qsKey").toString(), QStringLiteral("False"))
                                     .toString() == QLatin1String("True");
@@ -7027,7 +7037,7 @@ void MainWindow::buildUI()
                 }
             }
         };
-        connect(rzTimer, &QTimer::timeout, m_statusBarContainer, refresh);
+        connect(rzTimer, &QTimer::timeout, drBox, refresh);
         rzTimer->start();
         refresh();
     }
