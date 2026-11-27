@@ -177,26 +177,33 @@ void SMeterWidget::setPhotoFace(bool on)
 
 namespace {
 
-// Build 811: the photo's own geometry (pixels of the 1774 x 887 photo). The
-// S and Po arcs are concentric about a pivot far below the picture; the
-// angles of the scale marks were measured on the photo (degrees, 90 =
-// straight up, larger = to the left).
+// Build 811: the photo's own geometry (pixels of the 1774 x 887 photo).
+// Build 812 (operator, 27.11: "the needle's centre is wrong -- find it on the
+// original photo, with its needle"): the pivot is where the real needle
+// turns -- on the line of the needle in the original picture (resting:
+// x = 0.9188 y - 80.93) under the centre of the lamp window (a circle about
+// x 885.5, y 1036, r 251), just below the picture. Checked twice: at rest
+// the line crosses the Po 0 mark (131.8 deg) and runs left of S1, as on the
+// photo; the scale's ticks point to within ~10 px of it. The needle's length
+// is the real one (its tip on the original, 944 px). Not concentric with the
+// arcs (they centre ~1100 px lower): the mark angles below are those of the
+// lines from the pivot through each mark's point on its arc.
 constexpr double kPhotoW = 1774.0, kPhotoH = 887.0;
-constexpr double kPivotX = 880.34, kPivotY = 2155.0;
-constexpr double kNeedleTipR = 1872.0;   // just past the S marks
+constexpr double kPivotX = 885.5, kPivotY = 1051.9;
+constexpr double kNeedleLen = 944.0;
 struct AnglePoint { double value, deg; };
-constexpr AnglePoint kSAngles[] = {     // dBm -> angle
-    {-127.0, 113.0},                     // the rest, left of S1
-    {-121.0, 106.97}, {-115.0, 103.19}, {-109.0, 100.88}, {-103.0, 98.69},
-    {-97.0, 96.52},   {-91.0, 94.46},   {-85.0, 92.36},   {-79.0, 90.31},
-    {-73.0, 88.31},                      // S9
-    {-63.0, 84.56},   {-53.0, 81.69},   {-43.0, 78.61},   {-33.0, 76.34},
-    {-23.0, 73.49},   {-13.0, 70.98},    // S9+60
-    {-3.0, 68.6},                        // the end of the arc
+constexpr AnglePoint kSAngles[] = {     // dBm -> angle (deg, 90 = up)
+    {-127.0, 132.58},                    // the rest
+    {-121.0, 129.95}, {-115.0, 122.05}, {-109.0, 116.91}, {-103.0, 111.85},
+    {-97.0, 106.66},  {-91.0, 101.61},  {-85.0, 96.36},   {-79.0, 91.19},
+    {-73.0, 86.14},                      // S9
+    {-63.0, 76.76},   {-53.0, 69.79},   {-43.0, 62.61},   {-33.0, 57.56},
+    {-23.0, 51.54},   {-13.0, 46.53},    // S9+60
+    {-3.0, 41.0},
 };
 constexpr AnglePoint kPoAngles[] = {    // per cent of the rated power -> angle
-    {0.0, 105.0}, {10.0, 96.15}, {25.0, 89.58}, {50.0, 83.86}, {100.0, 77.96},
-    {125.0, 74.06}, {150.0, 69.0},
+    {0.0, 131.79}, {10.0, 108.94}, {25.0, 89.27}, {50.0, 72.1}, {100.0, 56.05},
+    {125.0, 46.76}, {150.0, 40.0},
 };
 
 template <size_t N>
@@ -260,20 +267,18 @@ bool SMeterWidget::paintPhotoFace(QPainter& p)
         deg = angleFor(kSAngles, dbm);
     }
 
-    // The needle: a thin bordeaux-red blade from below the picture, as on
-    // the operator's reference meter -- a faint shadow, the blade, a lighter
-    // core.
+    // The needle: a thin bordeaux-red blade from the pivot, as on the
+    // operator's reference meter -- the blade and a lighter core. Build 812:
+    // no shadow (the operator: it looked bad).
     const double k = fit.width() / kPhotoW;
     const QPointF pivot = target.topLeft() + QPointF(kPivotX, kPivotY) * k;
     const double rad = qDegreesToRadians(deg);
     const QPointF dir(std::cos(rad), -std::sin(rad));
-    const QPointF tip = pivot + dir * (kNeedleTipR * k);
+    const QPointF tip = pivot + dir * (kNeedleLen * k);
     const double w = std::max(1.5, 10.0 * k);
     p.save();
     p.setClipRect(target);
     p.setRenderHint(QPainter::Antialiasing, true);
-    p.setPen(QPen(QColor(0, 0, 0, 110), w * 1.9, Qt::SolidLine, Qt::FlatCap));
-    p.drawLine(pivot + QPointF(w * 0.6, w * 0.5), tip + QPointF(w * 0.6, w * 0.5));
     p.setPen(QPen(QColor(0x8e, 0x12, 0x24), w, Qt::SolidLine, Qt::FlatCap));
     p.drawLine(pivot, tip);
     p.setPen(QPen(QColor(0xc4, 0x2a, 0x3c, 190), std::max(0.6, w * 0.35), Qt::SolidLine,
