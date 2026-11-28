@@ -1477,6 +1477,9 @@ private:
     [[nodiscard]] int widestRateForReceiversHz() const;
     [[nodiscard]] static int spectrumFftSizeFor(double zoomViewHz, int rateHz);   // build 230
     double m_fwdMeterW = 0.0;   // build 231/232: the power gauge (gliding to the 250 ms peak)
+    // Build 857: coupler readings were published since the last unkey (the
+    // transport sends them only while it transmits).
+    bool m_fwdMetersLive = false;
     std::deque<std::pair<qint64, double>> m_fwdPeakHist;   // build 232: (ms, W) of the last 250 ms
     qint64 m_txBandWarnMs = 0;          // rate limit of the operator warning
     [[nodiscard]] std::pair<double, double> txSpanHz(double hz) const;

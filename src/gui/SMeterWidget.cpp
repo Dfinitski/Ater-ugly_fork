@@ -516,6 +516,13 @@ void SMeterWidget::setMicMeters(float micLevel, float compLevel, float micPeak, 
 
 void SMeterWidget::setTransmitting(bool tx)
 {
+    // ANAN fork build 857: a new over starts from nothing -- not from a power
+    // reading that arrived after the last unkey.
+    if (tx && !m_transmitting) {
+        m_txPower = 0.0f;
+        m_txSwr = 1.0f;
+        m_radioSwrFilter.reset();
+    }
     m_transmitting = tx;
     setProperty("transmitting", tx);
     if (!tx) {

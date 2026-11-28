@@ -13920,6 +13920,21 @@ void Hl2Backend::publishTelemetry(const Hl2Telemetry& t)
             m_fwdMeterW = m_fwdPeakWatts;
         }
         emit meterUpdate(QStringLiteral("TX:FWDPWR"), wattsToDbm(m_fwdMeterW));
+        m_fwdMetersLive = true;   // build 857
+    } else if (m_fwdMetersLive && !m_keyed) {
+        // ANAN fork build 857 (operator, 27.11: "the TX meter keeps the value
+        // and jumps straight to it on the next transmission, even when the
+        // power is much lower -- reset its accumulator after the
+        // transmission"). The transport sends no coupler readings unkeyed, so
+        // the last reading of the over (often after the unkey, from the RF
+        // tail) stayed in the meters and opened the next over. Once the
+        // readings stop: zero power and an empty peak detector.
+        m_fwdMetersLive = false;
+        m_fwdPeakWatts = 0.0;
+        m_fwdMeterW = 0.0;
+        m_fwdPeakHist.clear();
+        emit meterUpdate(QStringLiteral("TX:FWDPWR"), wattsToDbm(0.0));
+        emit meterUpdate(QStringLiteral("TX:REFPWR"), wattsToDbm(0.0));
     }
     if (t.reversePowerRaw)
         emit meterUpdate(QStringLiteral("TX:REFPWR"),

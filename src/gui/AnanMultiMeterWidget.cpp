@@ -227,6 +227,9 @@ void AnanMultiMeterWidget::setTransmitting(bool transmitting)
     if (m_transmitting == transmitting)
         return;
     m_transmitting = transmitting;
+    // Build 857: power and SWR start each over (and end it) from nothing.
+    m_fwdWatts = 0.0f;
+    m_swr = 1.0f;
     update();
 }
 
