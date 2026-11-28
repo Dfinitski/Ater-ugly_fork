@@ -7982,7 +7982,8 @@ void Hl2Backend::setCwKeying(bool down, bool breakIn, int breakInDelayMs, const 
     // SetCWX), and the radio's keyer has break-in: without break-in here and
     // without MOX the line would key the transmitter by itself, where the
     // host carrier gave no RF. So that press is dropped.
-    if (down && !breakIn && !m_keyed && !anan::AnanUiState::instance().hermesLite
+    // Build 853: the Hermes-Lite 2 the same.
+    if (down && !breakIn && !m_keyed
         && m_ananCwTxSilent.load(std::memory_order_relaxed) && !m_tuning) {
         qCInfo(lcHl2) << "ANAN CW key without break-in and without MOX: no transmission";
         return;
@@ -8161,8 +8162,8 @@ void Hl2Backend::setCwSpeed(int wpm)
 
 bool Hl2Backend::ananRadioKeyerOn() const noexcept
 {
-    return !anan::AnanUiState::instance().hermesLite
-           && m_ananCwTxSilent.load(std::memory_order_relaxed);
+    // Build 853: the Hermes-Lite 2 too (the same protocol lines).
+    return m_ananCwTxSilent.load(std::memory_order_relaxed);
 }
 
 void Hl2Backend::ananCwPaddleBits(bool dot, bool dash)
