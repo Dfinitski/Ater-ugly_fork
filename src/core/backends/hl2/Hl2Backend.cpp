@@ -10058,10 +10058,12 @@ int Hl2Backend::ananPaCalDefault(const QString& band)
     // of the Odyssey-3's full scale (130; 255 inside the 6 m amateur band).
     const auto& ui = anan::AnanUiState::instance();
     if (ui.odyssey3 && !ui.hermesLite) {
+        // Build 856: the operator's current values (27.11, 21:37; build 855
+        // had an older copy of the settings).
         static const QHash<QString, int> kOdyssey3 = {
             {QStringLiteral("160m"), 39}, {QStringLiteral("80m"), 34}, {QStringLiteral("60m"), 30},
-            {QStringLiteral("40m"), 71},  {QStringLiteral("30m"), 40}, {QStringLiteral("20m"), 32},
-            {QStringLiteral("17m"), 30},  {QStringLiteral("15m"), 38}, {QStringLiteral("12m"), 37},
+            {QStringLiteral("40m"), 36},  {QStringLiteral("30m"), 40}, {QStringLiteral("20m"), 42},
+            {QStringLiteral("17m"), 54},  {QStringLiteral("15m"), 72}, {QStringLiteral("12m"), 76},
             {QStringLiteral("10m"), 95},  {QStringLiteral("6m"), 99},
         };
         const auto it = kOdyssey3.constFind(band);
