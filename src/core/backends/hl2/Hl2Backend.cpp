@@ -9978,7 +9978,8 @@ void Hl2Backend::applyDrive(int percent)
     // power cut by half on every band but 6 m"). Build 825 only clipped the
     // byte at 130, which does nothing while the PA Level Calibration asks
     // for less (up to 51 %). The model's full scale is the base now: 130 on
-    // the Odyssey-3 (255 inside the 6 m amateur band), 255 on the others --
+    // the Odyssey-3 (255 inside the 6 m amateur band, 70 on 160 ... 20 m
+    // since build 874), 255 on the others --
     // the calibration and the sliders are percent of it.
     const int fullScale = ananDriveCeiling();
     double driveF = double(fullScale) * cal / 100.0 * std::pow(power / 100.0, e);
@@ -10007,12 +10008,24 @@ int Hl2Backend::ananCwKeyTrimPercent()
 // frequency is inside the 6 m amateur band (of the band plan's IARU region;
 // 50-54 MHz until it arrives) -- where the band's filter is in. Through a
 // transverter the IF is not the 6 m band: 130. Other radios: 255.
+// ANAN fork build 874 (operator, 28.11: "for the Odyssey-3, the same way for
+// the low bands 160, 80, 60, 40, 30, 20: the full scale of the power 70"):
+// 70 on the 160 ... 20 m bands (the band memory's buckets, 1.0 ... 15.5 MHz),
+// not through a transverter (130 there, as for 6 m). The PA Level
+// Calibration stays in % of the full scale (operator: keep the percents).
 int Hl2Backend::ananDriveCeiling() const
 {
     if (m_ananModel != anan::AnanModel::Odyssey3)
         return 255;
     constexpr int kOdyssey3Ceiling = 130;
-    if (!ananOnSixMeters() || ananTxXvtr())
+    constexpr int kOdyssey3LowBandCeiling = 70;
+    if (ananTxXvtr())
+        return kOdyssey3Ceiling;
+    if (m_currentBandKey == QLatin1String("160m") || m_currentBandKey == QLatin1String("80m")
+        || m_currentBandKey == QLatin1String("60m") || m_currentBandKey == QLatin1String("40m")
+        || m_currentBandKey == QLatin1String("30m") || m_currentBandKey == QLatin1String("20m"))
+        return kOdyssey3LowBandCeiling;
+    if (!ananOnSixMeters())
         return kOdyssey3Ceiling;
     const Receiver* txRx = rx(m_txDdc);
     const double hz = m_txWantedHz > 0.0 ? m_txWantedHz : (txRx ? txRx->sliceFreqHz : 0.0);

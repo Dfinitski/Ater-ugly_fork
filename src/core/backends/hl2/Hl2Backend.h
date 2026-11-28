@@ -699,7 +699,8 @@ private:
     [[nodiscard]] const anan::Xvtr* ananTxXvtr() const;
     [[nodiscard]] QString ananPaCalKey() const;
     // Build 825: the highest drive byte the model takes (Odyssey-3: 130; 255
-    // on the 6 m amateur band); 255 for the others.
+    // on the 6 m amateur band; 70 on 160 ... 20 m, build 874); 255 for the
+    // others.
     [[nodiscard]] int ananDriveCeiling() const;
     // Build 840: the drive trim of CW from the radio's keyer (-30..+30 %).
     [[nodiscard]] static int ananCwKeyTrimPercent();
