@@ -74,6 +74,7 @@
 #include "AppletPanel.h"
 #include "CwApplet.h"
 #include "BandApplet.h"   // build 858
+#include "ExtraButtonsApplet.h"   // build 868
 #include "PsApplet.h"
 #include "containers/ContainerManager.h"
 #include "RxApplet.h"
@@ -6626,6 +6627,134 @@ void MainWindow::buildUI()
     // its panadapter.
     connect(m_appletPanel, &AppletPanel::detachedFlagClosed, this,
             [this](int sliceId) { reattachFlag(sliceId); });
+
+    // ANAN fork build 868: Extra Band Applet -- the bottom panel's HAM Bands
+    // (build 829) as an applet: 160 ... 6 m and GEN, the band of the active
+    // receiver lit, a click changes band as there.
+    if (ExtraButtonsApplet* xb = m_appletPanel->extraBandApplet()) {
+        struct XBand {
+            const char* label;
+            const char* band;   // a kBands name, or "GEN"
+        };
+        static constexpr XBand kXBands[] = {
+            {"160", "160m"}, {"80", "80m"}, {"60", "60m"}, {"40", "40m"},
+            {"30", "30m"}, {"20", "20m"}, {"17", "17m"}, {"15", "15m"},
+            {"12", "12m"}, {"10", "10m"}, {"6", "6m"}, {"GEN", "GEN"},
+        };
+        const QVector<QPushButton*>& bs = xb->buttons();
+        for (int i = 0; i < bs.size() && i < int(sizeof(kXBands) / sizeof(kXBands[0])); ++i) {
+            const BandDef* bd = &kGenBand;
+            for (const BandDef& b : kBands)
+                if (std::strcmp(b.name, kXBands[i].band) == 0)
+                    bd = &b;
+            const QString bandName = QString::fromLatin1(bd->name);
+            const double freq = bd->defaultFreqMhz;
+            const QString mode = QString::fromLatin1(bd->defaultMode);
+            QPushButton* b = bs[i];
+            b->setText(QString::fromLatin1(kXBands[i].label));
+            b->setAccessibleName(bandName == QLatin1String("GEN") ? QStringLiteral("General coverage")
+                                                                  : bandName);
+            b->setToolTip(bandName == QLatin1String("GEN") ? QStringLiteral("GEN -- general coverage")
+                                                           : QStringLiteral("%1 band").arg(bandName));
+            b->setProperty("hamBandLow", bd->lowMhz);
+            b->setProperty("hamBandHigh", bd->highMhz);
+            connect(b, &QPushButton::clicked, this, [this, b, bandName, freq, mode] {
+                {
+                    const QSignalBlocker blocker(b);   // lit by the poll, not the click
+                    b->setChecked(!b->isChecked());
+                }
+                if (!m_radioModel.isConnected())
+                    return;
+                auto* s = activeSlice();
+                if (!s)
+                    return;
+                if (s->isLocked()) {
+                    s->notifyTuneBlockedByLock();
+                    return;
+                }
+                selectBand(s->panId(), bandName, freq, mode);
+            });
+        }
+        auto* xbTimer = new QTimer(xb);
+        xbTimer->setInterval(250);
+        connect(xbTimer, &QTimer::timeout, xb, [this, xb] {
+            if (!xb->isVisible())
+                return;
+            const QVector<QPushButton*>& buttons = xb->buttons();
+            const SliceModel* s = m_radioModel.isConnected() ? activeSlice() : nullptr;
+            const double mhz = s ? s->frequency() : -1.0;
+            QPushButton* gen = buttons.isEmpty() ? nullptr : buttons.last();
+            QPushButton* lit = nullptr;
+            if (s) {
+                for (QPushButton* b : buttons) {
+                    if (b != gen && mhz >= b->property("hamBandLow").toDouble()
+                        && mhz <= b->property("hamBandHigh").toDouble())
+                        lit = b;
+                }
+                if (!lit)
+                    lit = gen;
+            }
+            for (QPushButton* b : buttons) {
+                if (b->isChecked() != (b == lit)) {
+                    const QSignalBlocker blocker(b);
+                    b->setChecked(b == lit);
+                }
+            }
+        });
+        xbTimer->start();
+    }
+
+    // Build 868: Extra Mode Applet -- the bottom panel's Modes (build 843):
+    // a mirror of the active receiver's flag mode buttons, a click is a click
+    // on that flag button.
+    if (ExtraButtonsApplet* xm = m_appletPanel->extraModeApplet()) {
+        auto flagButton = [this](int slot) -> QPushButton* {
+            SliceModel* s = m_radioModel.isConnected() ? activeSlice() : nullptr;
+            SpectrumWidget* sw = s ? spectrumForSlice(s) : nullptr;
+            VfoWidget* v = sw ? sw->vfoWidget(s->sliceId()) : nullptr;
+            return v ? v->findChild<QPushButton*>(QStringLiteral("vfoQuickMode%1").arg(slot)) : nullptr;
+        };
+        auto syncModes = [xm, flagButton] {
+            if (!xm->isVisible())
+                return;
+            const QVector<QPushButton*>& buttons = xm->buttons();
+            for (int i = 0; i < buttons.size(); ++i) {
+                QPushButton* b = buttons[i];
+                QPushButton* f = flagButton(i);
+                const QString text = f ? f->text() : QStringLiteral("-");
+                if (b->text() != text)
+                    b->setText(text);
+                const bool on = f && f->isChecked();
+                if (b->isChecked() != on) {
+                    const QSignalBlocker blocker(b);
+                    b->setChecked(on);
+                }
+                const bool enabled = f && f->isEnabled();
+                if (b->isEnabled() != enabled)
+                    b->setEnabled(enabled);
+                const QString tip = f ? f->toolTip() : QString();
+                if (b->toolTip() != tip)
+                    b->setToolTip(tip);
+            }
+        };
+        const QVector<QPushButton*>& ms = xm->buttons();
+        for (int i = 0; i < ms.size(); ++i) {
+            QPushButton* b = ms[i];
+            connect(b, &QPushButton::clicked, this, [b, i, flagButton, syncModes] {
+                {
+                    const QSignalBlocker blocker(b);   // lit as the flag button
+                    b->setChecked(!b->isChecked());
+                }
+                if (QPushButton* f = flagButton(i))
+                    f->click();
+                syncModes();
+            });
+        }
+        auto* xmTimer = new QTimer(xm);
+        xmTimer->setInterval(250);
+        connect(xmTimer, &QTimer::timeout, xm, syncModes);
+        xmTimer->start();
+    }
     if (auto* cw = m_appletPanel->cwApplet()) {
         connect(cw, &CwApplet::keyerSpeedChanged, this, [this](int wpm) {
             if (m_radioModel.transmitModel().cwSpeed() != wpm)

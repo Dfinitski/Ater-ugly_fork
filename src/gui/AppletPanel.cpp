@@ -51,6 +51,7 @@
 #include "CwApplet.h"
 #include "BandApplet.h"   // build 858
 #include "DetachedFlagApplet.h"   // build 864
+#include "ExtraButtonsApplet.h"   // build 868
 #include "PsApplet.h"
 #ifdef HAVE_MQTT
 #include "MqttApplet.h"
@@ -1299,6 +1300,17 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
         });
         m_appletOrder.append(e);
     }
+
+    // ANAN fork build 868: Extra Band Applet / Extra Mode Applet (View >
+    // Appearance > Extra Applets), the bottom panel's HAM Bands and Modes
+    // buttons as applets; no bar button, opened from there, closed by their x.
+    // MainWindow gives the buttons their bands / modes.
+    m_extraBand = new ExtraButtonsApplet(QStringLiteral("extraBandApplet"), 2, 6, 24.0 / 15.0);
+    m_appletOrder.append(makeEntry("XBAND", "Extra Bands", m_extraBand, false, nullptr, nullptr));
+    m_containerMgr->setCloseHides(QStringLiteral("XBAND"));
+    m_extraMode = new ExtraButtonsApplet(QStringLiteral("extraModeApplet"), 2, 4, 30.0 / 15.0);
+    m_appletOrder.append(makeEntry("XMODE", "Extra Modes", m_extraMode, false, nullptr, nullptr));
+    m_containerMgr->setCloseHides(QStringLiteral("XMODE"));
 
 #ifdef HAVE_MQTT
     m_mqttApplet = new MqttApplet;
@@ -2920,9 +2932,15 @@ bool AppletPanel::isDetachedFlagShown(int sliceId) const
 
 void AppletPanel::showDetachedFlag(int sliceId)
 {
-    if (sliceId < 0 || sliceId >= kDetachedFlagCount || !m_containerMgr)
+    if (sliceId < 0 || sliceId >= kDetachedFlagCount)
         return;
-    const QString id = QStringLiteral("FLAG%1").arg(sliceId);
+    showClosableApplet(QStringLiteral("FLAG%1").arg(sliceId));
+}
+
+void AppletPanel::showClosableApplet(const QString& id)
+{
+    if (!m_containerMgr)
+        return;
     ContainerWidget* c = m_containerMgr->container(id);
     if (!c)
         return;

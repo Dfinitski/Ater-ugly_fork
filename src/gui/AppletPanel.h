@@ -31,6 +31,7 @@ class SliceModel;
 class RxApplet;
 class BandApplet;   // build 858
 class DetachedFlagApplet;   // build 864
+class ExtraButtonsApplet;   // build 868
 class SMeterWidget;
 class CrossNeedleMeterApplet;
 class CrossNeedleMeterWidget;
@@ -185,6 +186,12 @@ public:
     DetachedFlagApplet* detachedFlagApplet(int sliceId) const;
     // Open (show, and float when it is in the panel) / is it open.
     void showDetachedFlag(int sliceId);
+    // Build 868: the Extra Band / Extra Mode applets (containers XBAND /
+    // XMODE, no bar button, closed for good by their x), and opening any
+    // such applet by its container id.
+    ExtraButtonsApplet* extraBandApplet() const { return m_extraBand; }
+    ExtraButtonsApplet* extraModeApplet() const { return m_extraMode; }
+    void showClosableApplet(const QString& id);
     [[nodiscard]] bool isDetachedFlagShown(int sliceId) const;
     PsApplet*     psApplet()     { return m_psApplet; }
 
@@ -503,6 +510,8 @@ private:
     GreenHeronApplet*    m_greenHeronApplet{nullptr};   // build 858: no longer created
     BandApplet*          m_bandApplet{nullptr};         // build 858
     DetachedFlagApplet*  m_detachedFlags[kDetachedFlagCount]{};   // build 864
+    ExtraButtonsApplet*  m_extraBand{nullptr};   // build 868
+    ExtraButtonsApplet*  m_extraMode{nullptr};   // build 868
     ProfileSwitcherApplet* m_profApplet{nullptr};
 #ifdef HAVE_RADE
     RadeApplet*  m_radeApplet{nullptr};

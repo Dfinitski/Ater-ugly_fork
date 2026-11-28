@@ -1874,9 +1874,33 @@ void MainWindow::buildMenuBar()
             "Workspace Canvas); the panadapter shows no flag for it. Closing that applet puts the\n"
             "flag back on the panadapter. Not for the sub receivers."));
         extraLay->addWidget(detachFlagBtn);
+        // Build 868 (operator, 28.11): the bottom panel's band and mode
+        // buttons as applets, opened in their own windows.
+        auto* extraBandBtn = new QPushButton(QStringLiteral("Extra Band Applet"), extraGroup);
+        extraBandBtn->setObjectName(QStringLiteral("appearanceExtraBand"));
+        extraBandBtn->setAutoDefault(false);
+        extraBandBtn->setToolTip(QStringLiteral(
+            "The bottom panel's HAM Bands buttons in an applet of their own; pulled out of\n"
+            "the panel the buttons grow and shrink with the window. Closed by its x."));
+        auto* extraModeBtn = new QPushButton(QStringLiteral("Extra Mode Applet"), extraGroup);
+        extraModeBtn->setObjectName(QStringLiteral("appearanceExtraMode"));
+        extraModeBtn->setAutoDefault(false);
+        extraModeBtn->setToolTip(QStringLiteral(
+            "The bottom panel's Modes buttons in an applet of their own; pulled out of\n"
+            "the panel the buttons grow and shrink with the window. Closed by its x."));
+        extraLay->addWidget(extraBandBtn);
+        extraLay->addWidget(extraModeBtn);
         extraLay->addStretch(1);
         root->addWidget(extraGroup);
         connect(detachFlagBtn, &QPushButton::clicked, this, [this] { detachActiveFlag(); });
+        connect(extraBandBtn, &QPushButton::clicked, this, [this] {
+            if (m_appletPanel)
+                m_appletPanel->showClosableApplet(QStringLiteral("XBAND"));
+        });
+        connect(extraModeBtn, &QPushButton::clicked, this, [this] {
+            if (m_appletPanel)
+                m_appletPanel->showClosableApplet(QStringLiteral("XMODE"));
+        });
         root->addStretch(1);
         auto* closeRow = new QHBoxLayout;
         closeRow->addStretch(1);
