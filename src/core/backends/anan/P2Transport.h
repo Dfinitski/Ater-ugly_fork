@@ -804,6 +804,14 @@ private:
     // the last sample only).
     int m_fwdPeakWin = -1;
     int m_revPeakWin = -1;
+    // ANAN fork build 875: the coupler readings of the last unkeyed publish
+    // (what the radio still reports from the previous over), and, after the
+    // key, until when readings equal to them count as stale (0 = not
+    // blanking).
+    int m_fwdIdleRaw = -1;
+    int m_revIdleRaw = -1;
+    qint64 m_fwdStaleUntilMs = 0;
+    bool m_telemetryMox = false;
     QTimer* m_meterTimer = nullptr;
     int m_excRaw = 0;
     int m_supplyRaw = 0;     // status bytes 49-50

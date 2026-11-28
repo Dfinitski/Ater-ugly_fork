@@ -1316,11 +1316,40 @@ void P2Transport::publishTelemetry()
     // Directional coupler counts (Alex0). The watts/SWR conversion upstream
     // is the HL2's; ANAN calibration is a TODO (see the port journal).
     const bool hl2 = m_p1 && m_profile.boardId == kBoardIdHermesLite;   // build 725
+    // ANAN fork build 875 (operator, 28.11: "the power indicator still jumps
+    // to the last value at a new transmission -- we fixed that already").
+    // Build 857 cleared the program's meters after the over, but the stale
+    // value comes from the radio: the Odyssey-3's power meter MCU sends the
+    // FPGA a peak only once per 300 ms window and holds it, so the first
+    // readings of a new over are the last peak of the previous one. After the
+    // key, readings equal to the last unkeyed ones count as no power, until
+    // the radio reports something else or 400 ms have passed (then it is
+    // really the same power). A radio with a live coupler ADC changes its
+    // reading within the first window, so nothing is lost there.
+    constexpr qint64 kStaleCouplerMs = 400;
+    if (m_mox && !m_telemetryMox)
+        m_fwdStaleUntilMs = steadyMs() + kStaleCouplerMs;
+    m_telemetryMox = m_mox;
+    if (!m_mox) {
+        m_fwdIdleRaw = m_fwdRaw;
+        m_revIdleRaw = m_revRaw;
+        m_fwdStaleUntilMs = 0;
+    }
     if (m_mox) {
         // Build 231: the window's highest readings -- the meter shows the
         // peaks the radio's detector reported, not whichever sample was last.
         t.forwardPowerRaw = m_fwdPeakWin >= 0 ? m_fwdPeakWin : m_fwdRaw;
         t.reversePowerRaw = m_revPeakWin >= 0 ? m_revPeakWin : m_revRaw;
+        if (m_fwdStaleUntilMs != 0) {
+            const bool stale = *t.forwardPowerRaw == m_fwdIdleRaw
+                            && *t.reversePowerRaw == m_revIdleRaw;
+            if (stale && steadyMs() < m_fwdStaleUntilMs) {
+                t.forwardPowerRaw = 0;   // build 875: the previous over's peak
+                t.reversePowerRaw = 0;
+            } else {
+                m_fwdStaleUntilMs = 0;   // fresh readings from here on
+            }
+        }
         // Build 725 (deskHPSDR): a Hermes-Lite 2 whose reverse reads above
         // the forward has its sense transformer the other way round.
         if (hl2 && *t.reversePowerRaw > *t.forwardPowerRaw)
