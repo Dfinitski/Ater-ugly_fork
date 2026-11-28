@@ -294,6 +294,10 @@ private:
     QPushButton* m_txBadge{nullptr};       // TX slice indicator (click to set as TX slice)
     QComboBox*   m_modeCombo{nullptr};     // mode selector (USB, LSB, CW, etc.)
     QLabel*      m_freqLabel{nullptr};     // frequency readout e.g. "14.289.510"
+    // ANAN fork build 872: the character of m_freqLabel the wheel would turn
+    // (-1 none), lit while the cursor is on it, and the hit test the wheel uses.
+    int          m_hoverFreqChar{-1};
+    [[nodiscard]] int freqCharAt(int x) const;
     QLineEdit*   m_freqEdit{nullptr};
     QStackedWidget* m_freqStack{nullptr};
     QTimer       m_accessibleFrequencyTimer;

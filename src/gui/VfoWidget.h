@@ -433,6 +433,12 @@ protected:
     // ANAN port: the decimal place (0 = Hz units) of the frequency digit under
     // labelPos (m_freqLabel coordinates), or -1 when the label shows no number.
     int freqDigitPlaceAt(const QPoint& labelPos) const;
+    // ANAN fork build 872 (operator, 28.11: "hovering the frequency digits,
+    // on the flag and on the widget, the digit the wheel is ready to turn
+    // gets a light blue half-transparent background"): the place under the
+    // cursor (-1 none) and that digit's box in m_freqLabel coordinates.
+    int m_hoverDigitPlace{-1};
+    [[nodiscard]] QRectF freqDigitRect(int place) const;
     void mousePressEvent(QMouseEvent* ev) override;
     void mouseReleaseEvent(QMouseEvent* ev) override;
     // Build 250: moves and double clicks over the flag stay with the flag

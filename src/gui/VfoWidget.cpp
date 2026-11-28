@@ -875,6 +875,42 @@ int VfoWidget::freqDigitPlaceAt(const QPoint& labelPos) const
     return 0;   // right of the number: the units
 }
 
+// Build 872: the box of the digit at `place` (0 = Hz units), laid out as
+// freqDigitPlaceAt() reads it; empty when there is none.
+QRectF VfoWidget::freqDigitRect(int place) const
+{
+    if (!m_freqLabel || place < 0)
+        return {};
+    const QString text = m_freqLabel->text();
+    if (text.isEmpty() || !text.front().isDigit())
+        return {};
+    int digits = 0;
+    for (const QChar c : text)
+        if (c.isDigit())
+            ++digits;
+    const QFontMetricsF fm(m_freqLabel->font());
+    QRect cr = m_freqLabel->contentsRect();
+    const int margin = m_freqLabel->margin();
+    cr.adjust(margin, margin, -margin, -margin);
+    int indent = m_freqLabel->indent();
+    if (indent < 0 && m_freqLabel->frameWidth() > 0)
+        indent = m_freqLabel->fontMetrics().horizontalAdvance(QLatin1Char('x')) / 2 - margin;
+    if (indent > 0)
+        cr.setRight(cr.right() - indent);
+    double x = cr.right() + 1 - fm.horizontalAdvance(text);
+    int seen = 0;
+    for (const QChar c : text) {
+        const double adv = fm.horizontalAdvance(c);
+        if (c.isDigit()) {
+            ++seen;
+            if (digits - seen == place)
+                return QRectF(x, cr.top() + 1, adv, cr.height() - 2);
+        }
+        x += adv;
+    }
+    return {};
+}
+
 void VfoWidget::mousePressEvent(QMouseEvent* ev)
 {
     ev->accept();
@@ -1252,6 +1288,7 @@ void VfoWidget::buildUI()
                                 " padding: 0 0 0 2px; }");
     m_freqLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     m_freqLabel->installEventFilter(this);
+    m_freqLabel->setMouseTracking(true);   // build 872: the digit under the cursor
     m_freqStack->addWidget(m_freqLabel);
 
     auto* freqEdit = new FreqLineEdit;
@@ -8280,6 +8317,43 @@ bool VfoWidget::foldExpanded()
 
 bool VfoWidget::eventFilter(QObject* obj, QEvent* event)
 {
+    // Build 872: the digit the wheel would turn, lit while the cursor is on it.
+    if (obj == m_freqLabel && m_freqLabel) {
+        switch (event->type()) {
+        case QEvent::MouseMove: {
+            const auto* me = static_cast<QMouseEvent*>(event);
+            const int place = m_collapsed ? -1 : freqDigitPlaceAt(me->position().toPoint());
+            if (place != m_hoverDigitPlace) {
+                m_hoverDigitPlace = place;
+                m_freqLabel->update();
+            }
+            break;
+        }
+        case QEvent::Leave:
+        case QEvent::Hide:
+            if (m_hoverDigitPlace >= 0) {
+                m_hoverDigitPlace = -1;
+                m_freqLabel->update();
+            }
+            break;
+        case QEvent::Paint:
+            // Under the text: painted first, QLabel's own paint follows.
+            if (m_hoverDigitPlace >= 0) {
+                const QRectF r = freqDigitRect(m_hoverDigitPlace);
+                if (!r.isEmpty()) {
+                    QPainter p(m_freqLabel);
+                    p.setRenderHint(QPainter::Antialiasing, true);
+                    p.setPen(Qt::NoPen);
+                    p.setBrush(QColor(110, 180, 255, 80));
+                    p.drawRoundedRect(r, 2.0, 2.0);
+                }
+            }
+            break;
+        default:
+            break;
+        }
+    }
+
     if ((event->type() == QEvent::MouseButtonPress
          || event->type() == QEvent::MouseButtonDblClick)
         && foldOnOutsidePress(obj, event))

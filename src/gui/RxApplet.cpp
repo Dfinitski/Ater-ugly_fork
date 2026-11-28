@@ -54,6 +54,7 @@
 #include <QFontMetrics>
 #include <QSignalBlocker>
 #include <utility>
+#include <QMouseEvent>   // build 872
 #include <QPainter>
 #include <QPointer>
 #include <QWheelEvent>
@@ -644,6 +645,7 @@ void RxApplet::buildUI()
             " font-family: \"{{font.family.freq}}\";"
             " background: transparent; padding: 0; margin: 0; }");
         m_freqLabel->installEventFilter(this);
+        m_freqLabel->setMouseTracking(true);   // build 872: the digit under the cursor
         m_freqStack->addWidget(m_freqLabel);
 
         auto* freqEdit = new FreqLineEdit;
@@ -4152,8 +4154,72 @@ void RxApplet::applyOffsetDir(const QString& dir)
     updateOffsetDirButtons();
 }
 
+// Build 872: the index of the digit of m_freqLabel's text under x (label
+// coordinates), as the wheel finds it below; -1 over a dot or off the text.
+int RxApplet::freqCharAt(int x) const
+{
+    if (!m_freqLabel)
+        return -1;
+    const QString text = m_freqLabel->text();
+    if (text.isEmpty() || !text.front().isDigit())
+        return -1;
+    const QFontMetrics fm(m_freqLabel->font());
+    const int textWidth = fm.horizontalAdvance(text);
+    const int textX0 = m_freqLabel->width() - textWidth - 1;
+    const int mx = x - textX0;
+    if (mx < 0 || mx >= textWidth)
+        return -1;
+    int cumX = 0;
+    for (int i = 0; i < text.size(); ++i) {
+        const int cw = fm.horizontalAdvance(text[i]);
+        if (mx < cumX + cw)
+            return text[i] == QLatin1Char('.') ? -1 : i;
+        cumX += cw;
+    }
+    return -1;
+}
+
 bool RxApplet::eventFilter(QObject* obj, QEvent* ev)
 {
+    // Build 872: the digit the wheel would turn, lit while the cursor is on it.
+    if (obj == m_freqLabel && m_freqLabel) {
+        switch (ev->type()) {
+        case QEvent::MouseMove: {
+            const int idx = freqCharAt(static_cast<QMouseEvent*>(ev)->position().toPoint().x());
+            if (idx != m_hoverFreqChar) {
+                m_hoverFreqChar = idx;
+                m_freqLabel->update();
+            }
+            break;
+        }
+        case QEvent::Leave:
+        case QEvent::Hide:
+            if (m_hoverFreqChar >= 0) {
+                m_hoverFreqChar = -1;
+                m_freqLabel->update();
+            }
+            break;
+        case QEvent::Paint: {
+            const QString text = m_freqLabel->text();
+            if (m_hoverFreqChar >= 0 && m_hoverFreqChar < text.size()
+                && text.front().isDigit()) {
+                const QFontMetrics fm(m_freqLabel->font());
+                const int x0 = m_freqLabel->width() - fm.horizontalAdvance(text) - 1;
+                const int x = x0 + fm.horizontalAdvance(text.left(m_hoverFreqChar));
+                const int w = fm.horizontalAdvance(text[m_hoverFreqChar]);
+                QPainter p(m_freqLabel);
+                p.setRenderHint(QPainter::Antialiasing, true);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(110, 180, 255, 80));
+                p.drawRoundedRect(QRectF(x, 2, w, m_freqLabel->height() - 4), 2.0, 2.0);
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
     // Build 486: a SPLIT VFO is selected -- its receiver's controls take no input.
     if (m_subLock && m_subLocked.contains(obj)) {
         switch (ev->type()) {
