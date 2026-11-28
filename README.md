@@ -75,19 +75,22 @@ a radio as "<model> (Protocol 1)"; a radio that answers both protocols is driven
 - Protocol 1 is new and has not been tested on a radio yet: try receive first, then transmit at
   low power, and report what you see.
 
-## Build 807
+## Build 854
 
-Full notes: [docs/release-notes-build-807.md](docs/release-notes-build-807.md).
+Full notes: [docs/release-notes-build-854.md](docs/release-notes-build-854.md).
 
-- RIT / XIT kept per receiver, band and mode group, stored in quick and station memories, typed
-  offsets, MIDI RIT / XIT knobs and zero buttons; the XIT line only where the carrier goes.
-- Theme editor: **New theme from colors** wizard, **Palette** tab, replace a colour everywhere,
-  hue / saturation / lightness, changed-only filter, Undo / Redo, contrast check.
-- Buttons follow the theme; window headers in the theme's colours (Windows 11); your own band
-  plan colours (View → Band Plan → Colors…).
-- PureSignal: CORR lamp shows the correction, short check-code texts in Amp View.
+- **View → Appearance…:** Icom vintage photo S-meter (Light / Dark); every bottom bar element
+  can be switched on or off (antenna, TX, attenuators, AeRX / AeTX, Dith / Rand, HAM band and mode
+  buttons, station name in the centre, CPU, UTC); panadapter Jump From Edge 0 / 25 / 50 %.
+- **CW from the PC through the radio's keyer (ANAN), as Thetis:** macros on the CWX line, COM
+  port paddles on Dot / Dash, key line on Dash, PTT line on Dot; the radio's RF delay, shape,
+  hang and sidetone; macro speed from the CW applet.
+- PureSignal: correction kept per band across restarts, TUNE starts at 31 dB with Full ATT when
+  TX, RF Delay on TUNE.
+- Odyssey-3 drive scale 130 (255 on 6 m); CW key drive trim; TX button crossed in red when
+  transmitting is blocked; TCI rx_smeter, CAT MD7 / ZZLA / ZZLE, MIDI zoom knob fixes.
 
-Earlier notes: [build 769](docs/release-notes-build-769.md), [build 744](docs/release-notes-build-744.md), [build 732](docs/release-notes-build-732.md), [build 713](docs/release-notes-build-713.md), [build 667](docs/release-notes-build-667.md), [build 636](docs/release-notes-build-636.md), [build 572](docs/release-notes-build-572.md), [build 557](docs/release-notes-build-557.md), [build 533](docs/release-notes-build-533.md), [build 494](docs/release-notes-build-494.md), [build 468](docs/release-notes-build-468.md), [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
+Earlier notes: [build 807](docs/release-notes-build-807.md), [build 769](docs/release-notes-build-769.md), [build 744](docs/release-notes-build-744.md), [build 732](docs/release-notes-build-732.md), [build 713](docs/release-notes-build-713.md), [build 667](docs/release-notes-build-667.md), [build 636](docs/release-notes-build-636.md), [build 572](docs/release-notes-build-572.md), [build 557](docs/release-notes-build-557.md), [build 533](docs/release-notes-build-533.md), [build 494](docs/release-notes-build-494.md), [build 468](docs/release-notes-build-468.md), [build 444](docs/release-notes-build-444.md), [build 439](docs/release-notes-build-439.md), [build 413](docs/release-notes-build-413.md), [build 372](docs/release-notes-build-372.md), [build 336](docs/release-notes-build-336.md), [build 302](docs/release-notes-build-302.md), [build 265](docs/release-notes-build-265.md), [build 235](docs/release-notes-build-235.md), [build 220](docs/release-notes-build-220.md), [build 211](docs/release-notes-build-211.md), [build 190](docs/release-notes-build-190.md).
 
 ## Downloads
 

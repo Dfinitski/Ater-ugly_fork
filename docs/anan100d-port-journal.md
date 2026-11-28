@@ -14427,6 +14427,26 @@ PS — оператор снял (вход ответвителя без PS не
 
 Компиляцию проверить не удалось (errcheck недоступен), код проверен вручную. Не проверено на радио, не собиралось под Windows.
 
+### Релиз сборки 854
+
+Оператор, 27.11: «делаем релиз, подготовь архив для портативной версии и док на гитхаб».
+
+- `docs/release-notes-build-854.md` — изменения с 807:
+  - окно View → Appearance: Icom Vintage Meter Light/Dark (811–818), элементы Bottom Panel (819–824, 826–832, 843, 847, 848), Jump From Edge (844), Pan Follows VFO убран (845);
+  - крест на TX (828);
+  - Odyssey-3 130/255 (825, 841), поправка CW-ключа (840);
+  - CW с ПК через кейер радио (850–852), HL2 без изменений (853/854);
+  - PureSignal по диапазонам, 31 дБ на TUNE, RF Delay на TUNE (834, 836–838);
+  - TCI rx_smeter (833), CAT MD7/ZZLA/ZZLE (842), MIDI зум (839);
+  - VFO Marker Size (835), Multi Meter +25 % (809), размер вынесенных аплетов (810), ETag (808);
+  - строка атрибуции фото шкалы (Chaz360, CC BY-SA 4.0, ссылки, изменения, оговорка про Icom).
+- README: раздел «Build 854», 807 — в списке прежних.
+- Архив `AetherSDR-ANAN-build854-win64-portable.zip` (папка `AetherSDR-ANAN-build854`) = архив 807 (SHA-256 сверен: 387b0f2d…c5d1) + `AetherSDR.exe` оператора из `Desktop\AetherSDR-Release` + `README-build854.md` вместо `README-build807.md`.
+  - exe: 92 340 224 байт, время файла на ~5 мин позже последней записи исходников (854); в нём строки «keyer, PC key lines» (851), «ANAN CW key without break-in» (850), «Show HAM Bands», «Show Modes».
+  - Архив: 93 файла, 164 064 766 байт, SHA-256 `eec3cb56cc878f088c4c9b6cf03c16867e0ed0457bfe12fa399487b925ebd8ba`.
+  - Записан в `Desktop\AetherSDR-Release`, считан обратно, хеш совпал.
+- Тег `build-854`, релиз на GitHub и установщик — оператор.
+
 ## 5. Где брать удалённый код
 
 Всё удалённое есть в теге `v26.10.4` на GitHub (`aethersdr/AetherSDR`) и в резервной копии
