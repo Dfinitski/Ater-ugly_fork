@@ -673,6 +673,18 @@ void MainWindow::applyBottomPanelLayout()
     if (layoutBottomGroup(m_bottomRightGroup, "BottomPanelRightOrder",
                           kBottomRightElements, before))
         changed = true;
+    // Build 848: the right group's end separator, while any of its units shows.
+    if (auto* rightEndSep = m_bottomRightGroup->findChild<QLabel*>(
+            QStringLiteral("bottomRightEndSep"), Qt::FindDirectChildrenOnly)) {
+        bool anyOn = false;
+        for (const auto& e : kBottomRightElements)
+            if (bottomPanelOn(e))
+                anyOn = true;
+        if (rightEndSep->isHidden() == anyOn) {
+            rightEndSep->setVisible(anyOn);
+            changed = true;
+        }
+    }
     // Build 830: the right section starts with a separator whatever comes
     // first -- GPS and PA have none of their own (TGXL / PGXL and the group's
     // units do), so the section's leading separator shows before them.
@@ -6709,6 +6721,13 @@ void MainWindow::buildUI()
         endSep->setObjectName(QStringLiteral("bottomLeftEndSep"));
         endSep->setStyleSheet(sepStyle);
         m_bottomLeftGroup->layout()->addWidget(endSep);
+        // Build 848 (operator, 27.11: "the time on the right still has no
+        // separator on its right"): the right group ends with one as well --
+        // it stays after the units, which take indices 0..n-1.
+        auto* rightEndSep = new QLabel(QStringLiteral(" · "), m_bottomRightGroup);
+        rightEndSep->setObjectName(QStringLiteral("bottomRightEndSep"));
+        rightEndSep->setStyleSheet(sepStyle);
+        m_bottomRightGroup->layout()->addWidget(rightEndSep);
         // Build 847: the elements past the station name end with one too.
         auto* overEndSep = new QLabel(QStringLiteral(" · "), m_bottomOverflowGroup);
         overEndSep->setObjectName(QStringLiteral("bottomOverflowEndSep"));
