@@ -14416,16 +14416,18 @@ void Hl2Backend::emitSliceState(int ddc)
     d.active = (ddc == m_activeDdc)
                && !(splitOfOwner(ids->uiNumber) && splitOfOwner(ids->uiNumber)->active);   // build 496
     // Build 248 (operator, 10.11: the flag's antenna buttons did not follow
-    // the ANT panel): the antennas as the ANT panel holds them. ANT1-3 feed
-    // ADC1 only; a receiver on ADC2 listens to the RX2 input.
+    // the ANT panel): the antennas as the ANT panel holds them.
+    // Build 865 (operator, 28.11: "on ADC2 the flag shows RX2 instead of ANT1,
+    // and RX2 is in the antenna list and can be chosen; there should only be
+    // the antennas"): a receiver on ADC2 shows the same ANT1-3 choice --
+    // "RX2" was not an antenna, only the name of the ADC2 input.
     {
         const QStringList ants{QStringLiteral("ANT1"), QStringLiteral("ANT2"), QStringLiteral("ANT3")};
         const auto& st = AppSettings::instance();
         const int rxAnt = std::clamp(st.value(QStringLiteral("AnanRxAnt"), 0).toInt(), 0, 2);
         const int txAnt = std::clamp(st.value(QStringLiteral("AnanTxAnt"), 0).toInt(), 0, 2);
-        const bool onAdc2 = ddc >= 0 && ddc < 2 && m_ananAdc[ddc] == 1;
-        d.rxAntennaList = onAdc2 ? QStringList{QStringLiteral("RX2")} : ants;
-        d.rxAntenna = onAdc2 ? QStringLiteral("RX2") : ants[rxAnt];
+        d.rxAntennaList = ants;
+        d.rxAntenna = ants[rxAnt];
         d.txAntennaList = ants;
         d.txAntenna = ants[txAnt];
     }
