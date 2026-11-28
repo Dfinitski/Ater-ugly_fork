@@ -279,6 +279,19 @@ void FloatingContainerWindow::fitHeightToContent()
         h = std::min(h, screen->availableGeometry().height() * 9 / 10);
         w = std::min(w, screen->availableGeometry().width() * 9 / 10);
     }
+    // ANAN fork build 869 (operator, 28.11: "the detached flag: a button
+    // pressed, there is a gap above and below and the flag in the middle --
+    // the flag always at the top, the bottom following the content"): a
+    // content of one fixed size (the detached flag) gets a window of exactly
+    // its size, always -- not the operator's addition kept below, nor a
+    // larger saved geometry, round which its layout centred it.
+    if (m_container->property("aetherFitContentExactly").toBool()) {
+        const QSize target(w, h);
+        if (size() != target)
+            resize(target);
+        m_contentHeight = h;
+        return;
+    }
     if (m_fitWidth) {
         // The opening passes (m_fitWidth, set by restoreAndEnsureVisible).
         QSize target = size();

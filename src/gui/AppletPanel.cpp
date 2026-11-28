@@ -1294,6 +1294,9 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
         const QString title = QStringLiteral("Flag %1").arg(QChar(QLatin1Char('A').unicode() + i));
         AppletEntry e = makeEntry(id, title, m_detachedFlags[i], false, nullptr, nullptr);
         m_containerMgr->setCloseHides(id);
+        // Build 869: its floating window is always exactly its size.
+        if (auto* fc = qobject_cast<ContainerWidget*>(e.widget))
+            fc->setProperty("aetherFitContentExactly", true);
         connect(qobject_cast<ContainerWidget*>(e.widget), &ContainerWidget::visibilityChanged, this, [this, i](bool visible) {
             if (!visible && !m_recallInProgress)
                 emit detachedFlagClosed(i);
