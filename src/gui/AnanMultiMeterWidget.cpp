@@ -246,7 +246,9 @@ QString AnanMultiMeterWidget::rowName(Row row)
 {
     switch (row) {
     case Row::S:    return QStringLiteral("S");
-    case Row::Po:   return QStringLiteral("PWR");   // build 738: as SWR
+    // ANAN fork build 873 (operator, 28.11: "PWR -> PO, centred on the SWR
+    // below it").
+    case Row::Po:   return QStringLiteral("PO");
     case Row::Swr:  return QStringLiteral("SWR");
     case Row::Alc:  return QStringLiteral("ALC");
     case Row::Comp: return QStringLiteral("COMP");
@@ -470,8 +472,10 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
 
     const double step = (kH - kTop - kBottom) / kRows;
     const auto X = [](double f) { return kScaleX0 + (kScaleX1 - kScaleX0) * f; };
+    // Build 873: the names' x is still where build 740 put PWR's P (its
+    // width kept here), so SWR, ALC and COMP do not move; PO is centred on SWR.
     const double nameLeft = std::max(0.0, (nameColumnRight(Row::Po)
-        - QFontMetricsF(nameFont).horizontalAdvance(rowName(Row::Po))) / 2.0);
+        - QFontMetricsF(nameFont).horizontalAdvance(QStringLiteral("PWR"))) / 2.0);
     for (int i = 0; i < kRows; ++i) {
         const Row row = Row(i);
         const double y = rowLineY(i, step);
@@ -487,8 +491,11 @@ void AnanMultiMeterWidget::drawStatic(QPainter& p, const QRectF& meter)
         // it (between the window's edge and its first figure), the others
         // left-aligned at that x.
         // Build 741 (operator): S stays where build 739 centred it.
-        const double nx = row == Row::S
+        double nx = row == Row::S
             ? centredLeft(nfm, rowName(row), nameColumnRight(row) / 2.0) : nameLeft;
+        if (row == Row::Po)   // build 873: centred on the SWR below
+            nx = nameLeft + (nfm.horizontalAdvance(rowName(Row::Swr))
+                             - nfm.horizontalAdvance(rowName(Row::Po))) / 2.0;
         drawTextAt(p, nf, nameCol, nx, centredBaseline(nfm, y), rowName(row));
 
         // The line: ink, red over its red part (thicker).
