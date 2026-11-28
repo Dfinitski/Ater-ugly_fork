@@ -560,14 +560,17 @@ void CrossNeedleMeterWidget::drawSwrGuides(QPainter &painter) const {
 void CrossNeedleMeterWidget::drawFaceBackground(QPainter &painter, const QRectF &face) const {
     // ANAN fork build 860 (operator, 27.11: "dim the virtual lamp's light by
     // 50 %"): the lamp layers at half their opacity.
+    // Build 862 (operator, 27.11: "only the Uplight theme was meant"): this
+    // and the lighter face below on Dark Room Uplight alone.
+    const bool uplight = m_faceTheme == FaceTheme::DarkRoomUplight;
     constexpr double kLampLevel = 0.5;
-    m_faceThemes.drawBackground(painter, face, analogFaceTheme(), kLampLevel);
+    m_faceThemes.drawBackground(painter, face, analogFaceTheme(), uplight ? kLampLevel : 1.0);
     // ANAN fork build 859 (operator, 27.11: "try the background 25 %
     // lighter"): every channel of the face x 1.25 -- colour dodge with 20 %
     // grey (dst / (1 - 0.2)), so the gradients, glow and vignette keep their
     // shape. Here, so the masks that repaint the face (the scale underpass,
     // label backgrounds) match it.
-    if (analogFaceTheme() != AnalogMeterFaceTheme::AetherDefault) {
+    if (uplight) {
         painter.save();
         painter.setClipRect(face, Qt::IntersectClip);
         painter.setCompositionMode(QPainter::CompositionMode_ColorDodge);
