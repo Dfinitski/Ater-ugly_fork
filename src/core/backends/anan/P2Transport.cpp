@@ -1316,17 +1316,6 @@ void P2Transport::publishTelemetry()
     // Directional coupler counts (Alex0). The watts/SWR conversion upstream
     // is the HL2's; ANAN calibration is a TODO (see the port journal).
     const bool hl2 = m_p1 && m_profile.boardId == kBoardIdHermesLite;   // build 725
-    // ANAN fork build 876 (operator, 28.11: "the power indicator still jumps
-    // to the last value at a new transmission; the firmware sends the data
-    // regardless of transmit -- maybe the program does not take the values
-    // while receiving. The meter must always show and process what comes
-    // from the device"). The coupler readings went upstream only under MOX,
-    // so between overs the meters had nothing from the radio and kept what
-    // the last over left. Now every publish carries them: under MOX the
-    // window's highest reading (build 231), unkeyed the last one (the
-    // backend shows it as it is, no hold, no peak detector). Build 875's
-    // blanking of the first readings after the key is gone (the radio's
-    // readings are right).
     if (m_mox) {
         // Build 231: the window's highest readings -- the meter shows the
         // peaks the radio's detector reported, not whichever sample was last.
@@ -1336,11 +1325,6 @@ void P2Transport::publishTelemetry()
         // the forward has its sense transformer the other way round.
         if (hl2 && *t.reversePowerRaw > *t.forwardPowerRaw)
             std::swap(t.forwardPowerRaw, t.reversePowerRaw);
-        t.forwardPowerPeakRaw = t.forwardPowerRaw;
-        t.forwardPowerSamples = 1;
-    } else {
-        t.forwardPowerRaw = m_fwdRaw;   // build 876
-        t.reversePowerRaw = m_revRaw;
         t.forwardPowerPeakRaw = t.forwardPowerRaw;
         t.forwardPowerSamples = 1;
     }

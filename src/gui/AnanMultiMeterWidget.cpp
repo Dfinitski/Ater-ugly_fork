@@ -227,9 +227,9 @@ void AnanMultiMeterWidget::setTransmitting(bool transmitting)
     if (m_transmitting == transmitting)
         return;
     m_transmitting = transmitting;
-    // Build 857 zeroed power and SWR here; build 879 (operator, 28.11: "I
-    // want to see the power and SWR readings on receive too, all the
-    // transceiver gives") shows the radio's readings as they come instead.
+    // Build 857: power and SWR start each over (and end it) from nothing.
+    m_fwdWatts = 0.0f;
+    m_swr = 1.0f;
     update();
 }
 
@@ -322,9 +322,8 @@ float AnanMultiMeterWidget::reading(Row row) const
     switch (row) {
     case Row::S:    return m_rxDbm;
     // Build 738: on receive the transmit scales read their minimum.
-    // Build 879: PO and SWR not -- what the radio reports, always.
-    case Row::Po:   return m_fwdWatts;
-    case Row::Swr:  return m_swrValid ? m_swr : 1.0f;
+    case Row::Po:   return m_transmitting ? m_fwdWatts : 0.0f;
+    case Row::Swr:  return (m_transmitting && m_swrValid) ? m_swr : 1.0f;
     // ALC: the post-ALC peak plus the ALC's own gain reduction.
     case Row::Alc:  return m_transmitting ? std::clamp(m_alcDbfs, -20.0f, 0.0f) : -20.0f;
     case Row::Comp: return m_transmitting ? std::min(m_compDb, 30.0f) : 0.0f;
@@ -347,7 +346,7 @@ QString AnanMultiMeterWidget::valueText(Row row, float v) const
                          : QStringLiteral("%1 W").arg(int(std::lround(v)));
     // Build 738: as the VFO flag's SmartMTR -- "_._" while there is no
     // measured SWR (receive, or too little power).
-    case Row::Swr:  return m_swrValid   // build 879: on receive too
+    case Row::Swr:  return (m_transmitting && m_swrValid)
                         ? QString::number(std::min(v, 9.9f), 'f', 1) : QStringLiteral("_._");
     case Row::Alc: {
         const int db = int(std::lround(v));
