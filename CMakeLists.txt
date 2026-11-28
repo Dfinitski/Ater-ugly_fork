@@ -1560,6 +1560,7 @@ set(GUI_SOURCES
     src/gui/AntennaGeniusApplet.cpp
     src/gui/ShackSwitchApplet.cpp
     src/gui/GreenHeronApplet.cpp
+    src/gui/BandApplet.cpp    # ANAN fork build 858: band selection applet
     src/gui/TitleBar.cpp
     src/gui/RoundedMenu.cpp
     src/gui/StatusIndicator.cpp

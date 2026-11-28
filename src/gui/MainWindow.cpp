@@ -73,6 +73,7 @@
 #include "VfoWidget.h"
 #include "AppletPanel.h"
 #include "CwApplet.h"
+#include "BandApplet.h"   // build 858
 #include "PsApplet.h"
 #include "containers/ContainerManager.h"
 #include "RxApplet.h"
@@ -6596,6 +6597,31 @@ void MainWindow::buildUI()
     // ANAN-100D port: the CW applet (radio keyer). Its speed is the app's CW
     // speed both ways (MicronSDR: the keyer speed is also the CW message
     // speed).
+    // ANAN fork build 858: the band selection applet -- a click changes band
+    // as the panadapter's band buttons do, on the active receiver's pan; the
+    // lit button follows the active receiver.
+    if (auto* ba = m_appletPanel->bandApplet()) {
+        ba->setFrequencySource([this]() -> double {
+            const SliceModel* s = m_radioModel.isConnected() ? activeSlice() : nullptr;
+            return s ? s->frequency() : -1.0;
+        });
+        connect(ba, &BandApplet::bandSelected, this,
+                [this](const QString& bandName, double freqMhz, const QString& mode) {
+            if (!m_radioModel.isConnected())
+                return;
+            auto* s = activeSlice();
+            if (!s)
+                return;
+            if (s->isLocked()) {
+                s->notifyTuneBlockedByLock();
+                return;
+            }
+            selectBand(s->panId(), bandName, freqMhz, mode);
+        });
+        connect(ba, &BandApplet::xvtrSetupRequested, this, [this] {
+            openRadioSetupPage(QStringLiteral("XVTR"));
+        });
+    }
     if (auto* cw = m_appletPanel->cwApplet()) {
         connect(cw, &CwApplet::keyerSpeedChanged, this, [this](int wpm) {
             if (m_radioModel.transmitModel().cwSpeed() != wpm)

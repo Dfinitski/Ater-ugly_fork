@@ -29,6 +29,7 @@ namespace AetherSDR {
 
 class SliceModel;
 class RxApplet;
+class BandApplet;   // build 858
 class SMeterWidget;
 class CrossNeedleMeterApplet;
 class CrossNeedleMeterWidget;
@@ -176,6 +177,7 @@ public:
     MqttApplet*   mqttApplet()   { return m_mqttApplet; }
 #endif
     CwApplet*     cwApplet()     { return m_cwApplet; }
+    BandApplet*   bandApplet()   { return m_bandApplet; }   // build 858
     PsApplet*     psApplet()     { return m_psApplet; }
 
     // Show/hide the TUNE button and applet based on tuner presence.
@@ -488,7 +490,8 @@ private:
     DaxIqApplet*   m_daxIqApplet{nullptr};
     AntennaGeniusApplet* m_agApplet{nullptr};
     ShackSwitchApplet*   m_ssApplet{nullptr};
-    GreenHeronApplet*    m_greenHeronApplet{nullptr};
+    GreenHeronApplet*    m_greenHeronApplet{nullptr};   // build 858: no longer created
+    BandApplet*          m_bandApplet{nullptr};         // build 858
     ProfileSwitcherApplet* m_profApplet{nullptr};
 #ifdef HAVE_RADE
     RadeApplet*  m_radeApplet{nullptr};

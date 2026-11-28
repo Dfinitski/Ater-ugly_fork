@@ -49,6 +49,7 @@
 #include "RadeApplet.h"
 #endif
 #include "CwApplet.h"
+#include "BandApplet.h"   // build 858
 #include "PsApplet.h"
 #ifdef HAVE_MQTT
 #include "MqttApplet.h"
@@ -168,7 +169,7 @@ constexpr int kStackBottomMargin = 8;
 
 const QStringList AppletPanel::kDefaultOrder = {
     // ANAN-100D port: PHNE, MTR, HLTH and CLOCK removed (operator, 30.10).
-    "PWR", "RX", "WFM", "TUN", "AMP", "TX", "P/CW", "EQ", "WAVE", "TXDSP", "CAT", "DAX", "TCI", "IQ", "DRM", "PROF", "AG", "SS", "GHE"
+    "PWR", "RX", "WFM", "TUN", "AMP", "TX", "P/CW", "EQ", "WAVE", "TXDSP", "CAT", "DAX", "TCI", "IQ", "DRM", "PROF", "AG", "SS", "BAND"   // build 858: BAND in GHE's place
 };
 
 // ── Drop-aware scroll area ──────────────────────────────────────────────────
@@ -1275,35 +1276,12 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
         m_appletOrder.append(entry);
     }
 
-    // Green Heron Everyware antenna switch.  NOT markHardwareConditional()
-    // like AG/SS: the Everyware server has no discovery path, so there is
-    // nothing to detect and nothing to condition the button on — the operator
-    // types the server's address into the tile itself, which they cannot do
-    // if the tile is hidden until the device is found.  Same shape as KSDR:
-    // always in the bar, closed until opened.
-    m_greenHeronApplet = new GreenHeronApplet;
-    {
-        AppletEntry gheEntry = makeEntry("GHE", "Green Heron", m_greenHeronApplet,
-                                         false, m_drawer, m_drawerLayout);
-        if (auto* c = qobject_cast<ContainerWidget*>(gheEntry.widget)) {
-            // Deliberately NO setDefaultFloatingSize(). The compass is inside
-            // the rotor section, so it enters and leaves the layout with the
-            // rotator itself, and the floating window follows: measured on a
-            // real RT-21, the window went 346 -> 538 px the moment the section
-            // appeared, saved geometry notwithstanding. A fixed default would
-            // only bind in the other case — a first float with no rotator
-            // reporting — where it would open a tall window mostly empty of
-            // the dial it was reserving room for.
-            connect(c, &ContainerWidget::dockModeChanged, m_greenHeronApplet,
-                    [this](ContainerWidget::DockMode mode) {
-                        // Canvas counts as floating: like the CAT tile above,
-                        // the operator sized that rect themselves.
-                        m_greenHeronApplet->setFloating(
-                            mode != ContainerWidget::DockMode::PanelDocked);
-                    });
-        }
-        m_appletOrder.append(gheEntry);
-    }
+    // ANAN fork build 858 (operator, 27.11): the band selection applet on
+    // the Green Heron (GHE) applet's button -- GHE is gone from the bar (an
+    // Everyware antenna switch server has no part in this fork's radios).
+    // Saved layouts move GHE's place to it (loadButtonLayout, AppletOrder).
+    m_bandApplet = new BandApplet;
+    m_appletOrder.append(makeEntry("BAND", "Bands", m_bandApplet, false, m_drawer, m_drawerLayout));
 
 #ifdef HAVE_MQTT
     m_mqttApplet = new MqttApplet;
@@ -1339,6 +1317,10 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     QString savedOrder = settings.value("AppletOrder").toString();
     if (!savedOrder.isEmpty()) {
         QStringList ids = savedOrder.split(',');
+        // Build 858: the band applet takes GHE's place.
+        for (QString& id : ids)
+            if (id == QLatin1String("GHE") && !ids.contains(QStringLiteral("BAND")))
+                id = QStringLiteral("BAND");
         QVector<AppletEntry> reordered;
         for (const auto& id : ids) {
             for (int i = 0; i < m_appletOrder.size(); ++i) {
@@ -1752,7 +1734,7 @@ QList<AppletPanel::AppletCatalogEntry> AppletPanel::appletCatalog() const
         {QStringLiteral("LP100"), QStringLiteral("Metering")},
         {QStringLiteral("AG"),    QStringLiteral("Antennas & Switching")},
         {QStringLiteral("SS"),    QStringLiteral("Antennas & Switching")},
-        {QStringLiteral("GHE"),   QStringLiteral("Antennas & Switching")},
+        {QStringLiteral("BAND"),  QStringLiteral("Receive")},   // build 858
         {QStringLiteral("CAT"),   QStringLiteral("Integration")},
         {QStringLiteral("DRM"),   QStringLiteral("Audio & DSP")},
         {QStringLiteral("DAX"),   QStringLiteral("Integration")},
@@ -2622,6 +2604,14 @@ void AppletPanel::loadButtonLayout()
                     m_buttonOrder[at] = QStringLiteral("CW");
                 if (m_hiddenButtons.remove(QStringLiteral("MQTT")))
                     m_hiddenButtons.insert(QStringLiteral("CW"));
+            }
+            // ANAN fork build 858: the band applet takes the GHE button's place.
+            if (!m_buttonOrder.contains(QStringLiteral("BAND"))) {
+                const int at = m_buttonOrder.indexOf(QStringLiteral("GHE"));
+                if (at >= 0)
+                    m_buttonOrder[at] = QStringLiteral("BAND");
+                if (m_hiddenButtons.remove(QStringLiteral("GHE")))
+                    m_hiddenButtons.insert(QStringLiteral("BAND"));
             }
             return;
         }
