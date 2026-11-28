@@ -647,6 +647,9 @@ std::array<std::uint8_t, 1444> buildHighPriority(bool run,
     // ANAN-100D port: PTT0 (bit 1), DUC0 phase word, drive level.
     if (run && opts.transmitting)
         pkt[4] |= 0x02;
+    // Build 850: the PC's CW key lines (Thetis CmdHighPriority byte 5).
+    if (run)
+        pkt[5] = static_cast<std::uint8_t>(opts.cwxBits & 0x07);
     writeU32be(&pkt[329], opts.ducPhaseWord);
     pkt[345] = static_cast<std::uint8_t>(std::clamp(opts.driveLevel, 0, 255));
     // One 4-byte frequency/phase word per DDC at 9 + 4*n (p.32). Same

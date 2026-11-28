@@ -739,6 +739,7 @@ void P2Transport::stopSession(bool toPowerOnState)
                              m_counters.txBytes, m_counters.txPackets);
         } else if (m_configured) {
             // Thetis' SendStop(): High Priority with run = 0, nothing else.
+            m_cwxBits.store(0, std::memory_order_relaxed);   // build 850
             sendHighPriority(false);
         }
         {
@@ -825,6 +826,7 @@ void P2Transport::sendHighPriority(bool run)
     o.psEnabled = m_psEnabled;
     o.psFeedbackSource = m_psSource;
     o.psCouplerOnTx = m_psCouplerOnTx;   // build 502
+    o.cwxBits = run ? m_cwxBits.load(std::memory_order_relaxed) : std::uint8_t{0};   // build 850
     // The ADC0 (Ant1/2/3 path) filters follow the first receiver listening
     // to ADC0 -- receiver 0 unless it was moved to ADC2; a stopping radio is
     // handed back bypassed.
@@ -1233,6 +1235,8 @@ void P2Transport::setCwBandInhibit(bool inhibit)
     if (inhibit == m_cwBandInhibit)
         return;
     m_cwBandInhibit = inhibit;
+    if (inhibit)
+        clearCwxLines();   // build 850
     qCInfo(lcAnanP2T) << "ANAN transport: the radio's CW keyer"
                       << (inhibit ? "disabled: the TX frequency is outside the amateur bands"
                                   : "enabled again (TX frequency inside an amateur band)");
@@ -1264,6 +1268,8 @@ void P2Transport::setCwKeyer(const CwKeyerOptions& k)
         m_paddleHangTimer->stop();
         updateRadioPtt();
     }
+    if (!k.enabled)
+        clearCwxLines();   // build 850
     if (!(m_run && m_configured))
         return;
     sendTransmitSpecific();
@@ -2697,6 +2703,10 @@ void P2Transport::publishP2AttNow() const
 
 void P2Transport::setMox(bool keyed, const TxCoordinator::Operation& operation)
 {
+    // Build 850: no CWX line left over an unkey -- with break-in the radio's
+    // keyer would key the transmitter by itself.
+    if (!keyed)
+        clearCwxLines();
     if (!TxCoordinator::Command{operation, keyed}.permitsDispatch(TxCoordinator::monotonicMs()))
         return;
     if (keyed && !transmitEnabled())
@@ -3304,8 +3314,65 @@ void P2Transport::setTxDriveLevel(int level)
     }
 }
 
+// ANAN fork build 850: the radio's own keyer takes the PC's key (Thetis).
+bool P2Transport::fpgaCwxActive() const noexcept
+{
+    // Not the Hermes-Lite 2 (its own keying, unchanged); not with the keyer
+    // off (any mode but CW, TUNE, outside the amateur bands).
+    return !isHl2Session() && m_profile.boardId != kBoardIdHermesLite
+           && effectiveCwKeyer().enabled;
+}
+
+std::uint8_t P2Transport::cwxBitsP1() const noexcept
+{
+    // Protocol 1 order (Thetis networkproto1.c): dot << 2 | dash << 1 | cwx.
+    const std::uint8_t b = m_cwxBits.load(std::memory_order_relaxed);
+    return static_cast<std::uint8_t>((b & 0x01) | ((b & 0x04) ? 0x02 : 0) | ((b & 0x02) ? 0x04 : 0));
+}
+
+void P2Transport::setCwxLine(bool down)
+{
+    const std::uint8_t was = m_cwxBits.load(std::memory_order_relaxed);
+    const auto now = static_cast<std::uint8_t>(down ? (was | 0x01) : (was & ~0x01));
+    if (now == was)
+        return;
+    m_cwxBits.store(now, std::memory_order_relaxed);
+    // Protocol 2: at once (Thetis SetCWX -> CmdHighPriority). Protocol 1:
+    // the next EP2 packet carries it (sendP1Ep2), every 2.6 ms.
+    if (!m_p1 && m_run && m_configured)
+        sendHighPriority(true);
+}
+
+void P2Transport::clearCwxLines()
+{
+    if (m_cwxBits.exchange(0, std::memory_order_relaxed) == 0)
+        return;
+    if (!m_p1 && m_run && m_configured)
+        sendHighPriority(true);
+}
+
 void P2Transport::setCwKeyDown(bool down, const TxCoordinator::Operation& operation)
 {
+    // Build 850 (Thetis SetCWX): with the radio's keyer on, the CWX line --
+    // no host carrier. A release always goes through, whatever the operation.
+    if (!down && m_cwxBits.load(std::memory_order_relaxed) != 0)
+        setCwxLine(false);
+    if (fpgaCwxActive()) {
+        if (!down)
+            return;
+        if (!TxCoordinator::Command{operation, down}.permitsDispatch(TxCoordinator::monotonicMs()))
+            return;
+        if (!transmitEnabled())
+            return;
+        {
+            std::lock_guard<std::mutex> lock(m_txMutex);
+            m_cwMode = false;   // no host carrier under the radio's own
+            m_cwDown = false;
+            m_cwEnv = 0.0;
+        }
+        setCwxLine(true);
+        return;
+    }
     if (!TxCoordinator::Command{operation, down}.permitsDispatch(TxCoordinator::monotonicMs()))
         return;
     if (down && !transmitEnabled())
@@ -3323,10 +3390,13 @@ void P2Transport::setCwKeyDown(bool down, const TxCoordinator::Operation& operat
 
 void P2Transport::clearCwKeying()
 {
-    std::lock_guard<std::mutex> lock(m_txMutex);
-    m_cwMode = false;
-    m_cwDown = false;
-    m_cwEnv = 0.0;
+    {
+        std::lock_guard<std::mutex> lock(m_txMutex);
+        m_cwMode = false;
+        m_cwDown = false;
+        m_cwEnv = 0.0;
+    }
+    clearCwxLines();   // build 850
 }
 
 void P2Transport::queueTxIq(std::span<const std::complex<float>> iq,
@@ -3764,6 +3834,11 @@ void P2Transport::sendP1Ep2()
             m_ducSentTotal.fetch_add(1, std::memory_order_relaxed);
         }
     }
+    // Build 850 (Thetis networkproto1.c, cw_enable): with the radio's keyer
+    // on, the I/Q words carry the PC's key lines -- on receive too, so a
+    // CWX key reaches the keyer before MOX. Not a Hermes-Lite 2.
+    if (st.cwKeyer && !st.hermesLite)
+        hl2::ep2WriteTxCwBits(pkt, cwxBitsP1());
     sendDatagram(*m_sock, pkt, m_txHost, kRadioPort, m_counters.txBytes, m_counters.txPackets);
 }
 

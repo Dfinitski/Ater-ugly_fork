@@ -318,6 +318,22 @@ void ep2WriteTxIq(std::array<std::uint8_t, kUsbPacketSize>& pkt,
     }
 }
 
+void ep2WriteTxCwBits(std::array<std::uint8_t, kUsbPacketSize>& pkt,
+                      std::uint8_t bits) noexcept
+{
+    const std::size_t frameStarts[2] = {8, 8 + kFrameSize};
+    const auto v = static_cast<std::uint8_t>(bits & 0x07);
+    for (const std::size_t fs : frameStarts) {
+        std::uint8_t* payload = pkt.data() + fs + 8;     // after SYNC(3) + C&C(5)
+        for (std::size_t k = 0; k + kTxSampleBytes <= kFramePayload; k += kTxSampleBytes) {
+            payload[k + 4] = 0;   // I high
+            payload[k + 5] = v;   // I low
+            payload[k + 6] = 0;   // Q high
+            payload[k + 7] = v;   // Q low
+        }
+    }
+}
+
 void ep2WriteTxAudio(std::array<std::uint8_t, kUsbPacketSize>& pkt,
                      std::span<const std::int16_t> audio) noexcept
 {

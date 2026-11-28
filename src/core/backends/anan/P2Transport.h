@@ -756,6 +756,17 @@ private:
     bool m_cwMode = false;
     bool m_cwDown = false;
     double m_cwEnv = 0.0;
+    // ANAN fork build 850 (operator, 27.11: "make it as in Thetis, as close as
+    // possible"): with the radio's CW keyer on, a key from the PC is not a
+    // host carrier but the CWX line to the radio's keyer, as Thetis
+    // NetworkIO.SetCWX does -- the radio shapes the carrier, applies its RF
+    // delay, hang and sidetone. Bit 0 CWX, bit 1 dot, bit 2 dash (Protocol 2
+    // byte-5 order; Protocol 1 reorders them, cwxBitsP1()).
+    std::atomic<std::uint8_t> m_cwxBits{0};
+    [[nodiscard]] bool fpgaCwxActive() const noexcept;
+    void setCwxLine(bool down);
+    void clearCwxLines();
+    [[nodiscard]] std::uint8_t cwxBitsP1() const noexcept;
     // Build 632 (operator, 22.11: "a user says in SSB the transmission ends
     // together with the relays -- there is no guard gap; use RF Delay"). At a
     // voice / TUNE unkey the RF ramps to zero in 2 ms and zeros go out; MOX

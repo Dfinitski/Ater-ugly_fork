@@ -441,6 +441,13 @@ inline Cc withMox(Cc cc, bool keyed) noexcept
 void ep2WriteTxIq(std::array<std::uint8_t, kUsbPacketSize>& pkt,
                   std::span<const std::complex<float>> iq) noexcept;
 
+// ANAN fork build 850: Protocol 1 with the radio's CW keyer on -- every I and
+// Q word of the packet carries the PC's key lines in place of transmit I/Q,
+// "(dot << 2 | dash << 1 | cwx) & 7" (Thetis networkproto1.c
+// sendProtocol1Samples, prn->cw.cw_enable). The audio slots are untouched.
+void ep2WriteTxCwBits(std::array<std::uint8_t, kUsbPacketSize>& pkt,
+                      std::uint8_t bits) noexcept;
+
 // Write 16-bit stereo speaker audio into the slot ep2WriteTxIq() leaves zero.
 // PRECONDITION: the radio has a codec (HL2+ AK4951 board or SquareSDR 2); on a
 // bare HL2 the first slot per frame is EADDR and a sample there is a command.

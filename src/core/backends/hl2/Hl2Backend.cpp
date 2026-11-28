@@ -7977,6 +7977,17 @@ void Hl2Backend::setCwKeying(bool down, bool breakIn, int breakInDelayMs, const 
         }
     }
 
+    // ANAN fork build 850: on an ANAN with the radio's keyer on, the key goes
+    // to that keyer as its CWX line (P2Transport::setCwKeyDown, Thetis
+    // SetCWX), and the radio's keyer has break-in: without break-in here and
+    // without MOX the line would key the transmitter by itself, where the
+    // host carrier gave no RF. So that press is dropped.
+    if (down && !breakIn && !m_keyed && !anan::AnanUiState::instance().hermesLite
+        && m_ananCwTxSilent.load(std::memory_order_relaxed) && !m_tuning) {
+        qCInfo(lcHl2) << "ANAN CW key without break-in and without MOX: no transmission";
+        return;
+    }
+
     if (m_cwHangTimer) {
         m_cwHangTimer->stop();
     }

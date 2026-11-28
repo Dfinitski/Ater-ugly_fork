@@ -623,6 +623,11 @@ struct HighPriorityOptions {
     // PureSignal feedback (psFeedbackOnAdc1).
     bool adc1GroundOnTx = false;
     bool psFeedbackOnAdc1 = false;
+    // ANAN fork build 850: byte 5, the PC's CW key lines for the radio's own
+    // keyer -- bit 0 CWX, bit 1 dot, bit 2 dash (Thetis network.c
+    // CmdHighPriority: "(dash << 2 | dot << 1 | cwx) & 0x7"). Only while
+    // running.
+    std::uint8_t cwxBits = 0;
 };
 inline constexpr std::uint32_t kAlexPsBit = std::uint32_t{1} << 18;
 inline constexpr std::uint32_t kAlexRxExt1 = std::uint32_t{1} << 9;
