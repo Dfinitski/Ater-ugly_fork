@@ -559,6 +559,18 @@ void CrossNeedleMeterWidget::drawSwrGuides(QPainter &painter) const {
 
 void CrossNeedleMeterWidget::drawFaceBackground(QPainter &painter, const QRectF &face) const {
     m_faceThemes.drawBackground(painter, face, analogFaceTheme());
+    // ANAN fork build 859 (operator, 27.11: "try the background 25 %
+    // lighter"): every channel of the face x 1.25 -- colour dodge with 20 %
+    // grey (dst / (1 - 0.2)), so the gradients, glow and vignette keep their
+    // shape. Here, so the masks that repaint the face (the scale underpass,
+    // label backgrounds) match it.
+    if (analogFaceTheme() != AnalogMeterFaceTheme::AetherDefault) {
+        painter.save();
+        painter.setClipRect(face, Qt::IntersectClip);
+        painter.setCompositionMode(QPainter::CompositionMode_ColorDodge);
+        painter.fillRect(face, QColor(51, 51, 51));
+        painter.restore();
+    }
 }
 
 void CrossNeedleMeterWidget::drawFace(QPainter &painter) const {
@@ -633,8 +645,9 @@ void CrossNeedleMeterWidget::drawFace(QPainter &painter) const {
         QColor inactive = colors.secondaryText;
         inactive.setAlphaF(inactive.alphaF() * 0.4);
         for (int i = 0; i < lines.size(); ++i) {
-            painter.setPen(i == active ? colors.text
-                                       : (i == 0 ? colors.secondaryText : inactive));
+            // Build 859 (operator, 27.11): the "RANGE" heading always lit, as
+            // the active multiplier.
+            painter.setPen((i == active || i == 0) ? colors.text : inactive);
             drawCenteredText(painter,
                              QPointF(m_geometry.rangeLabelCenter.x(), firstCenterY + i * lineHeight),
                              lines[i]);
