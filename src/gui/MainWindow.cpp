@@ -721,6 +721,12 @@ void MainWindow::layoutBottomCenter()
     const int sp = bar->spacing();
     auto* endSep = m_bottomLeftGroup->findChild<QLabel*>(QStringLiteral("bottomLeftEndSep"),
                                                          Qt::FindDirectChildrenOnly);
+    // Build 847 (operator, 27.11: "it jumped past the station name, but has
+    // no separator on the left nor the right"): the elements past the name
+    // start with their separator and end with one, as the left group does.
+    auto* overEndSep = m_bottomOverflowGroup->findChild<QLabel*>(
+        QStringLiteral("bottomOverflowEndSep"), Qt::FindDirectChildrenOnly);
+    const int overEndW = overEndSep ? overEndSep->sizeHint().width() : 0;
 
     // The left elements in their order.
     struct LeftUnit {
@@ -761,14 +767,15 @@ void MainWindow::layoutBottomCenter()
             w += units[vis[i]].wide;
         return w + sp * (p - 1) + sp + endW;
     };
-    // Width of the overflow group holding the rest (no separator on its first).
-    auto overW = [&units, &vis, sp, n](int p) {
+    // Width of the overflow group holding the rest (build 847: each with its
+    // separator, and the group's end separator).
+    auto overW = [&units, &vis, sp, n, overEndW](int p) {
         if (p >= n)
             return 0;
         int w = 0;
         for (int i = p; i < n; ++i)
-            w += units[vis[i]].wide - (i == p ? units[vis[i]].sepW : 0);
-        return w + sp * (n - p - 1);
+            w += units[vis[i]].wide;
+        return w + sp * (n - p - 1) + sp + overEndW;
     };
 
     // Where the left group starts (after the band stack icon) and where the
@@ -851,12 +858,14 @@ void MainWindow::layoutBottomCenter()
     }
     for (int i = 0; i < n; ++i) {
         const LeftUnit& u = units[vis[i]];
-        const bool sepOn = i < p || i > p;   // the first past the name has none
+        const bool sepOn = true;   // build 847: past the name too, the first included
         if (u.sep && u.sep->isHidden() == sepOn)
             u.sep->setVisible(sepOn);
     }
     if (endSep && endSep->isHidden() == (p > 0))
         endSep->setVisible(p > 0);
+    if (overEndSep && overEndSep->isHidden() == (p < n))
+        overEndSep->setVisible(p < n);
 
     // The status message has the room between the left group and the name.
     const int msgMax = std::max(0, x0 - 2 * sp - (leftStart + leftW(p)));
@@ -6700,6 +6709,11 @@ void MainWindow::buildUI()
         endSep->setObjectName(QStringLiteral("bottomLeftEndSep"));
         endSep->setStyleSheet(sepStyle);
         m_bottomLeftGroup->layout()->addWidget(endSep);
+        // Build 847: the elements past the station name end with one too.
+        auto* overEndSep = new QLabel(QStringLiteral(" · "), m_bottomOverflowGroup);
+        overEndSep->setObjectName(QStringLiteral("bottomOverflowEndSep"));
+        overEndSep->setStyleSheet(sepStyle);
+        m_bottomOverflowGroup->layout()->addWidget(overEndSep);
     }
     auto makeBottomUnit = [sepStyle](QWidget* group, const char* id) -> QHBoxLayout* {
         auto* unit = new QWidget(group);
