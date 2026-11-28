@@ -13949,6 +13949,39 @@ void Hl2Backend::publishTelemetry(const Hl2Telemetry& t)
         emit meterUpdate(QStringLiteral("TX:FWDPWR"), wattsToDbm(0.0));
         emit meterUpdate(QStringLiteral("TX:REFPWR"), wattsToDbm(0.0));
     }
+    // ANAN fork build 877 (operator, 28.11: the power meter still jumps to
+    // the previous over's value). A log trace for 1 s after each key and
+    // unkey: every publish's coupler counts as the radio sent them (fwd/rev;
+    // under the key the window's peak) and the watts sent to the meters, with
+    // the counts of the last publish before the edge.
+    {
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        if (m_keyed != m_fwdTraceKeyed) {
+            if (!m_fwdTrace.isEmpty())
+                qCInfo(lcHl2).noquote() << m_fwdTrace << "(cut short)";
+            m_fwdTraceKeyed = m_keyed;
+            m_fwdTraceStartMs = nowMs;
+            m_fwdTrace = QStringLiteral("ANAN coupler trace after the %1 (ms: fwd/rev counts -> W shown); before it %2/%3:")
+                             .arg(m_keyed ? QStringLiteral("key") : QStringLiteral("unkey"))
+                             .arg(m_fwdTraceLastRaw).arg(m_fwdTraceLastRev);
+        }
+        const int traceFwd = t.forwardPowerRaw
+            ? ((m_keyed && t.forwardPowerPeakRaw) ? *t.forwardPowerPeakRaw : *t.forwardPowerRaw) : -1;
+        const int traceRev = t.reversePowerRaw ? *t.reversePowerRaw : -1;
+        if (!m_fwdTrace.isEmpty()) {
+            m_fwdTrace += QStringLiteral(" +%1:%2/%3->%4")
+                              .arg(nowMs - m_fwdTraceStartMs).arg(traceFwd).arg(traceRev)
+                              .arg(m_fwdMeterW, 0, 'f', 1);
+            if (nowMs - m_fwdTraceStartMs >= 1000) {
+                qCInfo(lcHl2).noquote() << m_fwdTrace;
+                m_fwdTrace.clear();
+            }
+        }
+        if (t.forwardPowerRaw) {
+            m_fwdTraceLastRaw = traceFwd;
+            m_fwdTraceLastRev = traceRev;
+        }
+    }
     if (t.reversePowerRaw)
         emit meterUpdate(QStringLiteral("TX:REFPWR"),
                          wattsToDbm(couplerRevWatts(*t.reversePowerRaw)));

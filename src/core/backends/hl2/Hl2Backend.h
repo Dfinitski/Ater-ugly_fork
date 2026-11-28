@@ -1481,6 +1481,13 @@ private:
     // Build 857: coupler readings were published since the last unkey (the
     // transport sends them only while it transmits).
     bool m_fwdMetersLive = false;
+    // Build 877: the log trace of the coupler readings for 1 s after each key
+    // and unkey (the power meter's jump to the previous over's value).
+    QString m_fwdTrace;
+    qint64 m_fwdTraceStartMs = 0;
+    bool m_fwdTraceKeyed = false;
+    int m_fwdTraceLastRaw = -1;
+    int m_fwdTraceLastRev = -1;
     std::deque<std::pair<qint64, double>> m_fwdPeakHist;   // build 232: (ms, W) of the last 250 ms
     qint64 m_txBandWarnMs = 0;          // rate limit of the operator warning
     [[nodiscard]] std::pair<double, double> txSpanHz(double hz) const;
