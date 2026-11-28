@@ -14471,9 +14471,13 @@ void SpectrumWidget::rateGroupGeometry(bool twoRows, QRect& zoom, QRect& down,
         const int rowY = height() - 4 - rowH;
         const int total = (zoomOn ? zs.width() + 4 : 0) + m_rateDownBtn->width() + 4
                           + m_rateLabel->width() + 4 + m_rateUpBtn->width();
-        // Bottom left: right of the S / B / - / + zoom buttons (two 22 px
-        // columns from x 4, positionZoomButtons()).
-        int x = corner == 1 ? 4 + 22 + 2 + 22 + 10
+        // Bottom left: at the left edge, its backdrop 4 px in (build 871,
+        // operator: "on the left a gap is seen, as if something more were to
+        // be drawn there"); right of the S / B / - / + zoom buttons only
+        // where they are shown (two 22 px columns from x 4,
+        // positionZoomButtons() -- hidden on the ANAN).
+        const bool zoomButtonsShown = m_zoomSegBtn && !m_zoomSegBtn->isHidden();
+        int x = corner == 1 ? (zoomButtonsShown ? 4 + 22 + 2 + 22 + 10 : 4 + 5)
                             : width() - DBM_STRIP_W - 6 - total;
         auto at = [rowY, rowH](int px, const QSize& s) {
             return QRect(QPoint(px, rowY + (rowH - s.height()) / 2), s);
