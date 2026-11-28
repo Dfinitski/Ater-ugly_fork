@@ -1488,6 +1488,13 @@ private:
     bool m_fwdTraceKeyed = false;
     int m_fwdTraceLastRaw = -1;
     int m_fwdTraceLastRev = -1;
+    // Build 878: the coupler counts of the last unkeyed publish (what the
+    // radio keeps reporting from the previous over), and until when, after
+    // the key, readings equal to them count as no power (0 = not checking).
+    int m_fwdHeldRaw = -1;
+    int m_fwdHeldRev = -1;
+    qint64 m_fwdHeldUntilMs = 0;
+    bool m_fwdHeldKeyed = false;
     std::deque<std::pair<qint64, double>> m_fwdPeakHist;   // build 232: (ms, W) of the last 250 ms
     qint64 m_txBandWarnMs = 0;          // rate limit of the operator warning
     [[nodiscard]] std::pair<double, double> txSpanHz(double hz) const;

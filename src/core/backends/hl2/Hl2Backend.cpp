@@ -13875,8 +13875,43 @@ void Hl2Backend::defineMeters()
             0.0, 50.0, QStringLiteral("PA drain current"));
 }
 
-void Hl2Backend::publishTelemetry(const Hl2Telemetry& t)
+void Hl2Backend::publishTelemetry(const Hl2Telemetry& rawTelemetry)
 {
+    // ANAN fork build 878 (operator, 28.11: the power meter still jumps to the
+    // previous over's value; build 877's trace, log 20261128-141953). Between
+    // overs the radio keeps reporting the last coupler counts of the previous
+    // one, unchanged (2916/112 for the whole receive after a 50 W TUNE), and
+    // the first readings of the next over are still those counts: 30 ... 300
+    // ms until the radio's power meter takes a new reading (8/112 at +44 ms,
+    // 2556/92 only at +314 ms). The 250 ms peak detector below held such a
+    // reading and opened the over on it. Now, under the key, a reading with
+    // both counts equal to the last unkeyed ones is no power, until the radio
+    // reports anything else or 500 ms have passed (then it is the same power
+    // again). Unkeyed the readings go to the meters as they come (build 876).
+    Hl2Telemetry t = rawTelemetry;
+    {
+        constexpr qint64 kHeldCouplerMs = 500;
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        if (m_keyed && !m_fwdHeldKeyed)
+            m_fwdHeldUntilMs = nowMs + kHeldCouplerMs;
+        if (!m_keyed)
+            m_fwdHeldUntilMs = 0;
+        m_fwdHeldKeyed = m_keyed;
+        if (m_fwdHeldUntilMs != 0 && t.forwardPowerRaw && t.reversePowerRaw) {
+            const int fwd = t.forwardPowerPeakRaw ? *t.forwardPowerPeakRaw : *t.forwardPowerRaw;
+            if (fwd == m_fwdHeldRaw && *t.reversePowerRaw == m_fwdHeldRev && nowMs < m_fwdHeldUntilMs) {
+                t.forwardPowerRaw = 0;
+                t.forwardPowerPeakRaw = 0;
+                t.reversePowerRaw = 0;
+            } else {
+                m_fwdHeldUntilMs = 0;   // the radio's first new reading
+            }
+        }
+        if (!m_keyed && t.forwardPowerRaw && t.reversePowerRaw) {
+            m_fwdHeldRaw = *t.forwardPowerRaw;
+            m_fwdHeldRev = *t.reversePowerRaw;
+        }
+    }
     // Fwd/rev power are uncalibrated ADC counts, so they are never published
     // as FWDPWR dBm. SWR is a ratio of linearized readings (swrFromRaw() via
     // detectorVolts(), #4578), and only meaningful with real forward power:
@@ -13965,9 +14000,12 @@ void Hl2Backend::publishTelemetry(const Hl2Telemetry& t)
                              .arg(m_keyed ? QStringLiteral("key") : QStringLiteral("unkey"))
                              .arg(m_fwdTraceLastRaw).arg(m_fwdTraceLastRev);
         }
-        const int traceFwd = t.forwardPowerRaw
-            ? ((m_keyed && t.forwardPowerPeakRaw) ? *t.forwardPowerPeakRaw : *t.forwardPowerRaw) : -1;
-        const int traceRev = t.reversePowerRaw ? *t.reversePowerRaw : -1;
+        // Build 878: the counts as the radio sent them (before the held-
+        // reading check above).
+        const Hl2Telemetry& rt = rawTelemetry;
+        const int traceFwd = rt.forwardPowerRaw
+            ? ((m_keyed && rt.forwardPowerPeakRaw) ? *rt.forwardPowerPeakRaw : *rt.forwardPowerRaw) : -1;
+        const int traceRev = rt.reversePowerRaw ? *rt.reversePowerRaw : -1;
         if (!m_fwdTrace.isEmpty()) {
             m_fwdTrace += QStringLiteral(" +%1:%2/%3->%4")
                               .arg(nowMs - m_fwdTraceStartMs).arg(traceFwd).arg(traceRev)
@@ -13977,7 +14015,7 @@ void Hl2Backend::publishTelemetry(const Hl2Telemetry& t)
                 m_fwdTrace.clear();
             }
         }
-        if (t.forwardPowerRaw) {
+        if (rt.forwardPowerRaw) {
             m_fwdTraceLastRaw = traceFwd;
             m_fwdTraceLastRev = traceRev;
         }
