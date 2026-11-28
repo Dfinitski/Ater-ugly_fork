@@ -4955,10 +4955,8 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
                      slider->setObjectName(QStringLiteral("ananCwKeyDriveTrim"));
                      slider->setAccessibleName(QStringLiteral("PA Level Calibration CW Key"));
                      slider->setToolTip(QStringLiteral(
-                         "CW from the key: in CW the radio's own keyer makes the carrier, a little
-"
-                         "below the full scale of TUNE. This trims the drive while it does (all bands),
-"
+                         "CW from the key: in CW the radio's own keyer makes the carrier, a little\n"
+                         "below the full scale of TUNE. This trims the drive while it does (all bands),\n"
                          "in percent of the drive: +12 % = +1 dB, about +25 % power. TUNE unchanged."));
                      auto* val = new QLabel;
                      val->setFixedWidth(38);
