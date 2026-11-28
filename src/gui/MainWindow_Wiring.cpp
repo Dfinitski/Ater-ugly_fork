@@ -6621,6 +6621,12 @@ MainWindow::TuneCenteringResult MainWindow::revealFrequencyIfNeeded(
     const bool incremental = (intent == TuneIntent::IncrementalTune);
     if (incremental && !panFollowEnabled())
         return result;
+    // ANAN fork build 845: on the ANAN / Hermes-Lite 2 a tune near or past
+    // the edge (a click, a jump) is landed by the radio's driver (Jump From
+    // Edge, build 844, any tuning); a reveal here as well would move the
+    // panadapter a second time. A typed frequency still centres (above).
+    if (m_radioModel.isAnanRadio())
+        return result;
 
     const bool isSpectrumClick = source && qstrcmp(source, "spectrum-click") == 0;
     // Spectrum clicks settle with a tight margin (the user picked the spot);

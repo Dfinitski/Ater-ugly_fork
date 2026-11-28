@@ -10083,6 +10083,14 @@ const char* MainWindow::tuneIntentName(TuneIntent intent)
 
 bool MainWindow::panFollowEnabled() const
 {
+    // ANAN fork build 845 (operator, 27.11: "remove the item; our new
+    // settings cover that behaviour too"). On the ANAN / Hermes-Lite 2 the
+    // radio's driver moves the panadapter itself (Jump From Edge, build 844;
+    // 0 % = following), so the interface's own following stays off -- it
+    // went first (on the flag's edge) and the jump rarely got its turn. Other
+    // radios keep the stored value (no menu item any more; default on).
+    if (m_radioModel.isAnanRadio())
+        return false;
     return AppSettings::instance().value("PanFollowVfo", "True").toString() == "True";
 }
 

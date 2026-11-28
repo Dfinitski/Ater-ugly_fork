@@ -1643,14 +1643,10 @@ void MainWindow::buildMenuBar()
         AppSettings::instance().save();
     });
 
-    auto* panFollowVfoAct = viewMenu->addAction("Pan Follows VFO");
-    panFollowVfoAct->setCheckable(true);
-    panFollowVfoAct->setChecked(
-        AppSettings::instance().value("PanFollowVfo", "True").toString() == "True");
-    connect(panFollowVfoAct, &QAction::toggled, this, [](bool on) {
-        AppSettings::instance().setValue("PanFollowVfo", on ? "True" : "False");
-        AppSettings::instance().save();
-    });
+    // ANAN fork build 845 (operator, 27.11): "Pan Follows VFO" is gone from
+    // the menu. View > Appearance > Panadapter (Jump From Edge, build 844)
+    // decides where a receiver tuned to the edge lands -- 0 % is that
+    // following -- and the two moved the panadapter against each other.
 
     // Signal/QRM History Markers live exclusively on the SpotHub Display
     // tab — no View-menu duplicate.  Boot-time state is read here; Display
