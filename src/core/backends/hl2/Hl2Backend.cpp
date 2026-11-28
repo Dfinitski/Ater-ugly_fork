@@ -9906,7 +9906,14 @@ void Hl2Backend::applyDrive(int percent)
     double power = static_cast<double>(clamped);
     if (const anan::Xvtr* x = ananTxXvtr())
         power = std::min(power, std::clamp(x->maxDrivePct, 0.0, 100.0));
-    double driveF = 255.0 * cal / 100.0 * std::pow(power / 100.0, e);
+    // ANAN fork build 841 (operator, 27.11: "I do not see the Odyssey-3's
+    // power cut by half on every band but 6 m"). Build 825 only clipped the
+    // byte at 130, which does nothing while the PA Level Calibration asks
+    // for less (up to 51 %). The model's full scale is the base now: 130 on
+    // the Odyssey-3 (255 inside the 6 m amateur band), 255 on the others --
+    // the calibration and the sliders are percent of it.
+    const int fullScale = ananDriveCeiling();
+    double driveF = double(fullScale) * cal / 100.0 * std::pow(power / 100.0, e);
     // ANAN fork build 840 (operator, 27.11: CW from the key is ~20 % below
     // TUNE at the same settings). In CW the radio's FPGA keyer makes the
     // carrier itself, below the full scale our TUNE tone has; Radio Setup >
@@ -9915,9 +9922,8 @@ void Hl2Backend::applyDrive(int percent)
     if (m_ananCwTxSilent.load(std::memory_order_relaxed) && !m_tuning)
         driveF *= 1.0 + ananCwKeyTrimPercent() / 100.0;
     const int drive = static_cast<int>(std::lround(driveF));
-    // Build 825: the model's ceiling of the drive byte (Odyssey-3: 130,
-    // 255 on the 6 m amateur band).
-    setTxDriveLevel(std::clamp(drive, 0, ananDriveCeiling()));
+    // Build 825: and never above it (the CW key trim could reach past it).
+    setTxDriveLevel(std::clamp(drive, 0, fullScale));
 }
 
 // Build 840: Radio Setup > PA Level Calibration > CW Key, in % of the drive.
