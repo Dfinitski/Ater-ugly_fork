@@ -550,8 +550,14 @@ const AnalogMeterFaceThemeCatalog::Palette& AnalogMeterFaceThemeCatalog::palette
 }
 
 void AnalogMeterFaceThemeCatalog::drawBackground(
-    QPainter& painter, const QRectF& face, AnalogMeterFaceTheme theme) const
+    QPainter& painter, const QRectF& face, AnalogMeterFaceTheme theme, double lampLevel) const
 {
+    // Build 860: the lamp's light, its colours' opacity times lampLevel.
+    const double lamp = std::clamp(lampLevel, 0.0, 1.0);
+    const auto lit = [lamp](QColor c) {
+        c.setAlphaF(c.alphaF() * lamp);
+        return c;
+    };
     if (theme == AnalogMeterFaceTheme::AetherDefault) {
         return;
     }
@@ -580,9 +586,9 @@ void AnalogMeterFaceThemeCatalog::drawBackground(
         painter.save();
         painter.setCompositionMode(QPainter::CompositionMode_Screen);
         QRadialGradient glow(dark.glowCenter, dark.glowRadius);
-        glow.setColorAt(0.0, dark.glowInner);
-        glow.setColorAt(dark.glowMiddleStop, dark.glowMiddle);
-        glow.setColorAt(1.0, dark.glowOuter);
+        glow.setColorAt(0.0, lit(dark.glowInner));
+        glow.setColorAt(dark.glowMiddleStop, lit(dark.glowMiddle));
+        glow.setColorAt(1.0, lit(dark.glowOuter));
         painter.fillRect(materialFace, glow);
         painter.restore();
 
@@ -607,23 +613,23 @@ void AnalogMeterFaceThemeCatalog::drawBackground(
         painter.fillRect(materialFace, ambient);
 
         QRadialGradient halo(light.haloCenter, light.haloRadius);
-        halo.setColorAt(0.0, light.haloInner);
-        halo.setColorAt(light.haloMiddleStop, light.haloMiddle);
-        halo.setColorAt(light.haloShoulderStop, light.haloShoulder);
-        halo.setColorAt(1.0, light.haloOuter);
+        halo.setColorAt(0.0, lit(light.haloInner));
+        halo.setColorAt(light.haloMiddleStop, lit(light.haloMiddle));
+        halo.setColorAt(light.haloShoulderStop, lit(light.haloShoulder));
+        halo.setColorAt(1.0, lit(light.haloOuter));
         painter.fillRect(materialFace, halo);
 
         painter.save();
         painter.setCompositionMode(QPainter::CompositionMode_Screen);
         QRadialGradient hotspot(light.hotspotCenter, light.hotspotRadius);
-        hotspot.setColorAt(0.0, light.hotspotInner);
-        hotspot.setColorAt(light.hotspotMiddleStop, light.hotspotMiddle);
-        hotspot.setColorAt(1.0, light.hotspotOuter);
+        hotspot.setColorAt(0.0, lit(light.hotspotInner));
+        hotspot.setColorAt(light.hotspotMiddleStop, lit(light.hotspotMiddle));
+        hotspot.setColorAt(1.0, lit(light.hotspotOuter));
         painter.fillRect(materialFace, hotspot);
         QRadialGradient bloom(light.bloomCenter, light.bloomRadius);
-        bloom.setColorAt(0.0, light.bloomInner);
-        bloom.setColorAt(light.bloomMiddleStop, light.bloomMiddle);
-        bloom.setColorAt(1.0, light.bloomOuter);
+        bloom.setColorAt(0.0, lit(light.bloomInner));
+        bloom.setColorAt(light.bloomMiddleStop, lit(light.bloomMiddle));
+        bloom.setColorAt(1.0, lit(light.bloomOuter));
         painter.fillRect(materialFace, bloom);
         painter.restore();
 
@@ -646,8 +652,8 @@ void AnalogMeterFaceThemeCatalog::drawBackground(
     base.setColorAt(1.0, material.bottom);
     painter.fillRect(materialFace, base);
     QRadialGradient glow(material.glowCenter, material.glowRadius);
-    glow.setColorAt(0.0, material.glowInner);
-    glow.setColorAt(1.0, material.glowOuter);
+    glow.setColorAt(0.0, lit(material.glowInner));
+    glow.setColorAt(1.0, lit(material.glowOuter));
     painter.fillRect(materialFace, glow);
     QColor clearEdge = material.vignetteEdge;
     clearEdge.setAlpha(0);

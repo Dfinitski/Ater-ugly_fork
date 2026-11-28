@@ -134,8 +134,10 @@ public:
 
     bool isValid(QString* error = nullptr) const;
     const Palette& palette(AnalogMeterFaceTheme theme) const;
+    // ANAN fork build 860: lampLevel scales the lamp's light layers (the
+    // uplight's halo, hotspot and bloom; the other faces' glow), 1 = as made.
     void drawBackground(QPainter& painter, const QRectF& face,
-                        AnalogMeterFaceTheme theme) const;
+                        AnalogMeterFaceTheme theme, double lampLevel = 1.0) const;
     QPainterPath lowerMaskPath(const QRectF& face) const;
     QVector<QPointF> lowerMaskBoundary(const QRectF& face) const;
 
