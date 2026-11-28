@@ -965,6 +965,10 @@ public:
     void applyMemoryStep(int sliceId, int hz);
     // ANAN-100D port: true when connected to an ANAN (openHPSDR Protocol 2).
     bool isAnanRadio() const;
+    // ANAN fork build 851: an external key / paddles go straight to the
+    // radio's keyer (dot / dash lines) while it is on.
+    bool ananRadioKeyerOn() const;
+    void ananCwPaddleBits(bool dot, bool dash);
     TxCoordinator::Context captureTxMedia(const TxCoordinator::Request& request) const;
     bool setProducerTransmit(const TxCoordinator::Request& request, bool tx,
                              TransmitModel::PttSource source = TransmitModel::PttSource::Dax);

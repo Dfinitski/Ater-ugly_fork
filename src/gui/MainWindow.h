@@ -2167,6 +2167,10 @@ private:
     bool m_cwPaddleInputHeld{false};
     TxCoordinator::Request m_serialCwPaddleInput;
     bool m_serialCwPaddleHeld{false};
+    // ANAN fork build 851: the last serial key / paddle press went to the
+    // radio's keyer lines, so its release does too.
+    bool m_serialCwToRadio{false};
+    bool m_serialPaddleToRadio{false};
     void captureLocalCwPaddleInput(bool held);
     bool m_cwRightPaddleActive{false};
     QPointer<QWidget> m_sliderShortcutLease;

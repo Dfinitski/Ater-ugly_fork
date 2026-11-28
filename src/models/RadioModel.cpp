@@ -2646,8 +2646,18 @@ RadioModel::RadioModel(QObject* parent)
     m_cwxModel.setTextSender([this](const QString& text, int wpm) {
         // ANAN fork build 608: the program's text keyer takes each segment's
         // speed (+/- modifiers included) before its text.
-        if (m_backend && !usesFlexCommandPlane())
-            m_backend->setCwSpeed(wpm);
+        if (m_backend && !usesFlexCommandPlane()) {
+            // Build 851 (operator, 27.11: the macros' keyer "must take the
+            // speed from the CW applet"): on an ANAN the base speed is the CW
+            // applet's keyer speed; a +/- modifier keeps its step from it.
+            int w = wpm;
+            if (isAnanRadio()) {
+                const int base = std::clamp(AppSettings::instance()
+                                                .value(QStringLiteral("AnanKeyerSpeed"), 20).toInt(), 10, 63);
+                w = std::clamp(base + (wpm - m_cwxModel.speed()), 5, 63);
+            }
+            m_backend->setCwSpeed(w);
+        }
         return dispatchCwxText(text, m_cwxCommandOperation);
     });
     // Build 608: without a radio-side store the F1-F12 macros are kept here.
@@ -6871,6 +6881,18 @@ bool RadioModel::isAnanRadio() const
 {
     // Hl2Backend drives only the ANAN now (HL2 support was removed).
     return dynamic_cast<hl2::Hl2Backend*>(m_backend.get()) != nullptr;
+}
+
+bool RadioModel::ananRadioKeyerOn() const
+{
+    auto* hl2b = dynamic_cast<hl2::Hl2Backend*>(m_backend.get());
+    return hl2b && hl2b->ananRadioKeyerOn();
+}
+
+void RadioModel::ananCwPaddleBits(bool dot, bool dash)
+{
+    if (auto* hl2b = dynamic_cast<hl2::Hl2Backend*>(m_backend.get()))
+        hl2b->ananCwPaddleBits(dot, dash);
 }
 
 void RadioModel::setCodecMicContext(const TxCoordinator::Context& context)

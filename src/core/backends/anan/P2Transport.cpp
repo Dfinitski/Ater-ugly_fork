@@ -136,6 +136,13 @@ P2Transport::P2Transport(QObject* parent) : hl2::MetisClient(parent)
         m_paddleHold = false;
         updateRadioPtt();
     });
+    m_hostPaddleHangTimer = new QTimer(this);   // build 851
+    m_hostPaddleHangTimer->setSingleShot(true);
+    m_hostPaddleHangTimer->setTimerType(Qt::PreciseTimer);
+    connect(m_hostPaddleHangTimer, &QTimer::timeout, this, [this] {
+        m_hostPaddleHold = false;
+        updateRadioPtt();
+    });
 
     // The speaker sender: its own thread, time critical (not a QObject child:
     // it is joined in the destructor).
@@ -740,6 +747,8 @@ void P2Transport::stopSession(bool toPowerOnState)
         } else if (m_configured) {
             // Thetis' SendStop(): High Priority with run = 0, nothing else.
             m_cwxBits.store(0, std::memory_order_relaxed);   // build 850
+            m_hostPaddleDown = m_hostPaddleHold = false;    // build 851
+            m_hostPaddleHangTimer->stop();
             sendHighPriority(false);
         }
         {
@@ -906,7 +915,7 @@ void P2Transport::onKeepaliveTick()
         m_paddleDown = false;
         if (m_paddleHold && !m_paddleHangTimer->isActive())
             m_paddleHangTimer->start(std::max(10, m_cwKeyer.hangMs));
-        if (!m_paddleHold) {
+        if (!m_paddleHold && !m_hostPaddleDown && !m_hostPaddleHold) {
             m_radioPtt = false;
             qCInfo(lcAnanP2T) << "ANAN P2 transport: radio PTT off (status stopped)";
             emit radioPttChanged(false);
@@ -1215,7 +1224,8 @@ void P2Transport::timelineTick()
 
 void P2Transport::updateRadioPtt()
 {
-    const bool keyed = m_pttLine || m_paddleDown || m_paddleHold;
+    const bool keyed = m_pttLine || m_paddleDown || m_paddleHold
+                       || m_hostPaddleDown || m_hostPaddleHold;   // build 851
     if (keyed == m_radioPtt)
         return;
     m_radioPtt = keyed;
@@ -1226,7 +1236,8 @@ void P2Transport::updateRadioPtt()
         m_tlMoxMs = m_mox ? m_tlPressMs : -1;
     }
     qCInfo(lcAnanP2T) << "ANAN P2 transport: radio PTT" << (keyed ? "ON" : "off")
-                      << (m_paddleDown || m_paddleHold ? "(keyer)" : "");
+                      << (m_paddleDown || m_paddleHold ? "(keyer)"
+                          : m_hostPaddleDown || m_hostPaddleHold ? "(keyer, PC key lines)" : "");
     emit radioPttChanged(keyed);
 }
 
@@ -1235,8 +1246,10 @@ void P2Transport::setCwBandInhibit(bool inhibit)
     if (inhibit == m_cwBandInhibit)
         return;
     m_cwBandInhibit = inhibit;
-    if (inhibit)
+    if (inhibit) {
         clearCwxLines();   // build 850
+        resetHostPaddle();   // build 851
+    }
     qCInfo(lcAnanP2T) << "ANAN transport: the radio's CW keyer"
                       << (inhibit ? "disabled: the TX frequency is outside the amateur bands"
                                   : "enabled again (TX frequency inside an amateur band)");
@@ -1268,8 +1281,10 @@ void P2Transport::setCwKeyer(const CwKeyerOptions& k)
         m_paddleHangTimer->stop();
         updateRadioPtt();
     }
-    if (!k.enabled)
+    if (!k.enabled) {
         clearCwxLines();   // build 850
+        resetHostPaddle();   // build 851
+    }
     if (!(m_run && m_configured))
         return;
     sendTransmitSpecific();
@@ -3349,6 +3364,46 @@ void P2Transport::clearCwxLines()
         return;
     if (!m_p1 && m_run && m_configured)
         sendHighPriority(true);
+}
+
+void P2Transport::resetHostPaddle()
+{
+    m_hostPaddleHangTimer->stop();
+    if (!m_hostPaddleDown && !m_hostPaddleHold)
+        return;
+    m_hostPaddleDown = m_hostPaddleHold = false;
+    updateRadioPtt();
+}
+
+void P2Transport::setCwPaddleBits(bool dot, bool dash)
+{
+    // A press only with the radio's keyer on and transmit allowed; a release
+    // always.
+    if ((dot || dash) && (!fpgaCwxActive() || !transmitEnabled()))
+        dot = dash = false;
+    const std::uint8_t was = m_cwxBits.load(std::memory_order_relaxed);
+    const auto now = static_cast<std::uint8_t>((was & 0x01) | (dot ? 0x02 : 0) | (dash ? 0x04 : 0));
+    if (now != was) {
+        m_cwxBits.store(now, std::memory_order_relaxed);
+        // Protocol 2 at once (CmdHighPriority); Protocol 1 with the next EP2.
+        if (!m_p1 && m_run && m_configured)
+            sendHighPriority(true);
+    }
+    const bool down = dot || dash;
+    if (down == m_hostPaddleDown)
+        return;
+    m_hostPaddleDown = down;
+    if (down) {
+        m_hostPaddleHangTimer->stop();
+        m_hostPaddleHold = true;
+    } else if (m_hostPaddleHold) {
+        // The keyer finishes the element under way (a dash and its space, and
+        // in mode B the one squeezed after it), then its hang time.
+        const int wpm = std::clamp(m_cwKeyer.speedWpm, 1, 63);
+        const int dits = m_cwKeyer.mode == 2 ? 6 : 4;
+        m_hostPaddleHangTimer->start(std::max(10, m_cwKeyer.hangMs) + dits * 1200 / wpm);
+    }
+    updateRadioPtt();
 }
 
 void P2Transport::setCwKeyDown(bool down, const TxCoordinator::Operation& operation)

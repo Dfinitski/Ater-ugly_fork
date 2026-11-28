@@ -2967,12 +2967,33 @@ void MainWindow::wireExternalControllers()
     });
     connect(m_serialPort, &SerialPortController::cwKeyChanged,
             this, [this](bool down, const TxCoordinator::Request& input) {
+        // ANAN fork build 851 (operator, 27.11: "an external key through the
+        // COM port -- the Dash / Dot method, simply a connection to the
+        // protocol's bits"): with the radio's keyer on, the key line is its
+        // dot line; the keyer's mode (CW applet) makes it a straight key or
+        // dots. A program keying a virtual COM port comes the same way.
+        if (m_radioModel.ananRadioKeyerOn() || (!down && m_serialCwToRadio)) {
+            m_serialCwToRadio = down;
+            m_radioModel.ananCwPaddleBits(down, false);
+            if (down)
+                return;
+        }
         (void)m_radioModel.requestProducerCw(input, down, false, true, {}, QStringLiteral("serial:cwkey"));
     });
     connect(m_serialPort, &SerialPortController::cwPaddleChanged,
             this, [this](bool dit, bool dah, const TxCoordinator::Request& input,
                           const TxCoordinator::Request& straightKeyInput) {
         const bool held = dit || dah;
+        // Build 851 (Thetis SetCWDot / SetCWDash): with the radio's keyer on,
+        // the paddles go straight onto its dot / dash lines -- its mode,
+        // speed, weight and swap (CW applet), not the program's keyer.
+        if (m_radioModel.ananRadioKeyerOn() || (!held && m_serialPaddleToRadio)) {
+            m_serialPaddleToRadio = held;
+            m_radioModel.setCwPaddleHeld(held || m_cwLeftPaddleActive || m_cwRightPaddleActive);
+            m_radioModel.ananCwPaddleBits(dit, dah);
+            if (held)
+                return;
+        }
         if (held) {
             if (!input.valid()) {
                 return;

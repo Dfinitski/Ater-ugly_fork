@@ -8089,7 +8089,7 @@ QString Hl2Backend::sendCwText(const QString& text, const TxCoordinator::Operati
     }
     m_cwTextActive = true;
     m_cwTextCompletions.push_back(completion);
-    const int wpm = std::clamp(m_cwTextWpm.load(std::memory_order_relaxed), 5, 60);
+    const int wpm = std::clamp(m_cwTextWpm.load(std::memory_order_relaxed), 5, 63);
     qCInfo(lcHl2).nospace() << "ANAN CW text keyer: \"" << text << "\" at " << wpm << " WPM"
                             << (raiseMox ? ", MOX raised" : "");
     // As the break-in path does: the first element goes with the MOX (the
@@ -8155,7 +8155,24 @@ void Hl2Backend::abortCwText(const TxCoordinator::Operation& operation,
 
 void Hl2Backend::setCwSpeed(int wpm)
 {
-    m_cwTextWpm.store(std::clamp(wpm, 5, 60), std::memory_order_relaxed);
+    // Build 851: up to the CW applet's 63 WPM.
+    m_cwTextWpm.store(std::clamp(wpm, 5, 63), std::memory_order_relaxed);
+}
+
+bool Hl2Backend::ananRadioKeyerOn() const noexcept
+{
+    return !anan::AnanUiState::instance().hermesLite
+           && m_ananCwTxSilent.load(std::memory_order_relaxed);
+}
+
+void Hl2Backend::ananCwPaddleBits(bool dot, bool dash)
+{
+    if (!m_txAllowed)
+        dot = dash = false;
+    if (auto* metis = m_metis) {
+        QMetaObject::invokeMethod(metis, "setCwPaddleBits", Qt::QueuedConnection,
+                                  Q_ARG(bool, dot), Q_ARG(bool, dash));
+    }
 }
 
 // Build 223: the RF span of the transmission at `hz` in the TX receiver's mode.

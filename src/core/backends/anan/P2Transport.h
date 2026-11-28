@@ -142,6 +142,12 @@ public:
     int driveLevel() const { return m_driveAtomic.load(std::memory_order_relaxed); }
     void setCwKeyDown(bool down, const TxCoordinator::Operation& operation) override;
     Q_INVOKABLE void clearCwKeying() override;
+    // ANAN fork build 851: an external key / paddles (COM port, or a program
+    // keying a virtual COM port) straight onto the dot / dash lines of the
+    // radio's keyer (Thetis NetworkIO.SetCWDot / SetCWDash). The radio's
+    // keyer settings decide what they make (straight key, iambic A / B,
+    // weight, swap). Ignored for a press unless that keyer is on.
+    Q_INVOKABLE void setCwPaddleBits(bool dot, bool dash);
     void queueTxIq(std::span<const std::complex<float>> iq,
                    const TxCoordinator::Context& context) override;
     Q_INVOKABLE void flushTxIq() override;
@@ -767,6 +773,13 @@ private:
     void setCwxLine(bool down);
     void clearCwxLines();
     [[nodiscard]] std::uint8_t cwxBitsP1() const noexcept;
+    // Build 851: the radio's PTT while the PC's dot / dash lines key its
+    // keyer, as m_paddleDown / m_paddleHold do for the radio's own jack; the
+    // hold covers the keyer finishing its element, then its hang time.
+    bool m_hostPaddleDown = false;
+    bool m_hostPaddleHold = false;
+    QTimer* m_hostPaddleHangTimer = nullptr;
+    void resetHostPaddle();
     // Build 632 (operator, 22.11: "a user says in SSB the transmission ends
     // together with the relays -- there is no guard gap; use RF Delay"). At a
     // voice / TUNE unkey the RF ramps to zero in 2 ms and zeros go out; MOX
