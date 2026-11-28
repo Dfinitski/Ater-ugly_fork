@@ -6,6 +6,7 @@
 #include <QMap>
 #include <QObject>
 #include <QPointer>
+#include <QSet>
 #include <QString>
 
 #include <functional>
@@ -115,6 +116,11 @@ public:
     // Follow the main-window frameless setting for all active floating windows.
     void setFramelessMode(bool on);
 
+    // ANAN fork build 864: the title bar's x closes `id` for good -- hidden,
+    // back in its panel slot if it was floating -- instead of docking a
+    // floating one back shown (build 756). The detached-flag applets.
+    void setCloseHides(const QString& id, bool on = true);
+
     // Save geometry and close all floating windows without triggering
     // dock-back behaviour.  Call from MainWindow::closeEvent().
     void prepareShutdown();
@@ -143,6 +149,7 @@ private slots:
     void onFloatingWindowDock(ContainerWidget* c);
 
 private:
+    QSet<QString> m_closeHides;   // build 864
     struct Meta {
         QString     contentType;
         QString     parentId;               // logical container parent ("" = top-level)

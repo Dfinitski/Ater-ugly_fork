@@ -1561,6 +1561,7 @@ set(GUI_SOURCES
     src/gui/ShackSwitchApplet.cpp
     src/gui/GreenHeronApplet.cpp
     src/gui/BandApplet.cpp    # ANAN fork build 858: band selection applet
+    src/gui/DetachedFlagApplet.cpp    # ANAN fork build 864: detached flag applet
     src/gui/TitleBar.cpp
     src/gui/RoundedMenu.cpp
     src/gui/StatusIndicator.cpp

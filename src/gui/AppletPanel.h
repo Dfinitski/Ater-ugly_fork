@@ -30,6 +30,7 @@ namespace AetherSDR {
 class SliceModel;
 class RxApplet;
 class BandApplet;   // build 858
+class DetachedFlagApplet;   // build 864
 class SMeterWidget;
 class CrossNeedleMeterApplet;
 class CrossNeedleMeterWidget;
@@ -178,6 +179,13 @@ public:
 #endif
     CwApplet*     cwApplet()     { return m_cwApplet; }
     BandApplet*   bandApplet()   { return m_bandApplet; }   // build 858
+    // ANAN fork build 864: the detached-flag applets, receivers 0 .. 5
+    // (container ids FLAG0 .. FLAG5); nullptr for any other id.
+    static constexpr int kDetachedFlagCount = 6;
+    DetachedFlagApplet* detachedFlagApplet(int sliceId) const;
+    // Open (show, and float when it is in the panel) / is it open.
+    void showDetachedFlag(int sliceId);
+    [[nodiscard]] bool isDetachedFlagShown(int sliceId) const;
     PsApplet*     psApplet()     { return m_psApplet; }
 
     // Show/hide the TUNE button and applet based on tuner presence.
@@ -352,6 +360,8 @@ public:
     friend class AppletDropArea;
 
 signals:
+    // Build 864: a detached flag's applet was closed by the operator.
+    void detachedFlagClosed(int sliceId);
     // A canvas-mode container was dropped back onto the panel; the workspace
     // controller owns the transition (RFC #4887 phase 3).
     void canvasReturnRequested(const QString& appletId);
@@ -492,6 +502,7 @@ private:
     ShackSwitchApplet*   m_ssApplet{nullptr};
     GreenHeronApplet*    m_greenHeronApplet{nullptr};   // build 858: no longer created
     BandApplet*          m_bandApplet{nullptr};         // build 858
+    DetachedFlagApplet*  m_detachedFlags[kDetachedFlagCount]{};   // build 864
     ProfileSwitcherApplet* m_profApplet{nullptr};
 #ifdef HAVE_RADE
     RadeApplet*  m_radeApplet{nullptr};

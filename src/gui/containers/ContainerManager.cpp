@@ -531,6 +531,15 @@ void ContainerManager::onCloseRequested()
 {
     auto* c = qobject_cast<ContainerWidget*>(sender());
     if (!c) return;
+    // ANAN fork build 864: closed for good (a detached flag's applet).
+    if (m_closeHides.contains(c->id())) {
+        c->setProperty(kSessionHiddenProperty, QVariant());
+        if (c->isFloating())
+            dockContainer(c->id());
+        c->setContainerVisible(false);
+        saveState();
+        return;
+    }
     // Build 261 (operator, 10.11): × on a floating applet closes it without
     // dragging it back first. It goes back to its panel slot hidden -- the
     // same state as closing it in the panel -- so showing it again (applet
@@ -547,6 +556,14 @@ void ContainerManager::onCloseRequested()
         c->setContainerVisible(false);
     }
     saveState(); // saveState() flushes to disk (#4427)
+}
+
+void ContainerManager::setCloseHides(const QString& id, bool on)
+{
+    if (on)
+        m_closeHides.insert(id);
+    else
+        m_closeHides.remove(id);
 }
 
 void ContainerManager::onAlwaysOnTopToggled(bool on)
@@ -568,6 +585,11 @@ void ContainerManager::onFloatingWindowDock(ContainerWidget* c)
     // Re-dock from the floating window (its close = dock). dockContainer() ->
     // saveState() now flushes to disk, so this transition persists too (#4427).
     if (c) dockContainer(c->id());
+    // ANAN fork build 864: a closed-for-good applet's window closing closes it.
+    if (c && m_closeHides.contains(c->id())) {
+        c->setContainerVisible(false);
+        saveState();
+    }
 }
 
 void ContainerManager::saveState() const

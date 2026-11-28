@@ -3710,6 +3710,8 @@ void VfoWidget::deactivateTabButton(int closedTab)
 void VfoWidget::setCollapsed(bool collapsed, bool persist)
 {
     if (m_collapsed == collapsed) return;
+    // Build 864: a flag in its applet window does not collapse.
+    if (collapsed && m_appletMode) return;
     m_collapsed = collapsed;
     QTimer::singleShot(0, this, [this] { syncFdvTextGeometry(); });   // build 338
 
@@ -3760,7 +3762,8 @@ void VfoWidget::setCollapsed(bool collapsed, bool persist)
         if (m_collapsedFreqLabel) {
             updateFreqLabel();
             updateCollapsedFrequencyLabel();
-            m_collapsedFreqLabel->show();
+            if (!m_suppressed)   // build 864
+                m_collapsedFreqLabel->show();
         }
         updateSmartMtrValueText();   // build 547: shows and places the numbers
     } else {
@@ -3809,6 +3812,10 @@ void VfoWidget::setCollapsed(bool collapsed, bool persist)
                 btnX = pos().x() + WIDGET_W + gap;
 
             int btnY = pos().y();
+            // Build 864: a suppressed flag's buttons stay hidden.
+            if (m_suppressed)
+                m_hiddenBeforeCollapse.unite(QSet<QWidget*>{m_closeSliceBtn.data(), m_lockVfoBtn.data(),
+                                                            m_recordBtn.data(), m_playBtn.data()});
             if (m_closeSliceBtn && !m_hiddenBeforeCollapse.contains(m_closeSliceBtn)) {
                 m_closeSliceBtn->show();
                 m_closeSliceBtn->move(btnX, btnY);
@@ -8535,6 +8542,84 @@ QRect VfoWidget::footprint() const
             r |= sat->geometry();
     }
     return r;
+}
+
+// ANAN fork build 864: the flag in an applet window ("Detach Flag to Applet").
+void VfoWidget::setAppletMode(bool on)
+{
+    m_appletMode = on;
+    if (on && m_collapsed)
+        setCollapsed(false, /*persist=*/false);
+    placeForApplet();
+}
+
+void VfoWidget::placeForApplet()
+{
+    if (!m_appletMode)
+        return;
+    m_lastOnLeft = false;
+    if (pos() != QPoint(0, 0))
+        move(0, 0);
+    // The buttons the panadapter puts beside the flag: at its right, stacked.
+    constexpr int kBtn = 20;
+    constexpr int kGap = 2;
+    const int x = width() + kGap;
+    int y = 0;
+    for (QWidget* b : {static_cast<QWidget*>(m_closeSliceBtn.data()),
+                       static_cast<QWidget*>(m_lockVfoBtn.data()),
+                       static_cast<QWidget*>(m_recordBtn.data()),
+                       static_cast<QWidget*>(m_playBtn.data())}) {
+        if (!b)
+            continue;
+        b->move(x, y);
+        b->raise();
+        y += kBtn + kGap;
+    }
+    if (m_collapsedFreqLabel)
+        m_collapsedFreqLabel->hide();
+    syncShadowGeometry();
+    syncFdvTextGeometry();
+}
+
+void VfoWidget::setSuppressed(bool on)
+{
+    if (m_suppressed == on)
+        return;
+    m_suppressed = on;
+    const std::initializer_list<QWidget*> buttons = {
+        m_closeSliceBtn.data(), m_lockVfoBtn.data(), m_recordBtn.data(), m_playBtn.data(),
+    };
+    if (on) {
+        hide();
+        for (QWidget* b : buttons)
+            if (b)
+                b->hide();
+        if (m_collapsedFreqLabel)
+            m_collapsedFreqLabel->hide();
+        if (m_collapsedValueLabel)
+            m_collapsedValueLabel->hide();
+        if (m_shadowWidget)
+            m_shadowWidget->hide();
+        if (m_fdvTextLabel)
+            m_fdvTextLabel->hide();
+    } else {
+        show();
+        raise();
+        if (m_collapsed) {
+            if (m_collapsedFreqLabel)
+                m_collapsedFreqLabel->show();
+            updateSmartMtrValueText();
+        } else {
+            for (QWidget* b : buttons)
+                if (b)
+                    b->show();
+        }
+        syncShadowGeometry();
+        syncFdvTextGeometry();
+    }
+    // The spectrum places (or stops placing) the flag on its next pass.
+    if (QWidget* p = parentWidget())
+        p->update();
 }
 
 void VfoWidget::reparentFlagSatellites(QWidget* newParent)

@@ -73,6 +73,7 @@
 #include "SpectrumWidget.h"
 #include "core/AdaptiveFilterEngine.h"
 #include "VfoWidget.h"
+#include "DetachedFlagApplet.h"   // build 864
 #include "core/BandStackSettings.h"
 #include "core/AppSettings.h"
 #include "core/NnrSettings.h"
@@ -1600,6 +1601,78 @@ void MainWindow::wireAetherDspWidget(AetherDspWidget* w)
 }
 
 
+// ANAN fork build 864 (operator, 28.11: "Detach Flag to Applet").
+void MainWindow::detachActiveFlag()
+{
+    SliceModel* s = activeSlice();
+    if (!s || !m_appletPanel) {
+        statusBar()->showMessage(QStringLiteral("Detach Flag to Applet: no receiver is on."), 5000);
+        return;
+    }
+    const int id = s->sliceId();
+    if (id == 6 || id == 7) {
+        statusBar()->showMessage(
+            QStringLiteral("Detach Flag to Applet: a sub receiver's flag stays on the panadapter."), 5000);
+        return;
+    }
+    if (!m_appletPanel->detachedFlagApplet(id))
+        return;
+    m_appletPanel->showDetachedFlag(id);
+    applyFlagDetachment(s);
+}
+
+void MainWindow::applyFlagDetachment(SliceModel* s)
+{
+    if (!s || !m_appletPanel)
+        return;
+    const int id = s->sliceId();
+    DetachedFlagApplet* host = m_appletPanel->detachedFlagApplet(id);
+    if (!host || id == 6 || id == 7)
+        return;
+    const bool detached = m_appletPanel->isDetachedFlagShown(id);
+    SpectrumWidget* sw = spectrumForSlice(s);
+    if (VfoWidget* panFlag = sw ? sw->vfoWidget(id) : nullptr)
+        panFlag->setSuppressed(detached);
+    if (!detached) {
+        host->dropFlag();
+        return;
+    }
+    if (host->flag() && host->slice() == s)
+        return;
+    // The applet's flag: made and wired as the panadapter's (onSliceAdded),
+    // in applet mode before its slice is set so it never collapses.
+    auto* f = new VfoWidget(host);
+    f->setProperty("sliceId", id);
+    f->setAppletMode(true);
+    f->setSmartSdrPlus(m_radioModel.licenseSubscription().contains(QStringLiteral("SmartSDR+")));
+    f->setHasExtendedDsp(m_radioModel.hasExtendedDspFilters());
+    f->setHasRadioSideDsp(m_radioModel.hasRadioSideDsp());
+    f->setHasLmsNoiseFilters(m_radioModel.hasLmsNoiseFilters());
+    f->setHasManualNotch(m_radioModel.hasManualNotch());
+    f->setHasHostNoiseBlanker(m_radioModel.hasHostNoiseBlanker());
+    f->setRadioFilterControl(m_radioModel.radioFilterControl());
+    f->setRadioFilterWidths(m_radioModel.radioFilterWidthsHz());
+    wireVfoWidget(f, s);
+    f->setDiversityAllowed(m_radioModel.isDiversityAllowed());
+    wireVfoTelemetry(f, s);
+    host->adoptFlag(f, s);
+    // The receiver gone (disconnect deletes the slices): the flag with it.
+    connect(s, &QObject::destroyed, host, [host] { host->dropFlag(); });
+}
+
+void MainWindow::reattachFlag(int sliceId)
+{
+    if (!m_appletPanel)
+        return;
+    if (DetachedFlagApplet* host = m_appletPanel->detachedFlagApplet(sliceId))
+        host->dropFlag();
+    if (SliceModel* s = m_radioModel.slice(sliceId)) {
+        SpectrumWidget* sw = spectrumForSlice(s);
+        if (VfoWidget* f = sw ? sw->vfoWidget(sliceId) : nullptr)
+            f->setSuppressed(false);
+    }
+}
+
 void MainWindow::wireVfoTelemetry(VfoWidget* vfo, SliceModel* s)
 {
     if (!vfo || !s) {
@@ -1779,6 +1852,8 @@ bool MainWindow::reattachSliceVisualsToPanadapter(SliceModel* s)
     if (targetVfo && sliceId == m_activeSliceId) {
         target->setActiveVfoWidget(sliceId);
     }
+    if (targetVfo)
+        applyFlagDetachment(s);   // ANAN fork build 864: a new / moved flag
     if (m_panStack && !s->panId().isEmpty()) {
         if (PanadapterApplet* applet = m_panStack->panadapter(s->panId())) {
             applet->setSliceId(sliceId, s->letter());
@@ -2451,6 +2526,7 @@ void MainWindow::onSliceAdded(SliceModel* s)
         vfo->setDiversityAllowed(m_radioModel.isDiversityAllowed());
 
         wireVfoTelemetry(vfo, s);
+        applyFlagDetachment(s);   // ANAN fork build 864
     }
 
 #ifdef HAVE_RADE
@@ -2730,6 +2806,13 @@ void MainWindow::onSliceRemoved(int id)
             if (!m_radioModel.txSlice()) { rx->setTxSlice(true); }
         }
         updateSplitState();
+    }
+
+    // ANAN fork build 864: the receiver's applet flag goes with it (the
+    // applet stays open, waiting for the receiver).
+    if (m_appletPanel) {
+        if (DetachedFlagApplet* host = m_appletPanel->detachedFlagApplet(id))
+            host->dropFlag();
     }
 
     // Remove overlay from all panadapter spectrums (slice model is already gone,

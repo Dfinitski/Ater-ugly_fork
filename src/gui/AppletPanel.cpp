@@ -50,6 +50,7 @@
 #endif
 #include "CwApplet.h"
 #include "BandApplet.h"   // build 858
+#include "DetachedFlagApplet.h"   // build 864
 #include "PsApplet.h"
 #ifdef HAVE_MQTT
 #include "MqttApplet.h"
@@ -1282,6 +1283,22 @@ AppletPanel::AppletPanel(QWidget* parent) : QWidget(parent)
     // Saved layouts move GHE's place to it (loadButtonLayout, AppletOrder).
     m_bandApplet = new BandApplet;
     m_appletOrder.append(makeEntry("BAND", "Bands", m_bandApplet, false, m_drawer, m_drawerLayout));
+
+    // ANAN fork build 864: the detached-flag applets (View > Appearance >
+    // Extra Applets > Detach Flag to Applet), one per receiver 0 .. 5, no bar
+    // button: opened by that button, closed for good by their x.
+    for (int i = 0; i < kDetachedFlagCount; ++i) {
+        const QString id = QStringLiteral("FLAG%1").arg(i);
+        m_detachedFlags[i] = new DetachedFlagApplet(i);
+        const QString title = QStringLiteral("Flag %1").arg(QChar(QLatin1Char('A').unicode() + i));
+        AppletEntry e = makeEntry(id, title, m_detachedFlags[i], false, nullptr, nullptr);
+        m_containerMgr->setCloseHides(id);
+        connect(qobject_cast<ContainerWidget*>(e.widget), &ContainerWidget::visibilityChanged, this, [this, i](bool visible) {
+            if (!visible && !m_recallInProgress)
+                emit detachedFlagClosed(i);
+        });
+        m_appletOrder.append(e);
+    }
 
 #ifdef HAVE_MQTT
     m_mqttApplet = new MqttApplet;
@@ -2885,6 +2902,41 @@ void AppletPanel::openFavoritesPicker()
     m_favoritesPicker->show();
     m_favoritesPicker->raise();
     m_favoritesPicker->activateWindow();
+}
+
+// ANAN fork build 864: the detached-flag applets.
+DetachedFlagApplet* AppletPanel::detachedFlagApplet(int sliceId) const
+{
+    return sliceId >= 0 && sliceId < kDetachedFlagCount ? m_detachedFlags[sliceId] : nullptr;
+}
+
+bool AppletPanel::isDetachedFlagShown(int sliceId) const
+{
+    if (sliceId < 0 || sliceId >= kDetachedFlagCount || !m_containerMgr)
+        return false;
+    const ContainerWidget* c = m_containerMgr->container(QStringLiteral("FLAG%1").arg(sliceId));
+    return c && c->isContainerVisible();
+}
+
+void AppletPanel::showDetachedFlag(int sliceId)
+{
+    if (sliceId < 0 || sliceId >= kDetachedFlagCount || !m_containerMgr)
+        return;
+    const QString id = QStringLiteral("FLAG%1").arg(sliceId);
+    ContainerWidget* c = m_containerMgr->container(id);
+    if (!c)
+        return;
+    c->setContainerVisible(true);
+    AppSettings::instance().setValue(QStringLiteral("Applet_%1").arg(id), "True");
+    // Ready to use: its own window unless it already lives on a canvas.
+    if (c->isPanelDocked())
+        m_containerMgr->floatContainer(id);
+    if (QWidget* w = c->window()) {
+        w->show();
+        w->raise();
+        w->activateWindow();
+    }
+    m_containerMgr->saveState();
 }
 
 } // namespace AetherSDR

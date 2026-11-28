@@ -18313,6 +18313,10 @@ void SpectrumWidget::repositionVfoFlags(const QRect& specRect)
     QVector<VfoPos> vfos;
     for (const SliceOverlay& so : m_sliceOverlays) {
         if (VfoWidget* flag = m_vfoWidgets.value(so.sliceId, nullptr)) {
+            // ANAN fork build 864: a flag whose receiver has it in an applet
+            // window is hidden here and not placed.
+            if (flag->isSuppressed())
+                continue;
             // Build 619: the Center Lock receiver's flag stays at the gliding centre.
             const double f = so.sliceId == m_centerLockSliceId ? so.freqMhz - glideOffsetMhz()
                                                                : so.freqMhz;

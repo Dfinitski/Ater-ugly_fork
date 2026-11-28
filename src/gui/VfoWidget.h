@@ -310,6 +310,18 @@ public:
     QLabel* freqLabel() const { return m_freqLabel; }
 
     bool isCollapsed() const { return m_collapsed; }
+
+    // ANAN fork build 864 (operator, 28.11: "Detach Flag to Applet"): the
+    // receiver's flag in an applet window of its own. Applet mode: never
+    // collapses, and placeForApplet() lays it out at the top-left of its
+    // host with the close / lock / record / play buttons at its right.
+    void setAppletMode(bool on);
+    [[nodiscard]] bool isAppletMode() const { return m_appletMode; }
+    void placeForApplet();
+    // Build 864: the panadapter's flag while its receiver's flag is in an
+    // applet -- hidden with every part round it, not placed by the spectrum.
+    void setSuppressed(bool on);
+    [[nodiscard]] bool isSuppressed() const { return m_suppressed; }
     // persist = false (build 464, minimal mode): the operator's saved
     // preference (SliceFlagCollapsed_N) is left as it is
     void setCollapsed(bool collapsed, bool persist = true);
@@ -531,6 +543,8 @@ private:
     float          m_signalMeterFraction{0.0f};
     float          m_targetSignalMeterFraction{0.0f};
     bool           m_collapsed{false};
+    bool           m_appletMode{false};   // build 864
+    bool           m_suppressed{false};   // build 864
     bool           m_collapseToggled{false};  // guard: absorb release after toggle
     int            m_scrollAccum{0};    // trackpad pixel scroll accumulator
     int            m_angleAccum{0};     // mouse wheel angle accumulator

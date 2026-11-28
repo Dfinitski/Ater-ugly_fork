@@ -873,6 +873,15 @@ private:
     SpectrumWidget* spectrumForSlice(SliceModel* s) const;
     void wireVfoWidget(VfoWidget* w, SliceModel* s);
     void wireVfoTelemetry(VfoWidget* vfo, SliceModel* s);
+    // ANAN fork build 864: "Detach Flag to Applet" (View > Appearance > Extra
+    // Applets). The active receiver's flag goes into its applet window; the
+    // panadapter's flag is hidden while that applet is open.
+    void detachActiveFlag();
+    // The receiver's flag state from its applet (open: the applet's flag made
+    // and the panadapter's hidden; closed: the applet's dropped, the
+    // panadapter's shown). On every flag made for the receiver.
+    void applyFlagDetachment(SliceModel* s);
+    void reattachFlag(int sliceId);
     // Push the active RX slice's filter passband (converted from
     // protocol offsets to audio-domain low/high) to the RX EQ canvases.
     void pushRxFilterCutoffsToEq();

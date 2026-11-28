@@ -1863,6 +1863,20 @@ void MainWindow::buildMenuBar()
             st.setValue(QStringLiteral("PanJumpFromEnd"), on ? QStringLiteral("True") : QStringLiteral("False"));
             st.save();
         });
+        // ── Extra Applets ── (ANAN fork build 864, operator 28.11)
+        auto* extraGroup = new QGroupBox(QStringLiteral("Extra Applets"), dlg);
+        auto* extraLay = new QHBoxLayout(extraGroup);
+        auto* detachFlagBtn = new QPushButton(QStringLiteral("Detach Flag to Applet"), extraGroup);
+        detachFlagBtn->setObjectName(QStringLiteral("appearanceDetachFlag"));
+        detachFlagBtn->setAutoDefault(false);
+        detachFlagBtn->setToolTip(QStringLiteral(
+            "The active receiver's flag moves into an applet window of its own (usable on the\n"
+            "Workspace Canvas); the panadapter shows no flag for it. Closing that applet puts the\n"
+            "flag back on the panadapter. Not for the sub receivers."));
+        extraLay->addWidget(detachFlagBtn);
+        extraLay->addStretch(1);
+        root->addWidget(extraGroup);
+        connect(detachFlagBtn, &QPushButton::clicked, this, [this] { detachActiveFlag(); });
         root->addStretch(1);
         auto* closeRow = new QHBoxLayout;
         closeRow->addStretch(1);

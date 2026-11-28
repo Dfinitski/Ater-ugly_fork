@@ -6622,6 +6622,10 @@ void MainWindow::buildUI()
             openRadioSetupPage(QStringLiteral("XVTR"));
         });
     }
+    // ANAN fork build 864: a detached flag's applet closed -- the flag back on
+    // its panadapter.
+    connect(m_appletPanel, &AppletPanel::detachedFlagClosed, this,
+            [this](int sliceId) { reattachFlag(sliceId); });
     if (auto* cw = m_appletPanel->cwApplet()) {
         connect(cw, &CwApplet::keyerSpeedChanged, this, [this](int wpm) {
             if (m_radioModel.transmitModel().cwSpeed() != wpm)
