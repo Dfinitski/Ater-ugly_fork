@@ -245,7 +245,7 @@ void CrossNeedleMeterWidget::setPowerScale(int maxWatts, bool amplifierActive) {
 }
 
 bool CrossNeedleMeterWidget::updateAutoRange() {
-    const bool active = m_transmitting || m_automationFixture;
+    const bool active = true;   // build 879: the radio's readings on receive too
     const double fwd = active ? m_forwardWatts : 0.0;
     const double rev = active ? m_reflectedWatts : 0.0;
     bool up = false;
@@ -274,7 +274,7 @@ void CrossNeedleMeterWidget::stepRangeDown() {
     // The hold ran out with the power still below the range under this one.
     if (m_rangeMultiplier <= 1.0)
         return;
-    const bool active = m_transmitting || m_automationFixture;
+    const bool active = true;   // build 879: the radio's readings on receive too
     const double below = m_rangeMultiplier / 10.0;
     if (active && (m_forwardWatts >= kRangeDownFraction * kForwardFullScale * below
                    || m_reflectedWatts >= kRangeDownFraction * kReflectedFullScale * below))
@@ -328,10 +328,14 @@ void CrossNeedleMeterWidget::clearAutomationFixture() {
 }
 
 void CrossNeedleMeterWidget::updateTargets(bool snap) {
+    // ANAN fork build 879 (operator, 28.11: "I want to see the power and SWR
+    // readings on receive too, all the transceiver gives -- so I may find
+    // the cause and correct the firmware"): the needles follow the radio's
+    // readings on receive as well (`active` below and in the range logic).
     // Interlock state is authoritative. Meter UDP and interlock TCP updates
     // arrive on independent worker threads, so a late power packet after RX
     // must update the cache without bringing the needles back off their stops.
-    const bool active = m_transmitting || m_automationFixture;
+    const bool active = true;   // build 879: the radio's readings on receive too
     if (updateAutoRange())   // build 582
         snap = true;
     const double multiplier = std::max(1.0, m_rangeMultiplier);
