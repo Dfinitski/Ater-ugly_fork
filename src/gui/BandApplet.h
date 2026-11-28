@@ -55,6 +55,7 @@ private:
     int columnsFor(int width) const;
     void relayout();
     void updateLit();
+    void applyButtonStyle();   // build 861
 
     QVector<Button> m_buttons;
     std::function<double()> m_freqSource;

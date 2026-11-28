@@ -1,9 +1,12 @@
 #include "BandApplet.h"
 
 #include "ButtonStyles.h"
+#include "core/ThemeManager.h"
 #include "models/BandDefs.h"
 
+#include <QColor>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QTimer>
@@ -59,7 +62,6 @@ BandApplet::BandApplet(QWidget* parent)
         b->setObjectName(QStringLiteral("bandApplet_") + (band.isEmpty() ? QStringLiteral("XVTR") : band));
         b->setFocusPolicy(Qt::NoFocus);
         b->setAutoDefault(false);
-        AetherSDR::ButtonStyles::apply(b, "overlay.band");
         if (band.isEmpty()) {
             b->setToolTip(QStringLiteral("Transverter setup"));
             b->setAccessibleName(QStringLiteral("Transverter setup"));
@@ -80,11 +82,36 @@ BandApplet::BandApplet(QWidget* parent)
         }
         m_buttons.append({b, band, d.group});
     }
+    applyButtonStyle();
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged, this,
+            &BandApplet::applyButtonStyle);
     m_poll = new QTimer(this);
     m_poll->setInterval(250);
     connect(m_poll, &QTimer::timeout, this, &BandApplet::updateLit);
     m_poll->start();
     relayout();
+}
+
+void BandApplet::applyButtonStyle()
+{
+    // The Band panel's style ("overlay.band"), but the lit button's frame
+    // (operator, 27.11, build 861: "too aggressive -- half the thickness and
+    // half the brightness"): 1 px instead of 2, its colour at half brightness.
+    QString sheet = AetherSDR::ButtonStyles::sheet("overlay.band");
+    static const QRegularExpression kFrame(QStringLiteral("border:\\s*2px solid \\{\\{([^}]+)\\}\\}"));
+    const QRegularExpressionMatch m = kFrame.match(sheet);
+    if (m.hasMatch()) {
+        QColor c = ThemeManager::instance().color(this, m.captured(1));
+        if (!c.isValid())
+            c = QColor(0xc8, 0xd8, 0xe8);
+        const QString half = QStringLiteral("rgba(%1, %2, %3, %4)")
+                                 .arg(c.red() / 2).arg(c.green() / 2).arg(c.blue() / 2)
+                                 .arg(c.alpha());
+        sheet.replace(m.capturedStart(), m.capturedLength(),
+                      QStringLiteral("border: 1px solid ") + half);
+    }
+    for (const Button& b : m_buttons)
+        ThemeManager::instance().applyStyleSheet(b.btn, sheet);
 }
 
 void BandApplet::setFrequencySource(std::function<double()> source)
