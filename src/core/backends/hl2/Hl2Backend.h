@@ -219,8 +219,8 @@ public:
     QString sendCwText(const QString& text, const AetherSDR::TxCoordinator::Operation& operation, const AetherSDR::TxCoordinator::Completion& completion = {}) override;
     void abortCwText(const AetherSDR::TxCoordinator::Operation& operation, const AetherSDR::TxCoordinator::Completion& completion = {}) override;
     void setCwSpeed(int wpm) override;
-    // ANAN fork build 851: the radio's CW keyer is on (CW, not TUNE; since
-    // build 853 a Hermes-Lite 2 too) -- any thread.
+    // ANAN fork build 851: the radio's CW keyer is on (CW, not TUNE, not a
+    // Hermes-Lite 2) -- any thread.
     [[nodiscard]] bool ananRadioKeyerOn() const noexcept;
     // Build 851: the PC's dot / dash lines to the radio's keyer
     // (P2Transport::setCwPaddleBits) -- any thread.

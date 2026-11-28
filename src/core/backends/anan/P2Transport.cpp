@@ -3332,10 +3332,13 @@ void P2Transport::setTxDriveLevel(int level)
 // ANAN fork build 850: the radio's own keyer takes the PC's key (Thetis).
 bool P2Transport::fpgaCwxActive() const noexcept
 {
-    // Not with the keyer off (any mode but CW, TUNE, outside the amateur
-    // bands). Build 853 (operator, 27.11: "for the HL2 too, the protocol is
-    // the same there"): the Hermes-Lite 2 as well.
-    return effectiveCwKeyer().enabled;
+    // Not the Hermes-Lite 2 (its own keying, unchanged); not with the keyer
+    // off (any mode but CW, TUNE, outside the amateur bands).
+    // Build 854 (operator, 27.11): build 853's Hermes-Lite 2 undone -- it has
+    // no keyer of its own (HL2 wiki, Protocol: "There is no internal keyer"),
+    // only the CWX bit, and MOX must be zero while it sends CW.
+    return !isHl2Session() && m_profile.boardId != kBoardIdHermesLite
+           && effectiveCwKeyer().enabled;
 }
 
 std::uint8_t P2Transport::cwxBitsP1() const noexcept
@@ -3891,8 +3894,8 @@ void P2Transport::sendP1Ep2()
     }
     // Build 850 (Thetis networkproto1.c, cw_enable): with the radio's keyer
     // on, the I/Q words carry the PC's key lines -- on receive too, so a
-    // CWX key reaches the keyer before MOX. Build 853: a Hermes-Lite 2 too.
-    if (st.cwKeyer)
+    // CWX key reaches the keyer before MOX. Not a Hermes-Lite 2.
+    if (st.cwKeyer && !st.hermesLite)
         hl2::ep2WriteTxCwBits(pkt, cwxBitsP1());
     sendDatagram(*m_sock, pkt, m_txHost, kRadioPort, m_counters.txBytes, m_counters.txPackets);
 }
