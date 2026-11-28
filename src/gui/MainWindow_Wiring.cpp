@@ -1654,6 +1654,10 @@ void MainWindow::applyFlagDetachment(SliceModel* s)
     f->setRadioFilterWidths(m_radioModel.radioFilterWidthsHz());
     wireVfoWidget(f, s);
     f->setDiversityAllowed(m_radioModel.isDiversityAllowed());
+    // Build 867 (operator, 28.11: "the DAX button is drawn, and it is off --
+    // no hardware support"): as the panadapter's flags get it on a capability
+    // change (MainWindow.cpp, DAX section), for this one made later.
+    f->setDaxVisible(!m_radioModel.isConnected() || m_radioModel.backendCapabilities().hasDaxStreams);
     wireVfoTelemetry(f, s);
     host->adoptFlag(f, s);
     // The receiver gone (disconnect deletes the slices): the flag with it.

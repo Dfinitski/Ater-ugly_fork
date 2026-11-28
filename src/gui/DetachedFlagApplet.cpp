@@ -94,8 +94,12 @@ void DetachedFlagApplet::refit()
     if (!f)
         return;
     f->placeForApplet();
-    // Only grows: the tallest the flag has been (its tabs open downwards).
-    m_maxHeight = std::max({m_maxHeight, f->height(), kButtonsHeight});
+    // Build 867 (operator, 28.11: "the window widens as the buttons are used
+    // and does not shrink back when they are switched off -- make it follow
+    // the content"): the flag's own height now (not the tallest it has
+    // been), never less than its button column. A floating window follows
+    // (FloatingContainerWindow fits to its content on every layout request).
+    m_maxHeight = std::max(f->height(), kButtonsHeight);
     const QSize want(f->width() + kButtonColumn, m_maxHeight);
     if (size() != want)
         setFixedSize(want);

@@ -9,10 +9,10 @@
 //
 // The applet's content: a second VfoWidget of the receiver (MainWindow makes
 // and wires it as the panadapter's), never collapsed, top-left, its close /
-// lock / record / play buttons at its right. The host keeps one size: as
-// wide as the flag and its buttons, as tall as the tallest the flag has been
-// (its tabs open downwards), so the window does not jump as tabs open and
-// close. Without the receiver (not connected yet) it says so.
+// lock / record / play buttons at its right. The host is as wide as the flag
+// and its buttons and as tall as the flag is now (build 867: it follows the
+// tabs opening and closing). Without the receiver (not connected yet) it says
+// so.
 
 #include <QPointer>
 #include <QWidget>
