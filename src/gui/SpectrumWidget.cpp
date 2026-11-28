@@ -98,6 +98,7 @@
 #include "core/PerfTelemetry.h"
 #include <QSoundEffect>
 #include <algorithm>
+#include <atomic>   // build 870
 #include <array>
 #include <cmath>
 #include <iterator>
@@ -14145,7 +14146,7 @@ int SpectrumWidget::drawWideChip(QPainter& p, int rightX) const
     p.setFont(f);
     const QFontMetrics fm(f);
     const QString text = QStringLiteral("WIDE");
-    constexpr int kTop = 4;
+    const int kTop = m_wideChipTop;   // build 870: 4, or the group's line at the bottom
     constexpr int kH = 20;
     const int w = fm.horizontalAdvance(text) + 12;
     const QRect r(rightX - w, kTop, w, kH);
@@ -14280,7 +14281,8 @@ void SpectrumWidget::updateRateGroupCover()
     // two-line place it hides the group (a flag itself turns away from the
     // two-line place: repositionVfoFlags()).
     auto coveredOrFiltered = [&](const QRect& area) {
-        return covered(area) || filterCovers(area);
+        // Build 870: at the bottom (zoomCorner() != 0) the filter does not hide it.
+        return covered(area) || (zoomCorner() == 0 && filterCovers(area));
     };
     // Build 679: the indicator strip left of the group (WIDE, K/A/SFI, ...)
     // simply hides under a flag and comes back once no flag covers its place.
@@ -14327,7 +14329,7 @@ QRect SpectrumWidget::indicatorStripBounds(const QFontMetrics& fm, int rightEdge
         f.setPixelSize(12);
         f.setBold(true);
         const int w = QFontMetrics(f).horizontalAdvance(QStringLiteral("WIDE")) + 12;
-        r = QRect(x - w, 4, w, 20);   // drawWideChip()
+        r = QRect(x - w, m_wideChipTop, w, 20);   // drawWideChip()
         leftEdge = x - w;
         x = leftEdge - 10;
     }
@@ -14378,9 +14380,115 @@ QRect SpectrumWidget::rateGroupFlipPlace() const
     return place;
 }
 
+// ANAN fork build 870: the zoom group's corner, for every panadapter.
+namespace {
+std::atomic<int> s_zoomCorner{0};
+}
+
+void SpectrumWidget::setZoomCorner(int corner)
+{
+    s_zoomCorner.store(std::clamp(corner, 0, 2), std::memory_order_relaxed);
+}
+
+int SpectrumWidget::zoomCorner()
+{
+    return s_zoomCorner.load(std::memory_order_relaxed);
+}
+
+void SpectrumWidget::applyZoomCorner()
+{
+    m_rateStage = -1;   // decided again for the new place
+    positionZoomButtons();
+    markOverlayDirty("zoomCorner");
+    update();
+}
+
+QRect SpectrumWidget::rateGroupRowRect() const
+{
+    if (!m_rateLabel || !m_rateDownBtn || !m_rateUpBtn)
+        return {};
+    QRect zoom, down, label, up;
+    rateGroupGeometry(false, zoom, down, label, up);
+    QRect r = down | label | up;
+    if (m_zoomLabel && m_zoomLabelWanted)
+        r |= zoom;
+    return r;
+}
+
+void SpectrumWidget::indicatorStripAnchor(const QFontMetrics& fm, bool showRfGain, bool showProp,
+                                          int defaultRightEdge, int defaultBaseline,
+                                          int* rightEdge, int* baseline)
+{
+    const int corner = zoomCorner();
+    const QRect row = corner != 0 ? rateGroupRowRect() : QRect();
+    if (corner == 0 || row.isEmpty()) {
+        m_wideChipTop = 4;
+        *rightEdge = defaultRightEdge;
+        *baseline = defaultBaseline;
+        return;
+    }
+    // On the group's line, its text centred on the line.
+    *baseline = row.center().y() + (fm.ascent() - fm.descent()) / 2;
+    m_wideChipTop = row.center().y() - 10;   // the chip is 20 high
+    if (corner == 2) {
+        *rightEdge = row.left() - 8;         // left of the group
+    } else {
+        const QRect strip = indicatorStripBounds(fm, 0, *baseline, showRfGain, showProp);
+        *rightEdge = row.right() + 8 + strip.width();   // right of the group
+    }
+}
+
+void SpectrumWidget::drawZoomCornerBackdrop(QPainter& p, const QRect& stripPlace) const
+{
+    if (zoomCorner() == 0)
+        return;
+    QRect r;
+    if (m_rateLabel && m_rateLabel->isVisible())
+        r = rateGroupRowRect();
+    if (!stripPlace.isEmpty() && !m_indicatorsCovered)
+        r |= stripPlace;
+    if (r.isEmpty())
+        return;
+    // Build 870 (operator: "a background shielding from the waterfall's
+    // bright colours, not too dark, half-transparent").
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(14, 18, 26, 150));
+    p.drawRoundedRect(QRectF(r.adjusted(-5, -3, 5, 3)), 4.0, 4.0);
+    p.restore();
+}
+
 void SpectrumWidget::rateGroupGeometry(bool twoRows, QRect& zoom, QRect& down,
                                        QRect& label, QRect& up) const
 {
+    // Build 870: in a bottom corner of the waterfall, one line always.
+    if (const int corner = zoomCorner(); corner != 0) {
+        const QSize zs = m_zoomLabel ? m_zoomLabel->size() : QSize(0, 0);
+        const bool zoomOn = m_zoomLabel && m_zoomLabelWanted;
+        const int rowH = std::max({m_rateUpBtn->height(), m_rateLabel->height(),
+                                   m_rateDownBtn->height(), zoomOn ? zs.height() : 0});
+        const int rowY = height() - 4 - rowH;
+        const int total = (zoomOn ? zs.width() + 4 : 0) + m_rateDownBtn->width() + 4
+                          + m_rateLabel->width() + 4 + m_rateUpBtn->width();
+        // Bottom left: right of the S / B / - / + zoom buttons (two 22 px
+        // columns from x 4, positionZoomButtons()).
+        int x = corner == 1 ? 4 + 22 + 2 + 22 + 10
+                            : width() - DBM_STRIP_W - 6 - total;
+        auto at = [rowY, rowH](int px, const QSize& s) {
+            return QRect(QPoint(px, rowY + (rowH - s.height()) / 2), s);
+        };
+        zoom = at(x, zs);
+        if (zoomOn)
+            x += zs.width() + 4;
+        down = at(x, m_rateDownBtn->size());
+        x += m_rateDownBtn->width() + 4;
+        label = at(x, m_rateLabel->size());
+        x += m_rateLabel->width() + 4;
+        up = at(x, m_rateUpBtn->size());
+        (void)twoRows;
+        return;
+    }
     const int right = width() - std::max(DBM_STRIP_W, m_topRightReserve) - 6;
     constexpr int top = 4;
     constexpr int gap = 2;   // between the two lines
@@ -16939,12 +17047,17 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                     const QColor indicatorColor(0xc8, 0xd8, 0xe8, 180);
                     const QColor wnbDimColor(0xc8, 0xd8, 0xe8, 84);
                     const QFontMetrics fm(indFont);
-                    const int y = specRect.top() + fm.ascent() + 4;
-                    const int rightEdge = specRect.right()
-                        - std::max(DBM_STRIP_W, m_topRightReserve) - 8 - rateGroupWidth();
+                    // Build 870: beside the group in a bottom corner.
+                    int y = 0;
+                    int rightEdge = 0;
+                    indicatorStripAnchor(fm, showRfGain, showProp,
+                                         specRect.right() - std::max(DBM_STRIP_W, m_topRightReserve)
+                                             - 8 - rateGroupWidth(),
+                                         specRect.top() + fm.ascent() + 4, &rightEdge, &y);
                     // Build 679: under a flag the strip is not drawn.
                     m_indicatorStripPlace = indicatorStripBounds(fm, rightEdge, y,
                                                                  showRfGain, showProp);
+                    drawZoomCornerBackdrop(p, m_indicatorStripPlace);   // build 870
                     if (m_indicatorsCovered) {
                         m_indicatorStripRect = QRect();
                         m_propClickRect = QRect();
@@ -17001,6 +17114,7 @@ void SpectrumWidget::renderGpuFrame(QRhiCommandBuffer* cb,
                 } else {
                     m_indicatorStripRect = QRect();
                     m_indicatorStripPlace = QRect();   // build 679
+                    drawZoomCornerBackdrop(p, QRect());   // build 870: the group alone
                 }
 
                 // MQTT device status overlay (#699)
@@ -18151,12 +18265,17 @@ void SpectrumWidget::paintEvent(QPaintEvent* ev)
             const QColor wnbDimColor(0xc8, 0xd8, 0xe8, 84);
 
             const QFontMetrics fm(indFont);
-            const int rightEdge = specRect.right()
-                - std::max(DBM_STRIP_W, m_topRightReserve) - 6 - rateGroupWidth();
-            const int topY = specRect.top() + fm.ascent() + 2;
+            // Build 870: beside the group in a bottom corner.
+            int rightEdge = 0;
+            int topY = 0;
+            indicatorStripAnchor(fm, showRfGain, showProp,
+                                 specRect.right() - std::max(DBM_STRIP_W, m_topRightReserve)
+                                     - 6 - rateGroupWidth(),
+                                 specRect.top() + fm.ascent() + 2, &rightEdge, &topY);
             // Build 679: under a flag the strip is not drawn.
             m_indicatorStripPlace = indicatorStripBounds(fm, rightEdge, topY,
                                                          showRfGain, showProp);
+            drawZoomCornerBackdrop(p, m_indicatorStripPlace);   // build 870
             if (m_indicatorsCovered) {
                 m_indicatorStripRect = QRect();
                 m_propClickRect = QRect();
@@ -18220,6 +18339,7 @@ void SpectrumWidget::paintEvent(QPaintEvent* ev)
         } else {
             m_indicatorStripRect = QRect();
             m_indicatorStripPlace = QRect();   // build 679
+            drawZoomCornerBackdrop(p, QRect());   // build 870: the group alone
         }
     }
 

@@ -573,6 +573,15 @@ public:
     // Access VFO info widgets (one per slice).
     VfoWidget* vfoWidget() const { return m_vfoWidget; }  // active slice (compat)
     VfoWidget* vfoWidget(int sliceId) const;
+    // ANAN fork build 870 (operator, 28.11: View > Appearance > Panadapter >
+    // "Zoom on Bottom Left" / "Zoom on Bottom Right"): where the zoom / rate
+    // group and the indicators beside it (WIDE, preamp, RF gain, WNB, K/A/SFI)
+    // sit -- 0 top right (as before), 1 bottom left, 2 bottom right of the
+    // waterfall, then on a half-transparent backdrop. One for every
+    // panadapter (AppSettings "PanZoomCorner"); applyZoomCorner() re-places.
+    static void setZoomCorner(int corner);
+    [[nodiscard]] static int zoomCorner();
+    void applyZoomCorner();
     VfoWidget* addVfoWidget(int sliceId);
     VfoWidget* takeVfoWidget(int sliceId);
     void       adoptVfoWidget(int sliceId, VfoWidget* widget);
@@ -2510,6 +2519,17 @@ private:
     // Build 278: WIDE drawn as the rate buttons are (same height, line and
     // transparency), its right edge at rightX; returns its left edge.
     int drawWideChip(QPainter& p, int rightX) const;
+    // Build 870: the WIDE chip's top (4 at the top right; the group's line in
+    // a bottom corner).
+    int m_wideChipTop = 4;
+    // Build 870: the indicator strip's right edge and baseline (the defaults
+    // at the top right, beside the group in a bottom corner), and the
+    // backdrop under the group and the strip there.
+    void indicatorStripAnchor(const QFontMetrics& fm, bool showRfGain, bool showProp,
+                              int defaultRightEdge, int defaultBaseline,
+                              int* rightEdge, int* baseline);
+    void drawZoomCornerBackdrop(QPainter& p, const QRect& stripPlace) const;
+    [[nodiscard]] QRect rateGroupRowRect() const;
     void stepReceiverRate(int direction);
     // ANAN-100D port: "Zoom xN.N" (magnification) left of the rate group.
     QPushButton* m_zoomLabel{nullptr};   // build 661: a button (click: zoom x1.0)

@@ -6628,6 +6628,12 @@ void MainWindow::buildUI()
     connect(m_appletPanel, &AppletPanel::detachedFlagClosed, this,
             [this](int sliceId) { reattachFlag(sliceId); });
 
+    // ANAN fork build 870: the zoom group's corner (Appearance > Panadapter).
+    SpectrumWidget::setZoomCorner(
+        AppSettings::instance().value(QStringLiteral("PanZoomCorner"), 0).toInt());
+    for (SpectrumWidget* sw : findChildren<SpectrumWidget*>())
+        sw->applyZoomCorner();
+
     // ANAN fork build 868: Extra Band Applet -- the bottom panel's HAM Bands
     // (build 829) as an applet: 160 ... 6 m and GEN, the band of the active
     // receiver lit, a click changes band as there.

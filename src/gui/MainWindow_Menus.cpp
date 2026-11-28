@@ -1852,6 +1852,50 @@ void MainWindow::buildMenuBar()
         panLay->addWidget(jumpCombo, 0, 1);
         panLay->addWidget(fromDisplay, 1, 0);
         panLay->addWidget(fromEnd, 1, 1);
+        // Build 870 (operator, 28.11): the zoom group and the indicators
+        // beside it in a bottom corner of the waterfall, on a backdrop. Both
+        // off: top right, as before; one at a time.
+        auto* zoomBl = new QCheckBox(QStringLiteral("Zoom on Bottom Left"), panGroup);
+        zoomBl->setObjectName(QStringLiteral("appearanceZoomBottomLeft"));
+        auto* zoomBr = new QCheckBox(QStringLiteral("Zoom on Bottom Right"), panGroup);
+        zoomBr->setObjectName(QStringLiteral("appearanceZoomBottomRight"));
+        const QString zoomTip = QStringLiteral(
+            "The zoom and rate buttons and the indicators beside them (WIDE, preamp, RF gain,\n"
+            "WNB, K/A/SFI) move from the top right of the panadapter to this corner of the\n"
+            "waterfall, on a half-transparent background. Off: top right.");
+        zoomBl->setToolTip(zoomTip);
+        zoomBr->setToolTip(zoomTip);
+        {
+            const int corner = SpectrumWidget::zoomCorner();
+            zoomBl->setChecked(corner == 1);
+            zoomBr->setChecked(corner == 2);
+        }
+        panLay->addWidget(zoomBl, 2, 0);
+        panLay->addWidget(zoomBr, 2, 1);
+        auto applyCorner = [this](int corner) {
+            SpectrumWidget::setZoomCorner(corner);
+            auto& st = AppSettings::instance();
+            st.setValue(QStringLiteral("PanZoomCorner"), corner);
+            st.save();
+            for (SpectrumWidget* sw : findChildren<SpectrumWidget*>())
+                sw->applyZoomCorner();
+        };
+        connect(zoomBl, &QCheckBox::toggled, this, [zoomBl, zoomBr, applyCorner](bool on) {
+            if (on && zoomBr->isChecked()) {
+                const QSignalBlocker b(zoomBr);
+                zoomBr->setChecked(false);
+            }
+            applyCorner(on ? 1 : (zoomBr->isChecked() ? 2 : 0));
+            (void)zoomBl;
+        });
+        connect(zoomBr, &QCheckBox::toggled, this, [zoomBl, zoomBr, applyCorner](bool on) {
+            if (on && zoomBl->isChecked()) {
+                const QSignalBlocker b(zoomBl);
+                zoomBl->setChecked(false);
+            }
+            applyCorner(on ? 2 : (zoomBl->isChecked() ? 1 : 0));
+            (void)zoomBr;
+        });
         root->addWidget(panGroup);
         connect(jumpCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [jumpCombo](int) {
             auto& st = AppSettings::instance();
