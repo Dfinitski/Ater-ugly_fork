@@ -34,6 +34,16 @@ DetachedFlagApplet::DetachedFlagApplet(int sliceId, QWidget* parent)
     setFixedSize(kPlaceholderW, kPlaceholderH);
 }
 
+VfoWidget* DetachedFlagApplet::flag() const
+{
+    return m_flag.data();
+}
+
+SliceModel* DetachedFlagApplet::slice() const
+{
+    return m_slice.data();
+}
+
 void DetachedFlagApplet::adoptFlag(VfoWidget* flag, SliceModel* slice)
 {
     if (m_flag == flag)

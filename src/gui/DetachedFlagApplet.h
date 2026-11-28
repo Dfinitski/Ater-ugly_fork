@@ -30,9 +30,11 @@ public:
     explicit DetachedFlagApplet(int sliceId, QWidget* parent = nullptr);
 
     [[nodiscard]] int sliceId() const { return m_sliceId; }
-    [[nodiscard]] VfoWidget* flag() const { return m_flag.data(); }
+    // Build 866: out of line -- QPointer<T>::data() needs T complete (MSVC
+    // C2440 with the forward declarations here).
+    [[nodiscard]] VfoWidget* flag() const;
     // The receiver the flag shows (nullptr without a flag).
-    [[nodiscard]] SliceModel* slice() const { return m_slice.data(); }
+    [[nodiscard]] SliceModel* slice() const;
 
     // `flag` (of `slice`) was made with this widget as its parent; the host
     // owns it now.
