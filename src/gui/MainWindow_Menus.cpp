@@ -1875,7 +1875,16 @@ void MainWindow::buildMenuBar()
             if (m_appletPanel)
                 m_appletPanel->setVintageMeter(on);
         });
+        // ANAN fork build 849 (operator, 27.11: "open the Appearance window
+        // wider so the labels are not cut"): never narrower than its content
+        // wants (the two-column Bottom Panel, the Panadapter row) plus some
+        // room, also over a smaller size saved from before.
+        root->activate();
+        const int wantW = std::max(560, dlg->sizeHint().width() + 40);
+        dlg->setMinimumWidth(wantW);
         dlg->show();
+        if (dlg->width() < wantW)
+            dlg->resize(wantW, dlg->height());
     });
     viewMenu->addSeparator();
     m_minimalModeAction = viewMenu->addAction("Minimal Mode\tCtrl+Shift+M");
