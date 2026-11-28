@@ -81,6 +81,7 @@ private:
     // ── Audio gain / pan / mute ─────────────────────────────────────────────
     QString cmdAG(const QString& arg);
     QString cmdZZAG(const QString& arg);
+    QString cmdZZLA(const QString& arg);   // build 842
     QString cmdZZLE(const QString& arg);
     QString cmdZZLB(const QString& arg);
     QString cmdZZLF(const QString& arg);

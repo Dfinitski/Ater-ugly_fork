@@ -28,7 +28,9 @@ QString SmartCatProtocol::modeToKenwood(const QString& ssdrMode)
     if (ssdrMode == "LSB")  return "1";
     if (ssdrMode == "USB")  return "2";
     if (ssdrMode == "CW")   return "3";
-    if (ssdrMode == "CWL")  return "3";
+    // ANAN fork build 842 (a user, 27.11: "MD7 sets SSB instead of CW"):
+    // Kenwood 7 is CW-R (CW on the lower side; Thetis: CWL).
+    if (ssdrMode == "CWL")  return "7";
     if (ssdrMode == "FM")   return "4";
     if (ssdrMode == "NFM")  return "4";
     if (ssdrMode == "AM")   return "5";
@@ -72,6 +74,7 @@ QString SmartCatProtocol::kenwoodToSSDR(QChar c)
         case '4': return "FM";
         case '5': return "AM";
         case '6': return "DIGL";
+        case '7': return "CWL";   // build 842: CW-R (it fell to USB)
         case '9': return "DIGU";
         default:  return "USB";
     }
@@ -222,6 +225,7 @@ QString SmartCatProtocol::processCommandImpl(const QString& cmd)
         if (name == "ZZFR") return cmdZZFR(arg);
         if (name == "ZZFT") return splitCommand(QStringLiteral("ZZFT"), arg);
         if (name == "ZZGT") return cmdZZGT(arg);
+        if (name == "ZZLA") return cmdZZLA(arg);   // build 842
         if (name == "ZZLE") return cmdZZLE(arg);
         if (name == "ZZLB") return cmdZZLB(arg);
         if (name == "ZZLF") return cmdZZLF(arg);
@@ -376,6 +380,9 @@ QString SmartCatProtocol::cmdMD(const QString& arg)
         return "MD" + modeToKenwood(a->mode()) + ";";
     if (arg.size() != 1) return "?;";
     QString mode = kenwoodToSSDR(arg[0]);
+    // Build 842: a radio without CWL (a Flex) takes CW-R as CW.
+    if (mode == QLatin1String("CWL") && !a->modeList().isEmpty() && !a->modeList().contains(mode))
+        mode = QStringLiteral("CW");
     // A FreeDV slice reports its sideband's digital code; the same code coming
     // back must not switch the slice out of FreeDV.
     if (a->mode().startsWith("FDV") && modeToKenwood(a->mode()) == arg)
@@ -678,6 +685,24 @@ QString SmartCatProtocol::cmdZZAG(const QString& arg)
     if (!a) return "?;";
     if (arg.isEmpty())
         return "ZZAG" + fmt3(static_cast<int>(a->audioGain() + 0.5f)) + ";";
+    bool ok;
+    int v = arg.toInt(&ok);
+    if (!ok || v < 0 || v > 100) return "?;";
+    a->setAudioGain(static_cast<float>(v));
+    return {};
+}
+
+// ── ZZLA — RX1 (VFO A) audio gain (0-100, 3-digit) ──────────────────────────
+// ANAN fork build 842 (a user, 27.11: "check ZZLA and ZZLE, the volume of the
+// first and second receiver"): ZZLA was not answered at all ("?;"); Thetis'
+// RX1 AF gain, the pair of ZZLE (RX2).
+
+QString SmartCatProtocol::cmdZZLA(const QString& arg)
+{
+    SliceModel* a = sliceA();
+    if (!a) return "?;";
+    if (arg.isEmpty())
+        return "ZZLA" + fmt3(static_cast<int>(a->audioGain() + 0.5f)) + ";";
     bool ok;
     int v = arg.toInt(&ok);
     if (!ok || v < 0 || v > 100) return "?;";
@@ -1861,6 +1886,10 @@ QString SmartCatProtocol::processThetisZZ(const QString& name, const QString& ar
 
     // ── Receive ─────────────────────────────────────────────────────────────
     if (name == "ZZAG") return relabel(cmdZZAG(arg), 4);
+    // Build 842: RX1 / RX2 AF gain (000-100) -- neither was answered in the
+    // Thetis dialect ("?;").
+    if (name == "ZZLA") return relabel(cmdZZLA(arg), 4);
+    if (name == "ZZLE") return relabel(cmdZZLE(arg), 4);
     if (name == "ZZMA") return relabel(cmdZZMA(arg), 4);
     if (name == "ZZMB") return relabel(cmdZZMB(arg), 4);
     if (name == "ZZGT") {
