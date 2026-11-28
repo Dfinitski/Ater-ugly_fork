@@ -8,6 +8,7 @@
 
 #include "FlexControlDialog.h"
 #include "MainWindowHelpers.h"
+#include "core/backends/anan/AnanUiState.h"   // build 863: MIDI BIN
 #include "MidiTxDispatch.h"
 #include "MixerControlAvailability.h"
 #include "VoiceModeGate.h"   // isCwMode() — one CW-mode list, not thirteen
@@ -2106,6 +2107,49 @@ void MainWindow::registerMidiParams()
             }
         },
         [this]() -> float { auto* s = activeSlice(); return s && s->anfOn() ? 1 : 0; });
+
+    // ANAN fork build 863 (operator, 28.11: "there are no APF and BIN buttons
+    // in MIDI"). APF: the VFO's CW audio peaking filter of the active
+    // receiver; switching it on only in CW (the button is CW-only there, an
+    // "on" elsewhere would latch a state nobody can see), off always.
+    reg("rx.apfEnable", "APF (CW Peak Filter)", "RX", P::Toggle, 0, 1,
+        [this](float v) {
+            auto* s = activeSlice();
+            if (!s)
+                return;
+            const bool on = v > 0.5f;
+            if (on && s->mode() != QStringLiteral("CW") && s->mode() != QStringLiteral("CWL"))
+                return;
+            s->setApf(on);
+        },
+        [this]() -> float { auto* s = activeSlice(); return s && s->apfOn() ? 1 : 0; });
+
+    // Build 863: BIN, the RX applet's binaural audio of the active receiver
+    // (ANAN; AnanUiState per receiver, as RxApplet::ananAgcRx picks it).
+    const auto ananBinauralRx = [this]() -> int {
+        auto* s = activeSlice();
+        if (!s || !m_radioModel.isAnanRadio())
+            return -1;
+        if (s->sliceId() == 6 || s->sliceId() == 7)
+            return AetherSDR::anan::AnanUiState::kAgcSubUnit + (s->sliceId() - 6);
+        int rx = AetherSDR::anan::AnanUiState::instance().rxForPan(s->panId());
+        if (rx < 0 || rx > 3)
+            rx = std::clamp(s->sliceId(), 0, 3);
+        return rx;
+    };
+    reg("rx.binaural", "BIN (Binaural Audio)", "RX", P::Toggle, 0, 1,
+        [this, ananBinauralRx](float v) {
+            const int rx = ananBinauralRx();
+            if (rx < 0 || rx > 1) {   // BIN exists on receivers 1 and 2 (setBinaural)
+                showUnsupportedControlNotice();
+                return;
+            }
+            AetherSDR::anan::AnanUiState::instance().setBinaural(rx, v > 0.5f);
+        },
+        [ananBinauralRx]() -> float {
+            const int rx = ananBinauralRx();
+            return rx >= 0 && rx <= 1 && AetherSDR::anan::AnanUiState::instance().binaural[rx] ? 1 : 0;
+        });
 
     reg("rx.squelchEnable", "Squelch Enable", "RX", P::Toggle, 0, 1,
         [this](float v) {
