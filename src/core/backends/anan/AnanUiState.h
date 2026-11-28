@@ -144,6 +144,9 @@ public:
     // Build 724: the radio is a Hermes-Lite 2 (written by the backend): the
     // attenuator control is its LNA, shown as gain; no Alex LNA button.
     bool hermesLite = false;
+    // ANAN fork build 855: the session's model is the Odyssey-3 (written by
+    // the backend): its own PA Level Calibration defaults.
+    bool odyssey3 = false;
     // Build 728 (Thetis "Rx Ant" / "Tx Ant", chkRxAnt): the receivers listen
     // on the transmit antenna while this is on and the two differ; the
     // receive antenna chosen is kept. Written by the status bar button, read

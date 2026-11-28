@@ -460,6 +460,7 @@ void Hl2Backend::resolveAnanModel()
                       << (forced ? "(forcedly assigned by the operator)" : "");
     }
     m_ananModel = m;
+    anan::AnanUiState::instance().odyssey3 = m == anan::AnanModel::Odyssey3;   // build 855
     // Build 724: the Hermes-Lite 2's level references. Its LNA stands where
     // the ANAN's attenuator does (attenuation = 48 - gain): with the display
     // not following it, as on the ANAN, the trace and S-meter read the
@@ -9997,7 +9998,8 @@ void Hl2Backend::applyDrive(int percent)
 int Hl2Backend::ananCwKeyTrimPercent()
 {
     return std::clamp(AppSettings::instance()
-                          .value(QStringLiteral("AnanCwKeyDriveTrim"), 0).toInt(), -30, 30);
+                          .value(QStringLiteral("AnanCwKeyDriveTrim"), ananCwKeyTrimDefault()).toInt(),
+                      -30, 30);   // build 855: the model's default
 }
 
 // ANAN fork build 825 (operator, 27.11): on the Odyssey-3 the drive byte is
@@ -10049,6 +10051,32 @@ int Hl2Backend::ananPaCalDefault()
     return anan::AnanUiState::instance().hermesLite ? 100 : 64;
 }
 
+int Hl2Backend::ananPaCalDefault(const QString& band)
+{
+    // ANAN fork build 855 (operator, 27.11: "take my calibration sliders and
+    // make them the defaults for the Odyssey-3"): the operator's values, in %
+    // of the Odyssey-3's full scale (130; 255 inside the 6 m amateur band).
+    const auto& ui = anan::AnanUiState::instance();
+    if (ui.odyssey3 && !ui.hermesLite) {
+        static const QHash<QString, int> kOdyssey3 = {
+            {QStringLiteral("160m"), 39}, {QStringLiteral("80m"), 34}, {QStringLiteral("60m"), 30},
+            {QStringLiteral("40m"), 71},  {QStringLiteral("30m"), 40}, {QStringLiteral("20m"), 32},
+            {QStringLiteral("17m"), 30},  {QStringLiteral("15m"), 38}, {QStringLiteral("12m"), 37},
+            {QStringLiteral("10m"), 95},  {QStringLiteral("6m"), 99},
+        };
+        const auto it = kOdyssey3.constFind(band);
+        if (it != kOdyssey3.constEnd())
+            return it.value();
+    }
+    return ananPaCalDefault();
+}
+
+int Hl2Backend::ananCwKeyTrimDefault()
+{
+    const auto& ui = anan::AnanUiState::instance();
+    return ui.odyssey3 && !ui.hermesLite ? 30 : 0;   // build 855: the operator's Odyssey-3 value
+}
+
 QString Hl2Backend::ananPaMidDriveKey()
 {
     return anan::AnanUiState::instance().hermesLite ? QStringLiteral("Hl2PaMidDrivePct")
@@ -10089,7 +10117,7 @@ int Hl2Backend::ananPaCalPercent() const
     }
     const QString band = key == QLatin1String("8m") ? QStringLiteral("6m") : key;
     return std::clamp(AppSettings::instance()
-                          .value(ananPaCalPrefix() + band, ananPaCalDefault()).toInt(),   // build 725
+                          .value(ananPaCalPrefix() + band, ananPaCalDefault(band)).toInt(),   // builds 725, 855
                       0, 100);
 }
 

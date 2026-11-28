@@ -4882,7 +4882,8 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
                                      int lo, int hi, int def, bool signedValue,
                                      const QString& tip,
                                      const std::function<void(QGridLayout*)>& header = {},
-                                     const std::function<void(QGridLayout*, int, int)>& tail = {}) {
+                                     const std::function<void(QGridLayout*, int, int)>& tail = {},
+                                     const std::function<int(const QString&)>& defFor = {}) {
         auto* calGroup = new QGroupBox(title);
         auto* grid = new QGridLayout(calGroup);
         grid->setHorizontalSpacing(8);
@@ -4915,7 +4916,9 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
             auto* val = new QLabel;
             val->setFixedWidth(38);
             val->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            const int v0 = std::clamp(AppSettings::instance().value(key, def).toInt(), lo, hi);
+            // Build 855: a per-band default where the group has one.
+            const int d = defFor ? defFor(b) : def;
+            const int v0 = std::clamp(AppSettings::instance().value(key, d).toInt(), lo, hi);
             slider->setValue(v0);
             val->setText(text(v0));
             connect(slider, &QSlider::valueChanged, this, [key, val, text](int v) {
@@ -4964,7 +4967,9 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
                      auto text = [](int v) {
                          return v > 0 ? QStringLiteral("+%1 %").arg(v) : QStringLiteral("%1 %").arg(v);
                      };
-                     const int v0 = std::clamp(AppSettings::instance().value(key, 0).toInt(), -30, 30);
+                     const int v0 = std::clamp(AppSettings::instance()
+                                                   .value(key, hl2::Hl2Backend::ananCwKeyTrimDefault())
+                                                   .toInt(), -30, 30);   // build 855
                      slider->setValue(v0);
                      val->setText(text(v0));
                      connect(slider, &QSlider::valueChanged, this, [key, val, text](int v) {
@@ -4976,7 +4981,9 @@ QWidget* RadioSetupDialog::buildHl2HardwareTab()
                      grid->addWidget(lbl, row, col);
                      grid->addWidget(slider, row, col + 1);
                      grid->addWidget(val, row, col + 2);
-                 });
+                 },
+                 // Build 855: the Odyssey-3's own per-band defaults.
+                 [](const QString& band) { return hl2::Hl2Backend::ananPaCalDefault(band); });
     // PA Power Law as its mid-scale point (operator, 07.11, build 193): the
     // drive the RF Power and Tune sliders give at 50 %, in % of the calibrated
     // full drive (Hl2Backend::applyDrive). Every PA compresses differently, so

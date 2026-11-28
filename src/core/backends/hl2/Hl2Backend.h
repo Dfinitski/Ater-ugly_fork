@@ -964,6 +964,12 @@ public:
     static constexpr double kHl2PaMidDriveDefault = 70.7;
     static QString ananPaCalPrefix();
     static int ananPaCalDefault();
+    // ANAN fork build 855: the default of one band's PA Level Calibration
+    // ("160m" ... "6m") -- the Odyssey-3 its own (operator's measured
+    // values), the others ananPaCalDefault().
+    static int ananPaCalDefault(const QString& band);
+    // Build 855: the CW key drive trim's default (+30 % on the Odyssey-3).
+    static int ananCwKeyTrimDefault();
     static QString ananPaMidDriveKey();
     static double ananPaMidDriveDefault();
 private:
