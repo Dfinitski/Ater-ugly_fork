@@ -5443,25 +5443,64 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
     bool viewBounced = false;
     int edgeSide = 0;   // +1: the filter reached the right edge, -1: the left
     double edgeHalfViewHz = 0.0;
+    double edgeLandHz = 0.0;   // build 844: where the view / NCO centre lands
     if (!r->ctunOff && !m_lockDragStep && !ritApplies) {
         const double rateHz = static_cast<double>(m_sampleRateHz);
         const bool zoomed = r->zoomViewHz > 0.0 && r->zoomViewHz < rateHz * anan::kUsableSpanFraction;
         const double viewCenterHz = panCenterHz(*r);
         const double halfViewHz = panViewHz(*r) / 2.0;
         const double triggerHz = halfViewHz * kEdgeBounceTrigger;
-        const double rightOffHz = tunedHz + std::max(r->filterLowHz, r->filterHighHz) - viewCenterHz;
-        const double leftOffHz = tunedHz + std::min(r->filterLowHz, r->filterHighHz) - viewCenterHz;
+        const double filterHiHz = std::max(r->filterLowHz, r->filterHighHz);
+        const double filterLoHz = std::min(r->filterLowHz, r->filterHighHz);
+        // ANAN fork build 844 (operator, 27.11): View > Appearance >
+        // Panadapter. "Jump From The Display" (as before): the trigger is the
+        // screen's edge (the filter's outer edge past kEdgeBounceTrigger of
+        // the half screen). "Jump From The End": the end of the band the
+        // radio processes -- the receiver's clean window (NCO +- the usable
+        // half span); zoomed in, the view stays put until then, the receiver
+        // off the screen or not. Any tune now (the operator: "any tuning"),
+        // no longer steps only. "Jump From Edge": the receiver lands 0 % (the
+        // filter's outer edge held at the trigger: the panadapter just moves
+        // along), 25 % (a quarter of the screen in from that edge) or 50 %
+        // (the middle) -- build 651's 70 % of the half screen (15 % in) is
+        // gone.
+        auto& st = AppSettings::instance();
+        const bool fromEnd = st.value(QStringLiteral("PanJumpFromEnd"), QStringLiteral("False"))
+                                 .toString() == QLatin1String("True");
+        int jumpPct = st.value(QStringLiteral("PanJumpFromEdgePct"), 25).toInt();
+        if (jumpPct != 0 && jumpPct != 25 && jumpPct != 50)
+            jumpPct = 25;
         if (halfViewHz > 0.0) {
-            if (rightOffHz > triggerHz && rightOffHz - triggerHz <= halfViewHz * 0.25)
-                edgeSide = 1;
-            else if (leftOffHz < -triggerHz && -leftOffHz - triggerHz <= halfViewHz * 0.25)
-                edgeSide = -1;
+            if (fromEnd) {
+                const double rightNcoOffHz = tunedHz + filterHiHz - r->ncoHz;
+                const double leftNcoOffHz = tunedHz + filterLoHz - r->ncoHz;
+                if (rightNcoOffHz > usableHz)
+                    edgeSide = 1;
+                else if (leftNcoOffHz < -usableHz)
+                    edgeSide = -1;
+            } else {
+                const double rightOffHz = tunedHz + filterHiHz - viewCenterHz;
+                const double leftOffHz = tunedHz + filterLoHz - viewCenterHz;
+                if (rightOffHz > triggerHz)
+                    edgeSide = 1;
+                else if (leftOffHz < -triggerHz)
+                    edgeSide = -1;
+            }
+        }
+        if (edgeSide != 0) {
+            if (jumpPct == 0) {
+                // The filter's outer edge stays at the trigger of the screen.
+                const double outerHz = tunedHz + (edgeSide > 0 ? filterHiHz : filterLoHz);
+                edgeLandHz = std::round(outerHz - edgeSide * triggerHz);
+            } else {
+                edgeLandHz = std::round(tunedHz - edgeSide * halfViewHz * (1.0 - 2.0 * jumpPct / 100.0));
+            }
         }
         edgeHalfViewHz = halfViewHz;
+        (void)edgeHalfViewHz;   // build 844: the landing is edgeLandHz now
         if (zoomed && edgeSide != 0) {
             if (const auto* ids = m_ids.byDdc(ddc)) {
-                const double newCenterHz = std::round(tunedHz - edgeSide * halfViewHz * kEdgeBounceFraction);
-                setPanCenter(ids->panId, newCenterHz, PanCenterIntent::Drag);
+                setPanCenter(ids->panId, edgeLandHz, PanCenterIntent::Drag);
                 viewBounced = true;
             }
             edgeSide = 0;
@@ -5501,8 +5540,8 @@ void Hl2Backend::setSliceFrequency(int sliceId, double hz)
             const double offHz = tunedHz - r->ncoHz;
             const bool fullView = !(r->zoomViewHz > 0.0
                 && r->zoomViewHz < static_cast<double>(m_sampleRateHz) * anan::kUsableSpanFraction);
-            if (edgeSide != 0)   // build 656: short of the screen's edge
-                newNcoHz = std::round(tunedHz - edgeSide * edgeHalfViewHz * kEdgeBounceFraction);
+            if (edgeSide != 0)   // build 656 / 844: the landing of the jump
+                newNcoHz = edgeLandHz;
             else if (outsideWindow && !ritApplies && fullView
                 && std::abs(offHz) - usableHz <= halfSpanHz * 0.25)
                 newNcoHz = std::round(tunedHz - (offHz > 0.0 ? 1.0 : -1.0) * usableHz * kEdgeBounceFraction);

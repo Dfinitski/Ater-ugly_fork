@@ -58,6 +58,8 @@
 #include "core/ForkBuild.h"
 #include "TxBandDialog.h"
 #include "TxApplet.h"
+#include <QButtonGroup>   // build 844
+#include <QComboBox>      // build 844
 #include "UlanziDialMapperDialog.h"
 #include "VfoWidget.h"
 #include "WaveformsDialog.h"
@@ -1810,6 +1812,61 @@ void MainWindow::buildMenuBar()
             }
         }
         root->addWidget(bottom);
+        // ── Panadapter ── (build 844, operator 27.11) Where a receiver tuned
+        // to the edge lands (Hl2Backend::setSliceFrequency): "Jump From Edge"
+        // 0 % (no jump: the panadapter moves along with it), 25 % (a quarter
+        // of the screen in from that edge), 50 % (the middle); and from which
+        // edge -- the screen's, or the end of the band the radio processes
+        // (the cropped edges of the captured band; inside it the panadapter
+        // stays put even with the receiver off the screen).
+        auto* panGroup = new QGroupBox(QStringLiteral("Panadapter"), dlg);
+        auto* panLay = new QGridLayout(panGroup);
+        panLay->setHorizontalSpacing(16);
+        auto* jumpLbl = new QLabel(QStringLiteral("Jump From Edge"), panGroup);
+        auto* jumpCombo = new QComboBox(panGroup);
+        jumpCombo->setObjectName(QStringLiteral("appearancePanJumpCombo"));
+        for (int pct : {0, 25, 50})
+            jumpCombo->addItem(QStringLiteral("%1 %").arg(pct), pct);
+        jumpCombo->setToolTip(QStringLiteral(
+            "Where a receiver tuned to the edge of the panadapter lands:\n"
+            "0 % -- no jump, the panadapter moves along with it;\n"
+            "25 % -- a quarter of the screen in from that edge; 50 % -- the middle."));
+        {
+            const int cur = AppSettings::instance().value(QStringLiteral("PanJumpFromEdgePct"), 25).toInt();
+            const int idx = jumpCombo->findData(cur);
+            jumpCombo->setCurrentIndex(idx >= 0 ? idx : 1);
+        }
+        auto* fromDisplay = new QCheckBox(QStringLiteral("Jump From The Display"), panGroup);
+        fromDisplay->setObjectName(QStringLiteral("appearancePanJumpFromDisplay"));
+        fromDisplay->setToolTip(QStringLiteral("The jump fires at the edge of the screen."));
+        auto* fromEnd = new QCheckBox(QStringLiteral("Jump From The End"), panGroup);
+        fromEnd->setObjectName(QStringLiteral("appearancePanJumpFromEnd"));
+        fromEnd->setToolTip(QStringLiteral(
+            "The jump fires at the end of the band the radio processes (the cropped edges);\n"
+            "zoomed in, the panadapter stays put until then, even with the receiver off the screen."));
+        auto* fromGroup = new QButtonGroup(panGroup);
+        fromGroup->setExclusive(true);
+        fromGroup->addButton(fromDisplay);
+        fromGroup->addButton(fromEnd);
+        const bool endOn = AppSettings::instance()
+            .value(QStringLiteral("PanJumpFromEnd"), QStringLiteral("False")).toString() == QLatin1String("True");
+        fromEnd->setChecked(endOn);
+        fromDisplay->setChecked(!endOn);
+        panLay->addWidget(jumpLbl, 0, 0);
+        panLay->addWidget(jumpCombo, 0, 1);
+        panLay->addWidget(fromDisplay, 1, 0);
+        panLay->addWidget(fromEnd, 1, 1);
+        root->addWidget(panGroup);
+        connect(jumpCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [jumpCombo](int) {
+            auto& st = AppSettings::instance();
+            st.setValue(QStringLiteral("PanJumpFromEdgePct"), jumpCombo->currentData().toInt());
+            st.save();
+        });
+        connect(fromEnd, &QCheckBox::toggled, this, [](bool on) {
+            auto& st = AppSettings::instance();
+            st.setValue(QStringLiteral("PanJumpFromEnd"), on ? QStringLiteral("True") : QStringLiteral("False"));
+            st.save();
+        });
         root->addStretch(1);
         auto* closeRow = new QHBoxLayout;
         closeRow->addStretch(1);
