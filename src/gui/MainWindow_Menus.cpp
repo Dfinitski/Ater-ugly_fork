@@ -1772,6 +1772,8 @@ void MainWindow::buildMenuBar()
             {"bands", "Show HAM Bands", "BottomPanelShowHamBands", false,
              "appearanceShowHamBandsCheck",
              "Small band buttons 160 ... 6 m and GEN; the band the active receiver is on is lit."},
+            {"modes", "Show Modes", "BottomPanelShowModes", false, "appearanceShowModesCheck",
+             "The active receiver's flag mode buttons, small, in two rows of four (they mirror the flag)."},
             {"station", "Show Station Name", "BottomPanelShowStationName", true,
              "appearanceShowStationNameCheck",
              "The station name (the radio's nickname) in the middle of the bottom bar."},

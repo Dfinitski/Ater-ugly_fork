@@ -3244,6 +3244,8 @@ void VfoWidget::buildTabContent()
             r->setSpacing(2);
         for (int i = 0; i < kQuickModeButtons; ++i) {
             auto* btn = new QPushButton(m_quickModeAssign[i]);
+            // Build 843: found by the bottom bar's mode buttons (their mirror).
+            btn->setObjectName(QStringLiteral("vfoQuickMode%1").arg(i));
             btn->setCheckable(true);
             btn->setFixedHeight(26);
             AetherSDR::ButtonStyles::apply(btn, "vfo.mode");

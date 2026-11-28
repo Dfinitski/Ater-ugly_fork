@@ -539,6 +539,7 @@ constexpr BottomPanelElement kBottomLeftElements[] = {
     {"ae", "BottomPanelFastAeDsp", false},
     {"dr", "BottomPanelShowDithRand", false},   // build 824
     {"bands", "BottomPanelShowHamBands", false},   // build 829
+    {"modes", "BottomPanelShowModes", false},      // build 843
 };
 constexpr BottomPanelElement kBottomRightElements[] = {
     {"cpu", "BottomPanelShowCpu", true},
@@ -7492,6 +7493,94 @@ void MainWindow::buildUI()
             }
         });
         bandsTimer->start();
+    }
+
+    // ANAN fork build 843 (operator, 27.11): View > Appearance > Bottom Panel
+    // > "Show Modes" (off by default, AppSettings "BottomPanelShowModes"): a
+    // left-group element of 8 small buttons in two rows of four, drawn as the
+    // band buttons -- a mirror of the active receiver's flag mode buttons.
+    // Every 250 ms (so at the start and when it is switched on too) each one
+    // copies its flag button's mode, lit state and availability; a click is
+    // a click on that flag button, so the rules are the same (a second click
+    // on a sideband mode swaps it, FDV / FTX as there) and both stay in step.
+    {
+        QHBoxLayout* modesUnit = makeBottomUnit(m_bottomLeftGroup, "modes");
+        auto* modesBox = new QWidget;
+        modesBox->setObjectName(QStringLiteral("bottomModes"));
+        auto* grid = new QGridLayout(modesBox);
+        grid->setContentsMargins(0, 0, 0, 0);
+        grid->setHorizontalSpacing(2);
+        grid->setVerticalSpacing(2);
+        static const char* const kModesButtonStyle =
+            "QPushButton { background: transparent; "
+            "border: 1px solid {{color.background.2}}; "
+            "border-radius: 2px; color: {{color.text.secondary}}; "
+            "font-size: 9px; font-weight: normal; padding: 0px; }"
+            "QPushButton:hover { color: {{color.text.primary}}; }"
+            "QPushButton:checked { background: transparent; "
+            "color: {{color.text.primary}}; "
+            "border: 1px solid {{color.accent.dim}}; }"
+            "QPushButton:pressed { border: 1px solid {{color.accent.dim}}; }"
+            "QPushButton:disabled { color: {{color.text.disabled}}; }";
+        // The flag button `slot` of the active receiver, if any.
+        auto flagButton = [this](int slot) -> QPushButton* {
+            SliceModel* s = m_radioModel.isConnected() ? activeSlice() : nullptr;
+            SpectrumWidget* sw = s ? spectrumForSlice(s) : nullptr;
+            VfoWidget* v = sw ? sw->vfoWidget(s->sliceId()) : nullptr;
+            return v ? v->findChild<QPushButton*>(QStringLiteral("vfoQuickMode%1").arg(slot)) : nullptr;
+        };
+        QList<QPushButton*> modeButtons;
+        for (int i = 0; i < 8; ++i) {
+            auto* b = new QPushButton(QStringLiteral("-"));
+            b->setObjectName(QStringLiteral("bottomMode%1").arg(i));
+            b->setCheckable(true);
+            b->setAutoDefault(false);
+            b->setFocusPolicy(Qt::NoFocus);
+            b->setFixedSize(30, 15);
+            AetherSDR::ThemeManager::instance().applyStyleSheet(b, kModesButtonStyle);
+            grid->addWidget(b, i / 4, i % 4);
+            modeButtons.append(b);
+        }
+        auto syncModes = [modesBox, modeButtons, flagButton] {
+            if (!modesBox->isVisible())
+                return;
+            for (int i = 0; i < modeButtons.size(); ++i) {
+                QPushButton* b = modeButtons[i];
+                QPushButton* f = flagButton(i);
+                const QString text = f ? f->text() : QStringLiteral("-");
+                if (b->text() != text)
+                    b->setText(text);
+                const bool on = f && f->isChecked();
+                if (b->isChecked() != on) {
+                    const QSignalBlocker blocker(b);
+                    b->setChecked(on);
+                }
+                const bool enabled = f && f->isEnabled();
+                if (b->isEnabled() != enabled)
+                    b->setEnabled(enabled);
+                const QString tip = f ? f->toolTip() : QString();
+                if (b->toolTip() != tip)
+                    b->setToolTip(tip);
+            }
+        };
+        for (int i = 0; i < modeButtons.size(); ++i) {
+            QPushButton* b = modeButtons[i];
+            connect(b, &QPushButton::clicked, this, [b, i, flagButton, syncModes] {
+                {
+                    // The lit state follows the flag button, not the click.
+                    const QSignalBlocker blocker(b);
+                    b->setChecked(!b->isChecked());
+                }
+                if (QPushButton* f = flagButton(i))
+                    f->click();   // the flag button's own handler: the same rules
+                syncModes();
+            });
+        }
+        modesUnit->addWidget(modesBox, 0, Qt::AlignVCenter);
+        auto* modesTimer = new QTimer(modesBox);
+        modesTimer->setInterval(250);
+        connect(modesTimer, &QTimer::timeout, modesBox, syncModes);
+        modesTimer->start();
     }
 
     m_stationNickLabel = new QLabel("N0CALL");
