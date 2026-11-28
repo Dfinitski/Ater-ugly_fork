@@ -2167,10 +2167,15 @@ private:
     bool m_cwPaddleInputHeld{false};
     TxCoordinator::Request m_serialCwPaddleInput;
     bool m_serialCwPaddleHeld{false};
-    // ANAN fork build 851: the last serial key / paddle press went to the
-    // radio's keyer lines, so its release does too.
-    bool m_serialCwToRadio{false};
-    bool m_serialPaddleToRadio{false};
+    // ANAN fork build 851 / 852: the serial lines held on the radio's keyer
+    // lines (a release follows its press there). Build 852 (operator, 27.11:
+    // "Dash works as a straight key, Dot as PTT (pedal)"): the key line is
+    // Dash, the PTT line Dot; the paddles Dot / Dash.
+    bool m_serialRadioKey{false};
+    bool m_serialRadioPtt{false};
+    bool m_serialRadioDit{false};
+    bool m_serialRadioDah{false};
+    void pushSerialRadioCwLines();
     void captureLocalCwPaddleInput(bool held);
     bool m_cwRightPaddleActive{false};
     QPointer<QWidget> m_sliderShortcutLease;

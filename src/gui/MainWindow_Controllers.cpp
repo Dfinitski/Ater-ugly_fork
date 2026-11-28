@@ -2963,6 +2963,14 @@ void MainWindow::wireExternalControllers()
     });
     connect(m_serialPort, &SerialPortController::externalPttChanged,
             this, [this](bool active, const TxCoordinator::Request& input) {
+        // Build 852: with the radio's keyer on, the PTT line (pedal) is its
+        // Dot line -- the radio's PTT in straight-key mode.
+        if (m_radioModel.ananRadioKeyerOn() || (!active && m_serialRadioPtt)) {
+            m_serialRadioPtt = active;
+            pushSerialRadioCwLines();
+            if (active)
+                return;
+        }
         (void)m_radioModel.setProducerTransmit(input, active, TransmitModel::PttSource::Mox);
     });
     connect(m_serialPort, &SerialPortController::cwKeyChanged,
@@ -2972,9 +2980,10 @@ void MainWindow::wireExternalControllers()
         // protocol's bits"): with the radio's keyer on, the key line is its
         // dot line; the keyer's mode (CW applet) makes it a straight key or
         // dots. A program keying a virtual COM port comes the same way.
-        if (m_radioModel.ananRadioKeyerOn() || (!down && m_serialCwToRadio)) {
-            m_serialCwToRadio = down;
-            m_radioModel.ananCwPaddleBits(down, false);
+        // Build 852: the key line is the Dash line (the radio's straight key).
+        if (m_radioModel.ananRadioKeyerOn() || (!down && m_serialRadioKey)) {
+            m_serialRadioKey = down;
+            pushSerialRadioCwLines();
             if (down)
                 return;
         }
@@ -2987,10 +2996,12 @@ void MainWindow::wireExternalControllers()
         // Build 851 (Thetis SetCWDot / SetCWDash): with the radio's keyer on,
         // the paddles go straight onto its dot / dash lines -- its mode,
         // speed, weight and swap (CW applet), not the program's keyer.
-        if (m_radioModel.ananRadioKeyerOn() || (!held && m_serialPaddleToRadio)) {
-            m_serialPaddleToRadio = held;
+        if (m_radioModel.ananRadioKeyerOn()
+            || (!held && (m_serialRadioDit || m_serialRadioDah))) {
+            m_serialRadioDit = dit;
+            m_serialRadioDah = dah;
             m_radioModel.setCwPaddleHeld(held || m_cwLeftPaddleActive || m_cwRightPaddleActive);
-            m_radioModel.ananCwPaddleBits(dit, dah);
+            pushSerialRadioCwLines();
             if (held)
                 return;
         }
@@ -3822,5 +3833,13 @@ SliceModel* MainWindow::midiTuneKnobSlice(bool knobB) const
     return m_radioModel.slice(knobB ? 1 : 0);
 }
 #endif
+
+// ANAN fork build 852: the serial lines on the radio keyer's Dot / Dash --
+// Dot = dot paddle or the PTT line, Dash = dash paddle or the key line.
+void MainWindow::pushSerialRadioCwLines()
+{
+    m_radioModel.ananCwPaddleBits(m_serialRadioDit || m_serialRadioPtt,
+                                  m_serialRadioDah || m_serialRadioKey);
+}
 
 } // namespace AetherSDR
